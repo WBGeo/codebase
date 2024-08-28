@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import os
 
-from core.object_components import InputData, GeomodelResults
-from core.interpolator_components import universal_cokriging_interpolator
+from core.object_components import InputData
+from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d
 
 #%%

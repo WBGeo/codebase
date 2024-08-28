@@ -78,37 +78,6 @@ def universal_cokriging_interpolator(input_data: InputData):
                                model_instance.solutions.dc_meshes]
     dc_edges = [mesh.edges for mesh in model_instance.solutions.dc_meshes]
 
-    # Reorder meshes to append faults at end
-    # TODO: I have now strictly ordered by age, lets see how this works with multiple weird faults
-
-    # new version, for case all faults are ordered at beginning - I doubt it
-    # n_faults = len(np.where(input_data.faults)[0])
-    # n_elements = len(dc_vertices_transformed)
-    #
-    # dc_edges2 = np.empty(n_elements, dtype=object)
-    # dc_edges2[0:n_elements-n_faults] = dc_edges[n_faults:n_elements]
-    # dc_edges2[n_elements-n_faults:] = dc_edges[0:n_faults]
-    #
-    # dc_vertices_transformed2 = np.empty(n_elements, dtype=object)
-    # dc_vertices_transformed2[0:n_elements-n_faults] = dc_vertices_transformed[n_faults:n_elements]
-    # dc_vertices_transformed2[n_elements-n_faults:] = dc_vertices_transformed[0:n_faults]
-
-    # New version, if elements in meshes are ordered by age - this one should work in general
-    # if input_data.faults is not None:
-    #     # indices of faults
-    #     indices_to_cut = np.where(np.array(input_data.faults))[0]
-    #
-    #     # reorder meshes
-    #     dc_edges = np.array(dc_edges, dtype=object)
-    #     elements_to_append = dc_edges[indices_to_cut]
-    #     dc_edges = np.delete(dc_edges, indices_to_cut)
-    #     dc_edges = np.concatenate((dc_edges, elements_to_append))
-    #
-    #     dc_vertices_transformed = np.array(dc_vertices_transformed, dtype=object)
-    #     elements_to_append = dc_vertices_transformed[indices_to_cut]
-    #     dc_vertices_transformed = np.delete(dc_vertices_transformed, indices_to_cut)
-    #     dc_vertices_transformed = np.concatenate((dc_vertices_transformed, elements_to_append))
-
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(lith_block=model_instance.solutions.raw_arrays.lith_block,
                                        surface_meshes_vertices=dc_vertices_transformed,
