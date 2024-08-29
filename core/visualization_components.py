@@ -41,7 +41,8 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
     sc = ax.scatter(input_data.surface_points.X, input_data.surface_points.Z,
                     c=input_data.surface_points['formation'].apply(lambda x: np.where(formations == x)[0][0]),
                     cmap=cmap,
-                    norm=norm)
+                    norm=norm,
+                    edgecolors= "black")
 
     # Plot the orientations
     ax.quiver(input_data.orientations.X, input_data.orientations.Z,
@@ -49,7 +50,9 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
               input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
               angles='xy', scale_units='xy',
               cmap=cmap,
-              norm=norm)
+              norm=norm,
+              edgecolors="black",
+              linewidth=1)
 
     if geomodel_results is not None and show_results:
 
