@@ -47,6 +47,7 @@ def kriging_interpolator(input_data: InputData):
             structural_group_df['formation'].replace(replacements)
 
         # perform kriging per structural group
+        # TODO: Set reasonable default variogram model and parameters
         ok3d = OrdinaryKriging3D(
             structural_group_df['X'], structural_group_df['Y'], structural_group_df['Z'],
             structural_group_df['formation'], variogram_model="gaussian",
@@ -85,14 +86,14 @@ def kriging_interpolator(input_data: InputData):
     mc_edges = []
     block = combined_result
     for i in range(0, len(unique_elements)):
-        print(i)
         verts, faces, _, _ = measure.marching_cubes(block, i,
                                                     spacing=(dx, dy, dz))
         mc_vertices.append(verts)
         mc_edges.append(faces)
 
     # Create a GeomodelResults instance
-    results_instance = GeomodelResults(lith_block=combined_result.flatten(),
+    results_instance = GeomodelResults(name=input_data.name,
+                                       lith_block=combined_result.flatten(),
                                        surface_meshes_vertices=mc_vertices,
                                        surface_meshes_edges=mc_edges,
                                        grid=grid,
