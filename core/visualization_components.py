@@ -150,7 +150,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                                      :3].to_numpy()),
                          render_points_as_spheres=True,
                          point_size=10,
-                         color=colors[i])
+                         color=colors[i], label=formations[i])
 
         # Add the orientations if available
         if input_data.orientations is not None:
@@ -176,6 +176,8 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
         print("Can not show results without results data.")
     else:
         pass
+
+    plotter.add_legend(size=(0.13, 0.13), loc='lower right', face='circle')
 
     # Set the bounds and grid of the plotter
     plotter.show_bounds(bounds=input_data.extent,
