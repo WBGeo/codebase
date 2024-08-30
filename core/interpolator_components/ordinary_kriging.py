@@ -5,7 +5,7 @@ from skimage import measure
 
 
 #%%
-def kriging_interpolator(input_data: InputData):
+def ordinary_kriging_interpolator(input_data: InputData):
     """
     Compute a model based on input data using kriging interpolation
 
@@ -51,7 +51,7 @@ def kriging_interpolator(input_data: InputData):
         ok3d = OrdinaryKriging3D(
             structural_group_df['X'], structural_group_df['Y'], structural_group_df['Z'],
             structural_group_df['formation'], variogram_model="gaussian",
-            variogram_parameters=[4, 500, 0],
+            variogram_parameters=[1, 500, 0],
             anisotropy_scaling_z=0.3
         )
         k3d1, ss3d = ok3d.execute("grid", gridx, gridy, gridz)
