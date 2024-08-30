@@ -1,15 +1,7 @@
 import numpy as np
 from core.object_components import InputData, GeomodelResults
 from pykrige.ok3d import OrdinaryKriging3D
-import matplotlib.pyplot as plt
-
-# TODO: This is just for testing here
-import pandas as pd
-import os
-
-from core.object_components import InputData
-from core.visualization_components import plot_2d, plot_3d
-from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from skimage import measure
 
 
 #%%
@@ -31,9 +23,9 @@ def kriging_interpolator(input_data: InputData):
     dx = (input_data.extent[1] - input_data.extent[0]) / input_data.resolution[0]
     dy = (input_data.extent[3] - input_data.extent[2]) / input_data.resolution[1]
     dz = (input_data.extent[5] - input_data.extent[4]) / input_data.resolution[2]
-    gridx = np.linspace(input_data.extent[0] + dx/2, input_data.extent[1] - dx/2, input_data.resolution[0])
-    gridy = np.linspace(input_data.extent[2] + dy/2, input_data.extent[3] - dy/2, input_data.resolution[1])
-    gridz = np.linspace(input_data.extent[4] + dz/2, input_data.extent[5] - dz, input_data.resolution[2])
+    gridx = np.linspace(input_data.extent[0] + dx / 2, input_data.extent[1] - dx / 2, input_data.resolution[0])
+    gridy = np.linspace(input_data.extent[2] + dy / 2, input_data.extent[3] - dy / 2, input_data.resolution[1])
+    gridz = np.linspace(input_data.extent[4] + dz / 2, input_data.extent[5] - dz, input_data.resolution[2])
 
     # gempy way to get coordinates, for some reason this does not blow memory
     coords = gridx, gridy, gridz
@@ -88,70 +80,23 @@ def kriging_interpolator(input_data: InputData):
     # Apply the mapping to the array
     combined_result = np.vectorize(mapping.get)(combined_result)
 
-    # TODO: Actually do meshing
-    a = []
-    b = []
+    # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
+    mc_vertices = []
+    mc_edges = []
+    block = combined_result
+    for i in range(0, len(unique_elements)):
+        print(i)
+        verts, faces, _, _ = measure.marching_cubes(block, i,
+                                                    spacing=(dx, dy, dz))
+        mc_vertices.append(verts)
+        mc_edges.append(faces)
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(lith_block=combined_result.flatten(),
-                                       surface_meshes_vertices=a,
-                                       surface_meshes_edges=b,
+                                       surface_meshes_vertices=mc_vertices,
+                                       surface_meshes_edges=mc_edges,
                                        grid=grid,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution)
 
     return results_instance
-
-
-#%%
-
-cwd = os.getcwd()
-
-#%%
-# WORKFLOW Model 2: no faults, no unconformities, 2 stratigraphic series
-
-# # Component 1: input data
-# data_test = InputData(name='Model 2',
-#                       extent=np.array([0, 1000, 0, 1000, 0, 1000]),
-#                       resolution=np.array([40, 40, 40]),
-#                       surface_points=pd.read_csv(
-#                           cwd + "/examples/data/model2_surface_points_df.csv"),
-#                       orientations=pd.read_csv(
-#                           cwd + "/examples/data/model2_orientations_df.csv"),
-#                       mapping_object={"Strat_Series": ('rock2', 'rock1')}
-#                       )
-
-data_test = InputData(name='Model 12',
-                      extent=np.array([0, 2000, 0, 1000, 0, 1000]),
-                      resolution=np.array([100, 50, 50]),
-                      surface_points=pd.read_csv(
-                          cwd + "/examples/data/model12_surface_points_df.csv"),
-                      orientations=pd.read_csv(
-                          cwd + "/examples/data/model12_orientations_df.csv"),
-                      mapping_object={
-                          "Strat_Series1": ('rock4', 'rock3'),
-                          "Strat_Series2": ('rock2', 'rock1')},
-                      )
-
-#%%
-
-# Plot the input data (2D and 3D possible) - Should be an option of the input data component
-plot_2d(data_test)
-plot_3d(data_test)
-
-#%%
-results_test2 = universal_cokriging_interpolator(data_test)
-
-#%%
-
-# Component 2 --> Component 3: Interpolation to geomodel result
-results_test = kriging_interpolator(data_test)
-
-#%%
-
-# 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
-plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
-# plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
-
-#%%
-
