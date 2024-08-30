@@ -44,15 +44,18 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                     norm=norm,
                     edgecolors="black")
 
-    # Plot the orientations
-    ax.quiver(input_data.orientations.X, input_data.orientations.Z,
-              input_data.orientations.G_x, input_data.orientations.G_z,
-              input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
-              angles='xy', scale_units='xy',
-              cmap=cmap,
-              norm=norm,
-              edgecolors="black",
-              linewidth=1)
+    # Plot the orientations if available
+    if input_data.orientations is not None:
+        ax.quiver(input_data.orientations.X, input_data.orientations.Z,
+                  input_data.orientations.G_x, input_data.orientations.G_z,
+                  input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
+                  angles='xy', scale_units='xy',
+                  cmap=cmap,
+                  norm=norm,
+                  edgecolors="black",
+                  linewidth=1)
+    else:
+        pass
 
     if geomodel_results is not None and show_results:
 
@@ -60,7 +63,7 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
         plot_block = np.round(geomodel_results.lith_block.reshape(geomodel_results.resolution), 0).astype(int)
         plot_block = plot_block
 
-        # cut slice
+        # cut slice in the middle of the model
         image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
 
         # Create a discrete color map for the lithology block
@@ -149,17 +152,18 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                          point_size=10,
                          color=colors[i])
 
-        # Add the orientations
-        points = pv.PolyData(input_data.orientations[input_data.orientations.iloc[:, -1]
-                                                     == current_element].iloc[:, :3].to_numpy().astype(np.float32))
+        # Add the orientations if available
+        if input_data.orientations is not None:
+            points = pv.PolyData(input_data.orientations[input_data.orientations.iloc[:, -1]
+                                                         == current_element].iloc[:, :3].to_numpy().astype(np.float32))
 
-        points['vectors'] = input_data.orientations[input_data.orientations.iloc[:, -1]
-                                                    == current_element].iloc[:, 3:6].to_numpy().astype(np.float32)
+            points['vectors'] = input_data.orientations[input_data.orientations.iloc[:, -1]
+                                                        == current_element].iloc[:, 3:6].to_numpy().astype(np.float32)
 
-        # Create an arrow source and a Glyph object and add to plotter
-        arrow = pv.Arrow()
-        glyphs = points.glyph(orient='vectors', scale=False, geom=arrow, factor=100)
-        plotter.add_mesh(glyphs, color=colors[i])
+            # Create an arrow source and a Glyph object and add to plotter
+            arrow = pv.Arrow()
+            glyphs = points.glyph(orient='vectors', scale=False, geom=arrow, factor=100)
+            plotter.add_mesh(glyphs, color=colors[i])
 
     if geomodel_results is not None and show_results:
         # Add the surface meshes

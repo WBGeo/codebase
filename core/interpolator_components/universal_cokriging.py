@@ -79,7 +79,8 @@ def universal_cokriging_interpolator(input_data: InputData):
     dc_edges = [mesh.edges for mesh in model_instance.solutions.dc_meshes]
 
     # Create a GeomodelResults instance
-    results_instance = GeomodelResults(lith_block=model_instance.solutions.raw_arrays.lith_block,
+    results_instance = GeomodelResults(name=input_data.name,
+                                       lith_block=model_instance.solutions.raw_arrays.lith_block,
                                        surface_meshes_vertices=dc_vertices_transformed,
                                        surface_meshes_edges=dc_edges,
                                        grid=model_instance.grid.regular_grid.values,

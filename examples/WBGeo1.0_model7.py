@@ -18,14 +18,14 @@ cwd = os.getcwd()
 data_test = InputData(name='Model 7',
                       extent=np.array([0, 2500, 0, 1000, 0, 1000]),
                       resolution=np.array([50, 20, 20]),
-                      surface_points=pd.read_csv(
-                          cwd+"/examples/data/model7_surface_points_df.csv"),
-                      orientations=pd.read_csv(
-                          cwd+"/examples/data/model7_orientations_df.csv"),
                       mapping_object={
                           "Fault_Series": ('fault'),
                           "Strat_Series1": ('rock3'),
                           "Strat_Series2": ('rock2', 'rock1')},
+                      surface_points=pd.read_csv(
+                          cwd + "/examples/data/model7_surface_points_df.csv"),
+                      orientations=pd.read_csv(
+                          cwd + "/examples/data/model7_orientations_df.csv"),
                       faults=[True, False, False]
                       )
 

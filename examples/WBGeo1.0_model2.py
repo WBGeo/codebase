@@ -18,11 +18,11 @@ cwd = os.getcwd()
 data_test = InputData(name='Model 2',
                       extent=np.array([0, 1000, 0, 1000, 0, 1000]),
                       resolution=np.array([20, 20, 20]),
+                      mapping_object={"Strat_Series": ('rock2', 'rock1')},
                       surface_points=pd.read_csv(
-                          cwd+"/examples/data/model2_surface_points_df.csv"),
+                          cwd + "/examples/data/model2_surface_points_df.csv"),
                       orientations=pd.read_csv(
-                          cwd+"/examples/data/model2_orientations_df.csv"),
-                      mapping_object={"Strat_Series": ('rock2', 'rock1')}
+                          cwd + "/examples/data/model2_orientations_df.csv"),
                       )
 
 #%%

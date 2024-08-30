@@ -5,6 +5,7 @@ import os
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from core.interpolator_components.kriging import kriging_interpolator
 from core.visualization_components import plot_2d, plot_3d
 
 #%%
@@ -16,14 +17,14 @@ cwd = os.getcwd()
 
 # Component 1: Input data
 data_test = InputData(name='Model 7',
-                      extent=np.array([0, 2500, 0, 1000, 0, 1000]),
+                      extent=np.array([0, 2000, 0, 1000, 0, 1000]),
                       resolution=np.array([100, 40, 40]),
                       surface_points=pd.read_csv(
                           cwd+"/examples/data/model12_surface_points_df.csv"),
-                      orientations=pd.read_csv(
-                          cwd+"/examples/data/model12_orientations_df.csv"),
+                      # orientations=pd.read_csv(
+                      #     cwd+"/examples/data/model12_orientations_df.csv"),
                       mapping_object={
-                          "Strat_Series1": ('rock3'),
+                          "Strat_Series1": ('rock4', 'rock3'),
                           "Strat_Series2": ('rock2', 'rock1')},
                       )
 
@@ -36,7 +37,8 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-results_test = universal_cokriging_interpolator(data_test)
+# results_test = universal_cokriging_interpolator(data_test)
+results_test = kriging_interpolator(data_test)
 
 #%%
 
