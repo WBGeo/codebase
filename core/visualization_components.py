@@ -68,8 +68,10 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
 
         # Create a discrete color map for the lithology block
         if input_data.faults is not None:
-            n_faults = len(np.where(input_data.faults)[0])
-            cmap2 = mcolors.ListedColormap(colors[n_faults:])
+            # retrieving correct colors for lithology block by removing fault colors
+            filtered_colors = [color for color, flag in zip(colors, input_data.faults) if not flag]
+            filtered_colors.extend(colors[len(input_data.faults):])
+            cmap2 = mcolors.ListedColormap(filtered_colors)
         else:
             cmap2 = mcolors.ListedColormap(colors)
 
@@ -80,14 +82,9 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
         norm2 = mcolors.BoundaryNorm(arr, ncolors=len(arr)-1)
 
         ax.imshow(
-            image,
-            origin='lower',
-            zorder=-100,
-            cmap=cmap2,
-            norm=norm2,
+            image, origin='lower', zorder=-100, cmap=cmap2, norm=norm2,
             extent=(float(geomodel_results.extent[0]), float(geomodel_results.extent[1]),
-                    float(geomodel_results.extent[4]), float(geomodel_results.extent[5]))
-        )
+                    float(geomodel_results.extent[4]), float(geomodel_results.extent[5])))
 
         # TODO: Add contour solution here but this requires the scalar fields
 
