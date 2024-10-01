@@ -1,6 +1,6 @@
 # Codebase
 
-First repository in WBgeo to organize the codeabse.
+First repository in WBgeo to organize the codebase.
 
 ## Structure
 
