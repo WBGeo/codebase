@@ -85,6 +85,7 @@ def universal_cokriging_interpolator(input_data: InputData):
                                        surface_meshes_edges=dc_edges,
                                        grid=model_instance.grid.regular_grid.values,
                                        extent=model_instance.grid.regular_grid.extent,
-                                       resolution=model_instance.grid.regular_grid.resolution)
+                                       resolution=model_instance.grid.regular_grid.resolution,
+                                       mapping_object=input_data.mapping_object)
 
     return results_instance

@@ -38,6 +38,7 @@ def ordinary_kriging_interpolator(input_data: InputData):
 
     # Separate data based on structural groups
     results = []
+    results_scalars = []
     masks = []
     for key, value in input_data.mapping_object.items():
         structural_group_df = input_data.surface_points[
@@ -60,19 +61,23 @@ def ordinary_kriging_interpolator(input_data: InputData):
         max_value = max(replacements[element] for element in value)
         k3d1[k3d1 > max_value] = max_value
         results.append(k3d1.astype(int))
+        results_scalars.append(k3d1)
 
         # Create mask for values below the lowest integer value for stacking
         min_value = min(replacements[element] for element in value)
         mask = k3d1 >= min_value
         masks.append(mask)
 
-    # Create combined result
+    # Stack result based on stack
     combined_result = np.zeros(results[0].shape)
+    # combined_result_scalar = np.zeros(results[0].shape)
     # Iterate over the results and masks arrays
     for i in range(len(results) - 1, -1, -1):
         combined_result[masks[i]] = results[i][masks[i]]
+        # combined_result_scalar[masks[i]] = results_scalars[i][masks[i]]
 
     combined_result = combined_result.T
+    # combined_result_scalar = combined_result_scalar.T
 
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
@@ -98,6 +103,7 @@ def ordinary_kriging_interpolator(input_data: InputData):
                                        surface_meshes_edges=mc_edges,
                                        grid=grid,
                                        extent=input_data.extent,
-                                       resolution=input_data.resolution)
+                                       resolution=input_data.resolution,
+                                       mapping_object=input_data.mapping_object)
 
-    return results_instance
+    return results_instance  #, combined_result_scalar
