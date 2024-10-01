@@ -55,6 +55,7 @@ class GeomodelResults:
             grid (np.ndarray): The grid of the model.
             extent (np.ndarray): The extent of the model.
             resolution (np.ndarray): The resolution of the model.
+            mapping_object (dict): Mapping of structural groups to structural elements.
     """
     name: str
     lith_block: NpNDArrayInt64
@@ -63,3 +64,4 @@ class GeomodelResults:
     grid: NpNDArrayFp64
     extent: NpNDArrayInt64
     resolution: NpNDArrayInt64
+    mapping_object: Dict
