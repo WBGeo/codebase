@@ -6,4 +6,5 @@ First repository in WBgeo to organize the codebase.
 
 - `core/`: Components
 - `examples/`: Example scripts
-- `examples/data/`: Surface point and orientation data for example models
+- `examples/data/`: Input data for example models
+- `concepts/`: Concepts and ideas for future developments
