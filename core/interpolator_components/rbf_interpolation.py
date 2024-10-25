@@ -1,7 +1,7 @@
 import numpy as np
 from core.object_components import InputData, GeomodelResults
 from scipy.interpolate import RBFInterpolator
-from skimage import measure
+from core.utility.surface_mesh_extraction import marching_cubes
 
 
 #%%
@@ -23,6 +23,7 @@ def rbf_interpolator(input_data: InputData):
     dx = (input_data.extent[1] - input_data.extent[0]) / input_data.resolution[0]
     dy = (input_data.extent[3] - input_data.extent[2]) / input_data.resolution[1]
     dz = (input_data.extent[5] - input_data.extent[4]) / input_data.resolution[2]
+    spacing = (dx, dy, dz)
     gridx = np.linspace(input_data.extent[0] + dx / 2, input_data.extent[1] - dx / 2, input_data.resolution[0])
     gridy = np.linspace(input_data.extent[2] + dy / 2, input_data.extent[3] - dy / 2, input_data.resolution[1])
     gridz = np.linspace(input_data.extent[4] + dz / 2, input_data.extent[5] - dz, input_data.resolution[2])
@@ -52,12 +53,13 @@ def rbf_interpolator(input_data: InputData):
         rbfi = RBFInterpolator(np.stack((structural_group_df['X'],
                                          structural_group_df['Y'],
                                          structural_group_df['Z']), axis=1),
-                               structural_group_df['formation'], kernel='thin_plate_spline')
+                               structural_group_df['formation'], kernel='linear')
 
         # rbfi = RBFInterpolator(np.stack((structural_group_df['X'],
         #                                  structural_group_df['Y'],
         #                                  structural_group_df['Z']), axis=1),
-        #                        structural_group_df['formation'], kernel='linear', smoothing=50)
+        #                        structural_group_df['formation'], kernel='gaussian',
+        #                        epsilon=0.001)
 
         # Interpolate the function on the grid
         rbf_res = rbfi(grid)
@@ -96,14 +98,7 @@ def rbf_interpolator(input_data: InputData):
     combined_result = np.vectorize(mapping.get)(combined_result)
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    mc_vertices = []
-    mc_edges = []
-    block = combined_result
-    for i in range(0, len(unique_elements)):
-        verts, faces, _, _ = measure.marching_cubes(block, i,
-                                                    spacing=(dx, dy, dz))
-        mc_vertices.append(verts)
-        mc_edges.append(faces)
+    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing)
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
