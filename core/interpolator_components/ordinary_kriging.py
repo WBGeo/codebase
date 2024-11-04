@@ -5,12 +5,13 @@ from core.utility.surface_mesh_extraction import marching_cubes
 
 
 #%%
-def ordinary_kriging_interpolator(input_data: InputData):
+def ordinary_kriging_interpolator(input_data: InputData, var_range=500):
     """
     Compute a model based on input data using kriging interpolation
 
     Args:
         input_data (InputData): The input data for the geological model.
+        var_range (float): The range of the variogram. Default is 400.
 
     Returns:
         resultsGeomodelResults: The results of the geological model.
@@ -53,7 +54,7 @@ def ordinary_kriging_interpolator(input_data: InputData):
         ok3d = OrdinaryKriging3D(
             structural_group_df['X'], structural_group_df['Y'], structural_group_df['Z'],
             structural_group_df['formation'], variogram_model="gaussian",
-            variogram_parameters=[1, 500, 0],
+            variogram_parameters=[1, var_range, 0],
             anisotropy_scaling_z=0.3
         )
         k3d1, ss3d = ok3d.execute("grid", gridx, gridy, gridz)
@@ -88,7 +89,7 @@ def ordinary_kriging_interpolator(input_data: InputData):
     combined_result = np.vectorize(mapping.get)(combined_result)
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing)
+    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,

@@ -5,12 +5,14 @@ from core.utility.surface_mesh_extraction import marching_cubes
 
 
 #%%
-def rbf_interpolator(input_data: InputData):
+def rbf_interpolator(input_data: InputData, kernel='linear', epsilon=1):
     """
-    Compute a model based on input data using kriging interpolation
+    Compute a model based on input data using RBF interpolation
 
     Args:
-        input_data (InputData): The input data for the geological model.
+        input_data (InputData): The input data for the structural geological model.
+        kernel (str): The kernel to use for the RBF interpolation. Default is 'linear'.
+        epsilon (float): The epsilon value for the RBF interpolation. Default is 1.
 
     Returns:
         resultsGeomodelResults: The results of the geological model.
@@ -49,17 +51,11 @@ def rbf_interpolator(input_data: InputData):
             structural_group_df['formation'].replace(replacements)
 
         # TODO: Figure out good default settings and what other kernels are reasonable
-        # Set up the RBF interpolator with the data
         rbfi = RBFInterpolator(np.stack((structural_group_df['X'],
                                          structural_group_df['Y'],
                                          structural_group_df['Z']), axis=1),
-                               structural_group_df['formation'], kernel='linear')
-
-        # rbfi = RBFInterpolator(np.stack((structural_group_df['X'],
-        #                                  structural_group_df['Y'],
-        #                                  structural_group_df['Z']), axis=1),
-        #                        structural_group_df['formation'], kernel='gaussian',
-        #                        epsilon=0.001)
+                               structural_group_df['formation'], kernel=kernel,
+                               epsilon=epsilon)
 
         # Interpolate the function on the grid
         rbf_res = rbfi(grid)
@@ -80,15 +76,12 @@ def rbf_interpolator(input_data: InputData):
 
     # Stack result based on stack
     combined_result = np.zeros(results[0].shape)
-    # combined_result_scalar = np.zeros(results[0].shape)
 
     # Iterate over the results and masks arrays
     for i in range(len(results) - 1, -1, -1):
         combined_result[masks[i]] = results[i][masks[i]]
-        # combined_result_scalar[masks[i]] = results_scalars[i][masks[i]]
 
     combined_result = combined_result.T
-    # combined_result_scalar = combined_result_scalar.T
 
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
@@ -98,7 +91,7 @@ def rbf_interpolator(input_data: InputData):
     combined_result = np.vectorize(mapping.get)(combined_result)
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing)
+    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
@@ -110,4 +103,4 @@ def rbf_interpolator(input_data: InputData):
                                        resolution=input_data.resolution,
                                        mapping_object=input_data.mapping_object)
 
-    return results_instance  #, combined_result_scalar
+    return results_instance

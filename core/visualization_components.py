@@ -126,6 +126,8 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                                     "filters. Casting to ``np.float32``. Disable this by passing "
                                     "``force_float=False``.")
 
+    pv.global_theme.allow_empty_mesh = True
+
     # Create a PyVista plotter
     plotter = pv.Plotter()
 
@@ -151,6 +153,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
 
         # Add the orientations if available
         if input_data.orientations is not None:
+            # TODO: Weisweiler model some orientations a flipped in the wrong direction (just visualization)
             points = pv.PolyData(input_data.orientations[input_data.orientations.iloc[:, -1]
                                                          == current_element].iloc[:, :3].to_numpy().astype(np.float32))
 
@@ -180,6 +183,51 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
     plotter.show_bounds(bounds=input_data.extent,
                         location="furthest",
                         grid=True)
+
+    # Display the interactive plot
+    plotter.show()
+
+
+def plot_mesh_3d(mesh, input_data: InputData, colors=None):
+    """
+    Plot the mesh for process simulation in 3D.
+
+    Args:
+        mesh (pyvista.PolyData): The mesh to plot.
+        input_data (InputData): The input data for the structural geological model.
+        colors (Optional(list)): List of colors to use for the different formations
+    """
+    # Suppress the specific warning about points not being a float type
+    warnings.filterwarnings("ignore",
+                            message="Points is not a float type. This can cause issues when transforming or applying "
+                                    "filters. Casting to ``np.float32``. Disable this by passing "
+                                    "``force_float=False``.")
+
+    formations = input_data.surface_points['formation'].unique()
+
+    # Create a PyVista plotter
+    plotter = pv.Plotter()
+
+    # Set default colors
+    if colors is None:
+        colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
+                  '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd']
+
+    # TODO: Properly mask out faults so this works for models with faults too
+
+    # Add moose meshes to the plotter
+    for i in range(len(formations)):
+        plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=colors[i], label=formations[i])
+
+    # Add basement with extra label
+    plotter.add_mesh(mesh[0][len(formations)], show_edges=True,
+                     style='wireframe',
+                     color=colors[len(formations)])
+
+    plotter.add_legend(size=(0.13, 0.13), loc='lower right', face='circle')
+
+    # Set the bounds and grid of the plotter
+    plotter.show_bounds(grid=True) # TODO: Different scale here as Denise uses km
 
     # Display the interactive plot
     plotter.show()

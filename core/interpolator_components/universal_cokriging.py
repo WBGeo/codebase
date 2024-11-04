@@ -1,6 +1,7 @@
 import numpy as np
 import gempy as gp
 from core.object_components import InputData, GeomodelResults
+from skimage import measure
 
 
 def universal_cokriging_interpolator(input_data: InputData):
@@ -78,11 +79,27 @@ def universal_cokriging_interpolator(input_data: InputData):
                                model_instance.solutions.dc_meshes]
     dc_edges = [mesh.edges for mesh in model_instance.solutions.dc_meshes]
 
+    # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
+    # TODO: Does not include faults as of now
+    # mc_vertices = []
+    # mc_edges = []
+    # block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
+    # print(block.min(), block.max())
+    # for i in range(block.min(), block.max()):
+    #     verts, faces, _, _ = measure.marching_cubes(block, i,
+    #                                                 spacing=(model_instance.grid.regular_grid.dx,
+    #                                                          model_instance.grid.regular_grid.dy,
+    #                                                          model_instance.grid.regular_grid.dz))
+    #     mc_vertices.append(verts)
+    #     mc_edges.append(faces)
+
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
                                        lith_block=model_instance.solutions.raw_arrays.lith_block,
                                        surface_meshes_vertices=dc_vertices_transformed,
+                                       # surface_meshes_vertices=mc_vertices,
                                        surface_meshes_edges=dc_edges,
+                                       # surface_meshes_edges=mc_edges,
                                        grid=model_instance.grid.regular_grid.values,
                                        extent=model_instance.grid.regular_grid.extent,
                                        resolution=model_instance.grid.regular_grid.resolution,
