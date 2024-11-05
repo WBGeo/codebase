@@ -191,7 +191,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
     return plotter
 
 
-def plot_mesh_3d(mesh, input_data: InputData, colors=None):
+def plot_mesh_3d(mesh, input_data: InputData, colors=None, show_plotter=True) -> pv.Plotter:
     """
     Plot the mesh for process simulation in 3D.
 
@@ -214,7 +214,7 @@ def plot_mesh_3d(mesh, input_data: InputData, colors=None):
         n_faults = 0
 
     # Create a PyVista plotter
-    plotter = pv.Plotter()
+    plotter = pv.Plotter(off_screen=not show_plotter)
 
     # Set default colors
     if colors is None:
@@ -261,5 +261,7 @@ def plot_mesh_3d(mesh, input_data: InputData, colors=None):
     # Set the bounds and grid of the plotter
     plotter.show_bounds(grid=True) # TODO: Different scale here as Denise uses km
 
-    # Display the interactive plot
-    plotter.show()
+    if show_plotter:
+        # Display the interactive plot
+        plotter.show()
+    return plotter
