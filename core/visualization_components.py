@@ -208,6 +208,11 @@ def plot_mesh_3d(mesh, input_data: InputData, colors=None):
 
     formations = input_data.surface_points['formation'].unique()
 
+    if input_data.faults is not None:
+        n_faults = np.sum(input_data.faults)
+    else:
+        n_faults = 0
+
     # Create a PyVista plotter
     plotter = pv.Plotter()
 
@@ -216,14 +221,38 @@ def plot_mesh_3d(mesh, input_data: InputData, colors=None):
         colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
                   '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd']
 
-    # TODO: Properly mask out faults so this works for models with faults too
+    if input_data.faults is not None:
 
-    # Add moose meshes to the plotter
-    for i in range(len(formations)):
-        plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=colors[i], label=formations[i])
+        data = input_data.mapping_object
+
+        # Ensure all values are tuples
+        for key in data:
+            if isinstance(data[key], str):
+                data[key] = (data[key],)
+
+        fault_mask = []
+        keys = list(data.keys())
+        for i, key in enumerate(keys):
+            fault_mask.extend([bool(input_data.faults[i])] * len(data[key]))
+
+        fault_mask = ~np.array(fault_mask)
+
+        masked_colors = [color for color, m in zip(colors, fault_mask) if m]
+        masked_formations = [element for element, m in zip(formations, fault_mask) if m]
+
+        # Add moose meshes to the plotter
+        for i in range(len(formations) - np.sum(input_data.faults)):
+            plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=masked_colors[i],
+                             label=masked_formations[i])
+    else:
+        # Add moose meshes to the plotter
+        for i in range(len(formations)):
+            plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=colors[i],
+                            label=formations[i])
 
     # Add basement with extra label
-    plotter.add_mesh(mesh[0][len(formations)], show_edges=True,
+    basement_ID = int(len(formations)-n_faults)
+    plotter.add_mesh(mesh[0][basement_ID], show_edges=True,
                      style='wireframe',
                      color=colors[len(formations)])
 
