@@ -5,6 +5,7 @@ from core.object_components import InputData, GeomodelResults
 from core.loading_components.geo_input_data import geo_input_data_fix
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from core.interpolator_components.universal_cokriging import rbf_interpolator
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -104,6 +105,33 @@ nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identi
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'data', 'type': InputDataType,
+                               }])
+
+nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifier
+                               title='Radial Basis Function interpolator',  # human readable (Default) title
+                               inputs=[  # the (list of) input ports
+                                   {
+                                       'param': 'input_data',  # the name of this port
+                                       'type': InputDataType,  # the ports type (as in ScriptType)
+                                       'data_requirements': [does_not_have_faults],
+                                   },
+                                   {
+                                       'param': 'kernel',
+                                       'type': StringDataType,
+                                       'default': "linear",
+                                   },
+                                   {
+                                       'param': 'epsilon',
+                                       'type': IntDataType,
+                                       'default': 1,
+                                   }
+                               ],
+                               execute=nodesapi.create_geo_execute(rbf_interpolator),
+                               description='Compute a model based on input data using RBF interpolation',
+                               color='#74eb34',
+                               # the method which actually performs the calculation
+                               outputs=[{  # the output ports
+                                   'param': 'result', 'type': GeomodelResultsType,
                                }])
 
 nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # unique identifier
