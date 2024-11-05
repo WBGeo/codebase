@@ -110,7 +110,7 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
     plt.show()
 
 
-def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, show_results: bool = False, colors=None):
+def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, show_results: bool = False, colors=None, show_plotter=True) -> pv.Plotter:
     """
     Plot the input data and results in 3D.
 
@@ -119,6 +119,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
         geomodel_results (GeomodelResults): The results of the geological model.
         show_results (bool): Whether to show the results.
         colors (Optional(list)): List of colors to use for the different formations
+        show_plotter (bool): Whether to show the plotter, or just return it
     """
     # Suppress the specific warning about points not being a float type
     warnings.filterwarnings("ignore",
@@ -129,7 +130,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
     pv.global_theme.allow_empty_mesh = True
 
     # Create a PyVista plotter
-    plotter = pv.Plotter()
+    plotter = pv.Plotter(off_screen=not show_plotter)
 
     # Set default colors
     if colors is None:
@@ -184,8 +185,10 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                         location="furthest",
                         grid=True)
 
-    # Display the interactive plot
-    plotter.show()
+    if show_plotter:
+        # Display the interactive plot
+        plotter.show()
+    return plotter
 
 
 def plot_mesh_3d(mesh, input_data: InputData, colors=None):
