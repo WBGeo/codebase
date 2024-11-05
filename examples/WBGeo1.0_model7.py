@@ -56,7 +56,7 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 #%%
 
 # 5: Create mesh
-mesh_test = create_mesh_moose(results_test)
+mesh_test = create_mesh_moose(results_test, name='Model_7_UCK')
 
 #%%
 
