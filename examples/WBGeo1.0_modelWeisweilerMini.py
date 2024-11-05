@@ -20,7 +20,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='WeisweilerMini',
                       extent=np.array([5623500, 5640000, 32304500, 32305500, -3000, 500]),
-                      resolution=np.array([165, 50, 70]),
+                      resolution=np.array([165, 20, 70]),
                       surface_points=pd.read_csv(
                           cwd + "/examples/data/modelWeisweilerMini_surface_points_df2.csv"),
                       orientations=pd.read_csv(
@@ -40,9 +40,9 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test)
+results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=10000)
-results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=0.00000001)
+# results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=0.00000001)
 
 
 #%%
@@ -50,8 +50,6 @@ results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=0.00000001)
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
-
-#%%
 
 #%%
 
