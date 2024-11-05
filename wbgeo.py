@@ -6,6 +6,7 @@ from core.loading_components.geo_input_data import geo_input_data_fix
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
+from core.meshing_components.meshing_moose import create_mesh_moose
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -26,8 +27,10 @@ InterpolatedResultType: apitypes.ScriptType = {"id": "InterpolatedResultType",
 MeshInputType: apitypes.ScriptType = {"id": "MeshInputTypePlaceHolder",
                                       "real_type": BoolDataType,
                                       "name": "MeshInputType", "color": 'green'}
+
+import pyvista as pv
 MeshOutputType: apitypes.ScriptType = {"id": "MeshOutputType",
-                                       "real_type": BoolDataType,
+                                       "real_type": pv.DataSet,
                                        "name": "MeshOutputType", "color": '#2dd69e'}
 
 PlaceholderType: apitypes.ScriptType = {"id": "PlaceholderType",
@@ -174,6 +177,25 @@ nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  #
                                    'param': 'result', 'type': GeomodelResultsType,
                                }])
 
+# meshing
+nodesapi.register_script_block(identifier='meshing_moose',  # unique identifier
+                               title='Moose Meshing',  # human readable (Default) title
+                               inputs=[  # the input ports
+                                   {
+                                       'param': 'geomodel_results',  # the name of this port
+                                       'type': GeomodelResultsType,  # the ports type (as in ScriptType)
+                                   }, {
+                                       'param': 'name',
+                                       'type': StringDataType,
+                                       'default': 'Model_12_OK',
+                                   }],
+                               execute=nodesapi.create_geo_execute(create_mesh_moose),
+                               description='Create a mesh for MOOSE based on the input data',
+                               color='#2cf6b3',
+                               # the method which actually performs the calculation
+                               outputs=[{  # the output ports
+                                   'param': 'result', 'type': MeshOutputType,
+                               }])
 
 # Register 3 yet-to-be-implemented block types
 
@@ -182,21 +204,21 @@ def placeholder_m(**kwargs):
     return kwargs.get(next(iter(kwargs.keys())))
 
 
-nodesapi.register_script_block(identifier='nyi_mesh',
-                               title='Meshing',
-                               inputs=[
-                                   {
-                                       'param': 'geomodel',
-                                       'type': GeomodelResultsType,
-                                       'data_requirements': [],
-                                   }
-                               ],
-                               execute=nodesapi.create_geo_execute(placeholder_m),
-                               color='#2cf6b3',
-                               outputs=[{
-                                   'param': 'mesh', 'type': MeshOutputType
-                               }]
-                               )
+# nodesapi.register_script_block(identifier='nyi_mesh',
+#                                title='Meshing',
+#                                inputs=[
+#                                    {
+#                                        'param': 'geomodel',
+#                                        'type': GeomodelResultsType,
+#                                        'data_requirements': [],
+#                                    }
+#                                ],
+#                                execute=nodesapi.create_geo_execute(placeholder_m),
+#                                color='#2cf6b3',
+#                                outputs=[{
+#                                    'param': 'mesh', 'type': MeshOutputType
+#                                }]
+#                                )
 
 nodesapi.register_script_block(identifier='nyi_ps',
                                title='Process Simulation',
