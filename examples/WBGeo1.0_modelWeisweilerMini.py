@@ -22,9 +22,9 @@ data_test = InputData(name='WeisweilerMini',
                       extent=np.array([5623500, 5640000, 32304500, 32305500, -3000, 500]),
                       resolution=np.array([165, 50, 70]),
                       surface_points=pd.read_csv(
-                          cwd + "/examples/data/modelWeisweilerMini_surface_points_df2.csv"),
+                          cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv"),
                       orientations=pd.read_csv(
-                          cwd + "/examples/data/modelWeisweilerMini_orientations_df2.csv"),
+                          cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv"),
                       mapping_object={
                           "Strat_Series1": ('BreitgangFM','KrebsTraufeFM', 'WilhelmineFM',
                                 'ObererKohlenkalkGP','MittlererKohlenkalkGP', 'CondrozGP')},
