@@ -1,0 +1,12 @@
+{
+  "mapping": {
+    "Strat_Series1": [
+      "BreitgangFM",
+      "KrebsTraufeFM",
+      "WilhelmineFM",
+      "ObererKohlenkalkGP",
+      "MittlererKohlenkalkGP",
+      "CondrozGP"
+    ]
+  }
+}

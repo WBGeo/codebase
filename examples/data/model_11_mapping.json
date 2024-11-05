@@ -1,0 +1,8 @@
+{
+  "mapping": {
+    "Fault_Series2": ["fault2"],
+    "Fault_Series1": ["fault1"],
+    "Strat_Series1": ["rock4", "rock3", "rock2", "rock1"]
+  },
+  "faults": [true, true, false]
+}
