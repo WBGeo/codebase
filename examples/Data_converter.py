@@ -21,8 +21,8 @@ cwd = os.getcwd()
 # orientations_df = pd.read_csv(path_to_data + "model2_orientations.csv")
 # surface_points_df = pd.read_csv(path_to_data + "model2_surface_points.csv")
 
-orientations_df = pd.read_csv(cwd + "/examples/data/tutorial_model_orientations.csv")
-surface_points_df = pd.read_csv(cwd + "/examples/data/tutorial_model_surface_points.csv")
+orientations_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_orientations.csv")
+surface_points_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points.csv")
 
 # transform orientations to pole vector format (seems more intuitive)
 azimuth_rad = np.radians(orientations_df.azimuth.to_numpy())
@@ -37,6 +37,42 @@ orientations_df.rename(columns={'X': 'X', 'Y': 'Y', 'Z': 'Z',
                                 'azimuth': 'G_x', 'dip': 'G_y', 'polarity': 'G_z', 'formation': 'formation'},
                        inplace=True)
 
-orientations_df.to_csv(cwd + "/examples/data/model12_orientations_df.csv", index=False)
+orientations_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv", index=False)
 
-surface_points_df.to_csv(cwd + "/examples/data/model12_surface_points_df.csv", index=False)
+surface_points_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv", index=False)
+
+#%%
+
+# surface_points_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv")
+orientations_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv")
+orientations_df
+
+#%%
+
+# surface_points_df[['X', 'Y']] = surface_points_df[['Y', 'X']]
+orientations_df[['X', 'Y']] = orientations_df[['Y', 'X']]
+orientations_df[['G_y', 'G_x']] = orientations_df[['G_x', 'G_y']]
+
+#%%
+
+# surface_points_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points_df2.csv", index=False)
+orientations_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv", index=False)
+
+#%%
+
+# Load the DataFrame from a CSV file
+orientations_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv")
+
+# Define the new order of columns
+new_column_order = ['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z', 'formation']  # Replace with your column names
+
+# Reorder the DataFrame columns
+orientations_df = orientations_df[new_column_order]
+orientations_df
+
+#%%
+
+# Save the reordered DataFrame to a new CSV file
+orientations_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv", index=False)
+
+

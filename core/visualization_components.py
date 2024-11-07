@@ -154,7 +154,6 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
 
         # Add the orientations if available
         if input_data.orientations is not None:
-            # TODO: Weisweiler model some orientations a flipped in the wrong direction (just visualization)
             points = pv.PolyData(input_data.orientations[input_data.orientations.iloc[:, -1]
                                                          == current_element].iloc[:, :3].to_numpy().astype(np.float32))
 
@@ -163,7 +162,8 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
 
             # Create an arrow source and a Glyph object and add to plotter
             arrow = pv.Arrow()
-            glyphs = points.glyph(orient='vectors', scale=False, geom=arrow, factor=100)
+            glyphs = points.glyph(orient='vectors', scale=False, geom=arrow,
+                                  factor=int((input_data.extent[1] - input_data.extent[0]) / 100))
             plotter.add_mesh(glyphs, color=colors[i])
 
     if geomodel_results is not None and show_results:
