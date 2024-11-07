@@ -2,6 +2,7 @@ import numpy as np
 import gempy as gp
 from core.object_components import InputData, GeomodelResults
 from skimage import measure
+from core.utility.conversions import element_list_from_dict
 
 
 def universal_cokriging_interpolator(input_data: InputData):
@@ -74,32 +75,75 @@ def universal_cokriging_interpolator(input_data: InputData):
     # Compute the geological model
     gp.compute_model(model_instance)
 
-    # Back transform vertices
-    dc_vertices_transformed = [model_instance.input_transform.apply_inverse(mesh.vertices) for mesh in
-                               model_instance.solutions.dc_meshes]
-    dc_edges = [mesh.edges for mesh in model_instance.solutions.dc_meshes]
+    # Back transform vertices and get the dc meshes
+    # dc_vertices_transformed = [model_instance.input_transform.apply_inverse(mesh.vertices) for mesh in
+    #                            model_instance.solutions.dc_meshes]
+    # dc_edges = [mesh.edges for mesh in model_instance.solutions.dc_meshes]
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    # TODO: Does not include faults as of now
-    # mc_vertices = []
-    # mc_edges = []
-    # block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
-    # print(block.min(), block.max())
-    # for i in range(block.min(), block.max()):
-    #     verts, faces, _, _ = measure.marching_cubes(block, i,
-    #                                                 spacing=(model_instance.grid.regular_grid.dx,
-    #                                                          model_instance.grid.regular_grid.dy,
-    #                                                          model_instance.grid.regular_grid.dz))
-    #     mc_vertices.append(verts)
-    #     mc_edges.append(faces)
+    # TODO: Does include faults now but I need to test with multiple structural groups with multiple faults
+    mc_vertices = []
+    mc_edges = []
+    if input_data.faults is not None:
+        for i in np.unique(model_instance.solutions.raw_arrays.fault_block)[:-1]:
+            fault_block = model_instance.solutions.raw_arrays.fault_block.reshape(input_data.resolution)
+            verts, faces, _, _ = measure.marching_cubes(fault_block,
+                                                        i,
+                                                        spacing=(model_instance.grid.regular_grid.dx,
+                                                                 model_instance.grid.regular_grid.dy,
+                                                                 model_instance.grid.regular_grid.dz))
+            mc_vertices.append(verts)
+            mc_edges.append(faces)
+    else:
+        pass
+    block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
+    for i in np.unique(block)[:-1]:
+        verts, faces, _, _ = measure.marching_cubes(block, i,
+                                                    spacing=(model_instance.grid.regular_grid.dx,
+                                                             model_instance.grid.regular_grid.dy,
+                                                             model_instance.grid.regular_grid.dz))
+        mc_vertices.append(verts)
+        mc_edges.append(faces)
+
+    # Reorder everything correctly if faults exist
+    # TODO: This seems to work but I need to test it and it is convoluted
+    if input_data.faults is not None:
+
+        bool_list = element_list_from_dict(input_data.mapping_object, input_data.faults)
+
+        true_count = sum(bool_list)
+
+        # Split arr_list into two parts
+        true_elements_vertices = mc_vertices[:true_count]
+        false_elements_vertices = mc_vertices[true_count:]
+        true_elements_edges = mc_edges[:true_count]
+        false_elements_edges = mc_edges[true_count:]
+
+        # Create a new list to store reordered elements
+        mc_vertices = []
+        mc_edges = []
+
+        # Iterator for both true and false elements
+        true_idx, false_idx = 0, 0
+
+        # Populate reordered_list based on bool_list
+        for is_true in bool_list:
+            if is_true:
+                mc_vertices.append(true_elements_vertices[true_idx])
+                mc_edges.append(true_elements_edges[true_idx])
+                true_idx += 1
+            else:
+                mc_vertices.append(false_elements_vertices[false_idx])
+                mc_edges.append(false_elements_edges[false_idx])
+                false_idx += 1
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
                                        lith_block=model_instance.solutions.raw_arrays.lith_block,
-                                       surface_meshes_vertices=dc_vertices_transformed,
-                                       # surface_meshes_vertices=mc_vertices,
-                                       surface_meshes_edges=dc_edges,
-                                       # surface_meshes_edges=mc_edges,
+                                       # surface_meshes_vertices=dc_vertices_transformed,
+                                       surface_meshes_vertices=mc_vertices,
+                                       # surface_meshes_edges=dc_edges,
+                                       surface_meshes_edges=mc_edges,
                                        grid=model_instance.grid.regular_grid.values,
                                        extent=model_instance.grid.regular_grid.extent,
                                        resolution=model_instance.grid.regular_grid.resolution,
