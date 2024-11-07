@@ -19,7 +19,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='Model_7_UCK',
                       extent=np.array([0, 2500, 0, 1000, 0, 1000]),
-                      resolution=np.array([50, 20, 20]),
+                      resolution=np.array([125, 50, 50]),
                       mapping_object={
                           "Fault_Series": ('fault'),
                           "Strat_Series1": ('rock3'),

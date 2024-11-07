@@ -46,3 +46,4 @@ results_test = universal_cokriging_interpolator(data_test)
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
+
