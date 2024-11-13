@@ -7,6 +7,7 @@ from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
+from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components import export_mesh_moose
 
@@ -40,9 +41,10 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-results_test = universal_cokriging_interpolator(data_test)
+# results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=10000)
 # results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=0.00000001)
+results_test = geo_inr_interpolator(data_test)
 
 
 #%%
