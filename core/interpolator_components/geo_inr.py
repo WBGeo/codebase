@@ -335,19 +335,10 @@ def geo_inr_interpolator(input_data: InputData):
     unique_elements = sorted(set(element for elements in input_data.mapping_object.values() for element in elements))
     replacements = {element: i + 1 for i, element in enumerate(unique_elements)}
 
-    # TODO: Convert inout data to GeoINR format
-    resolution = input_data.resolution
-    extent = input_data.extent
-
-    # This should wor as we already use the vector data
-    # orientations = input_data.orientations[['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z']].values
-    # orientations = input_data.orientations[['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z']]
-
     # Map formations to values between -1 and 1
     surface_points = input_data.surface_points.copy()
     replacements_inr = {key: value for key, value in zip(replacements.keys(), np.linspace(-1, 1, len(replacements)))}
     surface_points['label'] = surface_points['formation'].replace(replacements_inr)
-    # surface_points = surface_points[['label', 'X', 'Y', 'Z']].values  # labels in the first column
 
     # Separate data based on structural groups
     results = []
@@ -359,7 +350,6 @@ def geo_inr_interpolator(input_data: InputData):
 
     # for key, value in input_data.mapping_object.items():
     for key, value in reversed_dict.items():
-        print(key, value)
         # Create a new dataframe with the structural group
         structural_group_df = surface_points[surface_points['formation'].isin(list(input_data.mapping_object[key]))]
         orientations_group_df = input_data.orientations[input_data.orientations['formation'].isin(list(input_data.mapping_object[key]))]
@@ -375,8 +365,8 @@ def geo_inr_interpolator(input_data: InputData):
         res_inr, iso_values = stratigraphic_ConcatMLP(interface_data=surface_points_group,
                                                       orientation_data=orientations_group,
                                                       meshgrid_data=grid,
-                                                      extent=extent,  # domain boundary
-                                                      resolution=resolution,
+                                                      extent=input_data.extent,  # domain boundary
+                                                      resolution=input_data.resolution,
                                                       in_dim=3,  # input dimension of neural network
                                                       hidden_dim=32,
                                                       out_dim=1,
@@ -387,7 +377,7 @@ def geo_inr_interpolator(input_data: InputData):
                                                       epochs=1000,
                                                       lr=0.01)  # learning rate
 
-        res_inr = res_inr.reshape(resolution)
+        res_inr = res_inr.reshape(input_data.resolution)
 
         import matplotlib.pyplot as plt
         # plot_block = res_inr
@@ -397,7 +387,7 @@ def geo_inr_interpolator(input_data: InputData):
         # plt.show()
 
         # Replace values with integers based on iso values
-        # TODO: This needs to be looped for multiple iso values and values need to increase consistently per structural group
+        # TODO: check if this works for many groups/more elements
         new_res_inr = np.zeros(res_inr.shape)
         # iso_values = np.sort(iso_values)  # Ensure iso_values is sorted
         for i in range(len(iso_values)-1):
@@ -407,22 +397,16 @@ def geo_inr_interpolator(input_data: InputData):
 
         counter = counter + len(value)
 
-        plot_block = new_res_inr
-        image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
-        plt.imshow(image, origin='lower', cmap='viridis')
-        plt.colorbar()
-        plt.show()
+        # plot_block = new_res_inr
+        # image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
+        # plt.imshow(image, origin='lower', cmap='viridis')
+        # plt.colorbar()
+        # plt.show()
 
-        # Save results, need to explicitly limit to maximum value as defined by replacement mapping
-        # max_value = max(replacements_inr[element] for element in value)
-        # res_inr[res_inr > max_value] = max_value
+        # Save results
         results.append(new_res_inr.astype(int))
 
         # Create mask for values below the lowest integer value for stacking
-        min_value = min(replacements_inr[element] for element in value)
-        # min_value = np.min(iso_values)  # for INR?
-        # min_value = counter
-        # mask = new_res_inr >= min_value
         mask = new_res_inr.astype(int) > 0
         masks.append(mask)
 
@@ -433,8 +417,6 @@ def geo_inr_interpolator(input_data: InputData):
     for i in reversed(range(len(results) - 1, -1, -1)):
         combined_result[masks[i]] = results[i][masks[i]]
 
-    # combined_result = combined_result.T
-
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
     mapping = {i: max_val - i for i in range(max_val + 1)}
@@ -442,11 +424,11 @@ def geo_inr_interpolator(input_data: InputData):
     # Apply the mapping to the array
     combined_result = np.vectorize(mapping.get)(combined_result)
 
-    plot_block = combined_result
-    image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
-    plt.imshow(image, origin='lower', cmap='viridis')
-    plt.colorbar()
-    plt.show()
+    # plot_block = combined_result
+    # image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
+    # plt.imshow(image, origin='lower', cmap='viridis')
+    # plt.colorbar()
+    # plt.show()
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
     mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)

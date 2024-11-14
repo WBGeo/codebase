@@ -48,10 +48,7 @@ plot_3d(data_test)
 results_test = geo_inr_interpolator(data_test)
 # results_test, combined_scalar_field = ordinary_kriging_interpolator(data_test)
 
-#%%
-np.unique(results_test.lith_block)
-#%%
-np.unique(results_test.li)
+
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
