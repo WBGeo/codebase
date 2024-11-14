@@ -65,15 +65,6 @@ def ordinary_kriging_interpolator(input_data: InputData, var_range=500):
         results.append(k3d1.astype(int))
         results_scalars.append(k3d1)
 
-        # Plotting for debugging, goes 0, 1, 2 - base, rock1, rock2
-        import matplotlib.pyplot as plt
-        plot_block = np.array(results).reshape(input_data.resolution)
-        plot_block = plot_block
-        image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :]
-        plt.imshow(image, origin='lower', cmap='viridis')
-        plt.colorbar()
-        plt.show()
-
         # Create mask for values below the lowest integer value for stacking
         min_value = min(replacements[element] for element in value)
         mask = k3d1 >= min_value
@@ -96,7 +87,6 @@ def ordinary_kriging_interpolator(input_data: InputData, var_range=500):
 
     # Apply the mapping to the array
     combined_result = np.vectorize(mapping.get)(combined_result)
-    print(combined_result.shape)
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
     mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)
