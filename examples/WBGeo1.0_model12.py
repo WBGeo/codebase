@@ -20,7 +20,7 @@ cwd = os.getcwd()
 # WORKFLOW Model 12: 1 unconformity, 2 stratigraphic series
 
 # Component 1: Input data
-data_test = InputData(name='Model_12_RBF',
+data_test = InputData(name='Model_12',
                       extent=np.array([0, 2000, 0, 1000, 0, 1000]),
                       resolution=np.array([125, 50, 50]),
                       surface_points=pd.read_csv(
@@ -48,6 +48,10 @@ plot_3d(data_test)
 results_test = geo_inr_interpolator(data_test)
 # results_test, combined_scalar_field = ordinary_kriging_interpolator(data_test)
 
+#%%
+np.unique(results_test.lith_block)
+#%%
+np.unique(results_test.li)
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component

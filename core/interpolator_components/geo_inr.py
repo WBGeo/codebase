@@ -390,21 +390,22 @@ def geo_inr_interpolator(input_data: InputData):
         res_inr = res_inr.reshape(resolution)
 
         import matplotlib.pyplot as plt
-        plot_block = res_inr
-        image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
-        plt.imshow(image, origin='lower', cmap='viridis')
-        plt.colorbar()
-        plt.show()
+        # plot_block = res_inr
+        # image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
+        # plt.imshow(image, origin='lower', cmap='viridis')
+        # plt.colorbar()
+        # plt.show()
 
         # Replace values with integers based on iso values
         # TODO: This needs to be looped for multiple iso values and values need to increase consistently per structural group
         new_res_inr = np.zeros(res_inr.shape)
         # iso_values = np.sort(iso_values)  # Ensure iso_values is sorted
-        for i in range(len(iso_values) - 1):
+        for i in range(len(iso_values)-1):
             new_res_inr[(res_inr >= iso_values[i]) & (res_inr < iso_values[i + 1])] = counter + i + 1
-        new_res_inr[res_inr >= iso_values[-1]] = len(iso_values)
 
-        counter = counter + len(value) + 1
+        new_res_inr[res_inr >= iso_values[-1]] = len(iso_values) + counter
+
+        counter = counter + len(value)
 
         plot_block = new_res_inr
         image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
