@@ -6,6 +6,7 @@ from core.loading_components.geo_input_data import geo_input_data_fix
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
+from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.meshing_components.meshing_moose import create_mesh_moose
 
 ####################################################################################################
@@ -119,7 +120,7 @@ nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique ident
                                        'data_requirements': [does_not_have_faults],
                                    },
                                ],
-                               execute=nodesapi.create_geo_execute(rbf_interpolator),
+                               execute=nodesapi.create_geo_execute(geo_inr_interpolator),
                                description='Compute a model based on input data using GeoINR  interpolation',
                                color='#74eb34',
                                # the method which actually performs the calculation
