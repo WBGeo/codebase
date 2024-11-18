@@ -6,7 +6,7 @@ from core.loading_components.geo_input_data import geo_input_data_fix
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
-from core.interpolator_components.geo_inr import geo_inr_interpolator
+# from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.meshing_components.meshing_moose import create_mesh_moose
 
 ####################################################################################################
