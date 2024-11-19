@@ -2,8 +2,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append('./codebase')
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
@@ -16,22 +14,23 @@ from core.meshing_components.meshing_moose import create_mesh_moose
 
 #%%
 
-cwd = os.getcwd() + "/codebase"
+cwd = os.getcwd()
 
 #%%
-# WORKFLOW Model 12: 1 unconformity, 2 stratigraphic series
+# WORKFLOW Model 13: 2 unconformity, 3 stratigraphic series
 
 # Component 1: Input data
-data_test = InputData(name='Model_12',
-                      extent=np.array([0, 2000, 0, 1000, 0, 1000]),
-                      resolution=np.array([125, 50, 50]),
+data_test = InputData(name='Model_13',
+                      extent=np.array([0, 1000, 0, 500, 0, 1000]),
+                      resolution=np.array([100, 25, 100]),
                       surface_points=pd.read_csv(
-                          cwd + "/examples/data/model12_surface_points_df.csv"),
+                          cwd + "/examples/data/model13_surface_points_df.csv"),
                       orientations=pd.read_csv(
-                          cwd+"/examples/data/model12_orientations_df.csv"),
+                          cwd+"/examples/data/model13_orientations_df.csv"),
                       mapping_object={
-                          "Strat_Series1": ('rock4', 'rock3'),
-                          "Strat_Series2": ('rock2', 'rock1')},
+                          "Shallow_Strat": ('shallow_rock3', 'shallow_rock2', 'shallow_rock1'),
+                          "Medium_Strat": ('medium_rock3', 'medium_rock2', 'medium_rock1'),
+                          "Deep_Strat": ('deep_rock4', 'deep_rock3', 'deep_rock2', 'deep_rock1')},
                       )
 
 #%%
@@ -46,7 +45,7 @@ plot_3d(data_test)
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=500)
-# results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
+# results_test = rbf_interpolator(data_test, kernel='linear', epsilon=1)
 results_test = geo_inr_interpolator(data_test)
 # results_test, combined_scalar_field = ordinary_kriging_interpolator(data_test)
 
