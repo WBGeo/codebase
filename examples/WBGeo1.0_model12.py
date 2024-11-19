@@ -2,8 +2,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append('./codebase')
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
@@ -16,7 +14,7 @@ from core.meshing_components.meshing_moose import create_mesh_moose
 
 #%%
 
-cwd = os.getcwd() + "/codebase"
+cwd = os.getcwd()
 
 #%%
 # WORKFLOW Model 12: 1 unconformity, 2 stratigraphic series
