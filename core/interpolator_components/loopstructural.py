@@ -91,8 +91,9 @@ def loop_structural_interpolator(input_data: InputData):
         )
         strat_features.append(strat)
 
-    # Set grid TODO: Check if this is the same as mine
-    regular_grid = model.regular_grid(input_data.resolution, shuffle=False, rescale=True)
+    # Set grid
+    # regular_grid = model.regular_grid(input_data.resolution, shuffle=False, rescale=True)
+    regular_grid = grid
 
     results_sf = []
     for feature in input_data.mapping_object.keys():
@@ -112,6 +113,19 @@ def loop_structural_interpolator(input_data: InputData):
         counter -= 1
 
     combined_result = combined_result.reshape(input_data.resolution)
+
+    # Debugging
+    print("LoopStructural")
+    print(regular_grid.shape)
+    print(np.min(regular_grid), np.max(regular_grid))
+
+    print("Me")
+    print(grid.shape)
+    print(np.min(grid), np.max(grid))
+    print(spacing)
+
+    print(regular_grid==grid)
+
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
     mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)
