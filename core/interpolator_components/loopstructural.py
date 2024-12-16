@@ -6,18 +6,19 @@ import pandas as pd
 
 
 #%%
-def loop_structural_interpolator(input_data: InputData):
+def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI"):
     """
     Compute a model based on input data using loop structural.
 
     Args:
         input_data (InputData): The input data for the geological model.
+        interpolator_type (str): The type of interpolator to use. Defaults to "FDI".
 
     Returns:
         resultsGeomodelResults: The results of the geological model.
 
     """
-    # TODO: This does not consider faults
+    # TODO: This does not consider faults, seems to fail for slim models
 
     # Based on input data create regular grid - this can be outsourced to a separate function
     dx = (input_data.extent[1] - input_data.extent[0]) / input_data.resolution[0]
@@ -84,7 +85,7 @@ def loop_structural_interpolator(input_data: InputData):
     for feature in features:
         strat = model.create_and_add_foliation(
             feature,
-            interpolatortype="FDI",  # try changing this to 'PLI'
+            interpolatortype=interpolator_type,  # try changing this to 'PLI'
             nelements=1e4,  # try changing between 1e3 and 5e4
             buffer=0.3,
             damp=True,
@@ -113,19 +114,6 @@ def loop_structural_interpolator(input_data: InputData):
         counter -= 1
 
     combined_result = combined_result.reshape(input_data.resolution)
-
-    # Debugging
-    print("LoopStructural")
-    print(regular_grid.shape)
-    print(np.min(regular_grid), np.max(regular_grid))
-
-    print("Me")
-    print(grid.shape)
-    print(np.min(grid), np.max(grid))
-    print(spacing)
-
-    print(regular_grid==grid)
-
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
     mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)
