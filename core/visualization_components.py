@@ -6,7 +6,8 @@ import pyvista as pv
 from core.object_components import InputData, GeomodelResults
 
 
-def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, show_results: bool = False, colors=None):
+def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
+            show_results: bool = False, show_data: bool = True, colors=None):
     """
     Plot the input data and results in 2D.
 
@@ -14,6 +15,7 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
         input_data (InputData): The input data for the geological model.
         geomodel_results (GeomodelResults): The results of the geological model.
         show_results (bool): Whether to show the results.
+        show_data (bool): Whether to show the input data.
         colors (Optional(list)): List of colors to use for the different formations.
     """
     # TODO: Proper plotting options, directions etc - this is just a first draft
@@ -43,18 +45,20 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                     c=input_data.surface_points['formation'].apply(lambda x: np.where(formations == x)[0][0]),
                     cmap=cmap,
                     norm=norm,
-                    edgecolors="black")
+                    edgecolors="black",
+                    visible=show_data)
 
     # Plot the orientations if available
     if input_data.orientations is not None:
         ax.quiver(input_data.orientations.X, input_data.orientations.Z,
-                  input_data.orientations.G_x, input_data.orientations.G_z,
-                  input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
-                  angles='xy', scale_units='xy',
-                  cmap=cmap,
-                  norm=norm,
-                  edgecolors="black",
-                  linewidth=1)
+                    input_data.orientations.G_x, input_data.orientations.G_z,
+                    input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
+                    angles='xy', scale_units='xy',
+                    cmap=cmap,
+                    norm=norm,
+                    edgecolors="black",
+                    linewidth=1,
+                    visible=show_data)
     else:
         pass
 
