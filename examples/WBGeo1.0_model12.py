@@ -97,7 +97,7 @@ exo_in = ExosInputs(nodes_array=meshdata.nodes, elements_array=meshdata.elements
 # Create mesh
 mesh = exo_in.create_mesh()
 # Plot the mesh
-exo_in.plot_mesh(mesh,'model_WG12.exo')
+exo_in.plot_mesh()
 
 
 # Initialize the VTKInputs

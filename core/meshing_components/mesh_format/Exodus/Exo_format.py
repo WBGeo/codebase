@@ -53,18 +53,14 @@ class ExosInputs:
         return mesh
 
 
-    def plot_mesh(self, mesh, output_filename):
+    def plot_mesh(self):
         """
         Plots the 3D mesh using PyVista.
 
-        This method visualizes the nodes and elements of the mesh.
-
-        Args:
-            mesh (meshio.Mesh): The mesh to be visualized.
-            output_filename (str): The output filename where the mesh will be saved.
+        This method reads the Exodus file and visualizes the nodes and elements of the mesh.
 
         """
         # Get node coordinates and elements from the mesh
-        mesh = pv.read(output_filename)
+        mesh = pv.read(self.output_filename)
         # Plot the mesh
         mesh.plot(show_edges=True, color=True)
