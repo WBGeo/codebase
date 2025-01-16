@@ -3,6 +3,9 @@ from typing import Optional
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
 import pandas as pd
 from typing import TypeVar, Dict, List
+from typing import Dict, List
+import meshio
+from pydantic import BaseModel
 
 PandasDataFrame = TypeVar('pandas.core.frame.DataFrame')
 
@@ -65,3 +68,20 @@ class GeomodelResults:
     extent: NpNDArrayInt64
     resolution: NpNDArrayInt64
     mapping_object: Dict
+
+
+@dataclass(config={"arbitrary_types_allowed": True})
+class MeshData:
+    """
+    Data class to hold 3D mesh data.
+
+    Attributes:
+        elements (NDArray[np.int64]): A 2D array representing the hexahedral elements of the mesh.
+        nodes (NDArray[np.float64]): A 2D array representing the information of nodes.
+        n_gx (int): Number of grid points in the x-direction.
+        n_gy (int): Number of grid points in the y-direction.
+    """
+    elements:  NpNDArrayInt64
+    nodes:  NpNDArrayInt64
+    n_gx: int
+    n_gy: int
