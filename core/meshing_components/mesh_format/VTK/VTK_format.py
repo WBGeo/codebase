@@ -1,5 +1,4 @@
 import meshio
-import numpy as np
 import pyvista as pv
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes

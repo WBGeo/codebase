@@ -1,7 +1,6 @@
 import meshio
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-from core.meshing_components.geometry.Points import Points
 import pyvista as pv
 
 

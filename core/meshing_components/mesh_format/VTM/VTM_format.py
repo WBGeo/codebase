@@ -1,15 +1,8 @@
-import meshio
 import numpy as np
 import pyvista as pv
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-from vtkmodules.vtkCommonColor import vtkNamedColors
-from vtkmodules.vtkCommonDataModel import vtkMultiBlockDataSet, vtkCellArray, vtkHexahedron
-from vtkmodules.vtkCommonCore import vtkPoints
-from vtkmodules.vtkIOXML import vtkXMLUnstructuredGridWriter
-import vtk
-import numpy as np
-import pyvista as pv
+
 
 
 class VTMInputs:
