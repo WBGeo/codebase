@@ -8,6 +8,7 @@ from core.interpolator_components.universal_cokriging import universal_cokriging
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
+from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components import export_mesh_moose
 
@@ -21,7 +22,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='WeisweilerMini',
                       extent=np.array([5623500, 5640000, 32304500, 32305500, -3000, 500]),
-                      resolution=np.array([165, 10, 70]),
+                      resolution=np.array([165, 20, 70]),
                       surface_points=pd.read_csv(
                           cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv"),
                       orientations=pd.read_csv(
@@ -41,16 +42,17 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test)
-# results_test = ordinary_kriging_interpolator(data_test, var_range=10000)
-# results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=0.00000001)
-results_test = geo_inr_interpolator(data_test)
+# results_test = universal_cokriging_interpolator(data_test) # TODO: MC extraction not correct
+results_test = ordinary_kriging_interpolator(data_test, var_range=10000)
+# results_test = rbf_interpolator(data_test, kernel='thin_plate_spline', epsilon=1)
+# results_test = geo_inr_interpolator(data_test)
+# results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
 
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
-plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
+plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, show_data=False)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 #%%
