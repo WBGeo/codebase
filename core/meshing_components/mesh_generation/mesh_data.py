@@ -9,25 +9,26 @@ from core.meshing_components.mesh_generation.node_element_generator import adjus
 from core.object_components import MeshResults
 
 
-def create_mesh_data(extent, results_test, refine_file_path, z_threshold=0.1, tolerance=1):
+def create_mesh_data(geomodel_result, refinement_data, z_threshold=0.1, tolerance=1):
     """
     Generates a geological mesh and returns a MeshData object.
 
     Args:
-        extent (tuple): The spatial extent of the model.
         results_test (object): Object containing data to create the grid.
-        refine_file_path (str): Path to the refinement file.
+        refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
         tolerance (float): Distance tolerance for Z-value adjustment.
 
     Returns:
-        MeshData: An instance of the MeshData class.
+        MeshResults: An instance of the MeshResults class.
     """
+
+
     # Extract extent values
-    min_x, max_x, min_y, max_y, min_z, max_z = extent
+    min_x, max_x, min_y, max_y, min_z, max_z = geomodel_result.extent
 
     # Create interpolated surfaces dictionary
-    interpolated_surfaces, n_gx, n_gy = create_surface_grid(results_test)
+    interpolated_surfaces, n_gx, n_gy = create_surface_grid(geomodel_result)
 
     # Convert dictionary values (interpolated grids) to list of sorted DataFrames
     dataframes_list = [pd.DataFrame(grid, columns=["X", "Y", "Z"]) for grid in interpolated_surfaces.values()]
@@ -44,7 +45,7 @@ def create_mesh_data(extent, results_test, refine_file_path, z_threshold=0.1, to
     )
 
     # Read refinement file
-    refinement_data = read_refinement_file(refine_file_path, len(dataframes_list))
+    # refinement_data = read_refinement_file(refine_file_path, len(dataframes_list))
 
     # Create points between surfaces
     updated_output = create_intermediate_layers(
