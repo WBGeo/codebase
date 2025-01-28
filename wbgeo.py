@@ -9,6 +9,7 @@ from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.meshing_components.meshing_moose import create_mesh_moose
+from core.meshing_components.mesh_generation.mesh_data import create_mesh_data
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -17,6 +18,7 @@ from core.meshing_components.meshing_moose import create_mesh_moose
 # define the ScriptTypes (inputs & outputs are of this type)
 
 IntDataType: apitypes.ScriptType = {"id": "IntDataType", "real_type": int, "name": 'int', "color": 'blue'}
+ListDataType: apitypes.ScriptType = {"id": "ListDataType", "real_type": list, "name": 'list', "color": 'blue'}
 BoolDataType: apitypes.ScriptType = {"id": "BoolDataType", "real_type": bool, "name": 'boolean', "color": 'blue'}
 StringDataType: apitypes.ScriptType = {"id": "StringDataType", "real_type": str, "name": 'string', "color": 'blue'}
 CSVFileDataType: apitypes.ScriptType = {"id": "CSVFileDataType", "real_type": str, "name": 'path', "color": 'aqua'}
@@ -31,6 +33,7 @@ MeshInputType: apitypes.ScriptType = {"id": "MeshInputTypePlaceHolder",
                                       "name": "MeshInputType", "color": 'green'}
 
 import pyvista as pv
+
 MeshOutputType: apitypes.ScriptType = {"id": "MeshOutputType",
                                        "real_type": pv.DataSet,
                                        "name": "MeshOutputType", "color": '#2dd69e'}
@@ -214,24 +217,33 @@ nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  #
                                }])
 
 # meshing
-nodesapi.register_script_block(identifier='meshing_moose',  # unique identifier
-                               title='Moose Meshing',  # human readable (Default) title
+nodesapi.register_script_block(identifier='meshing',  # unique identifier
+                               title='Meshing',  # human readable (Default) title
                                inputs=[  # the input ports
                                    {
-                                       'param': 'geomodel_results',  # the name of this port
+                                       'param': 'geomodel_result',  # the name of this port
                                        'type': GeomodelResultsType,  # the ports type (as in ScriptType)
                                    }, {
-                                       'param': 'name',
-                                       'type': StringDataType,
-                                       'default': 'Model_12_OK',
+                                       'param': 'refinement_data',
+                                       'type': ListDataType,
+                                       'default': [],  #TODO: Either set reasonable defaults or make it required
+                                   }, {
+                                       'param': 'z_threshold',
+                                       'type': IntDataType,
+                                       'default': 0.1,
+                                   }, {
+                                       'param': 'tolerance',
+                                       'type': IntDataType,
+                                       'default': 1,
                                    }],
-                               execute=nodesapi.create_geo_execute(create_mesh_moose),
-                               description='Create a mesh for MOOSE based on the input data',
+                               execute=nodesapi.create_geo_execute(create_mesh_data),
+                               description='Create a mesh based on the Structural Geological Model',
                                color='#2cf6b3',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': MeshOutputType,
                                }])
+
 
 # Register 3 yet-to-be-implemented block types
 
