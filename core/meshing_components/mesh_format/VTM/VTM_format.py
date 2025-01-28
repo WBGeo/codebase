@@ -7,7 +7,7 @@ from core.meshing_components.geometry.Nodes import Nodes
 
 class VTMInputs:
 
-    def __init__(self, nodes_array, elements_array, output_filename):
+    def __init__(self, nodes_array, elements_array):
         """
         Initializes the VTMInputs class.
 
@@ -19,7 +19,6 @@ class VTMInputs:
         # Use composition: VTMInputs contains instances of Nodes and Elements
         self.nodes = Nodes(node_array=nodes_array)
         self.elements = Elements(element_array=elements_array, node_array=nodes_array)
-        self.output_filename = output_filename
 
     def create_mesh(self):
         """
@@ -77,8 +76,8 @@ class VTMInputs:
 
 
         # Save the MultiBlock as a VTM file
-        multi_block.save(self.output_filename)
-        print(f"VTM file '{self.output_filename}' with multiple blocks created successfully!")
+        # multi_block.save(self.output_filename)
+        # print(f"VTM file '{self.output_filename}' with multiple blocks created successfully!")
 
         return multi_block
 

@@ -1,10 +1,17 @@
+import pyvista
 from pydantic.dataclasses import dataclass
 from typing import Optional
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
 import pandas as pd
 from typing import TypeVar, Dict, List
 from typing import Dict, List
+import pyvista as pv
 import meshio
+from core.meshing_components.mesh_format.Exodus.Exo_format import ExosInputs
+from core.meshing_components.mesh_format.VTK.VTK_format import VTKInputs
+from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
+from core.meshing_components.geometry.Elements import Elements
+from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel
 
 PandasDataFrame = TypeVar('pandas.core.frame.DataFrame')
@@ -70,18 +77,75 @@ class GeomodelResults:
     mapping_object: Dict
 
 
+
 @dataclass(config={"arbitrary_types_allowed": True})
-class MeshData:
+class MeshResults:
     """
     Data class to hold 3D mesh data.
 
     Attributes:
-        elements (NDArray[np.int64]): A 2D array representing the hexahedral elements of the mesh.
-        nodes (NDArray[np.float64]): A 2D array representing the information of nodes.
+        elements (NpNDArrayInt64): A 2D array representing the hexahedral elements of the mesh.
+        nodes (NpNDArrayFp64): A 2D array representing the information of nodes.
         n_gx (int): Number of grid points in the x-direction.
         n_gy (int): Number of grid points in the y-direction.
     """
-    elements:  NpNDArrayInt64
-    nodes:  NpNDArrayInt64
+    elements: NpNDArrayInt64
+    nodes: NpNDArrayFp64
     n_gx: int
     n_gy: int
+    mesh: Optional[pyvista.MultiBlock] = None
+
+    def __post_init__(self):
+        # Initialize the VTMInputs
+        self.vtm_in = VTMInputs(nodes_array=self.nodes, elements_array=self.elements)
+
+        # Create the VTM mesh
+        self.mesh = self.vtm_in.create_mesh()
+
+        # Reverse order to fit structural model
+        # Assuming `multiblock` is your existing MultiBlock object
+        reversed_multiblock = pv.MultiBlock()
+
+        # Reverse the order of the blocks
+        for i in range(len(self.mesh) - 1, -1, -1):
+            reversed_multiblock.append(self.mesh[i])
+
+        self.mesh = reversed_multiblock
+
+    def export_vtk(self, filename: str):
+        """
+        Export the mesh data to a VTK file.
+        Args:
+            filename (str): The name of the VTK file to export.
+        """
+        vtk_in = VTKInputs(nodes_array=self.nodes, elements_array=self.elements)
+
+        # Create the VTK mesh
+        mesh = vtk_in.create_mesh()
+
+        # Write the mesh to a VTK file
+        mesh.write(filename, file_format="vtk")
+        print(f"VTK file '{filename}' created successfully!")
+
+    def export_exodus(self, filename: str):
+        """
+        Export the mesh data to an Exodus file.
+        Args:
+            filename (str): The name of the Exodus file to export.
+        """
+        exo_in = ExosInputs(nodes_array=self.nodes, elements_array=self.elements)
+        # Create mesh
+        mesh = exo_in.create_mesh()
+
+        # Write the mesh to an Exodus file
+        mesh.write(filename, file_format="exodus")
+        print(f"Exodus file '{filename}' created successfully!")
+
+    def export_vtm(self, filename: str):
+        """
+        Export the mesh data to a VTM file.
+        Args:
+            filename (str): The name of the VTM file to export.
+        """
+        self.mesh.save(filename)
+        print(f"VTM file '{filename}' with multiple blocks created successfully!")

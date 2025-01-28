@@ -5,19 +5,17 @@ from core.meshing_components.geometry.Nodes import Nodes
 
 
 class VTKInputs:
-    def __init__(self, nodes_array, elements_array, output_filename):
+    def __init__(self, nodes_array, elements_array):
         """
         Initializes the VTKInputs class.
 
         Args:
             nodes_array (np.ndarray): Array of nodes with columns [node_id, x, y, z, surface_id].
             elements_array (np.ndarray): Array of elements with columns [element_id, node_id_1, ..., node_id_n, surface_id].
-            output_filename (str): The output filename where the VTK mesh will be saved.
         """
         # Use composition: VTKInputs contains instances of Nodes and Elements
         self.nodes = Nodes(node_array=nodes_array)
         self.elements = Elements(element_array=elements_array, node_array=nodes_array)
-        self.output_filename = output_filename
 
 
     def create_mesh(self):
@@ -50,8 +48,8 @@ class VTKInputs:
         )
 
         # Write the mesh to a VTK file
-        mesh.write(self.output_filename, file_format="vtk")
-        print(f"VTK file '{self.output_filename}' created successfully!")
+        # mesh.write(self.output_filename, file_format="vtk")
+        # print(f"VTK file '{self.output_filename}' created successfully!")
 
         return mesh
 

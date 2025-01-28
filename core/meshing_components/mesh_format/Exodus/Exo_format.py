@@ -5,19 +5,17 @@ import pyvista as pv
 
 
 class ExosInputs:
-    def __init__(self, nodes_array, elements_array, output_filename):
+    def __init__(self, nodes_array, elements_array):
         """
         Initializes the ExosInputs class.
 
         Args:
             nodes_array (np.ndarray): Array of nodes with columns [node_id, x, y, z, surface_id].
             elements_array (np.ndarray): Array of elements with columns [element_id, node_id_1, ..., node_id_n, surface_id].
-            output_filename (str): The output filename where the mesh will be saved.
         """
         # Use composition: ExosInputs contains instances of Nodes and Elements
         self.nodes = Nodes(node_array=nodes_array)
         self.elements = Elements(element_array=elements_array, node_array=nodes_array)
-        self.output_filename = output_filename
 
     def create_mesh(self):
         """
@@ -46,8 +44,8 @@ class ExosInputs:
         )
 
         # Write the mesh to an Exodus file
-        mesh.write(self.output_filename, file_format="exodus")
-        print(f"Exodus file '{self.output_filename}' created successfully!")
+        # mesh.write(self.output_filename, file_format="exodus")
+        # print(f"Exodus file '{self.output_filename}' created successfully!")
 
         return mesh
 

@@ -4,8 +4,10 @@ from core.meshing_components.mesh_generation.grid_generator import create_surfac
 from core.meshing_components.mesh_generation.grid_generator import sort_surfaces_by_z, store_points_in_array
 from core.meshing_components.mesh_generation.store_grid_data import create_surfaces_with_grids_for_bottom_and_top
 from core.meshing_components.mesh_generation.store_grid_data import read_refinement_file, create_intermediate_layers
-from core.meshing_components.mesh_generation.node_element_generator import adjust_z_values, create_hexahedral_elements_with_nodes
-from core.object_components import MeshData
+from core.meshing_components.mesh_generation.node_element_generator import adjust_z_values, \
+    create_hexahedral_elements_with_nodes
+from core.object_components import MeshResults
+
 
 def create_mesh_data(extent, results_test, refine_file_path, z_threshold=0.1, tolerance=1):
     """
@@ -56,10 +58,8 @@ def create_mesh_data(extent, results_test, refine_file_path, z_threshold=0.1, to
     elements, nodes = create_hexahedral_elements_with_nodes(adjusted_array, n_gx, n_gy)
 
     # Create and return a MeshData instance
-    return MeshData(
-        elements=elements,
-        nodes=nodes,
-        n_gx=n_gx,
-        n_gy=n_gy
-    )
-
+    return MeshResults(elements=elements,
+                       nodes=nodes,
+                       n_gx=n_gx,
+                       n_gy=n_gy
+                       )

@@ -197,7 +197,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
     return plotter
 
 
-def plot_mesh_3d(mesh, input_data: InputData, colors=None, show_plotter=True) -> pv.Plotter:
+def plot_mesh_3d(mesh, input_data: InputData, colors=None, style="surface", show_plotter=True) -> pv.Plotter:
     """
     Plot the mesh for process simulation in 3D.
 
@@ -249,18 +249,22 @@ def plot_mesh_3d(mesh, input_data: InputData, colors=None, show_plotter=True) ->
 
         # Add moose meshes to the plotter
         for i in range(len(formations) - np.sum(input_data.faults)):
-            plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=masked_colors[i],
+            # plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=masked_colors[i],
+            #                  label=masked_formations[i])
+            plotter.add_mesh(mesh[i], show_edges=True, style=style, color=masked_colors[i],
                              label=masked_formations[i])
     else:
         # Add moose meshes to the plotter
         for i in range(len(formations)):
-            plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=colors[i],
-                            label=formations[i])
+            # plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=colors[i],
+            #                 label=formations[i])
+            plotter.add_mesh(mesh[i], show_edges=True, style=style, color=colors[i],
+                             label=formations[i])
 
     # Add basement with extra label
     basement_ID = int(len(formations)-n_faults)
-    plotter.add_mesh(mesh[0][basement_ID], show_edges=True,
-                     style='wireframe',
+    plotter.add_mesh(mesh[basement_ID], show_edges=True,
+                     style=style,
                      color=colors[len(formations)])
 
     plotter.add_legend(size=(0.13, 0.13), loc='lower right', face='circle')
