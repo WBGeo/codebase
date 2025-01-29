@@ -81,7 +81,7 @@ mesh_test = create_mesh_data(
 #%%
 
 # 4.5: Plot the meshing result (only 3D at current state)
-plot_mesh_3d(mesh_test.mesh, data_test)
+plot_mesh_3d(mesh_test, data_test)
 
 #%%
 

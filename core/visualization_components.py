@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pyvista as pv
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData, GeomodelResults, MeshResults
 
 
 def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
@@ -51,14 +51,14 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
     # Plot the orientations if available
     if input_data.orientations is not None:
         ax.quiver(input_data.orientations.X, input_data.orientations.Z,
-                    input_data.orientations.G_x, input_data.orientations.G_z,
-                    input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
-                    angles='xy', scale_units='xy',
-                    cmap=cmap,
-                    norm=norm,
-                    edgecolors="black",
-                    linewidth=1,
-                    visible=show_data)
+                  input_data.orientations.G_x, input_data.orientations.G_z,
+                  input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
+                  angles='xy', scale_units='xy',
+                  cmap=cmap,
+                  norm=norm,
+                  edgecolors="black",
+                  linewidth=1,
+                  visible=show_data)
     else:
         pass
 
@@ -82,9 +82,9 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
 
         # Make sure boundaries are one more that colors
         # specify boundaries based on values in lithology block
-        arr = np.unique(image)-0.5
-        arr = np.append(arr, np.unique(arr)[-1]+1)
-        norm2 = mcolors.BoundaryNorm(arr, ncolors=len(arr)-1)
+        arr = np.unique(image) - 0.5
+        arr = np.append(arr, np.unique(arr)[-1] + 1)
+        norm2 = mcolors.BoundaryNorm(arr, ncolors=len(arr) - 1)
 
         ax.imshow(
             image, origin='lower', zorder=-100, cmap=cmap2, norm=norm2,
@@ -115,7 +115,8 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
     plt.show()
 
 
-def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, show_results: bool = False, colors=None, show_plotter=True) -> pv.Plotter:
+def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, show_results: bool = False, colors=None,
+            show_plotter=True) -> pv.Plotter:
     """
     Plot the input data and results in 3D.
 
@@ -197,14 +198,16 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
     return plotter
 
 
-def plot_mesh_3d(mesh, input_data: InputData, colors=None, style="surface", show_plotter=True) -> pv.Plotter:
+def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData, colors=None, style="surface",
+                 show_plotter=True) -> pv.Plotter:
     """
     Plot the mesh for process simulation in 3D.
 
     Args:
-        mesh (pyvista.PolyData): The mesh to plot.
+        mesh_results (MeshResults): The mesh to plot.
         input_data (InputData): The input data for the structural geological model.
         colors (Optional(list)): List of colors to use for the different formations
+        style (str): The style of the mesh to plot.
     """
     # Suppress the specific warning about points not being a float type
     warnings.filterwarnings("ignore",
@@ -251,28 +254,29 @@ def plot_mesh_3d(mesh, input_data: InputData, colors=None, style="surface", show
         for i in range(len(formations) - np.sum(input_data.faults)):
             # plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=masked_colors[i],
             #                  label=masked_formations[i])
-            plotter.add_mesh(mesh[i], show_edges=True, style=style, color=masked_colors[i],
+            plotter.add_mesh(mesh_results.mesh[i], show_edges=True, style=style, color=masked_colors[i],
                              label=masked_formations[i])
     else:
         # Add moose meshes to the plotter
         for i in range(len(formations)):
             # plotter.add_mesh(mesh[0][i], show_edges=True, style='wireframe', color=colors[i],
             #                 label=formations[i])
-            plotter.add_mesh(mesh[i], show_edges=True, style=style, color=colors[i],
+            plotter.add_mesh(mesh_results.mesh[i], show_edges=True, style=style, color=colors[i],
                              label=formations[i])
 
     # Add basement with extra label
-    basement_ID = int(len(formations)-n_faults)
-    plotter.add_mesh(mesh[basement_ID], show_edges=True,
+    basement_ID = int(len(formations) - n_faults)
+    plotter.add_mesh(mesh_results.mesh[basement_ID], show_edges=True,
                      style=style,
                      color=colors[len(formations)])
 
     plotter.add_legend(size=(0.13, 0.13), loc='lower right', face='circle')
 
     # Set the bounds and grid of the plotter
-    plotter.show_bounds(grid=True) # TODO: Different scale here as Denise uses km
+    plotter.show_bounds(grid=True)  # TODO: Different scale here as Denise uses km
 
     if show_plotter:
         # Display the interactive plot
         plotter.show()
+
     return plotter
