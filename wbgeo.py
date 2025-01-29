@@ -244,6 +244,26 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                    'param': 'result', 'type': MeshOutputType,
                                }])
 
+# util: A method which creates a new list from string
+def create_list_from_string(as_string: str) -> list:
+    return [int(i.strip()) for i in as_string.split(",")]
+
+nodesapi.register_script_block(identifier='create_list',  # unique identifier
+                               title='Create List',  # human readable (Default) title
+                               inputs=[  # the input ports
+                                   {
+                                       'param': 'as_string',  # the name of this port
+                                       'type': StringDataType,  # the ports type (as in ScriptType)
+                                   }],
+                               execute=nodesapi.create_geo_execute(create_list_from_string),
+                               description='Creates a list from an input',
+                               color='#2cf6b3',
+                               # the method which actually performs the calculation
+                               outputs=[{  # the output ports
+                                   'param': 'result', 'type': ListDataType,
+                               }])
+
+
 
 # Register 3 yet-to-be-implemented block types
 
