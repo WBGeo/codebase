@@ -7,7 +7,7 @@ from core.object_components import InputData, GeomodelResults, MeshResults
 
 
 def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
-            show_results: bool = False, show_data: bool = True, colors=None):
+            show_results: bool = False, show_data: bool = True, colors=None, show_plot=True) -> (plt.Figure, plt.Axes):
     """
     Plot the input data and results in 2D.
 
@@ -17,6 +17,11 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
         show_results (bool): Whether to show the results.
         show_data (bool): Whether to show the input data.
         colors (Optional(list)): List of colors to use for the different formations.
+        show_plot (bool): Whether to show the plot.
+
+    Returns:
+        fig (plt.Figure): The figure object.
+        ax (plt.Axes): The axis object
     """
     # TODO: Proper plotting options, directions etc - this is just a first draft
 
@@ -112,7 +117,10 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
     ax.set_xlabel('X')
     ax.set_ylabel('Z')
 
-    plt.show()
+    if show_plot:
+        plt.show()
+
+    return fig, ax
 
 
 def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, show_results: bool = False, colors=None,
