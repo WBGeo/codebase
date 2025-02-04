@@ -176,6 +176,7 @@ nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifi
                                execute=nodesapi.create_geo_execute(rbf_interpolator),
                                description='Compute a model based on input data using RBF interpolation',
                                color='#f4a259',
+                               border_color='#db9150',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -200,6 +201,7 @@ nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # un
                                execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
                                description='Compute a model based on input data using kriging interpolation',
                                color='#f4a259',
+                               border_color='#db9150',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -216,6 +218,7 @@ nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  #
                                execute=nodesapi.create_geo_execute(universal_cokriging_interpolator),
                                description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
                                color='#f4a259',
+                               border_color='#db9150',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
