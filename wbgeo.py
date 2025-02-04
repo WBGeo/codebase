@@ -36,7 +36,7 @@ import pyvista as pv
 
 MeshOutputType: apitypes.ScriptType = {"id": "MeshOutputType",
                                        "real_type": pv.DataSet,
-                                       "name": "MeshOutputType", "color": '#2dd69e'}
+                                       "name": "MeshOutputType", "color": '#5b8e7d'}
 
 PlaceholderType: apitypes.ScriptType = {"id": "PlaceholderType",
                                         "real_type": BoolDataType,
@@ -49,7 +49,7 @@ PMType: apitypes.ScriptType = {"id": "PMTypePlaceHolder",
 InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData,
                                       "name": 'Input data for a geological model', "color": 'orange'}
 GeomodelResultsType: apitypes.ScriptType = {"id": "GeomodelResults", "real_type": GeomodelResults, "name": 'Geo Result',
-                                            "color": '#76cf46'}
+                                            "color": '#f4a259'}
 
 
 #

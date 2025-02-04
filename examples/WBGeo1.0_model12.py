@@ -45,11 +45,10 @@ plot_3d(data_test)
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
-# results_test = ordinary_kriging_interpolator(data_test, var_range=500)
-results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
-# results_test = geo_inr_interpolator(data_test)
-# results_test = loop_structural_interpolator(data_test)
-# results_test, combined_scalar_field = ordinary_kriging_interpolator(data_test)
+results_test = ordinary_kriging_interpolator(data_test, var_range=500)
+# results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
+# results_test = geo_inr_interpolator(data_test, beta=5)
+# results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
 
 #%%
@@ -81,7 +80,7 @@ mesh_test = create_mesh_data(
 #%%
 
 # 4.5: Plot the meshing result (only 3D at current state)
-plot_mesh_3d(mesh_test, data_test)
+plot_mesh_3d(mesh_test, data_test , style="surface")
 
 #%%
 
