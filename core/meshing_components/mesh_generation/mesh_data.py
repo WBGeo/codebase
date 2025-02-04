@@ -9,6 +9,10 @@ from core.meshing_components.mesh_generation.node_element_generator import adjus
 from core.object_components import MeshResults
 
 
+def create_mesh_data_str(geomodel_result, refinement_data_str = "25,21,16,5,6", z_threshold=0.1, tolerance=1):
+    return create_mesh_data(geomodel_result, [int(i.strip()) for i in refinement_data_str.split(",")], z_threshold, tolerance)
+
+
 def create_mesh_data(geomodel_result, refinement_data, z_threshold=0.1, tolerance=1):
     """
     Generates a geological mesh and returns a MeshData object.

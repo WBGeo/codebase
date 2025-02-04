@@ -9,7 +9,7 @@ from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.meshing_components.meshing_moose import create_mesh_moose
-from core.meshing_components.mesh_generation.mesh_data import create_mesh_data
+from core.meshing_components.mesh_generation.mesh_data import create_mesh_data, create_mesh_data_str
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -232,9 +232,9 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                        'param': 'geomodel_result',  # the name of this port
                                        'type': GeomodelResultsType,  # the ports type (as in ScriptType)
                                    }, {
-                                       'param': 'refinement_data',
-                                       'type': ListDataType,
-                                       'default': [25, 21, 16, 5, 6],
+                                       'param': 'refinement_data_str',
+                                       'type': StringDataType,
+                                       'default': '25, 21, 16, 5, 6',
                                    }, {
                                        'param': 'z_threshold',
                                        'type': IntDataType,
@@ -244,31 +244,12 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                        'type': IntDataType,
                                        'default': 1,
                                    }],
-                               execute=nodesapi.create_geo_execute(create_mesh_data),
+                               execute=nodesapi.create_geo_execute(create_mesh_data_str),
                                description='Create a mesh based on the Structural Geological Model',
                                color='#5b8e7d',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': MeshOutputType,
-                               }])
-
-# util: A method which creates a new list from string
-def create_list_from_string(as_string: str) -> list:
-    return [int(i.strip()) for i in as_string.split(",")]
-
-nodesapi.register_script_block(identifier='create_list',  # unique identifier
-                               title='Create List',  # human readable (Default) title
-                               inputs=[  # the input ports
-                                   {
-                                       'param': 'as_string',  # the name of this port
-                                       'type': StringDataType,  # the ports type (as in ScriptType)
-                                   }],
-                               execute=nodesapi.create_geo_execute(create_list_from_string),
-                               description='Creates a list from an input',
-                               color='#2cf6b3',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': ListDataType,
                                }])
 
 
