@@ -110,6 +110,7 @@ nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identi
                                execute=nodesapi.create_geo_execute(geo_input_data_fix),
                                description='Provides a geo model ',
                                color='#8cb369',
+                               border_color='#000000',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'data', 'type': InputDataType,
@@ -127,6 +128,7 @@ nodesapi.register_script_block(identifier='loop_structural_interpolator',  # uni
                                execute=nodesapi.create_geo_execute(loop_structural_interpolator),
                                description='Compute a model based on input data using LoopStructural interpolation',
                                color='#f4a259',
+                               border_color='#000000',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -149,6 +151,7 @@ nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique ident
                                execute=nodesapi.create_geo_execute(geo_inr_interpolator),
                                description='Compute a model based on input data using GeoINR interpolation',
                                color='#f4a259',
+                               border_color='#000000',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -176,7 +179,7 @@ nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifi
                                execute=nodesapi.create_geo_execute(rbf_interpolator),
                                description='Compute a model based on input data using RBF interpolation',
                                color='#f4a259',
-                               border_color='#db9150',
+                               border_color='#000000',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -201,7 +204,7 @@ nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # un
                                execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
                                description='Compute a model based on input data using kriging interpolation',
                                color='#f4a259',
-                               border_color='#db9150',
+                               border_color='#000000',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -218,7 +221,7 @@ nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  #
                                execute=nodesapi.create_geo_execute(universal_cokriging_interpolator),
                                description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
                                color='#f4a259',
-                               border_color='#db9150',
+                               border_color='#000000',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -247,6 +250,7 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                execute=nodesapi.create_geo_execute(create_mesh_data_str),
                                description='Create a mesh based on the Structural Geological Model',
                                color='#5b8e7d',
+                               border_color='#000000',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': MeshOutputType,
@@ -287,6 +291,7 @@ nodesapi.register_script_block(identifier='nyi_ps',
                                    }],
                                execute=nodesapi.create_geo_execute(placeholder_m),
                                color='#bc4b51',
+                               border_color='#000000',
                                outputs=[
                                    {'param': 'o', 'type': PMType},
                                ],
@@ -302,6 +307,7 @@ nodesapi.register_script_block(identifier='nyi_ar',
                                    }],
                                execute=nodesapi.create_geo_execute(placeholder_m),
                                color='#f4e285',
+                               border_color='#000000',
                                outputs=[
                                    {'param': 'o', 'type': GeomodelResultsType},
                                ],
