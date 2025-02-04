@@ -80,31 +80,31 @@ nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identi
                                    {
                                        'param': 'name',  # the name of this port
                                        'type': StringDataType,  # the ports type (as in ScriptType)
-                                       'default': 'Model 10',  # a default value
+                                       'default': 'Model 12',  # a default value
                                    }, {
                                        'param': 'extent_str',
                                        'type': StringDataType,
-                                       'default': '0, 1000, 0, 1000, 0, 1000',
+                                       'default': '0, 2000, 0, 1000, 0, 1000',
                                    }, {
                                        'param': 'resolution_str',
                                        'type': StringDataType,
-                                       'default': '20, 20, 20',
+                                       'default': '40, 20, 20',
                                    }, {
                                        'param': 'surface_points_file',
                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model10_surface_points_df.csv',  # a default value
+                                       'default': 'model12_surface_points_df.csv',  # a default value
                                    }, {
                                        'param': 'orientations_file',
                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model10_orientations_df.csv',  # a default value
+                                       'default': 'model12_orientations_df.csv',  # a default value
                                    }, {
                                        'param': 'mapping_file',
                                        'type': JSONFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model_10_mapping.json',  # a default value
+                                       'default': 'model_12_mapping.json',  # a default value
                                    }, {
                                        'param': 'with_faults',
                                        'type': BoolDataType,  # the ports type (as in ScriptType)
-                                       'default': True,  # a default value
+                                       'default': False,  # a default value
                                    },
                                ],
                                execute=nodesapi.create_geo_execute(geo_input_data_fix),
@@ -231,7 +231,7 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                    }, {
                                        'param': 'refinement_data',
                                        'type': ListDataType,
-                                       'default': [],  #TODO: Either set reasonable defaults or make it required
+                                       'default': [25, 21, 16, 5, 6],
                                    }, {
                                        'param': 'z_threshold',
                                        'type': IntDataType,
