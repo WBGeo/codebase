@@ -48,9 +48,9 @@ plot_3d(data_test)
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=500)
-results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001)
+# results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001)
 # results_test = geo_inr_interpolator(data_test)
-# results_test = loop_structural_interpolator(data_test)
+results_test = loop_structural_interpolator(data_test)
 
 
 #%%
@@ -58,3 +58,23 @@ results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
+
+#%%
+results_verts = []
+# Get Vertices and save them to files
+for i, vertices in enumerate(results_test.surface_meshes_vertices):
+    # Create a filename for each group of vertices
+    results_verts.append(vertices)
+
+#%%
+import pyvista as pv
+
+plotter = pv.Plotter()
+
+# for i, vertices in enumerate(results_verts):
+#     plotter.add_mesh(vertices, color='blue', opacity=0.8)
+
+plotter.add_mesh(results_verts[1], color='blue', opacity=0.8)
+
+plotter.show()
+

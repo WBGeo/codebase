@@ -306,12 +306,13 @@ def stratigraphic_ConcatMLP(interface_data, orientation_data, meshgrid_data, ext
     return predictions.ravel(), iso_values  # stratigraphic_mesh, grid_mesh_final
 
 
-def geo_inr_interpolator(input_data: InputData):
+def geo_inr_interpolator(input_data: InputData, beta: int = 10):
     """
     Compute a model based on input data using geoINR interpolation
 
     Args:
         input_data (InputData): The input data for the geological model.
+        beta (int): Beta parameter for the Softplus activation function.
 
     Returns:
         resultsGeomodelResults: The results of the geological model.
@@ -372,7 +373,7 @@ def geo_inr_interpolator(input_data: InputData):
                                                       out_dim=1,
                                                       n_hidden_layers=1,  # number of hidden layers
                                                       activation='Softplus',
-                                                      beta=10,
+                                                      beta=beta,
                                                       concat=False,
                                                       epochs=1000,
                                                       lr=0.01)  # learning rate

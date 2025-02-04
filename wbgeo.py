@@ -36,7 +36,7 @@ import pyvista as pv
 
 MeshOutputType: apitypes.ScriptType = {"id": "MeshOutputType",
                                        "real_type": pv.DataSet,
-                                       "name": "MeshOutputType", "color": '#2dd69e'}
+                                       "name": "MeshOutputType", "color": '#5b8e7d'}
 
 PlaceholderType: apitypes.ScriptType = {"id": "PlaceholderType",
                                         "real_type": BoolDataType,
@@ -49,7 +49,7 @@ PMType: apitypes.ScriptType = {"id": "PMTypePlaceHolder",
 InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData,
                                       "name": 'Input data for a geological model', "color": 'orange'}
 GeomodelResultsType: apitypes.ScriptType = {"id": "GeomodelResults", "real_type": GeomodelResults, "name": 'Geo Result',
-                                            "color": '#76cf46'}
+                                            "color": '#f4a259'}
 
 
 #
@@ -84,32 +84,32 @@ nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identi
                                    }, {
                                        'param': 'extent_str',
                                        'type': StringDataType,
-                                       'default': '0, 1000, 0, 1000, 0, 1000',
+                                       'default': '0, 2000, 0, 1000, 0, 1000',
                                    }, {
                                        'param': 'resolution_str',
                                        'type': StringDataType,
-                                       'default': '20, 20, 20',
+                                       'default': '40, 20, 20',
                                    }, {
                                        'param': 'surface_points_file',
                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model10_surface_points_df.csv',  # a default value
+                                       'default': 'model12_surface_points_df.csv',  # a default value
                                    }, {
                                        'param': 'orientations_file',
                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model10_orientations_df.csv',  # a default value
+                                       'default': 'model12_orientations_df.csv',  # a default value
                                    }, {
                                        'param': 'mapping_file',
                                        'type': JSONFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model_10_mapping.json',  # a default value
+                                       'default': 'model_12_mapping.json',  # a default value
                                    }, {
                                        'param': 'with_faults',
                                        'type': BoolDataType,  # the ports type (as in ScriptType)
-                                       'default': True,  # a default value
+                                       'default': False,  # a default value
                                    },
                                ],
                                execute=nodesapi.create_geo_execute(geo_input_data_fix),
                                description='Provides a geo model ',
-                               color='#4effef',
+                               color='#8cb369',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'data', 'type': InputDataType,
@@ -126,7 +126,7 @@ nodesapi.register_script_block(identifier='loop_structural_interpolator',  # uni
                                ],
                                execute=nodesapi.create_geo_execute(loop_structural_interpolator),
                                description='Compute a model based on input data using LoopStructural interpolation',
-                               color='#74eb34',
+                               color='#f4a259',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -140,10 +140,15 @@ nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique ident
                                        'type': InputDataType,  # the ports type (as in ScriptType)
                                        'data_requirements': [does_not_have_faults],
                                    },
+                                      {
+                                        'param': 'beta',
+                                        'type': IntDataType,
+                                        'default': 5,
+                                      }
                                ],
                                execute=nodesapi.create_geo_execute(geo_inr_interpolator),
                                description='Compute a model based on input data using GeoINR interpolation',
-                               color='#74eb34',
+                               color='#f4a259',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -170,7 +175,7 @@ nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifi
                                ],
                                execute=nodesapi.create_geo_execute(rbf_interpolator),
                                description='Compute a model based on input data using RBF interpolation',
-                               color='#74eb34',
+                               color='#f4a259',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -194,7 +199,7 @@ nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # un
                                ],
                                execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
                                description='Compute a model based on input data using kriging interpolation',
-                               color='#74eb34',
+                               color='#f4a259',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -210,7 +215,7 @@ nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  #
                                    }],
                                execute=nodesapi.create_geo_execute(universal_cokriging_interpolator),
                                description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
-                               color='#74eb34',
+                               color='#f4a259',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -226,7 +231,7 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                    }, {
                                        'param': 'refinement_data',
                                        'type': ListDataType,
-                                       'default': [],  #TODO: Either set reasonable defaults or make it required
+                                       'default': [25, 21, 16, 5, 6],
                                    }, {
                                        'param': 'z_threshold',
                                        'type': IntDataType,
@@ -238,7 +243,7 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                    }],
                                execute=nodesapi.create_geo_execute(create_mesh_data),
                                description='Create a mesh based on the Structural Geological Model',
-                               color='#2cf6b3',
+                               color='#5b8e7d',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': MeshOutputType,
@@ -297,7 +302,7 @@ nodesapi.register_script_block(identifier='nyi_ps',
                                        'data_requirements': [],
                                    }],
                                execute=nodesapi.create_geo_execute(placeholder_m),
-                               color='#de6c83',
+                               color='#bc4b51',
                                outputs=[
                                    {'param': 'o', 'type': PMType},
                                ],
@@ -312,7 +317,7 @@ nodesapi.register_script_block(identifier='nyi_ar',
                                        'data_requirements': [],
                                    }],
                                execute=nodesapi.create_geo_execute(placeholder_m),
-                               color='#e0ab4c',
+                               color='#f4e285',
                                outputs=[
                                    {'param': 'o', 'type': GeomodelResultsType},
                                ],
