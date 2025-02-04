@@ -140,6 +140,11 @@ nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique ident
                                        'type': InputDataType,  # the ports type (as in ScriptType)
                                        'data_requirements': [does_not_have_faults],
                                    },
+                                      {
+                                        'param': 'beta',
+                                        'type': IntDataType,
+                                        'default': 5,
+                                      }
                                ],
                                execute=nodesapi.create_geo_execute(geo_inr_interpolator),
                                description='Compute a model based on input data using GeoINR interpolation',
