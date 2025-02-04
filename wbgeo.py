@@ -80,7 +80,7 @@ nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identi
                                    {
                                        'param': 'name',  # the name of this port
                                        'type': StringDataType,  # the ports type (as in ScriptType)
-                                       'default': 'Model 10',  # a default value
+                                       'default': 'Model 12',  # a default value
                                    }, {
                                        'param': 'extent_str',
                                        'type': StringDataType,
