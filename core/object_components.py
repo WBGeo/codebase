@@ -84,15 +84,11 @@ class MeshResults:
     Data class to hold 3D mesh data.
 
     Attributes:
-        elements (NpNDArrayInt64): A 2D array representing the hexahedral elements of the mesh.
+        elements (NpNDArrayInt64): A 2D array representing the hexahedral/tetrahedral elements of the mesh.
         nodes (NpNDArrayFp64): A 2D array representing the information of nodes.
-        n_gx (int): Number of grid points in the x-direction.
-        n_gy (int): Number of grid points in the y-direction.
     """
     elements: NpNDArrayInt64
     nodes: NpNDArrayFp64
-    n_gx: int
-    n_gy: int
     mesh: Optional[pyvista.MultiBlock] = None
 
     def __post_init__(self):
@@ -102,15 +98,11 @@ class MeshResults:
         # Create the VTM mesh
         self.mesh = self.vtm_in.create_mesh()
 
-        # Reverse order to fit structural model
-        # Assuming `multiblock` is your existing MultiBlock object
-        reversed_multiblock = pv.MultiBlock()
+        # Initialize separate attributes for Nodes and Elements
+        self.nodes_obj = Nodes(node_array=self.nodes)
+        self.elements_obj = Elements(element_array=self.elements, node_array=self.nodes)
 
-        # Reverse the order of the blocks
-        for i in range(len(self.mesh) - 1, -1, -1):
-            reversed_multiblock.append(self.mesh[i])
 
-        self.mesh = reversed_multiblock
 
     def export_vtk(self, filename: str):
         """

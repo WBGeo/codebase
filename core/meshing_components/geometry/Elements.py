@@ -45,7 +45,10 @@ class Elements(Nodes):
         min_y = np.min(self.coordinates[:, 1])
         front_elements = []
         for element in self.element_array:
-            nodes = self.coordinates[element[1:9].astype(int)]
+            if self.element_array.shape()[1] == 10:  # Hexahedron elements
+                nodes = self.coordinates[element[1:9].astype(int)]
+            else:
+                nodes = self.coordinates[element[1:5].astype(int)]
             if np.min(nodes[:, 1]) == min_y:
                 front_elements.append(element[0].astype(int))
         return np.array(front_elements)
@@ -56,7 +59,10 @@ class Elements(Nodes):
         back_elements = []
 
         for element in self.element_array:
-            nodes = self.coordinates[element[1:9].astype(int)]
+            if self.element_array.shape()[1] == 10:  # Hexahedron elements
+                nodes = self.coordinates[element[1:9].astype(int)]
+            else:
+                nodes = self.coordinates[element[1:5].astype(int)]
             if np.max(nodes[:, 1]) == max_y:
                 back_elements.append(element[0].astype(int))
 
@@ -68,7 +74,10 @@ class Elements(Nodes):
         bottom_elements = []
 
         for element in self.element_array:
-            nodes = self.coordinates[element[1:9].astype(int)]
+            if self.element_array.shape()[1] == 10:  # Hexahedron elements
+                nodes = self.coordinates[element[1:9].astype(int)]
+            else:
+                nodes = self.coordinates[element[1:5].astype(int)]
             if np.min(nodes[:, 2]) == min_z:
                 bottom_elements.append(element[0].astype(int))
 
@@ -80,7 +89,10 @@ class Elements(Nodes):
         top_elements = []
 
         for element in self.element_array:
-            nodes = self.coordinates[element[1:9].astype(int)]
+            if self.element_array.shape()[1] == 10:  # Hexahedron elements
+                nodes = self.coordinates[element[1:9].astype(int)]
+            else:
+                nodes = self.coordinates[element[1:5].astype(int)]
             if np.max(nodes[:, 2]) == max_z:
                 top_elements.append(element[0].astype(int))
 
@@ -92,7 +104,10 @@ class Elements(Nodes):
         right_elements = []
 
         for element in self.element_array:
-            nodes = self.coordinates[element[1:9].astype(int)]
+            if self.element_array.shape()[1] == 10:  # Hexahedron elements
+                nodes = self.coordinates[element[1:9].astype(int)]
+            else:
+                nodes = self.coordinates[element[1:5].astype(int)]
             if np.max(nodes[:, 0]) == max_x:
                 right_elements.append(element[0].astype(int))
 
@@ -104,7 +119,10 @@ class Elements(Nodes):
         left_elements = []
 
         for element in self.element_array:
-            nodes = self.coordinates[element[1:9].astype(int)]
+            if self.element_array.shape()[1] == 10:  # Hexahedron elements
+                nodes = self.coordinates[element[1:9].astype(int)]
+            else:
+                nodes = self.coordinates[element[1:5].astype(int)]
             if np.min(nodes[:, 0]) == min_x:
                 left_elements.append(element[0].astype(int))
 

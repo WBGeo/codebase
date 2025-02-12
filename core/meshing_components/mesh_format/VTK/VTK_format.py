@@ -36,9 +36,14 @@ class VTKInputs:
         cell_data = {"surface_id": []}  # Dictionary to store surface ID for each cell block
 
         # Iterate over the elements grouped by surface_id
-        for surface_id, elements in elements_by_surface_id.items():
-            cells.append(("hexahedron", elements.tolist()))
-            cell_data["surface_id"].append([surface_id] * len(elements))  # Surface ID for this block
+        if self.elements.element_array.shape[1]== 10:
+            for surface_id, elements in elements_by_surface_id.items():
+                cells.append(("hexahedron", elements.tolist()))
+                cell_data["surface_id"].append([surface_id] * len(elements))  # Surface ID for this block
+        else:
+            for surface_id, elements in elements_by_surface_id.items():
+                cells.append(("tetra", elements.tolist()))
+                cell_data["surface_id"].append([surface_id] * len(elements))  # Surface ID for this block
 
         # Create the meshio.Mesh object
         mesh = meshio.Mesh(
