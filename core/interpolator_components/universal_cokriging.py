@@ -92,7 +92,7 @@ def universal_cokriging_interpolator(input_data: InputData):
                                                         spacing=(model_instance.grid.regular_grid.dx,
                                                                  model_instance.grid.regular_grid.dy,
                                                                  model_instance.grid.regular_grid.dz))
-            mc_vertices.append(verts)
+            mc_vertices.append(verts+[input_data.extent[0], input_data.extent[2], input_data.extent[4]])
             mc_edges.append(faces)
     else:
         pass
@@ -102,7 +102,7 @@ def universal_cokriging_interpolator(input_data: InputData):
                                                     spacing=(model_instance.grid.regular_grid.dx,
                                                              model_instance.grid.regular_grid.dy,
                                                              model_instance.grid.regular_grid.dz))
-        mc_vertices.append(verts)
+        mc_vertices.append(verts+[input_data.extent[0], input_data.extent[2], input_data.extent[4]])
         mc_edges.append(faces)
 
     # Reorder everything correctly if faults exist
@@ -129,11 +129,11 @@ def universal_cokriging_interpolator(input_data: InputData):
         # Populate reordered_list based on bool_list
         for is_true in bool_list:
             if is_true:
-                mc_vertices.append(true_elements_vertices[true_idx])
+                mc_vertices.append(true_elements_vertices[true_idx]+[input_data.extent[0], input_data.extent[2], input_data.extent[4]])
                 mc_edges.append(true_elements_edges[true_idx])
                 true_idx += 1
             else:
-                mc_vertices.append(false_elements_vertices[false_idx])
+                mc_vertices.append(false_elements_vertices[false_idx]+[input_data.extent[0], input_data.extent[2], input_data.extent[4]])
                 mc_edges.append(false_elements_edges[false_idx])
                 false_idx += 1
 
