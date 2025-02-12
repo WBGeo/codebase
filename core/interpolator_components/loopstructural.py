@@ -59,8 +59,8 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
 
     orientations_temp['feature_name'] = "Strat_Series"
     orientations_temp['val'] = orientations_temp['formation'].map(formation_mapping)
-    orientations_temp = orientations_temp.rename(columns={'G_x': 'tx', 'G_y': 'ty', 'G_z': 'tz'})
 
+    orientations_temp = orientations_temp.rename(columns={'G_x': 'tx', 'G_y': 'ty', 'G_z': 'tz'})
     orientations_temp = orientations_temp[['X', 'Y', 'Z', 'val', 'feature_name', 'tx', 'ty', 'tz']]
 
     # Create final combined df for loopstructural
@@ -87,7 +87,11 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
             feature,
             interpolatortype=interpolator_type,  # try changing this to 'PLI'
             nelements=1e4,  # try changing between 1e3 and 5e4
-            buffer=0.3,
+            buffer=0,
+            solver="cg",
+            # npw=1,
+            # gpw=100000,
+            # regularisation=1,
             damp=True,
         )
         strat_features.append(strat)
