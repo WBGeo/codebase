@@ -22,7 +22,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='WeisweilerMini',
                       extent=np.array([5623500, 5640000, 32304500, 32305500, -3000, 500]),
-                      resolution=np.array([165, 20, 70]),
+                      resolution=np.array([240, 20, 205]),
                       surface_points=pd.read_csv(
                           cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv"),
                       orientations=pd.read_csv(
@@ -36,17 +36,17 @@ data_test = InputData(name='WeisweilerMini',
 
 # 1.5: Plot the input data (2D and 3D possible) - Should be an option of the input data component
 plot_2d(data_test)
-plot_3d(data_test)
+# plot_3d(data_test)
 
 
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test) # TODO: MC extraction not correct
-results_test = ordinary_kriging_interpolator(data_test, var_range=10000)
-# results_test = rbf_interpolator(data_test, kernel='thin_plate_spline', epsilon=1)
-# results_test = geo_inr_interpolator(data_test)
-# results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
+# results_test = universal_cokriging_interpolator(data_test)
+# results_test = ordinary_kriging_interpolator(data_test, var_range=11000)
+# results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.00013)
+# results_test = geo_inr_interpolator(data_test, beta=5)
+results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
 
 #%%
@@ -54,6 +54,7 @@ results_test = ordinary_kriging_interpolator(data_test, var_range=10000)
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, show_data=False)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
+
 
 #%%
 
