@@ -31,7 +31,10 @@ class ExosInputs:
         elements_by_surface_id = self.elements.element_by_surface_id()
 
         # Create cells list
-        cells = [("hexahedron", elements.tolist()) for elements in elements_by_surface_id.values()]
+        if self.elements.element_array.shape[1] == 10:
+            cells = [("hexahedron", elements.tolist()) for elements in elements_by_surface_id.values()]
+        else:
+            cells = [("tetra", elements.tolist()) for elements in elements_by_surface_id.values()]
 
         # Get boundary nodes
         nodes_on_boundaries = self.nodes.nodes_on_boundaries()
