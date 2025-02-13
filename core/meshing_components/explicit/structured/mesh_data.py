@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-from core.meshing_components.Explicite.Structured.grid_generator import create_surface_grid, sort_points_by_x_y
-from core.meshing_components.Explicite.Structured.grid_generator import sort_surfaces_by_z, store_points_in_array
-from core.meshing_components.Explicite.Structured.store_grid_data import create_surfaces_with_grids_for_bottom_and_top
-from core.meshing_components.Explicite.Structured.store_grid_data import read_refinement_file, create_intermediate_layers
-from core.meshing_components.Explicite.Structured.node_element_generator import adjust_z_values, \
+from core.meshing_components.explicit.structured.grid_generator import create_surface_grid, sort_points_by_x_y
+from core.meshing_components.explicit.structured.grid_generator import sort_surfaces_by_z, store_points_in_array
+from core.meshing_components.explicit.structured.store_grid_data import create_surfaces_with_grids_for_bottom_and_top
+from core.meshing_components.explicit.structured.store_grid_data import read_refinement_file, create_intermediate_layers
+from core.meshing_components.explicit.structured.node_element_generator import adjust_z_values, \
     create_hexahedral_elements_with_nodes
 from core.object_components import MeshResults
 

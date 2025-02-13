@@ -248,7 +248,7 @@ def mesh_generator(ov, mesh_size=50):
   return elements, unique_nodes_with_coords
 
 
-def create_unstructed_mesh_data(geomodel_result, mesh_size=20):
+def create_unstructured_mesh_data(geomodel_result, mesh_size=20):
     """
     Generates a geological mesh and returns a MeshData object.
 

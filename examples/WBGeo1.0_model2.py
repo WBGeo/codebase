@@ -9,7 +9,8 @@ from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
-from core.meshing_components.mesh_generation.mesh_data import create_mesh_data
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 #%%
 
@@ -52,12 +53,18 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 #%%
 
 # 4: Meshing for Process Simulation
-mesh_test = create_mesh_data(
+# mesh_test = create_structured_mesh_data(
+#     geomodel_result=results_test,
+#     refinement_data=[10,10,10],
+#     z_threshold=0.1,
+#     tolerance=1
+# )
+
+mesh_test = create_unstructured_mesh_data(
     geomodel_result=results_test,
-    refinement_data=[10,10,10],
-    z_threshold=0.1,
-    tolerance=1
+    mesh_size=20
 )
+
 
 #%%
 
