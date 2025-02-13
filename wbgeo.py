@@ -8,8 +8,8 @@ from core.interpolator_components.universal_cokriging import universal_cokriging
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
-from core.meshing_components.meshing_moose import create_mesh_moose
-from core.meshing_components.mesh_generation.mesh_data import create_mesh_data, create_mesh_data_str
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -48,6 +48,7 @@ PMType: apitypes.ScriptType = {"id": "PMTypePlaceHolder",
 
 InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData,
                                       "name": 'Input data for a geological model', "color": 'orange'}
+
 GeomodelResultsType: apitypes.ScriptType = {"id": "GeomodelResults", "real_type": GeomodelResults, "name": 'Geo Result',
                                             "color": '#f4a259'}
 
@@ -142,11 +143,11 @@ nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique ident
                                        'type': InputDataType,  # the ports type (as in ScriptType)
                                        'data_requirements': [does_not_have_faults],
                                    },
-                                      {
-                                        'param': 'beta',
-                                        'type': IntDataType,
-                                        'default': 5,
-                                      }
+                                   {
+                                       'param': 'beta',
+                                       'type': IntDataType,
+                                       'default': 5,
+                                   }
                                ],
                                execute=nodesapi.create_geo_execute(geo_inr_interpolator),
                                description='Compute a model based on input data using GeoINR interpolation',
@@ -229,7 +230,7 @@ nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  #
 
 # meshing
 nodesapi.register_script_block(identifier='meshing',  # unique identifier
-                               title='Meshing',  # human readable (Default) title
+                               title='structured meshing',  # human readable (Default) title
                                inputs=[  # the input ports
                                    {
                                        'param': 'geomodel_result',  # the name of this port
@@ -247,8 +248,8 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                        'type': IntDataType,
                                        'default': 1,
                                    }],
-                               execute=nodesapi.create_geo_execute(create_mesh_data_str),
-                               description='Create a mesh based on the Structural Geological Model',
+                               execute=nodesapi.create_geo_execute(create_structured_mesh_data),
+                               description='Create a structured mesh based on the Structural Geological Model',
                                color='#5b8e7d',
                                border_color='#000000',
                                # the method which actually performs the calculation
@@ -256,6 +257,25 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                    'param': 'result', 'type': MeshOutputType,
                                }])
 
+nodesapi.register_script_block(identifier='meshing',  # unique identifier
+                               title='unstructured meshing',  # human readable (Default) title
+                               inputs=[  # the input ports
+                                   {
+                                       'param': 'geomodel_result',  # the name of this port
+                                       'type': GeomodelResultsType,  # the ports type (as in ScriptType)
+                                   }, {
+                                       'param': 'mesh_size',
+                                       'type': IntDataType,
+                                       'default': 30,
+                                   }],
+                               execute=nodesapi.create_geo_execute(create_unstructured_mesh_data),
+                               description='Create a unstructured mesh based on the Structural Geological Model',
+                               color='#5b8e7d',
+                               border_color='#000000',
+                               # the method which actually performs the calculation
+                               outputs=[{  # the output ports
+                                   'param': 'result', 'type': MeshOutputType,
+                               }])
 
 
 # Register 3 yet-to-be-implemented block types
