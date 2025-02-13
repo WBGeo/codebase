@@ -6,7 +6,7 @@ from core.utility.conversions import element_list_from_dict
 from core.utility.model_cleaning import remove_outliers_3d
 
 
-def universal_cokriging_interpolator(input_data: InputData):
+def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_data: InputData):
     """
     Compute a model based on input data using universal co-kriging interpolation (gempy)
 
@@ -99,19 +99,39 @@ def universal_cokriging_interpolator(input_data: InputData):
         pass
 
     block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
-
-    # Remove small isolated patches
-    # cleaned_block = remove_outliers_3d(block)
-
-    # cleaned_lith_block = cleaned_block.reshape(model_instance.solutions.raw_arrays.lith_block.shape)
     #
-    for i in np.unique(block)[:-1]:
-        verts, faces, _, _ = measure.marching_cubes(block, i,
-                                                    spacing=(model_instance.grid.regular_grid.dx,
-                                                             model_instance.grid.regular_grid.dy,
-                                                             model_instance.grid.regular_grid.dz))
-        mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
-        mc_edges.append(faces)
+    # Remove small isolated patches
+    cleaned_block = remove_outliers_3d(block)
+    #
+    cleaned_lith_block = cleaned_block.reshape(model_instance.solutions.raw_arrays.lith_block.shape)
+    #
+    # for i in np.unique(block)[:-1]:
+    #     verts, faces, _, _ = measure.marching_cubes(cleaned_block, i,
+    #                                                 spacing=(model_instance.grid.regular_grid.dx,
+    #                                                          model_instance.grid.regular_grid.dy,
+    #                                                          model_instance.grid.regular_grid.dz))
+    #     mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
+    #     mc_edges.append(faces)
+
+    # TODO: this is just a hack solution for now that only works for model 7
+    # Get the alternative meshes that go through the unconformity for scalar field instead of lith block
+
+    # extract scalar field values at surface points
+    scalar_values = model_instance.solutions.raw_arrays.scalar_field_at_surface_points
+
+    false_indices = [i for i, fault in enumerate(input_data.faults) if not fault]
+    for idx in false_indices:
+
+        scalar_field = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution)
+
+        for i in range(len(scalar_values[idx])):
+            verts, faces, _, _ = measure.marching_cubes(scalar_field, scalar_values[idx][i],
+                                                            spacing=(model_instance.grid.regular_grid.dx,
+                                                                     model_instance.grid.regular_grid.dy,
+                                                                     model_instance.grid.regular_grid.dz))
+
+            mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
+            mc_edges.append(faces)
 
     # Reorder everything correctly if faults exist
     if input_data.faults is not None:
@@ -148,7 +168,8 @@ def universal_cokriging_interpolator(input_data: InputData):
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
-                                       lith_block=model_instance.solutions.raw_arrays.lith_block,
+                                       # lith_block=model_instance.solutions.raw_arrays.lith_block,
+                                       lith_block=cleaned_lith_block,
                                        # surface_meshes_vertices=dc_vertices_transformed,
                                        surface_meshes_vertices=mc_vertices,
                                        # surface_meshes_edges=dc_edges,
