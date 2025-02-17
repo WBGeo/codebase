@@ -7,7 +7,8 @@ from core.object_components import InputData, GeomodelResults, MeshResults
 
 
 def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
-            show_results: bool = False, show_data: bool = True, colors=None, show_plot=True) -> (plt.Figure, plt.Axes):
+            show_results: bool = False, show_data: bool = True, colors=None, show_plot=True,
+            direction="y", slice_int=None) -> (plt.Figure, plt.Axes):
     """
     Plot the input data and results in 2D.
 
@@ -18,6 +19,8 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
         show_data (bool): Whether to show the input data.
         colors (Optional(list)): List of colors to use for the different formations.
         show_plot (bool): Whether to show the plot.
+        direction (str): The direction of the slice, either 'x', 'y' or 'z'.
+        slice_int (int): The index of the slice to plot.
 
     Returns:
         fig (plt.Figure): The figure object.
@@ -34,9 +37,21 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
     # Create a matplotlib figure and axis
     fig, ax = plt.subplots()
 
+    if direction == "x":
+        extent = (float(geomodel_results.extent[2]), float(geomodel_results.extent[3]),
+                  float(geomodel_results.extent[4]), float(geomodel_results.extent[5]))
+    elif direction == "y":
+        extent = (float(geomodel_results.extent[0]), float(geomodel_results.extent[1]),
+                  float(geomodel_results.extent[4]), float(geomodel_results.extent[5]))
+    elif direction == "z":
+        extent = (float(geomodel_results.extent[0]), float(geomodel_results.extent[1]),
+                  float(geomodel_results.extent[2]), float(geomodel_results.extent[3]))
+    else:
+        raise ValueError("Direction must be 'x', 'y' or 'z'.")
+
     # Set the x and y extent of the model
-    ax.set_xlim(input_data.extent[0], input_data.extent[1])
-    ax.set_ylim(input_data.extent[4], input_data.extent[5])
+    ax.set_xlim(extent[0], extent[1])
+    ax.set_ylim(extent[2], extent[3])
 
     # Define unique formations
     formations = input_data.surface_points['formation'].unique()
@@ -45,25 +60,71 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
     cmap = mcolors.ListedColormap(colors)
     norm = mcolors.BoundaryNorm(np.arange(len(formations) + 1) - 0.5, len(formations))
 
+    # # Plot the surface points
+    # sc = ax.scatter(input_data.surface_points.X, input_data.surface_points.Z,
+    #                 c=input_data.surface_points['formation'].apply(lambda x: np.where(formations == x)[0][0]),
+    #                 cmap=cmap,
+    #                 norm=norm,
+    #                 edgecolors="black",
+    #                 visible=show_data)
+    #
+    # # Plot the orientations if available
+    # if input_data.orientations is not None:
+    #     ax.quiver(input_data.orientations.X, input_data.orientations.Z,
+    #               input_data.orientations.G_x, input_data.orientations.G_z,
+    #               input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
+    #               angles='xy', scale_units='xy',
+    #               cmap=cmap,
+    #               norm=norm,
+    #               edgecolors="black",
+    #               linewidth=1,
+    #               visible=show_data)
+    # else:
+    #     pass
+
+    # Define coordinate mappings
+    scatter_coords = {
+        "x": ("Y", "Z"),
+        "y": ("X", "Z"),
+        "z": ("X", "Y")
+    }
+
+    quiver_coords = {
+        "x": ("Y", "Z", "G_y", "G_z"),
+        "y": ("X", "Z", "G_x", "G_z"),
+        "z": ("X", "Y", "G_x", "G_y")
+    }
+
+    # Get the appropriate coordinates based on direction
+    sc_x, sc_y = scatter_coords[direction]
+
     # Plot the surface points
-    sc = ax.scatter(input_data.surface_points.X, input_data.surface_points.Z,
-                    c=input_data.surface_points['formation'].apply(lambda x: np.where(formations == x)[0][0]),
-                    cmap=cmap,
-                    norm=norm,
-                    edgecolors="black",
-                    visible=show_data)
+    sc = ax.scatter(
+        getattr(input_data.surface_points, sc_x),
+        getattr(input_data.surface_points, sc_y),
+        c=input_data.surface_points['formation'].apply(lambda x: np.where(formations == x)[0][0]),
+        cmap=cmap,
+        norm=norm,
+        edgecolors="black",
+        visible=show_data
+    )
 
     # Plot the orientations if available
     if input_data.orientations is not None:
-        ax.quiver(input_data.orientations.X, input_data.orientations.Z,
-                  input_data.orientations.G_x, input_data.orientations.G_z,
-                  input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
-                  angles='xy', scale_units='xy',
-                  cmap=cmap,
-                  norm=norm,
-                  edgecolors="black",
-                  linewidth=1,
-                  visible=show_data)
+        q_x, q_y, q_u, q_v = quiver_coords[direction]
+        ax.quiver(
+            getattr(input_data.orientations, q_x),
+            getattr(input_data.orientations, q_y),
+            getattr(input_data.orientations, q_u),
+            getattr(input_data.orientations, q_v),
+            input_data.orientations['formation'].apply(lambda x: np.where(formations == x)[0][0]),
+            angles='xy', scale_units='xy',
+            cmap=cmap,
+            norm=norm,
+            edgecolors="black",
+            linewidth=1,
+            visible=show_data
+        )
     else:
         pass
 
@@ -74,7 +135,17 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
         plot_block = plot_block
 
         # cut slice in the middle of the model
-        image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
+        if slice_int is None:
+            slice_int = int(np.rint(input_data.resolution[1] / 2))
+
+        if direction == "x":
+            image = plot_block[slice_int, :, :].T
+        elif direction == "y":
+            image = plot_block[:, slice_int, :].T
+        elif direction == "z":
+            image = plot_block[:, :, slice_int].T
+        else:
+            raise ValueError("Direction must be 'x', 'y' or 'z'.")
 
         # Create a discrete color map for the lithology block
         if input_data.faults is not None:
@@ -85,21 +156,19 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
         else:
             cmap2 = mcolors.ListedColormap(colors)
 
-        # Make sure boundaries are one more that colors
+        # Make sure boundaries are one more than colors
         # specify boundaries based on values in lithology block
-        arr = np.unique(image) - 0.5
+        # arr = np.unique(image) - 0.5
+        arr = np.unique(geomodel_results.lith_block) - 0.5
         arr = np.append(arr, np.unique(arr)[-1] + 1)
         norm2 = mcolors.BoundaryNorm(arr, ncolors=len(arr) - 1)
 
-        ax.imshow(
-            image, origin='lower', zorder=-100, cmap=cmap2, norm=norm2,
-            extent=(float(geomodel_results.extent[0]), float(geomodel_results.extent[1]),
-                    float(geomodel_results.extent[4]), float(geomodel_results.extent[5])))
+        ax.imshow(image, origin='lower', zorder=-100, cmap=cmap2, norm=norm2, extent=extent)
 
         # TODO: Add contour solution here but this requires the scalar fields
 
     elif geomodel_results is None and show_results:
-        print("Can not show results without results data.")
+        raise ValueError("Can not show results without results data.")
     else:
         pass
 

@@ -5,9 +5,9 @@ import os
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from core.interpolator_components.universal_cokriging_cleaned import universal_cokriging_interpolator_with_cleaning_and_alternative_meshes
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
-from core.meshing_components import export_mesh_moose
-from core.meshing_components.meshing_moose import create_mesh_moose
+
 
 #%%
 
@@ -40,26 +40,20 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-results_test = universal_cokriging_interpolator(data_test)
+# results_test = universal_cokriging_interpolator(data_test)
+results_test = universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(data_test)
 
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
-plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
+plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True,
+        direction="y", slice_int=25)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 #%%
 
 # 4: Meshing for Process Simulation
-# export_mesh_moose.export_data_to_moose(results_test)
 
-#%%
 
-# 5: Create mesh
-mesh_test = create_mesh_moose(results_test, name='Model_7_UCK')
 
-#%%
-
-# 5.5: Plot the mesh in 3D
-plot_mesh_3d(mesh_test, data_test)
 

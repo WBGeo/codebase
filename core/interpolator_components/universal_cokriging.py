@@ -3,6 +3,7 @@ import gempy as gp
 from core.object_components import InputData, GeomodelResults
 from skimage import measure
 from core.utility.conversions import element_list_from_dict
+from core.utility.model_cleaning import remove_outliers_3d
 
 
 def universal_cokriging_interpolator(input_data: InputData):
@@ -92,21 +93,27 @@ def universal_cokriging_interpolator(input_data: InputData):
                                                         spacing=(model_instance.grid.regular_grid.dx,
                                                                  model_instance.grid.regular_grid.dy,
                                                                  model_instance.grid.regular_grid.dz))
-            mc_vertices.append(verts)
+            mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
             mc_edges.append(faces)
     else:
         pass
+
     block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
+
+    # Remove small isolated patches
+    # cleaned_block = remove_outliers_3d(block)
+
+    # cleaned_lith_block = cleaned_block.reshape(model_instance.solutions.raw_arrays.lith_block.shape)
+    #
     for i in np.unique(block)[:-1]:
         verts, faces, _, _ = measure.marching_cubes(block, i,
                                                     spacing=(model_instance.grid.regular_grid.dx,
                                                              model_instance.grid.regular_grid.dy,
                                                              model_instance.grid.regular_grid.dz))
-        mc_vertices.append(verts)
+        mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
         mc_edges.append(faces)
 
     # Reorder everything correctly if faults exist
-    # TODO: This seems to work but I need to test it and it is convoluted
     if input_data.faults is not None:
 
         bool_list = element_list_from_dict(input_data.mapping_object, input_data.faults)
@@ -129,11 +136,13 @@ def universal_cokriging_interpolator(input_data: InputData):
         # Populate reordered_list based on bool_list
         for is_true in bool_list:
             if is_true:
-                mc_vertices.append(true_elements_vertices[true_idx])
+                mc_vertices.append(true_elements_vertices[true_idx] + [input_data.extent[0], input_data.extent[2],
+                                                                       input_data.extent[4]])
                 mc_edges.append(true_elements_edges[true_idx])
                 true_idx += 1
             else:
-                mc_vertices.append(false_elements_vertices[false_idx])
+                mc_vertices.append(false_elements_vertices[false_idx] + [input_data.extent[0], input_data.extent[2],
+                                                                         input_data.extent[4]])
                 mc_edges.append(false_elements_edges[false_idx])
                 false_idx += 1
 

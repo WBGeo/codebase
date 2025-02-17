@@ -15,7 +15,6 @@ class Nodes(Points):
 
         # Node-specific attributes (getting from Point class)
         self.node_ids = self.point_id.astype(int)
-        self.surface_ids = self.surface_id.astype(int)
         self.x_coords = self.coordinates[:, 0]
         self.y_coords = self.coordinates[:, 1]
         self.z_coords = self.coordinates[:, 2]
@@ -24,9 +23,7 @@ class Nodes(Points):
         """Returns the node IDs."""
         return self.node_ids
 
-    def get_surface_ids(self):
-        """Returns the surface IDs of nodes."""
-        return self.surface_ids
+
 
     def total_nodes(self):
         """Returns the total number of nodes."""
