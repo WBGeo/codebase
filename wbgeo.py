@@ -1,6 +1,8 @@
 from typing import Optional
 
 from py_api_wbgeo import apitypes
+
+from codebase.core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data_str
 from core.object_components import InputData, GeomodelResults
 from core.loading_components.geo_input_data import geo_input_data_fix
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
@@ -36,7 +38,7 @@ import pyvista as pv
 
 MeshOutputType: apitypes.ScriptType = {"id": "MeshOutputType",
                                        "real_type": pv.DataSet,
-                                       "name": "MeshOutputType", "color": '#5b8e7d'}
+                                       "name": "MeshResult", "color": '#5b8e7d'}
 
 PlaceholderType: apitypes.ScriptType = {"id": "PlaceholderType",
                                         "real_type": BoolDataType,
@@ -44,7 +46,7 @@ PlaceholderType: apitypes.ScriptType = {"id": "PlaceholderType",
 
 PMType: apitypes.ScriptType = {"id": "PMTypePlaceHolder",
                                "real_type": BoolDataType,
-                               "name": "ProcessSimType", "color": 'blue'}
+                               "name": "ProcessSimResult", "color": 'blue'}
 
 InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData,
                                       "name": 'Input data for a geological model', "color": 'orange'}
@@ -112,6 +114,7 @@ nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identi
                                description='Provides a geo model ',
                                color='#8cb369',
                                border_color='#000000',
+                               group='Inputs',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'data', 'type': InputDataType,
@@ -130,6 +133,7 @@ nodesapi.register_script_block(identifier='loop_structural_interpolator',  # uni
                                description='Compute a model based on input data using LoopStructural interpolation',
                                color='#f4a259',
                                border_color='#000000',
+                               group='Interpolation',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -153,6 +157,7 @@ nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique ident
                                description='Compute a model based on input data using GeoINR interpolation',
                                color='#f4a259',
                                border_color='#000000',
+                               group='Interpolation',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -181,6 +186,7 @@ nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifi
                                description='Compute a model based on input data using RBF interpolation',
                                color='#f4a259',
                                border_color='#000000',
+                               group='Interpolation',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -206,6 +212,7 @@ nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # un
                                description='Compute a model based on input data using kriging interpolation',
                                color='#f4a259',
                                border_color='#000000',
+                               group='Interpolation',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -223,6 +230,7 @@ nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  #
                                description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
                                color='#f4a259',
                                border_color='#000000',
+                               group='Interpolation',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': GeomodelResultsType,
@@ -248,16 +256,17 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                        'type': IntDataType,
                                        'default': 1,
                                    }],
-                               execute=nodesapi.create_geo_execute(create_structured_mesh_data),
+                               execute=nodesapi.create_geo_execute(create_structured_mesh_data_str),
                                description='Create a structured mesh based on the Structural Geological Model',
                                color='#5b8e7d',
                                border_color='#000000',
+                               group='Meshing',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': MeshOutputType,
                                }])
 
-nodesapi.register_script_block(identifier='meshing',  # unique identifier
+nodesapi.register_script_block(identifier='meshing_unstructured',  # unique identifier
                                title='unstructured meshing',  # human readable (Default) title
                                inputs=[  # the input ports
                                    {
@@ -272,6 +281,7 @@ nodesapi.register_script_block(identifier='meshing',  # unique identifier
                                description='Create a unstructured mesh based on the Structural Geological Model',
                                color='#5b8e7d',
                                border_color='#000000',
+                               group='Meshing',
                                # the method which actually performs the calculation
                                outputs=[{  # the output ports
                                    'param': 'result', 'type': MeshOutputType,
@@ -305,15 +315,16 @@ nodesapi.register_script_block(identifier='nyi_ps',
                                title='Process Simulation',
                                inputs=[
                                    {
-                                       'param': 'i',
+                                       'param': 'mesh',
                                        'type': MeshOutputType,
                                        'data_requirements': [],
                                    }],
                                execute=nodesapi.create_geo_execute(placeholder_m),
                                color='#bc4b51',
                                border_color='#000000',
+                               group='Process Simulation',
                                outputs=[
-                                   {'param': 'o', 'type': PMType},
+                                   {'param': 'result', 'type': PMType},
                                ],
                                )
 
@@ -328,6 +339,7 @@ nodesapi.register_script_block(identifier='nyi_ar',
                                execute=nodesapi.create_geo_execute(placeholder_m),
                                color='#f4e285',
                                border_color='#000000',
+                               group='Οther', # greek Ο due to ordering
                                outputs=[
                                    {'param': 'o', 'type': GeomodelResultsType},
                                ],
