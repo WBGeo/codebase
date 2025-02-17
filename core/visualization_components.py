@@ -38,14 +38,14 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
     fig, ax = plt.subplots()
 
     if direction == "x":
-        extent = (float(geomodel_results.extent[2]), float(geomodel_results.extent[3]),
-                  float(geomodel_results.extent[4]), float(geomodel_results.extent[5]))
+        extent = (float(input_data.extent[2]), float(input_data.extent[3]),
+                  float(input_data.extent[4]), float(input_data.extent[5]))
     elif direction == "y":
-        extent = (float(geomodel_results.extent[0]), float(geomodel_results.extent[1]),
-                  float(geomodel_results.extent[4]), float(geomodel_results.extent[5]))
+        extent = (float(input_data.extent[0]), float(input_data.extent[1]),
+                  float(input_data.extent[4]), float(input_data.extent[5]))
     elif direction == "z":
-        extent = (float(geomodel_results.extent[0]), float(geomodel_results.extent[1]),
-                  float(geomodel_results.extent[2]), float(geomodel_results.extent[3]))
+        extent = (float(input_data.extent[0]), float(input_data.extent[1]),
+                  float(input_data.extent[2]), float(input_data.extent[3]))
     else:
         raise ValueError("Direction must be 'x', 'y' or 'z'.")
 
