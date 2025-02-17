@@ -174,7 +174,7 @@ def fragment_surfaces(surfaces, extent):
     return ov, ovv
 
 
-def mesh_generator(ov, mesh_size=50):
+def mesh_generator(ov, mesh_size=50, visualize=False):
   # Extract volumes tags
   volumes = [tag for dim, tag in ov if dim == 3]
 
@@ -193,9 +193,10 @@ def mesh_generator(ov, mesh_size=50):
   # Generate 3D mesh
   gmsh.model.mesh.generate(3)
   # Visualize the result (if needed)
-  gmsh.fltk.initialize()
-  while gmsh.fltk.isAvailable():
-      gmsh.fltk.wait()
+  if visualize:
+      gmsh.fltk.initialize()
+      while gmsh.fltk.isAvailable():
+          gmsh.fltk.wait()
 
   ########################## <get nodes and elements for creating different mesh formats #######################
   # Get nodes Tag and their coordinates
@@ -248,7 +249,7 @@ def mesh_generator(ov, mesh_size=50):
   return elements, unique_nodes_with_coords
 
 
-def create_unstructured_mesh_data(geomodel_result, mesh_size=20):
+def create_unstructured_mesh_data(geomodel_result, mesh_size=20, visualize=False):
     """
     Generates a geological mesh and returns a MeshData object.
 
@@ -257,6 +258,7 @@ def create_unstructured_mesh_data(geomodel_result, mesh_size=20):
         refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
         tolerance (float): Distance tolerance for Z-value adjustment.
+        visualize(bool): Visualize the result via gmsh
 
     Returns:
         MeshResults: An instance of the MeshResults class.
@@ -270,7 +272,7 @@ def create_unstructured_mesh_data(geomodel_result, mesh_size=20):
     # Extract extent values
     extent = geomodel_result.extent
     ov,ovv = fragment_surfaces(surfaces, extent)
-    elements, nodes = mesh_generator(ov, mesh_size)
+    elements, nodes = mesh_generator(ov, mesh_size, visualize)
     # Change the format
     nodes = np.array(nodes, dtype=float)
     elements = elements.astype(int)
