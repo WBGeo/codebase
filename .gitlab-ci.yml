@@ -2,7 +2,7 @@ test:
   image: python:3.12
   stage: test
   before_script:
-    - pip install -r requirements.txt
+    - pip install -r requirements.txt --extra-index-url https://glpat:glpat-S8CVCE2QtMPsVgXdu89J@git.rwth-aachen.de/api/v4/projects/102532/packages/pypi/simple --extra-index-url https://download.pytorch.org/whl/cpu
     - pip install coverage
     - pip install pytest
   script:
@@ -20,6 +20,8 @@ test:
 pages:
   image: python:3.12
   stage: deploy
+  rules:
+    - when: always
   dependencies:
     - test
   script:
