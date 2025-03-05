@@ -1,4 +1,4 @@
-pytest:
+test:
   image: python:3.12
   stage: test
   before_script:
