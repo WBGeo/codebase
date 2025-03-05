@@ -7,7 +7,7 @@ import pickle
 import os
 
 cwd = os.getcwd() + "/.."
-data_dir = os.getcwd() + "/../examples/data/"
+data_dir = os.path.dirname(__file__) + "/../examples/data/"
 
 
 # based on model 2
@@ -45,7 +45,7 @@ class TestInputData(unittest.TestCase):
         # uncomment the following line to update the data
         # self.update_data_files(self.data_test)
         # Load a universal cokriging results - when we deviate from this object, an error occured
-        with open('model2_input_data.pkl', 'rb') as f:
+        with open(os.path.dirname(__file__) + '/model2_input_data.pkl', 'rb') as f:
             regression_data: InputData = pickle.load(f)
         self.assertEqual(self.data_test.name, regression_data.name)
         np.testing.assert_array_equal(self.data_test.extent, regression_data.extent)

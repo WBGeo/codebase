@@ -1,0 +1,29 @@
+pytest:
+  image: python:3.12
+  stage: test
+  before_script:
+    - pip install -r requirements.txt
+    - pip install coverage
+    - pip install pytest
+  script:
+    - python -m coverage run -m pytest --junitxml=report.xml
+    - coverage html
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+    paths:
+      - htmlcov/
+    expire_in: 2 weeks
+
+# deploy coverage report
+pages:
+  image: python:3.12
+  stage: deploy
+  dependencies:
+    - test
+  script:
+    - mv htmlcov/ public/
+  artifacts:
+    paths:
+      - public/

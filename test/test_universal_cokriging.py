@@ -8,8 +8,7 @@ import pandas as pd
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.object_components import InputData, GeomodelResults
 
-cwd = os.getcwd() + "/.."
-data_dir = os.getcwd() + "/../examples/data/"
+data_dir = os.path.dirname(__file__) + "/../examples/data/"
 
 
 # Perform regression test on the universal cokriging
@@ -43,7 +42,7 @@ class TestUniversalCokriging(unittest.TestCase):
         # uncomment the following line to update the data
         # self.update_data_files(results_test)
         # Load a universal cokriging results - when we deviate from this object, an error occured
-        with open('model2_universal_cokriging_res.pkl', 'rb') as f:
+        with open(os.path.dirname(__file__) + '/model2_universal_cokriging_res.pkl', 'rb') as f:
             results_to_regression_test_against: GeomodelResults = pickle.load(f)
         np.testing.assert_array_equal(results_test.lith_block, results_to_regression_test_against.lith_block,
                                       "lith block data missmatch")
@@ -62,7 +61,7 @@ class TestUniversalCokriging(unittest.TestCase):
 
     @classmethod
     def update_data_files(cls, results_test: GeomodelResults):
-        with open('model2_universal_cokriging_res.pkl', 'wb') as f:
+        with open(os.path.dirname(__file__) + '/model2_universal_cokriging_res.pkl', 'wb') as f:
             pickle.dump(results_test, f)
 
 
