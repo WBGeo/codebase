@@ -7,6 +7,7 @@ test:
     - pip install pytest
   script:
     - python -m coverage run -m pytest --junitxml=report.xml
+  after_script:
     - coverage html
   artifacts:
     when: always
