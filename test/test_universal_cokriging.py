@@ -41,14 +41,19 @@ class TestUniversalCokriging(unittest.TestCase):
         # see https://numpy.org/doc/stable/reference/generated/numpy.testing.assert_array_equal.html
         # uncomment the following line to update the data
         # self.update_data_files(results_test)
-        # Load a universal cokriging results - when we deviate from this object, an error occured
+        # Load a universal co-kriging results - when we deviate from this object, an error occured
         with open(os.path.dirname(__file__) + '/model2_universal_cokriging_res.pkl', 'rb') as f:
             results_to_regression_test_against: GeomodelResults = pickle.load(f)
         np.testing.assert_array_equal(results_test.lith_block, results_to_regression_test_against.lith_block,
                                       "lith block data missmatch")
-        np.testing.assert_array_equal(results_test.surface_meshes_vertices,
-                                      results_to_regression_test_against.surface_meshes_vertices,
-                                      "surface meshes vertices data missmatch")
+        self.assertEqual(len(results_test.surface_meshes_vertices),
+                                      len(results_to_regression_test_against.surface_meshes_vertices),
+                                      "surface meshes vertices length missmatch")
+
+        for i in range(0, len(results_test.surface_meshes_vertices)):
+            np.testing.assert_array_equal(results_test.surface_meshes_vertices[i],
+                                          results_to_regression_test_against.surface_meshes_vertices[i],
+                                          "surface meshes vertices data missmatch " + str(i))
         self.assertEqual(len(results_test.surface_meshes_edges),
                          len(results_to_regression_test_against.surface_meshes_edges),
                          "surface meshes edges length data missmatch")
