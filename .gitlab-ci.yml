@@ -2,6 +2,10 @@ test:
   image: python:3.12
   stage: test
   before_script:
+    - python -V               # Print out python version for debugging
+    - pip install virtualenv  # Pip's cache doesn't store the python packages
+    - virtualenv venv
+    - source venv/bin/activate
     - pip install -r requirements.txt --extra-index-url https://glpat:glpat-S8CVCE2QtMPsVgXdu89J@git.rwth-aachen.de/api/v4/projects/102532/packages/pypi/simple --extra-index-url https://download.pytorch.org/whl/cpu
     - pip install coverage
     - pip install pytest
@@ -16,6 +20,14 @@ test:
     paths:
       - htmlcov/
     expire_in: 2 weeks
+  cache:
+    - key:
+        files:
+          - requirements.txt
+        paths:
+          - .cache/pip
+  variables: # Change pip's cache directory to be inside the project directory because we can only cache local items.
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
 # deploy coverage report
 pages:
@@ -30,3 +42,4 @@ pages:
   artifacts:
     paths:
       - public/
+
