@@ -21,11 +21,11 @@ test:
       - htmlcov/
     expire_in: 2 weeks
   cache:
-    - key:
+    key:
         files:
           - requirements.txt
-        paths:
-          - .cache/pip
+    paths:
+      - .cache/pip
   variables: # Change pip's cache directory to be inside the project directory because we can only cache local items.
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
