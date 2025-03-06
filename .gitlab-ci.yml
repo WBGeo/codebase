@@ -12,6 +12,7 @@ test:
   script:
     - python -m coverage run -m pytest --junitxml=report.xml
   after_script:
+    - virtualenv venv
     - coverage html
   artifacts:
     when: always
