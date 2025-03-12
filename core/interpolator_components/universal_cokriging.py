@@ -100,11 +100,6 @@ def universal_cokriging_interpolator(input_data: InputData):
 
     block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
 
-    # Remove small isolated patches
-    # cleaned_block = remove_outliers_3d(block)
-
-    # cleaned_lith_block = cleaned_block.reshape(model_instance.solutions.raw_arrays.lith_block.shape)
-    #
     for i in np.unique(block)[:-1]:
         verts, faces, _, _ = measure.marching_cubes(block, i,
                                                     spacing=(model_instance.grid.regular_grid.dx,

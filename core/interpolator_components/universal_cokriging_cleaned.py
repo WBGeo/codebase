@@ -166,6 +166,8 @@ def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_
                 mc_edges.append(false_elements_edges[false_idx])
                 false_idx += 1
 
+    scalar_fields = model_instance.solutions.raw_arrays.scalar_field_matrix
+
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
                                        # lith_block=model_instance.solutions.raw_arrays.lith_block,
@@ -179,4 +181,4 @@ def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_
                                        resolution=model_instance.grid.regular_grid.resolution,
                                        mapping_object=input_data.mapping_object)
 
-    return results_instance
+    return results_instance, scalar_fields
