@@ -5,7 +5,6 @@ import os
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
-from core.interpolator_components.universal_cokriging_cleaned import universal_cokriging_interpolator_with_cleaning_and_alternative_meshes
 from core.visualization_components import plot_2d, plot_3d
 
 #%%
@@ -40,8 +39,7 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test)
-results_test, scalar_fields = universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(data_test)
+results_test = universal_cokriging_interpolator(data_test)
 
 #%%
 
@@ -49,36 +47,4 @@ results_test, scalar_fields = universal_cokriging_interpolator_with_cleaning_and
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
-
-#%%
-
-import matplotlib.pyplot as plt
-
-#%%
-
-# Create a matplotlib figure and axis
-fig, ax = plt.subplots()
-
-extent = [0, 1000, 0, 1000]
-
-# Set the x and y extent of the model
-ax.set_xlim(extent[0], extent[1])
-ax.set_ylim(extent[2], extent[3])
-
-# Plot the scalar field
-plot_block = scalar_fields[3].reshape(data_test.resolution)
-image = plot_block[:, 25, :].T
-
-# Plot the scalar field
-ax.imshow(image, origin='lower', zorder=-100, extent=extent)
-# Contour the scalar field
-ax.contour(image, origin='lower', zorder=100000, extent=extent, colors='black', linewidths=0.5)
-
-# Grid lines and labels
-ax.set_aspect('equal')
-# ax.grid(True)
-ax.set_xlabel('X')
-ax.set_ylabel('Z')
-
-plt.show()
 
