@@ -179,6 +179,7 @@ def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_
                                        grid=model_instance.grid.regular_grid.values,
                                        extent=model_instance.grid.regular_grid.extent,
                                        resolution=model_instance.grid.regular_grid.resolution,
-                                       mapping_object=input_data.mapping_object)
+                                       mapping_object=input_data.mapping_object,
+                                       scalar_fields=scalar_fields)
 
-    return results_instance, scalar_fields
+    return results_instance
