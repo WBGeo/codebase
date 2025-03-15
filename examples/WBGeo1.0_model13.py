@@ -10,10 +10,11 @@ from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
-from core.meshing_components import export_mesh_moose
-from core.meshing_components.meshing_moose import create_mesh_moose
-from core.meshing_components.mesh_generation.mesh_data import create_mesh_data
-from core.meshing_components.mesh_format.Exodus.Exo_format import ExosInputs
+from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
+from core.meshing_components.implicit import export_mesh_moose
+from core.meshing_components.implicit.meshing_moose import create_mesh_moose
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 #%%
 
@@ -48,9 +49,9 @@ plot_3d(data_test)
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=500)
-# results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001)
+results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001)
 # results_test = geo_inr_interpolator(data_test)
-results_test = loop_structural_interpolator(data_test)
+# results_test = loop_structural_interpolator(data_test)
 
 
 #%%
@@ -60,21 +61,16 @@ plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 #%%
-results_verts = []
-# Get Vertices and save them to files
-for i, vertices in enumerate(results_test.surface_meshes_vertices):
-    # Create a filename for each group of vertices
-    results_verts.append(vertices)
 
-#%%
 import pyvista as pv
 
+# Create a PyVista PolyData object
+point_cloud = pv.PolyData(results_test.grid)
+
+# Add the grid values as a scalar array
+point_cloud['values'] = results_test.lith_block
+
+# Plot the point cloud
 plotter = pv.Plotter()
-
-# for i, vertices in enumerate(results_verts):
-#     plotter.add_mesh(vertices, color='blue', opacity=0.8)
-
-plotter.add_mesh(results_verts[1], color='blue', opacity=0.8)
-
+plotter.add_mesh(point_cloud, scalars='values', point_size=25, render_points_as_spheres=True)
 plotter.show()
-
