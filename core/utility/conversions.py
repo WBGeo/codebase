@@ -20,3 +20,9 @@ def element_list_from_dict(data_dict: dict, key_mask: list):
         combined_mask.extend([bool(key_mask[i])] * len(data_dict[key]))
 
     return combined_mask
+
+
+# Normalize function
+def normalize_vectors(vectors):
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)  # Compute L2 norm
+    return vectors / np.where(norms == 0, 1, norms)  # Avoid division by zero
