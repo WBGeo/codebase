@@ -119,16 +119,22 @@ def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_
     # extract scalar field values at surface points
     scalar_values = model_instance.solutions.raw_arrays.scalar_field_at_surface_points
 
-    false_indices = [i for i, fault in enumerate(input_data.faults) if not fault]
+    if input_data.faults is not None:
+        false_indices = [i for i, fault in enumerate(input_data.faults) if not fault]
+        print(false_indices)
+    else:
+        false_indices = np.arange(len(input_data.mapping_object.keys()))
+        print(false_indices)
+
     for idx in false_indices:
 
         scalar_field = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution)
 
         for i in range(len(scalar_values[idx])):
             verts, faces, _, _ = measure.marching_cubes(scalar_field, scalar_values[idx][i],
-                                                            spacing=(model_instance.grid.regular_grid.dx,
-                                                                     model_instance.grid.regular_grid.dy,
-                                                                     model_instance.grid.regular_grid.dz))
+                                                        spacing=(model_instance.grid.regular_grid.dx,
+                                                                 model_instance.grid.regular_grid.dy,
+                                                                 model_instance.grid.regular_grid.dz))
 
             mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
             mc_edges.append(faces)
