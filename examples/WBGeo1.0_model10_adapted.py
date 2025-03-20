@@ -87,3 +87,30 @@ for i in range(len(points_list)):
 plotter.show()
 
 #%%
+
+# Create a PyVista dataset
+# Plot the arrows
+plotter = pv.Plotter()
+
+unit=1
+
+pdata = pv.PolyData(points_list[unit])
+pdata["vectors"] = vectors_list[unit]  # Add vector field
+
+# Create arrow glyphs
+arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
+
+# Plot the arrows
+plotter.add_mesh(arrows, color=colors[unit])
+plotter.add_mesh(
+                pv.PolyData(results_test.surface_meshes_vertices[unit],
+                            np.insert(results_test.surface_meshes_edges[unit], 0, 3, axis=1).ravel()),
+                color=colors[unit], style="wireframe")
+plotter.show()
+
+#%%
+
+# Count the number of NaN values
+nan_count = np.sum(np.isnan(vectors_list[0]))
+
+print(f"Number of NaN values: {nan_count}")

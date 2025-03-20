@@ -54,13 +54,13 @@ def get_surface_mesh_gradients(geo_model_results, norm=True):
 
         # Modify interpolators to avoid bounds error
         interp_grad_x = RegularGridInterpolator(
-            (x_sorted, y_sorted, z_sorted), grad_x_sorted, bounds_error=False, fill_value=np.nan
+            (x_sorted, y_sorted, z_sorted), grad_x_sorted, bounds_error=False, fill_value=None
         )
         interp_grad_y = RegularGridInterpolator(
-            (x_sorted, y_sorted, z_sorted), grad_y_sorted, bounds_error=False, fill_value=np.nan
+            (x_sorted, y_sorted, z_sorted), grad_y_sorted, bounds_error=False, fill_value=None
         )
         interp_grad_z = RegularGridInterpolator(
-            (x_sorted, y_sorted, z_sorted), grad_z_sorted, bounds_error=False, fill_value=np.nan
+            (x_sorted, y_sorted, z_sorted), grad_z_sorted, bounds_error=False, fill_value=None
         )
 
         new_points = geo_model_results.surface_meshes_vertices[i]

@@ -81,57 +81,57 @@ def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_
     #                            model_instance.solutions.dc_meshes]
     # dc_edges = [mesh.edges for mesh in model_instance.solutions.dc_meshes]
 
+    block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
+
+    # Remove small isolated patches
+    cleaned_block = remove_outliers_3d(block)
+
+    cleaned_lith_block = cleaned_block.reshape(model_instance.solutions.raw_arrays.lith_block.shape)
+
+    # extract scalar field values at surface points
+    scalar_values = model_instance.solutions.raw_arrays.scalar_field_at_surface_points
+
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
     # TODO: Does include faults now but I need to test with multiple structural groups with multiple faults
     mc_vertices = []
     mc_edges = []
     if input_data.faults is not None:
-        for i in np.unique(model_instance.solutions.raw_arrays.fault_block)[:-1]:
-            fault_block = model_instance.solutions.raw_arrays.fault_block.reshape(input_data.resolution)
-            verts, faces, _, _ = measure.marching_cubes(fault_block,
-                                                        i,
-                                                        spacing=(model_instance.grid.regular_grid.dx,
-                                                                 model_instance.grid.regular_grid.dy,
-                                                                 model_instance.grid.regular_grid.dz))
-            mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
-            mc_edges.append(faces)
+
+        # Get indices of fault and non_fault groups
+        lith_group_indices = [i for i, fault in enumerate(input_data.faults) if not fault]
+        fault_group_indices = [i for i, fault in enumerate(input_data.faults) if fault]
+
+        # for i in np.unique(model_instance.solutions.raw_arrays.fault_block)[:-1]:
+        for idx in fault_group_indices:
+
+            # Use Fault block
+            # fault_block = model_instance.solutions.raw_arrays.fault_block.reshape(input_data.resolution)
+
+            # Use Scalar fields
+            fault_block = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution)
+
+            for i in range(len(scalar_values[idx])):
+                verts, faces, _, _ = measure.marching_cubes(fault_block,
+                                                            scalar_values[idx][i],
+                                                            spacing=(model_instance.grid.regular_grid.dx,
+                                                                     model_instance.grid.regular_grid.dy,
+                                                                     model_instance.grid.regular_grid.dz))
+                mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
+                mc_edges.append(faces)
     else:
-        pass
+        # Get indices non_fault groups (all groups)
+        lith_group_indices = np.arange(len(input_data.mapping_object.keys()))
 
-    block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
-    #
-    # Remove small isolated patches
-    cleaned_block = remove_outliers_3d(block)
-    #
-    cleaned_lith_block = cleaned_block.reshape(model_instance.solutions.raw_arrays.lith_block.shape)
-    #
-    # for i in np.unique(block)[:-1]:
-    #     verts, faces, _, _ = measure.marching_cubes(cleaned_block, i,
-    #                                                 spacing=(model_instance.grid.regular_grid.dx,
-    #                                                          model_instance.grid.regular_grid.dy,
-    #                                                          model_instance.grid.regular_grid.dz))
-    #     mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
-    #     mc_edges.append(faces)
-
-    # TODO: this is just a hack solution for now that only works for model 7
+    # TODO: this is just a hack solution for now
     # Get the alternative meshes that go through the unconformity for scalar field instead of lith block
 
-    # extract scalar field values at surface points
-    scalar_values = model_instance.solutions.raw_arrays.scalar_field_at_surface_points
-
-    if input_data.faults is not None:
-        false_indices = [i for i, fault in enumerate(input_data.faults) if not fault]
-        print(false_indices)
-    else:
-        false_indices = np.arange(len(input_data.mapping_object.keys()))
-        print(false_indices)
-
-    for idx in false_indices:
+    for idx in lith_group_indices:
 
         scalar_field = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution)
 
         for i in range(len(scalar_values[idx])):
-            verts, faces, _, _ = measure.marching_cubes(scalar_field, scalar_values[idx][i],
+            verts, faces, _, _ = measure.marching_cubes(scalar_field,
+                                                        scalar_values[idx][i],
                                                         spacing=(model_instance.grid.regular_grid.dx,
                                                                  model_instance.grid.regular_grid.dy,
                                                                  model_instance.grid.regular_grid.dz))
