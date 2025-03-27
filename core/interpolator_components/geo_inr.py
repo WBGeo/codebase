@@ -1,7 +1,7 @@
 import numpy as np
 from core.object_components import InputData, GeomodelResults
 from core.utility.surface_mesh_extraction import marching_cubes
-from skimage import measure
+from core.grids.grid_classes import RegularGrid
 
 import warnings
 
@@ -318,19 +318,8 @@ def geo_inr_interpolator(input_data: InputData, beta: int = 10):
         resultsGeomodelResults: The results of the geological model.
 
     """
-    # Based on input data create regular grid - this can be outsourced to a separate function
-    dx = (input_data.extent[1] - input_data.extent[0]) / input_data.resolution[0]
-    dy = (input_data.extent[3] - input_data.extent[2]) / input_data.resolution[1]
-    dz = (input_data.extent[5] - input_data.extent[4]) / input_data.resolution[2]
-    spacing = (dx, dy, dz)
-    gridx = np.linspace(input_data.extent[0] + dx / 2, input_data.extent[1] - dx / 2, input_data.resolution[0])
-    gridy = np.linspace(input_data.extent[2] + dy / 2, input_data.extent[3] - dy / 2, input_data.resolution[1])
-    gridz = np.linspace(input_data.extent[4] + dz / 2, input_data.extent[5] - dz, input_data.resolution[2])
-
-    # gempy way to get coordinates, for some reason this does not blow memory
-    coords = gridx, gridy, gridz
-    g = np.meshgrid(*coords, indexing="ij")
-    grid = np.vstack(tuple(map(np.ravel, g))).T.astype("float64")
+    # Create a Grid instance
+    grid = RegularGrid(input_data.extent, input_data.resolution)
 
     # Create mapping for replacing element names with ints
     unique_elements = sorted(set(element for elements in input_data.mapping_object.values() for element in elements))
@@ -365,7 +354,7 @@ def geo_inr_interpolator(input_data: InputData, beta: int = 10):
         # perform geoINR per structural group
         res_inr, iso_values = stratigraphic_ConcatMLP(interface_data=surface_points_group,
                                                       orientation_data=orientations_group,
-                                                      meshgrid_data=grid,
+                                                      meshgrid_data=grid.grid_coordinates,
                                                       extent=input_data.extent,  # domain boundary
                                                       resolution=input_data.resolution,
                                                       in_dim=3,  # input dimension of neural network
@@ -432,14 +421,14 @@ def geo_inr_interpolator(input_data: InputData, beta: int = 10):
     # plt.show()
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)
+    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, grid.spacing, input_data.extent)
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
                                        lith_block=combined_result.flatten(),
                                        surface_meshes_vertices=mc_vertices,
                                        surface_meshes_edges=mc_edges,
-                                       grid=grid,
+                                       grid=grid.grid_coordinates,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution,
                                        mapping_object=input_data.mapping_object)

@@ -3,6 +3,7 @@ from core.object_components import InputData, GeomodelResults
 from LoopStructural import GeologicalModel
 from core.utility.surface_mesh_extraction import marching_cubes
 import pandas as pd
+from core.grids.grid_classes import RegularGrid
 
 
 #%%
@@ -20,19 +21,8 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
     """
     # TODO: This does not consider faults, seems to fail for slim models
 
-    # Based on input data create regular grid - this can be outsourced to a separate function
-    dx = (input_data.extent[1] - input_data.extent[0]) / input_data.resolution[0]
-    dy = (input_data.extent[3] - input_data.extent[2]) / input_data.resolution[1]
-    dz = (input_data.extent[5] - input_data.extent[4]) / input_data.resolution[2]
-    spacing = (dx, dy, dz)
-    gridx = np.linspace(input_data.extent[0] + dx / 2, input_data.extent[1] - dx / 2, input_data.resolution[0])
-    gridy = np.linspace(input_data.extent[2] + dy / 2, input_data.extent[3] - dy / 2, input_data.resolution[1])
-    gridz = np.linspace(input_data.extent[4] + dz / 2, input_data.extent[5] - dz, input_data.resolution[2])
-
-    # gempy way to get coordinates, for some reason this does not blow memory
-    coords = gridx, gridy, gridz
-    g = np.meshgrid(*coords, indexing="ij")
-    grid = np.vstack(tuple(map(np.ravel, g))).T.astype("float64")
+    # Create a Grid instance
+    grid = RegularGrid(input_data.extent, input_data.resolution)
 
     # Create mapping for replacing element names with ints
     unique_elements = sorted(set(element for elements in input_data.mapping_object.values() for element in elements))
@@ -98,7 +88,7 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
 
     # Set grid
     # regular_grid = model.regular_grid(input_data.resolution, shuffle=False, rescale=True)
-    regular_grid = grid
+    regular_grid = grid.grid_coordinates
 
     results_sf = []
     for feature in input_data.mapping_object.keys():
@@ -120,14 +110,14 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
     combined_result = combined_result.reshape(input_data.resolution)
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, spacing, input_data.extent)
+    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, grid.spacing, input_data.extent)
 
     # # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
                                        lith_block=combined_result.flatten(),
                                        surface_meshes_vertices=mc_vertices,
                                        surface_meshes_edges=mc_edges,
-                                       grid=grid,
+                                       grid=grid.grid_coordinates,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution,
                                        mapping_object=input_data.mapping_object)
