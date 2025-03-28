@@ -76,7 +76,7 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
         # Save results, need to explicitly limit to maximum value as defined by replacement mapping
         max_value = max(replacements[element] for element in value)
         k3d1[k3d1 > max_value] = max_value
-        results.append(k3d1.astype(int))
+        results.append(k3d1.astype(int).T.copy())
 
     # TODO: These will both not work with faults
     # Get indices for each lithological group
@@ -92,11 +92,15 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
         mask = scalar_fields[i] <= scalar_values[i][-1]
         masks.append(mask)
 
+    print(results[0].shape)
+    print(masks[0].shape)
+
+    # TODO: This doest not give the correct result. The block is weirdly inverted
     # Stack result based on stack
-    combined_result = np.zeros(results[0].shape).T
+    combined_result = np.zeros_like(results[0])
     # Iterate over the results and masks arrays
     for i in range(len(results) - 1, -1, -1):
-        combined_result[masks[i]] = results[i].T[masks[i]]
+        combined_result[masks[i]] = results[i][masks[i]]
 
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
