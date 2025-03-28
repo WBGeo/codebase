@@ -88,6 +88,7 @@ class MeshResults:
     Attributes:
         elements (NpNDArrayInt64): A 2D array representing the hexahedral/tetrahedral elements of the mesh.
         nodes (NpNDArrayFp64): A 2D array representing the information of nodes.
+        mesh (Optional[pyvista.MultiBlock]): A pyvista mesh object.
     """
     elements: NpNDArrayInt64
     nodes: NpNDArrayFp64
