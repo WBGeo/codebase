@@ -1,29 +1,22 @@
 import numpy as np
 from core.object_components import InputData, GeomodelResults
-from pykrige.ok3d import OrdinaryKriging3D
+from scipy.interpolate import RBFInterpolator
 from core.utility.surface_mesh_extraction import marching_cubes_per_element
-from skimage import measure
 from core.grids.grid_classes import RegularGrid
 
 
 #%%
-def ordinary_kriging_interpolator_cleaned(input_data: InputData,
-                                          var_model="gaussian",
-                                          var_sill=1,
-                                          var_range=500,
-                                          var_nugget=0,
-                                          anisotropy_scaling_z=0.3,
-                                          mask_surfaces=True) -> GeomodelResults:
+def rbf_interpolator_cleaned(input_data: InputData,
+                             kernel='linear',
+                             epsilon=1,
+                             mask_surfaces=True) -> GeomodelResults:
     """
-    Compute a model based on input data using kriging interpolation
+    Compute a model based on input data using RBF interpolation
 
     Args:
-        input_data (InputData): The input data for the geological model.
-        var_model (str): The variogram model to use. Default is 'gaussian'.
-        var_sill (float): The sill of the variogram. Default is 1.
-        var_range (float): The range of the variogram. Default is 500.
-        var_nugget (float): The nugget of the variogram. Default is 0.
-        anisotropy_scaling_z (float): The scaling factor for the z-axis. Default is 0.3.
+        input_data (InputData): The input data for the structural geological model.
+        kernel (str): The kernel to use for the RBF interpolation. Default is 'linear'.
+        epsilon (float): The epsilon value for the RBF interpolation. Default is 1.
         mask_surfaces (bool): Whether to mask surfaces. Default is True.
 
     Returns:
@@ -56,25 +49,26 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
             structural_group_df['formation'].isin(list(input_data.mapping_object[key])), 'formation'] = \
             structural_group_df['formation'].replace(replacements)
 
-        # perform Ordinary Kriging per structural group
-        ok3d = OrdinaryKriging3D(
-            structural_group_df['X'], structural_group_df['Y'], structural_group_df['Z'],
-            structural_group_df['formation'], variogram_model=var_model,
-            variogram_parameters=[var_sill, var_range, var_nugget],
-            anisotropy_scaling_z=anisotropy_scaling_z
-        )
-        k3d1, ss3d = ok3d.execute("grid",
-                                  grid.gridx,
-                                  grid.gridy,
-                                  grid.gridz)
+        # Create RBF interpolator
+        rbfi = RBFInterpolator(np.stack((structural_group_df['X'],
+                                         structural_group_df['Y'],
+                                         structural_group_df['Z']), axis=1),
+                               structural_group_df['formation'], kernel=kernel,
+                               epsilon=epsilon)
+
+        # Interpolate the function on the grid
+        rbf_res = rbfi(grid.grid_coordinates)
+
+        # Reshape the result to resolution
+        rbf_res = rbf_res.reshape(input_data.resolution)
 
         # Store original scalar fields
-        scalar_fields.append(k3d1.T.copy())
+        scalar_fields.append(rbf_res.copy())
 
         # Save results, need to explicitly limit to maximum value as defined by replacement mapping
         max_value = max(replacements[element] for element in value)
-        k3d1[k3d1 > max_value] = max_value
-        results.append(k3d1.astype(int).T.copy())
+        rbf_res[rbf_res > max_value] = max_value
+        results.append(rbf_res.astype(int).copy())
 
     # TODO: These will both not work with faults
     # Get indices for each lithological group
@@ -90,35 +84,21 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
         mask = scalar_fields[i] <= scalar_values[i][-1]
         masks.append(mask)
 
-    # plot slice of mask in y direction
-    # 0 alles true
-    # 1 nur oben true
-    import matplotlib.pyplot as plt
-    mask = masks[1].T
-    mask = mask[:, 25, :]
-    plt.imshow(mask, origin='lower')
-    plt.show()
-
-    # plot slice of result in y direction
-    # 1 ist untere grupe
-    # 0 ist obere gruppe
-    result=results[1].T
-    result = result[:, 25, :]
-    plt.imshow(result, origin='lower')
-    plt.show()
-
     # Stack result based on stack
     combined_result = np.zeros_like(results[0])
     # Iterate over the results and masks arrays
     for i in range(len(results)):
         combined_result[masks[i]] = results[i][masks[i]]
 
+    # TODO: Why is there a negative 1 value in this
+    print(np.unique(combined_result))
+    # replace all minus ones with zeros in cmonined result
+    combined_result[combined_result == -1] = 0
+
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
     mapping = {i: max_val - i for i in range(max_val + 1)}
-    print(max_val)
-    print(mapping)
-    print(np.unique(combined_result))
+
     # Apply the mapping to the array
     combined_result = np.vectorize(mapping.get)(combined_result)
 
@@ -147,7 +127,6 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
                                        grid=grid.grid_coordinates,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution,
-                                       mapping_object=input_data.mapping_object,
-                                       scalar_fields=scalar_fields)
+                                       mapping_object=input_data.mapping_object)
 
     return results_instance
