@@ -92,14 +92,28 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
         mask = scalar_fields[i] <= scalar_values[i][-1]
         masks.append(mask)
 
-    print(results[0].shape)
-    print(masks[0].shape)
+    # plot slice of mask in y direction
+    # 0 alles true
+    # 1 nur oben true
+    # import matplotlib.pyplot as plt
+    # mask = masks[1].T
+    # mask = mask[:, 25, :]
+    # plt.imshow(mask, origin='lower')
+    # plt.show()
+
+    # plot slice of result in y direction
+    # 1 ist untere grupe
+    # 0 ist obere gruppe
+    # result=results[1].T
+    # result = result[:, 25, :]
+    # plt.imshow(result, origin='lower')
+    # plt.show()
 
     # TODO: This doest not give the correct result. The block is weirdly inverted
     # Stack result based on stack
     combined_result = np.zeros_like(results[0])
     # Iterate over the results and masks arrays
-    for i in range(len(results) - 1, -1, -1):
+    for i in range(len(results)):
         combined_result[masks[i]] = results[i][masks[i]]
 
     # Reverse everything to match gempy, probably have to rewrite everything at some point
