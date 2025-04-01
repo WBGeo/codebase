@@ -91,8 +91,7 @@ def rbf_interpolator_cleaned(input_data: InputData,
         combined_result[masks[i]] = results[i][masks[i]]
 
     # TODO: Why is there a negative 1 value in this
-    print(np.unique(combined_result))
-    # replace all minus ones with zeros in cmonined result
+    # replace all minus ones with zeros in combined result
     combined_result[combined_result == -1] = 0
 
     # Reverse everything to match gempy, probably have to rewrite everything at some point
