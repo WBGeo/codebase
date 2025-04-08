@@ -1,10 +1,11 @@
 import pyvista
+import typing
 from pydantic.dataclasses import dataclass
 from typing import Optional
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
 import pandas as pd
 from typing import TypeVar, Dict, List
-from typing import Dict, List
+from typing import Dict, List, Any
 import pyvista as pv
 import meshio
 from core.meshing_components.mesh_format.Exodus.Exo_format import ExosInputs
@@ -12,9 +13,24 @@ from core.meshing_components.mesh_format.VTK.VTK_format import VTKInputs
 from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
 
-PandasDataFrame = TypeVar('pandas.core.frame.DataFrame')
+
+# Pydantic adapter for panda DataFrame
+def df_serializer(df: pd.DataFrame) -> list[dict]:
+  return df.to_dict(orient="records")
+
+
+def df_validator(value) -> pd.DataFrame:
+  if isinstance(value, pd.DataFrame):
+    return value
+  elif isinstance(value, list):
+    return pd.DataFrame(value)
+  raise TypeError("Expected a pandas DataFrame or a list of dictionaries.")
+
+
+PandasDataFrame = typing.Annotated[
+  pd.DataFrame, PlainSerializer(df_serializer), BeforeValidator(df_validator)]
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -70,8 +86,8 @@ class GeomodelResults:
     """
     name: str
     lith_block: NpNDArrayInt64
-    surface_meshes_vertices: List
-    surface_meshes_edges: List
+    surface_meshes_vertices: List[NpNDArrayFp64]
+    surface_meshes_edges: List[NpNDArrayFp64]
     grid: NpNDArrayFp64
     extent: NpNDArrayInt64
     resolution: NpNDArrayInt64
