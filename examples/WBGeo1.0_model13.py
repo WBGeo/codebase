@@ -7,6 +7,7 @@ from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.ordinary_kriging_cleaned import ordinary_kriging_interpolator_cleaned
+from core.interpolator_components.rbf_interpolation_cleaned import rbf_interpolator_cleaned
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
@@ -54,7 +55,8 @@ plot_3d(data_test)
 # results_test = geo_inr_interpolator(data_test)
 # results_test = loop_structural_interpolator(data_test)
 
-results_test = ordinary_kriging_interpolator_cleaned(data_test, var_range=5000, mask_surfaces=False)
+# results_test = ordinary_kriging_interpolator_cleaned(data_test, var_range=5000, mask_surfaces=True)
+results_test = rbf_interpolator_cleaned(data_test, kernel='multiquadric', epsilon=0.0001, mask_surfaces=True)
 
 
 #%%

@@ -4,19 +4,27 @@ from core.object_components import InputData, GeomodelResults
 from skimage import measure
 from core.utility.conversions import element_list_from_dict
 from core.utility.model_cleaning import remove_outliers_3d
+from core.utility.surface_mesh_extraction import marching_cubes_per_element
 
 
-def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_data: InputData):
+def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_data: InputData,
+                                                                          mask_surfaces=True) -> GeomodelResults:
     """
     Compute a model based on input data using universal co-kriging interpolation (gempy)
 
     Args:
         input_data (InputData): The input data for the geological model.
+        mask_surfaces (bool): Whether to mask surfaces. Default is True.
 
     Returns:
         GeomodelResults: The results of the geological model.
 
     """
+    # Test validity of input data for this interpolation
+    # Check for orientations
+    if input_data.orientations is None:
+        raise ValueError("Interpolator requires orientations in the input data")
+
     # Create a structural frame
     # How this will look in the end depends mainly on how our input data component looks
     structural_frame = gp.data.structural_frame.StructuralFrame.from_data_tables(
@@ -104,40 +112,64 @@ def universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(input_
         # for i in np.unique(model_instance.solutions.raw_arrays.fault_block)[:-1]:
         for idx in fault_group_indices:
 
-            # Use Fault block
-            # fault_block = model_instance.solutions.raw_arrays.fault_block.reshape(input_data.resolution)
-
             # Use Scalar fields
             fault_block = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution)
 
             for i in range(len(scalar_values[idx])):
-                verts, faces, _, _ = measure.marching_cubes(fault_block,
-                                                            scalar_values[idx][i],
-                                                            spacing=(model_instance.grid.regular_grid.dx,
-                                                                     model_instance.grid.regular_grid.dy,
-                                                                     model_instance.grid.regular_grid.dz))
-                mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
-                mc_edges.append(faces)
+                vertices, edges = marching_cubes_per_element(fault_block,
+                                                             scalar_values[idx][i],
+                                                             spacing=(model_instance.grid.regular_grid.dx,
+                                                                      model_instance.grid.regular_grid.dy,
+                                                                      model_instance.grid.regular_grid.dz),
+                                                             extent=input_data.extent,
+                                                             mask=None)
+
+                mc_vertices.append(vertices)
+                mc_edges.append(edges)
     else:
         # Get indices non_fault groups (all groups)
         lith_group_indices = np.arange(len(input_data.mapping_object.keys()))
 
-    # TODO: this is just a hack solution for now
-    # Get the alternative meshes that go through the unconformity for scalar field instead of lith block
-
+    # Create scalar fields masks
+    masks = []
+    masks.append(np.ones_like(model_instance.solutions.raw_arrays.scalar_field_matrix[0].reshape(input_data.resolution),
+                              dtype=bool))
     for idx in lith_group_indices:
+        mask = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution) <= \
+               scalar_values[idx][-1]
+        masks.append(mask)
 
+    # for i in range(len(lith_group_indices)):
+    #     mask = model_instance.solutions.raw_arrays.scalar_field_matrix[i].reshape(input_data.resolution) <= \
+    #            scalar_values[i][-1]
+    #     masks.append(mask)
+
+    # Extract meshes for lithological elements
+    counter = 0 # for masks
+    for idx in lith_group_indices:
         scalar_field = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution)
 
         for i in range(len(scalar_values[idx])):
-            verts, faces, _, _ = measure.marching_cubes(scalar_field,
-                                                        scalar_values[idx][i],
-                                                        spacing=(model_instance.grid.regular_grid.dx,
-                                                                 model_instance.grid.regular_grid.dy,
-                                                                 model_instance.grid.regular_grid.dz))
+            if mask_surfaces:
+                vertices, edges = marching_cubes_per_element(scalar_field,
+                                                             scalar_values[idx][i],
+                                                             spacing=(model_instance.grid.regular_grid.dx,
+                                                                      model_instance.grid.regular_grid.dy,
+                                                                      model_instance.grid.regular_grid.dz),
+                                                             extent=input_data.extent,
+                                                             mask=masks[counter])
+            else:
+                vertices, edges = marching_cubes_per_element(scalar_field,
+                                                             scalar_values[idx][i],
+                                                             spacing=(model_instance.grid.regular_grid.dx,
+                                                                      model_instance.grid.regular_grid.dy,
+                                                                      model_instance.grid.regular_grid.dz),
+                                                             extent=input_data.extent,
+                                                             mask=None)
 
-            mc_vertices.append(verts + [input_data.extent[0], input_data.extent[2], input_data.extent[4]])
-            mc_edges.append(faces)
+            mc_vertices.append(vertices)
+            mc_edges.append(edges)
+        counter += 1
 
     # Reorder everything correctly if faults exist
     if input_data.faults is not None:

@@ -41,7 +41,7 @@ plot_3d(data_test)
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
-results_test = universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(data_test)
+results_test = universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(data_test, mask_surfaces=True)
 
 #%%
 
