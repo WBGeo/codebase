@@ -93,19 +93,19 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
     # plot slice of mask in y direction
     # 0 alles true
     # 1 nur oben true
-    import matplotlib.pyplot as plt
-    mask = masks[1].T
-    mask = mask[:, 25, :]
-    plt.imshow(mask, origin='lower')
-    plt.show()
+    # import matplotlib.pyplot as plt
+    # mask = masks[1].T
+    # mask = mask[:, 25, :]
+    # plt.imshow(mask, origin='lower')
+    # plt.show()
 
     # plot slice of result in y direction
     # 1 ist untere grupe
     # 0 ist obere gruppe
-    result=results[1].T
-    result = result[:, 25, :]
-    plt.imshow(result, origin='lower')
-    plt.show()
+    # result=results[1].T
+    # result = result[:, 25, :]
+    # plt.imshow(result, origin='lower')
+    # plt.show()
 
     # Stack result based on stack
     combined_result = np.zeros_like(results[0])
@@ -116,9 +116,7 @@ def ordinary_kriging_interpolator_cleaned(input_data: InputData,
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
     mapping = {i: max_val - i for i in range(max_val + 1)}
-    print(max_val)
-    print(mapping)
-    print(np.unique(combined_result))
+
     # Apply the mapping to the array
     combined_result = np.vectorize(mapping.get)(combined_result)
 
