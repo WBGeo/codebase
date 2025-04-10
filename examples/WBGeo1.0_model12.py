@@ -52,7 +52,7 @@ plot_3d(data_test)
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
-# results_test = ordinary_kriging_interpolator(data_test, var_range=500)
+results_test = ordinary_kriging_interpolator(data_test, var_range=500)
 # results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
 # results_test = geo_inr_interpolator(data_test, beta=5)
 # results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
@@ -60,7 +60,7 @@ plot_3d(data_test)
 # results_test = ordinary_kriging_interpolator_cleaned(data_test, var_range=500, mask_surfaces=True)
 # results_test = rbf_interpolator_cleaned(data_test, kernel='cubic', epsilon=1, mask_surfaces=True)
 # results_test = geo_inr_interpolator_cleaned(data_test, beta=10, mask_surfaces=True)
-results_test = universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(data_test, mask_surfaces=True)
+# results_test = universal_cokriging_interpolator_with_cleaning_and_alternative_meshes(data_test, mask_surfaces=True)
 
 #%%
 
