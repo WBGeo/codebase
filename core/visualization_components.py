@@ -269,6 +269,11 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                         location="furthest",
                         grid=True)
 
+    # Set the camera position
+    plotter.camera.view_angle = 30.0
+    plotter.camera.azimuth = 25.0
+    plotter.camera.elevation = -15.0
+
     if show_plotter:
         # Display the interactive plot
         plotter.show()
@@ -350,7 +355,12 @@ def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData, colors=None, 
     plotter.add_legend(size=(0.13, 0.13), loc='lower right', face='circle')
 
     # Set the bounds and grid of the plotter
-    plotter.show_bounds(grid=True)  # TODO: Different scale here as Denise uses km
+    plotter.show_bounds(grid=True)
+
+    # Set the camera position
+    plotter.camera.view_angle = 30.0
+    plotter.camera.azimuth = 25.0
+    plotter.camera.elevation = -15.0
 
     if show_plotter:
         # Display the interactive plot

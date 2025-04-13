@@ -86,8 +86,8 @@ class GeomodelResults:
     """
     name: str
     lith_block: NpNDArrayInt64
-    surface_meshes_vertices: List[NpNDArrayFp64]
-    surface_meshes_edges: List[NpNDArrayFp64]
+    surface_meshes_vertices: List
+    surface_meshes_edges: List
     grid: NpNDArrayFp64
     extent: NpNDArrayInt64
     resolution: NpNDArrayInt64
