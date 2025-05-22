@@ -22,9 +22,10 @@ def create_surface_grid(results_instance):
     extent = results_instance.extent
     min_x, max_x, min_y, max_y, min_z, max_z = extent
 
-    # Find the surface with the minimum number of vertices
-    min_vertices_surface_index = np.argmin([len(vertices) for vertices in results_instance.surface_meshes_vertices])
-    min_vertices_surface = results_instance.surface_meshes_vertices[min_vertices_surface_index]
+    # Find the surface with the minimum number of vertices, index 2 for mesh type
+    min_vertices_surface_index = np.argmin([len(vertices) for vertices in results_instance.surface_meshes_vertices[2]])
+    print(min_vertices_surface_index)
+    min_vertices_surface = results_instance.surface_meshes_vertices[2][min_vertices_surface_index]
 
     # Extract the x, y, z coordinates of the surface with minimum vertices
     x_min = min_vertices_surface[:, 0]
@@ -59,7 +60,7 @@ def create_surface_grid(results_instance):
     interpolated_surfaces = {}
 
     # Perform interpolation for each surface
-    for i, vertices in enumerate(results_instance.surface_meshes_vertices):
+    for i, vertices in enumerate(results_instance.surface_meshes_vertices[2]):
         # Get the x, y, z coordinates of the current surface
         x = vertices[:, 0]
         y = vertices[:, 1]

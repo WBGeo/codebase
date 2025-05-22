@@ -24,8 +24,8 @@ def create_surface_grid(geomodel_result):
     x_min, x_max, y_min, y_max, z_min, z_max = extent
     interpolated_surfaces = []
 
-    # Perform interpolation for each surface
-    for i, vertices in enumerate(geomodel_result.surface_meshes_vertices):
+    # Perform interpolation for each surface, index 1 refers to surface mesh type
+    for i, vertices in enumerate(geomodel_result.surface_meshes_vertices[2]):
         # Get the x, y, z coordinates of the current surface
         x = vertices[:, 0]
         y = vertices[:, 1]

@@ -193,7 +193,7 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
 
 
 def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, show_results: bool = False, colors=None,
-            show_plotter=True) -> pv.Plotter:
+            surface_type="masked", show_plotter=True) -> pv.Plotter:
     """
     Plot the input data and results in 3D.
 
@@ -202,6 +202,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
         geomodel_results (GeomodelResults): The results of the geological model.
         show_results (bool): Whether to show the results.
         colors (Optional(list)): List of colors to use for the different formations
+        surface_type (str): The type of surface to plot, either 'masked', 'unmasked' or 'combined'.
         show_plotter (bool): Whether to show the plotter, or just return it
     """
     # Suppress the specific warning about points not being a float type
@@ -251,12 +252,22 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
             plotter.add_mesh(glyphs, color=colors[i])
 
     if geomodel_results is not None and show_results:
-        # Add the surface meshes
+        if surface_type == "masked":
+            mesh_counter = 0
+        elif surface_type == "unmasked":
+            mesh_counter = 1
+        elif surface_type == "combined":
+            mesh_counter = 2
+        else:
+            raise ValueError("Surface type must be 'masked', 'unmasked' or 'combined'.")
+
+            # Add the surface meshes
         for i in range(len(formations)):
             plotter.add_mesh(
-                pv.PolyData(geomodel_results.surface_meshes_vertices[i],
-                            np.insert(geomodel_results.surface_meshes_edges[i], 0, 3, axis=1).ravel()),
+                pv.PolyData(geomodel_results.surface_meshes_vertices[mesh_counter][i],
+                            np.insert(geomodel_results.surface_meshes_edges[mesh_counter][i], 0, 3, axis=1).ravel()),
                 color=colors[i])
+
     if geomodel_results is None and show_results:
         print("Can not show results without results data.")
     else:

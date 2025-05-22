@@ -16,6 +16,8 @@ def get_surface_mesh_gradients(geo_model_results, norm=True):
     """
     scalar_fields = geo_model_results.scalar_fields
 
+    mesh_type=1
+
     points_list = []
     vectors_list = []
 
@@ -63,7 +65,7 @@ def get_surface_mesh_gradients(geo_model_results, norm=True):
             (x_sorted, y_sorted, z_sorted), grad_z_sorted, bounds_error=False, fill_value=None
         )
 
-        new_points = geo_model_results.surface_meshes_vertices[i]
+        new_points = geo_model_results.surface_meshes_vertices[mesh_type][i]
 
         # Interpolate gradients at new points
         grad_x_new = interp_grad_x(new_points)
