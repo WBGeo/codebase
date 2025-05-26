@@ -7,14 +7,12 @@ from core.utility.model_cleaning import remove_outliers_3d
 from core.utility.surface_mesh_extraction import marching_cubes_per_element
 
 
-def universal_cokriging_interpolator(input_data: InputData,
-                                    mask_surfaces=True) -> GeomodelResults:
+def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
     """
     Compute a model based on input data using universal co-kriging interpolation (gempy)
 
     Args:
         input_data (InputData): The input data for the geological model.
-        mask_surfaces (bool): Whether to mask surfaces. Default is True.
 
     Returns:
         GeomodelResults: The results of the geological model.
@@ -81,8 +79,6 @@ def universal_cokriging_interpolator(input_data: InputData,
     else:
         pass
 
-    print(model_instance.input_data_descriptor)
-
     # Compute the geological model
     gp.compute_model(model_instance)
 
@@ -103,8 +99,13 @@ def universal_cokriging_interpolator(input_data: InputData,
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
     # TODO: Does include faults now but I need to test with multiple structural groups with multiple faults
-    mc_vertices = []
-    mc_edges = []
+    mc_vertices_masked = []
+    mc_edges_masked = []
+    mc_vertices_all = []
+    mc_edges_all = []
+    mc_vertices_combined = []
+    mc_edges_combined = []
+
     if input_data.faults is not None:
 
         # Get indices of fault and non_fault groups
@@ -126,8 +127,14 @@ def universal_cokriging_interpolator(input_data: InputData,
                                                              extent=input_data.extent,
                                                              mask=None)
 
-                mc_vertices.append(vertices)
-                mc_edges.append(edges)
+                # Append fault surfaces to all
+                mc_vertices_masked.append(vertices)
+                mc_edges_masked.append(edges)
+                mc_vertices_all.append(vertices)
+                mc_edges_all.append(edges)
+                mc_vertices_combined.append(vertices)
+                mc_edges_combined.append(edges)
+
     else:
         # Get indices non_fault groups (all groups)
         lith_group_indices = np.arange(len(input_data.mapping_object.keys()))
@@ -152,16 +159,18 @@ def universal_cokriging_interpolator(input_data: InputData,
         scalar_field = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution)
 
         for i in range(len(scalar_values[idx])):
-            if mask_surfaces:
-                vertices, edges = marching_cubes_per_element(scalar_field,
+            vertices, edges = marching_cubes_per_element(scalar_field,
                                                              scalar_values[idx][i],
                                                              spacing=(model_instance.grid.regular_grid.dx,
                                                                       model_instance.grid.regular_grid.dy,
                                                                       model_instance.grid.regular_grid.dz),
                                                              extent=input_data.extent,
                                                              mask=masks[counter])
-            else:
-                vertices, edges = marching_cubes_per_element(scalar_field,
+
+            mc_vertices_masked.append(vertices)
+            mc_edges_masked.append(edges)
+
+            vertices, edges = marching_cubes_per_element(scalar_field,
                                                              scalar_values[idx][i],
                                                              spacing=(model_instance.grid.regular_grid.dx,
                                                                       model_instance.grid.regular_grid.dy,
@@ -169,45 +178,88 @@ def universal_cokriging_interpolator(input_data: InputData,
                                                              extent=input_data.extent,
                                                              mask=None)
 
-            mc_vertices.append(vertices)
-            mc_edges.append(edges)
+            mc_vertices_all.append(vertices)
+            mc_edges_all.append(edges)
         counter += 1
 
+    # Extract surface meshes for structured meshing from combined block
+    for i in np.unique(cleaned_block)[:-1]:
+        vertices, edges = marching_cubes_per_element(cleaned_lith_block.reshape(input_data.resolution),
+                                                     i,
+                                                     spacing=(model_instance.grid.regular_grid.dx,
+                                                              model_instance.grid.regular_grid.dy,
+                                                              model_instance.grid.regular_grid.dz),
+                                                     extent=input_data.extent,
+                                                     mask=None)
+
+        mc_vertices_combined.append(vertices)
+        mc_edges_combined.append(edges)
+
+    # TODO: DO this for all mesh types
     # Reorder everything correctly if faults exist
     if input_data.faults is not None:
 
+        def reorder_by_bool_list(data_vertices, data_edges, bool_list, extent):
+            true_count = sum(bool_list)
+            true_elements_vertices = data_vertices[:true_count]
+            false_elements_vertices = data_vertices[true_count:]
+            true_elements_edges = data_edges[:true_count]
+            false_elements_edges = data_edges[true_count:]
+            true_idx, false_idx = 0, 0
+            reordered_vertices, reordered_edges = [], []
+            for is_true in bool_list:
+                if is_true:
+                    reordered_vertices.append(true_elements_vertices[true_idx] + [extent[0], extent[2], extent[4]])
+                    reordered_edges.append(true_elements_edges[true_idx])
+                    true_idx += 1
+                else:
+                    reordered_vertices.append(false_elements_vertices[false_idx] + [extent[0], extent[2], extent[4]])
+                    reordered_edges.append(false_elements_edges[false_idx])
+                    false_idx += 1
+            return reordered_vertices, reordered_edges
+
         bool_list = element_list_from_dict(input_data.mapping_object, input_data.faults)
 
-        true_count = sum(bool_list)
-
-        # Split arr_list into two parts
-        true_elements_vertices = mc_vertices[:true_count]
-        false_elements_vertices = mc_vertices[true_count:]
-        true_elements_edges = mc_edges[:true_count]
-        false_elements_edges = mc_edges[true_count:]
-
-        # Create a new list to store reordered elements
-        mc_vertices = []
-        mc_edges = []
-
-        # Iterator for both true and false elements
-        true_idx, false_idx = 0, 0
-
-        # Populate reordered_list based on bool_list
-        for is_true in bool_list:
-            if is_true:
-                mc_vertices.append(true_elements_vertices[true_idx] + [input_data.extent[0], input_data.extent[2],
-                                                                       input_data.extent[4]])
-                mc_edges.append(true_elements_edges[true_idx])
-                true_idx += 1
-            else:
-                mc_vertices.append(false_elements_vertices[false_idx] + [input_data.extent[0], input_data.extent[2],
-                                                                         input_data.extent[4]])
-                mc_edges.append(false_elements_edges[false_idx])
-                false_idx += 1
+        mc_vertices_masked, mc_edges_masked = reorder_by_bool_list(mc_vertices_masked, mc_edges_masked, bool_list,
+                                                                   input_data.extent)
+        mc_vertices_all, mc_edges_all = reorder_by_bool_list(mc_vertices_all, mc_edges_all, bool_list,
+                                                             input_data.extent)
+        mc_vertices_combined, mc_edges_combined = reorder_by_bool_list(mc_vertices_combined, mc_edges_combined,
+                                                                       bool_list, input_data.extent)
+    # # Reorder everything correctly if faults exist
+    # if input_data.faults is not None:
+    #
+    #     bool_list = element_list_from_dict(input_data.mapping_object, input_data.faults)
+    #
+    #     true_count = sum(bool_list)
+    #
+    #     # Split arr_list into two parts
+    #     true_elements_vertices = mc_vertices[:true_count]
+    #     false_elements_vertices = mc_vertices[true_count:]
+    #     true_elements_edges = mc_edges[:true_count]
+    #     false_elements_edges = mc_edges[true_count:]
+    #
+    #     # Iterator for both true and false elements
+    #     true_idx, false_idx = 0, 0
+    #
+    #     # Populate reordered_list based on bool_list
+    #     for is_true in bool_list:
+    #         if is_true:
+    #             mc_vertices.append(true_elements_vertices[true_idx] + [input_data.extent[0], input_data.extent[2],
+    #                                                                    input_data.extent[4]])
+    #             mc_edges.append(true_elements_edges[true_idx])
+    #             true_idx += 1
+    #         else:
+    #             mc_vertices.append(false_elements_vertices[false_idx] + [input_data.extent[0], input_data.extent[2],
+    #                                                                      input_data.extent[4]])
+    #             mc_edges.append(false_elements_edges[false_idx])
+    #             false_idx += 1
 
     scalar_fields = model_instance.solutions.raw_arrays.scalar_field_matrix
-    print(type(scalar_fields))
+
+    # Combine all meshes
+    mc_vertices = [mc_vertices_masked, mc_vertices_all, mc_vertices_combined]
+    mc_edges = [mc_edges_masked, mc_edges_all, mc_edges_combined]
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,

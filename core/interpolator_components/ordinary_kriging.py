@@ -123,8 +123,6 @@ def ordinary_kriging_interpolator(input_data: InputData,
     mc_edges_masked = []
     mc_vertices_all = []
     mc_edges_all = []
-    mc_vertices_combined = []
-    mc_edges_combined = []
 
     for idx in lith_group_indices:
         for i in range(len(scalar_values[idx])):
