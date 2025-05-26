@@ -47,11 +47,15 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
     surface_points_temp['ty'] = np.nan
     surface_points_temp['tz'] = np.nan
 
+    print(surface_points_temp)
+
     orientations_temp['feature_name'] = "Strat_Series"
     orientations_temp['val'] = orientations_temp['formation'].map(formation_mapping)
 
     orientations_temp = orientations_temp.rename(columns={'G_x': 'tx', 'G_y': 'ty', 'G_z': 'tz'})
     orientations_temp = orientations_temp[['X', 'Y', 'Z', 'val', 'feature_name', 'tx', 'ty', 'tz']]
+
+    print(orientations_temp)
 
     # Create final combined df for loopstructural
     data_combined = pd.concat([surface_points_temp, orientations_temp], ignore_index=True)
@@ -59,6 +63,8 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
     # Create a GeologicalModel instance
     model = GeologicalModel(input_data.extent[::2], input_data.extent[1::2])
     model.set_model_data(data_combined)
+
+    print(model)
 
     # Set stratigraphic column
     stratigraphic_column = {}
@@ -71,6 +77,8 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI")
 
     features = input_data.mapping_object.keys()
     strat_features = []
+
+    print(model.stratigraphic_column)
 
     for feature in features:
         strat = model.create_and_add_foliation(
