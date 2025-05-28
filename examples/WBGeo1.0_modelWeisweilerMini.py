@@ -8,9 +8,8 @@ from core.interpolator_components.universal_cokriging import universal_cokriging
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
-from core.interpolator_components.loopstructural import loop_structural_interpolator
+from core.interpolator_components.loopstructural_old import loop_structural_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
-from core.meshing_components import export_mesh_moose
 
 #%%
 
@@ -46,7 +45,7 @@ plot_2d(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=11000)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.00013)
 # results_test = geo_inr_interpolator(data_test, beta=5)
-results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
+results_test = loop_structural_interpolator(data_test, interpolator_type="PLI")
 
 
 #%%
@@ -58,8 +57,7 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 #%%
 
-# 4: Export the results to MOOSE
-export_mesh_moose.export_data_to_moose(results_test)
+
 
 
 

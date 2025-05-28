@@ -52,17 +52,17 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 #%%
 
 # 4: Meshing for Process Simulation
-# mesh_test = create_structured_mesh_data(
-#    geomodel_result=results_test,
-#    refinement_data=[25, 21, 16, 5, 6],
-#    z_threshold=0.1,
-#    tolerance=1
-# )
-
-mesh_test = create_unstructured_mesh_data(
-    geomodel_result=results_test,
-    mesh_size=30
+mesh_test = create_structured_mesh_data(
+   geomodel_result=results_test,
+   refinement_data=[25, 21, 16, 5, 6],
+   z_threshold=0.1,
+   tolerance=1
 )
+
+# mesh_test = create_unstructured_mesh_data(
+#     geomodel_result=results_test,
+#     mesh_size=30
+# )
 
 #%%
 
