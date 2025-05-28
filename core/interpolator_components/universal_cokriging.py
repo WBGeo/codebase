@@ -24,24 +24,26 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
         raise ValueError("Interpolator requires orientations in the input data")
 
     # Create a structural frame
-    # How this will look in the end depends mainly on how our input data component looks
-    structural_frame = gp.data.structural_frame.StructuralFrame.from_data_tables(
-        gp.data.surface_points.SurfacePointsTable.from_arrays(x=input_data.surface_points.X.to_numpy(),
+    # Note: These objects have to be created separately, otherwise ID mapping does not match
+    surface_data = gp.data.surface_points.SurfacePointsTable.from_arrays(x=input_data.surface_points.X.to_numpy(),
                                                               y=input_data.surface_points.Y.to_numpy(),
                                                               z=input_data.surface_points.Z.to_numpy(),
                                                               names=input_data.surface_points.formation.to_numpy(),
                                                               nugget=np.zeros(len(input_data.surface_points)),
-                                                              name_id_map=None),
-        gp.data.orientations.OrientationsTable.from_arrays(x=input_data.orientations.X.to_numpy(),
-                                                           y=input_data.orientations.Y.to_numpy(),
-                                                           z=input_data.orientations.Z.to_numpy(),
-                                                           G_x=input_data.orientations.G_x.to_numpy(),
-                                                           G_y=input_data.orientations.G_y.to_numpy(),
-                                                           G_z=input_data.orientations.G_z.to_numpy(),
-                                                           names=input_data.orientations.formation.to_numpy(),
-                                                           nugget=np.zeros(len(input_data.orientations)),
-                                                           name_id_map=None)
-    )
+                                                              name_id_map=None)
+
+
+    orientation_data = gp.data.orientations.OrientationsTable.from_arrays(x=input_data.orientations.X.to_numpy(),
+                                                       y=input_data.orientations.Y.to_numpy(),
+                                                       z=input_data.orientations.Z.to_numpy(),
+                                                       G_x=input_data.orientations.G_x.to_numpy(),
+                                                       G_y=input_data.orientations.G_y.to_numpy(),
+                                                       G_z=input_data.orientations.G_z.to_numpy(),
+                                                       names=input_data.orientations.formation.to_numpy(),
+                                                       nugget=np.zeros(len(input_data.orientations)),
+                                                       name_id_map=surface_data.name_id_map)
+
+    structural_frame = gp.data.structural_frame.StructuralFrame.from_data_tables(surface_data, orientation_data)
 
     # Create a GeoModel instance
     model_instance = gp.create_geomodel(
@@ -90,6 +92,7 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
     block = model_instance.solutions.raw_arrays.lith_block.reshape(input_data.resolution)
 
     # Remove small isolated patches
+    # TODO: Might not be necessary with new gempy version
     cleaned_block = remove_outliers_3d(block)
 
     cleaned_lith_block = cleaned_block.reshape(model_instance.solutions.raw_arrays.lith_block.shape)
@@ -98,7 +101,7 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
     scalar_values = model_instance.solutions.raw_arrays.scalar_field_at_surface_points
 
     # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    # TODO: Does include faults now but I need to test with multiple structural groups with multiple faults
+    # TODO: Make this more elegant
     mc_vertices_masked = []
     mc_edges_masked = []
     mc_vertices_all = []
@@ -147,11 +150,6 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
         mask = model_instance.solutions.raw_arrays.scalar_field_matrix[idx].reshape(input_data.resolution) <= \
                scalar_values[idx][-1]
         masks.append(mask)
-
-    # for i in range(len(lith_group_indices)):
-    #     mask = model_instance.solutions.raw_arrays.scalar_field_matrix[i].reshape(input_data.resolution) <= \
-    #            scalar_values[i][-1]
-    #     masks.append(mask)
 
     # Extract meshes for lithological elements
     counter = 0 # for masks
@@ -226,34 +224,6 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
                                                              input_data.extent)
         mc_vertices_combined, mc_edges_combined = reorder_by_bool_list(mc_vertices_combined, mc_edges_combined,
                                                                        bool_list, input_data.extent)
-    # # Reorder everything correctly if faults exist
-    # if input_data.faults is not None:
-    #
-    #     bool_list = element_list_from_dict(input_data.mapping_object, input_data.faults)
-    #
-    #     true_count = sum(bool_list)
-    #
-    #     # Split arr_list into two parts
-    #     true_elements_vertices = mc_vertices[:true_count]
-    #     false_elements_vertices = mc_vertices[true_count:]
-    #     true_elements_edges = mc_edges[:true_count]
-    #     false_elements_edges = mc_edges[true_count:]
-    #
-    #     # Iterator for both true and false elements
-    #     true_idx, false_idx = 0, 0
-    #
-    #     # Populate reordered_list based on bool_list
-    #     for is_true in bool_list:
-    #         if is_true:
-    #             mc_vertices.append(true_elements_vertices[true_idx] + [input_data.extent[0], input_data.extent[2],
-    #                                                                    input_data.extent[4]])
-    #             mc_edges.append(true_elements_edges[true_idx])
-    #             true_idx += 1
-    #         else:
-    #             mc_vertices.append(false_elements_vertices[false_idx] + [input_data.extent[0], input_data.extent[2],
-    #                                                                      input_data.extent[4]])
-    #             mc_edges.append(false_elements_edges[false_idx])
-    #             false_idx += 1
 
     scalar_fields = model_instance.solutions.raw_arrays.scalar_field_matrix
 
@@ -263,11 +233,8 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
-                                       # lith_block=model_instance.solutions.raw_arrays.lith_block,
                                        lith_block=cleaned_lith_block,
-                                       # surface_meshes_vertices=dc_vertices_transformed,
                                        surface_meshes_vertices=mc_vertices,
-                                       # surface_meshes_edges=dc_edges,
                                        surface_meshes_edges=mc_edges,
                                        grid=model_instance.grid.regular_grid.values,
                                        extent=model_instance.grid.regular_grid.extent,

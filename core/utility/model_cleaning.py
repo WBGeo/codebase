@@ -36,7 +36,7 @@ def remove_outliers_3d(rock_array):
         # Mask for outliers (single voxel)
         outlier_mask = np.isin(labeled_array, small_labels) & (labeled_array > 0)
 
-        print(f"Removing {np.sum(outlier_mask)} outlier voxels for value {value}")
+        # print(f"Removing {np.sum(outlier_mask)} outlier voxels for value {value}")
 
         # Replace outliers by checking the 6 neighbors
         if np.any(outlier_mask):
