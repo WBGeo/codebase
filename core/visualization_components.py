@@ -261,7 +261,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
         else:
             raise ValueError("Surface type must be 'masked', 'unmasked' or 'combined'.")
 
-            # Add the surface meshes
+         # Add the surface meshes
         for i in range(len(formations)):
             plotter.add_mesh(
                 pv.PolyData(geomodel_results.surface_meshes_vertices[mesh_counter][i],
