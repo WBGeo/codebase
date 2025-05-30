@@ -38,8 +38,8 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-results_test = universal_cokriging_interpolator(data_test)
-# results_test = ordinary_kriging_interpolator(data_test)
+# results_test = universal_cokriging_interpolator(data_test)
+results_test = ordinary_kriging_interpolator(data_test)
 # results_test = rbf_interpolator(data_test)
 
 #%%

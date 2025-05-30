@@ -8,11 +8,11 @@ from core.grids.grid_classes import RegularGrid
 
 #%%
 def ordinary_kriging_interpolator(input_data: InputData,
-                                          var_model="gaussian",
-                                          var_sill=1,
-                                          var_range=500,
-                                          var_nugget=0,
-                                          anisotropy_scaling_z=0.3) -> GeomodelResults:
+                                  var_model="gaussian",
+                                  var_sill=1,
+                                  var_range=500,
+                                  var_nugget=0,
+                                  anisotropy_scaling_z=0.3) -> GeomodelResults:
     """
     Compute a model based on input data using kriging interpolation
 
@@ -132,20 +132,21 @@ def ordinary_kriging_interpolator(input_data: InputData,
         for i in range(len(scalar_values[idx])):
             # masked version
             vertices, edges = marching_cubes_per_element(scalar_fields[idx], scalar_values[idx][i],
-                                                        grid.spacing, input_data.extent,
-                                                        mask=masks[idx])
+                                                         grid.spacing, input_data.extent,
+                                                         mask=masks[idx])
             mc_vertices_masked.append(vertices)
             mc_edges_masked.append(edges)
 
             # complete version going through unconformities
             vertices, edges = marching_cubes_per_element(scalar_fields[idx], scalar_values[idx][i],
-                                                        grid.spacing, input_data.extent,
-                                                        mask=None)
+                                                         grid.spacing, input_data.extent,
+                                                         mask=None)
             mc_vertices_all.append(vertices)
             mc_edges_all.append(edges)
 
     # Extract surface meshes for structured meshing from combined block
-    mc_vertices_combined, mc_edges_combined = marching_cubes(combined_result, unique_elements, grid.spacing, input_data.extent)
+    mc_vertices_combined, mc_edges_combined = marching_cubes(combined_result, unique_elements, grid.spacing,
+                                                             input_data.extent)
 
     # Combine all meshes
     mc_vertices = [mc_vertices_masked, mc_vertices_all, mc_vertices_combined]

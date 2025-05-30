@@ -8,8 +8,8 @@ from core.loading_components.geo_input_data import geo_input_data_fix
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
-from core.interpolator_components.geo_inr import geo_inr_interpolator
-from core.interpolator_components.loopstructural import loop_structural_interpolator
+# from core.interpolator_components.geo_inr import geo_inr_interpolator # removed until updated
+# from core.interpolator_components.loopstructural_old import loop_structural_interpolator # removed until updated
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
@@ -120,48 +120,48 @@ nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identi
                                    'param': 'data', 'type': InputDataType,
                                }])
 
-nodesapi.register_script_block(identifier='loop_structural_interpolator',  # unique identifier
-                               title='LoopStructural interpolator',  # human readable (Default) title
-                               inputs=[  # the (list of) input ports
-                                   {
-                                       'param': 'input_data',  # the name of this port
-                                       'type': InputDataType,  # the ports type (as in ScriptType)
-                                       'data_requirements': [does_not_have_faults],
-                                   },
-                               ],
-                               execute=nodesapi.create_geo_execute(loop_structural_interpolator),
-                               description='Compute a model based on input data using LoopStructural interpolation',
-                               color='#f4a259',
-                               border_color='#000000',
-                               group='Interpolation',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': GeomodelResultsType,
-                               }])
+# nodesapi.register_script_block(identifier='loop_structural_interpolator',  # unique identifier
+#                                title='LoopStructural interpolator',  # human readable (Default) title
+#                                inputs=[  # the (list of) input ports
+#                                    {
+#                                        'param': 'input_data',  # the name of this port
+#                                        'type': InputDataType,  # the ports type (as in ScriptType)
+#                                        'data_requirements': [does_not_have_faults],
+#                                    },
+#                                ],
+#                                execute=nodesapi.create_geo_execute(loop_structural_interpolator),
+#                                description='Compute a model based on input data using LoopStructural interpolation',
+#                                color='#f4a259',
+#                                border_color='#000000',
+#                                group='Interpolation',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'result', 'type': GeomodelResultsType,
+#                                }])
 
-nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique identifier
-                               title='GeoINR interpolator',  # human readable (Default) title
-                               inputs=[  # the (list of) input ports
-                                   {
-                                       'param': 'input_data',  # the name of this port
-                                       'type': InputDataType,  # the ports type (as in ScriptType)
-                                       'data_requirements': [does_not_have_faults],
-                                   },
-                                   {
-                                       'param': 'beta',
-                                       'type': IntDataType,
-                                       'default': 5,
-                                   }
-                               ],
-                               execute=nodesapi.create_geo_execute(geo_inr_interpolator),
-                               description='Compute a model based on input data using GeoINR interpolation',
-                               color='#f4a259',
-                               border_color='#000000',
-                               group='Interpolation',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': GeomodelResultsType,
-                               }])
+# nodesapi.register_script_block(identifier='geoinr_interpolator',  # unique identifier
+#                                title='GeoINR interpolator',  # human readable (Default) title
+#                                inputs=[  # the (list of) input ports
+#                                    {
+#                                        'param': 'input_data',  # the name of this port
+#                                        'type': InputDataType,  # the ports type (as in ScriptType)
+#                                        'data_requirements': [does_not_have_faults],
+#                                    },
+#                                    {
+#                                        'param': 'beta',
+#                                        'type': IntDataType,
+#                                        'default': 5,
+#                                    }
+#                                ],
+#                                execute=nodesapi.create_geo_execute(geo_inr_interpolator),
+#                                description='Compute a model based on input data using GeoINR interpolation',
+#                                color='#f4a259',
+#                                border_color='#000000',
+#                                group='Interpolation',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'result', 'type': GeomodelResultsType,
+#                                }])
 
 nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifier
                                title='Radial Basis Function interpolator',  # human readable (Default) title
@@ -175,6 +175,16 @@ nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifi
                                        'param': 'kernel',
                                        'type': StringDataType,
                                        'default': "linear",
+                                   },
+                                   {
+                                       'param': 'smoothing',
+                                       'type': IntDataType,
+                                       'default': 0,
+                                   },
+                                   {
+                                       'param': 'neighbors',
+                                       'type': IntDataType,
+                                       'default': None,
                                    },
                                    {
                                        'param': 'epsilon',
@@ -200,13 +210,38 @@ nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # un
                                        'type': InputDataType,  # the ports type (as in ScriptType)
                                        'data_requirements': [does_not_have_faults],
                                    },
+{
+                                       'param': 'var_model',
+                                       'type': StringDataType,
+                                       'default': "gaussian"
+                                   },
+{
+                                       'param': 'var_sill',
+                                       'type': IntDataType,
+                                       'default': 1,
+                                       'data_requirements': [lambda
+                                                                 var_sill: None if var_sill > 0 else "var_range must be greater than 0"]
+                                   },
                                    {
                                        'param': 'var_range',
                                        'type': IntDataType,
                                        'default': 500,
                                        'data_requirements': [lambda
                                                                  var_range: None if var_range > 0 else "var_range must be greater than 0"]
-                                   }
+                                   },
+{
+                                       'param': 'var_nugget',
+                                       'type': IntDataType,
+                                       'default': 0,
+                                       'data_requirements': [lambda
+                                                                 var_range: None if var_range >= 0 else "var_range must be 0 or greater"]
+                                   },
+{
+                                       'param': 'anisotropy_scaling_z=0.3',
+                                       'type': IntDataType,
+                                       'default': 0.3,
+                                   },
+
                                ],
                                execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
                                description='Compute a model based on input data using kriging interpolation',

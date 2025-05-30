@@ -8,8 +8,9 @@ from core.grids.grid_classes import RegularGrid
 #%%
 def rbf_interpolator(input_data: InputData,
                              kernel='linear',
-                             epsilon=1,
-                             mask_surfaces=True) -> GeomodelResults:
+                             smoothing = 0,
+                             neighbors = None,
+                             epsilon=1) -> GeomodelResults:
     """
     Compute a model based on input data using RBF interpolation
 
@@ -53,8 +54,10 @@ def rbf_interpolator(input_data: InputData,
         rbfi = RBFInterpolator(np.stack((structural_group_df['X'],
                                          structural_group_df['Y'],
                                          structural_group_df['Z']), axis=1),
-                               structural_group_df['formation'], kernel=kernel,
-                               epsilon=epsilon)
+                                structural_group_df['formation'], kernel=kernel,
+                                smoothing=smoothing,
+                                neighbors=neighbors,  # Use None to use all points
+                                epsilon=epsilon)
 
         # Interpolate the function on the grid
         rbf_res = rbfi(grid.grid_coordinates)
