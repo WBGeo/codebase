@@ -111,9 +111,8 @@ def ordinary_kriging_interpolator(input_data: InputData,
     for i in range(len(results)):
         combined_result[masks[i]] = results[i][masks[i]]
 
-    # TODO: Why is there a negative 1 value in this
-    # replace all minus ones with zeros in combined result
-    combined_result[combined_result == -1] = 0
+    # replace all negative values with zeros in combined result
+    combined_result[combined_result < 0] = 0
 
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
@@ -152,9 +151,13 @@ def ordinary_kriging_interpolator(input_data: InputData,
     mc_vertices = [mc_vertices_masked, mc_vertices_all, mc_vertices_combined]
     mc_edges = [mc_edges_masked, mc_edges_all, mc_edges_combined]
 
-    # Create a GeomodelResults instance
+    # convert combined from masked array to normal array
+    # combined_result = combined_result.flatten().astype(np.int64)
+    # print(np.unique(combined_result))
+    combined_result = np.where(combined_result == None, 0, combined_result).flatten().astype(np.int64)
+
     results_instance = GeomodelResults(name=input_data.name,
-                                       lith_block=combined_result.flatten(),
+                                       lith_block=combined_result,
                                        surface_meshes_vertices=mc_vertices,
                                        surface_meshes_edges=mc_edges,
                                        grid=grid.grid_coordinates,
