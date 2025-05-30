@@ -165,7 +165,7 @@ def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
 
         ax.imshow(image, origin='lower', zorder=-100, cmap=cmap2, norm=norm2, extent=extent)
 
-        # TODO: Add contour solution here but this requires the scalar fields
+        # TODO: Add contour solution here but this requires the scalar fields,which I have now
 
     elif geomodel_results is None and show_results:
         raise ValueError("Can not show results without results data.")

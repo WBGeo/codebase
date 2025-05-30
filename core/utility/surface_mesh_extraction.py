@@ -42,5 +42,5 @@ def marching_cubes_per_element(block, element, spacing, extent, mask):
 
     # Extract the surface meshes using marching cubes
     verts, edges, _, _ = measure.marching_cubes(block, element, spacing=spacing, mask=mask)
-    vertices = verts# + [extent[0], extent[2], extent[4]]
+    vertices = verts + [extent[0], extent[2], extent[4]]
     return vertices, edges

@@ -111,6 +111,10 @@ def ordinary_kriging_interpolator(input_data: InputData,
     for i in range(len(results)):
         combined_result[masks[i]] = results[i][masks[i]]
 
+    # TODO: Why is there a negative 1 value in this
+    # replace all minus ones with zeros in combined result
+    combined_result[combined_result == -1] = 0
+
     # Reverse everything to match gempy, probably have to rewrite everything at some point
     max_val = int(np.max(combined_result))
     mapping = {i: max_val - i for i in range(max_val + 1)}
