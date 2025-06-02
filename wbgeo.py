@@ -23,8 +23,8 @@ IntDataType: apitypes.ScriptType = {"id": "IntDataType", "real_type": int, "name
 ListDataType: apitypes.ScriptType = {"id": "ListDataType", "real_type": list, "name": 'list', "color": 'blue'}
 BoolDataType: apitypes.ScriptType = {"id": "BoolDataType", "real_type": bool, "name": 'boolean', "color": 'blue'}
 StringDataType: apitypes.ScriptType = {"id": "StringDataType", "real_type": str, "name": 'string', "color": 'blue'}
-CSVFileDataType: apitypes.ScriptType = {"id": "CSVFileDataType", "real_type": str, "name": 'path', "color": 'aqua'}
-JSONFileDataType: apitypes.ScriptType = {"id": "JSONFileDataType", "real_type": str, "name": 'path', "color": 'aqua'}
+# CSVFileDataType: apitypes.ScriptType = {"id": "CSVFileDataType", "real_type": str, "name": 'path', "color": 'aqua'}
+# JSONFileDataType: apitypes.ScriptType = {"id": "JSONFileDataType", "real_type": str, "name": 'path', "color": 'aqua'}
 
 InterpolatedResultType: apitypes.ScriptType = {"id": "InterpolatedResultType",
                                                "real_type": BoolDataType,
@@ -76,49 +76,52 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 
 from py_api_wbgeo import nodesapi
 
-nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identifier
-                               title='Load Model',  # human readable (Default) title
-                               is_object_type=True,  # this input represents an object itself
-                               inputs=[  # the input ports
-                                   {
-                                       'param': 'name',  # the name of this port
-                                       'type': StringDataType,  # the ports type (as in ScriptType)
-                                       'default': 'Model 12',  # a default value
-                                   }, {
-                                       'param': 'extent_str',
-                                       'type': StringDataType,
-                                       'default': '0, 2000, 0, 1000, 0, 1000',
-                                   }, {
-                                       'param': 'resolution_str',
-                                       'type': StringDataType,
-                                       'default': '40, 20, 20',
-                                   }, {
-                                       'param': 'surface_points_file',
-                                       'type': CSVFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model12_surface_points_df.csv',  # a default value
-                                   }, {
-                                       'param': 'orientations_file',
-                                       'type': CSVFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model12_orientations_df.csv',  # a default value
-                                   }, {
-                                       'param': 'mapping_file',
-                                       'type': JSONFileDataType,  # the ports type (as in ScriptType)
-                                       'default': 'model_12_mapping.json',  # a default value
-                                   }, {
-                                       'param': 'with_faults',
-                                       'type': BoolDataType,  # the ports type (as in ScriptType)
-                                       'default': False,  # a default value
-                                   },
-                               ],
-                               execute=nodesapi.create_geo_execute(geo_input_data_fix),
-                               description='Provides a geo model ',
-                               color='#8cb369',
-                               border_color='#000000',
-                               group='Inputs',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'data', 'type': InputDataType,
-                               }])
+
+# The following is to be replaced with the @wbgeo_type and @wbgeo_component annotations
+
+# nodesapi.register_script_block(identifier='geo_input_data_fix',  # unique identifier
+#                                title='Load Model',  # human readable (Default) title
+#                                is_object_type=True,  # this input represents an object itself
+#                                inputs=[  # the input ports
+#                                    {
+#                                        'param': 'name',  # the name of this port
+#                                        'type': StringDataType,  # the ports type (as in ScriptType)
+#                                        'default': 'Model 12',  # a default value
+#                                    }, {
+#                                        'param': 'extent_str',
+#                                        'type': StringDataType,
+#                                        'default': '0, 2000, 0, 1000, 0, 1000',
+#                                    }, {
+#                                        'param': 'resolution_str',
+#                                        'type': StringDataType,
+#                                        'default': '40, 20, 20',
+#                                    }, {
+#                                        'param': 'surface_points_file',
+#                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
+#                                        'default': 'model12_surface_points_df.csv',  # a default value
+#                                    }, {
+#                                        'param': 'orientations_file',
+#                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
+#                                        'default': 'model12_orientations_df.csv',  # a default value
+#                                    }, {
+#                                        'param': 'mapping_file',
+#                                        'type': JSONFileDataType,  # the ports type (as in ScriptType)
+#                                        'default': 'model_12_mapping.json',  # a default value
+#                                    }, {
+#                                        'param': 'with_faults',
+#                                        'type': BoolDataType,  # the ports type (as in ScriptType)
+#                                        'default': False,  # a default value
+#                                    },
+#                                ],
+#                                execute=nodesapi.create_geo_execute(geo_input_data_fix),
+#                                description='Provides a geo model ',
+#                                color='#8cb369',
+#                                border_color='#000000',
+#                                group='Inputs',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'data', 'type': InputDataType,
+#                                }])
 
 # nodesapi.register_script_block(identifier='loop_structural_interpolator',  # unique identifier
 #                                title='LoopStructural interpolator',  # human readable (Default) title
