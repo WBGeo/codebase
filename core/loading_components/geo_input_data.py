@@ -3,11 +3,32 @@ import numpy as np
 import pandas as pd
 
 
-def geo_input_data_fix(name: str, extent_str: str, resolution_str: str,
-                       surface_points_file: str,
-                       orientations_file: str,
-                       mapping_file: str,
-                       with_faults: bool
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
+import typing
+
+# Add some file path types:
+# The frontend will handle them specially (via their identifier), yet they are strings in the backend
+# We use the typing.Annotated notation here, as we can't use the @wbgeo_type decorator on builtin types
+CSVFileDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='CSVFileDataType')]
+JSONFileDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='JSONFileDataType')]
+
+
+# Register this function as a component
+@wbgeo_component(description='Provides a geo model',
+                 title='Load Model',  # The title shown in the GUI
+                 color='#8cb369',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Inputs',
+                 identifier='geo_input_data_fix',  # a unique identifier
+                 return_name='data',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
+def geo_input_data_fix(name: str,
+                       extent_str: str = '0, 2000, 0, 1000, 0, 1000',
+                       resolution_str: str = '40, 20, 20',
+                       surface_points_file: CSVFileDataType = 'model12_surface_points_df.csv',
+                       orientations_file: CSVFileDataType = 'model12_surface_points_df.csv',
+                       mapping_file: JSONFileDataType = 'model_12_mapping.json',
+                       with_faults : bool = False
                        ) -> InputData:
     # TODO: Provide a proper input type which does not require strings
     import os
