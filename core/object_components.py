@@ -1,5 +1,6 @@
 import pyvista
 import typing
+from py_api_wbgeo.nodesapi import wbgeo_type, AnnotatedScriptType
 from pydantic.dataclasses import dataclass
 from typing import Optional
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
@@ -16,6 +17,7 @@ from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
 
 
+
 # Pydantic adapter for panda DataFrame
 def df_serializer(df: pd.DataFrame) -> list[dict]:
   return df.to_dict(orient="records")
@@ -30,9 +32,10 @@ def df_validator(value) -> pd.DataFrame:
 
 
 PandasDataFrame = typing.Annotated[
-  pd.DataFrame, PlainSerializer(df_serializer), BeforeValidator(df_validator)]
+    pd.DataFrame, PlainSerializer(df_serializer), BeforeValidator(df_validator)]
 
 
+@wbgeo_type(name='Input data for a geological model', color='orange', identifier='InputData')
 @dataclass(config={"arbitrary_types_allowed": True})
 class InputData:
     """
