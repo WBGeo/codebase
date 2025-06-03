@@ -71,6 +71,7 @@ class InputData:
         self.surface_points['formation'] = self.surface_points['formation'].astype(str)
 
 
+@wbgeo_type(name='Result os structural geological model', color='blue', identifier='GeomodelResults')
 @dataclass(config={"arbitrary_types_allowed": True})
 class GeomodelResults:
     """
@@ -98,7 +99,7 @@ class GeomodelResults:
     scalar_fields: Optional[List[NpNDArrayFp64]] = None
 
 
-
+@wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True})
 class MeshResults:
     """
