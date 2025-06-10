@@ -7,6 +7,7 @@ from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
+from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 
 #%%
@@ -33,23 +34,21 @@ data_test = InputData(name='WeisweilerMini',
 
 # 1.5: Plot the input data (2D and 3D possible) - Should be an option of the input data component
 plot_2d(data_test)
-# plot_3d(data_test)
+plot_3d(data_test)
 
 
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
-# TODO: RBF and OK fail here, seems to be some pydantic thing
-# results_test = ordinary_kriging_interpolator(data_test, var_range=11000)
+# results_test = ordinary_kriging_interpolator(data_test, var_range=11000, anisotropy_scaling_z=0.3)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.00013)
+results_test = geo_inr_interpolator(data_test, beta=5) # TODO: Find reasonable parameters for INR
 
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, show_data=False)
-
-# TODO: 3D plotting does not work yet
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 
