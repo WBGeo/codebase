@@ -7,6 +7,7 @@ from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -21,7 +22,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='Model_13',
                       extent=np.array([0, 1000, 0, 500, 0, 1000]),
-                      resolution=np.array([50, 25, 50]),
+                      resolution=np.array([50, 50, 50]),
                       surface_points=pd.read_csv(
                           cwd + "/examples/data/model13_surface_points_df.csv"),
                       orientations=pd.read_csv(
@@ -42,8 +43,9 @@ plot_3d(data_test)
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
-results_test = ordinary_kriging_interpolator(data_test, var_range=1500)
+# results_test = ordinary_kriging_interpolator(data_test, var_range=1500)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001)
+results_test = geo_inr_interpolator(data_test, beta=1)
 
 
 #%%
@@ -51,7 +53,8 @@ results_test = ordinary_kriging_interpolator(data_test, var_range=1500)
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True,
         direction="y", slice_int=0)
-plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
+plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked")
+
 
 #%%
 
