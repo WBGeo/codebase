@@ -1,6 +1,6 @@
 import numpy as np
 from core.object_components import InputData, GeomodelResults
-from core.utility.surface_mesh_extraction import marching_cubes
+from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 from core.grids.grid_classes import RegularGrid
 
 import warnings
@@ -306,7 +306,9 @@ def stratigraphic_ConcatMLP(interface_data, orientation_data, meshgrid_data, ext
     return predictions.ravel(), iso_values  # stratigraphic_mesh, grid_mesh_final
 
 
-def geo_inr_interpolator(input_data: InputData, beta: int = 10):
+def geo_inr_interpolator(input_data: InputData,
+                         beta: int = 10
+                        ) -> GeomodelResults:
     """
     Compute a model based on input data using geoINR interpolation
 
@@ -332,7 +334,8 @@ def geo_inr_interpolator(input_data: InputData, beta: int = 10):
 
     # Separate data based on structural groups
     results = []
-    masks = []
+    scalar_fields = []
+    scalar_values = []
     counter = 0
 
     # Reverse the order of the keys
@@ -364,17 +367,13 @@ def geo_inr_interpolator(input_data: InputData, beta: int = 10):
                                                       activation='Softplus',
                                                       beta=beta,
                                                       concat=False,
-                                                      epochs=1000,
+                                                      epochs=5000,
                                                       lr=0.01)  # learning rate
 
         res_inr = res_inr.reshape(input_data.resolution)
 
-        import matplotlib.pyplot as plt
-        # plot_block = res_inr
-        # image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
-        # plt.imshow(image, origin='lower', cmap='viridis')
-        # plt.colorbar()
-        # plt.show()
+        # Store original scalar fields
+        scalar_fields.append(res_inr.copy())
 
         # Replace values with integers based on iso values
         # TODO: check if this works for many groups/more elements
@@ -387,24 +386,36 @@ def geo_inr_interpolator(input_data: InputData, beta: int = 10):
 
         counter = counter + len(value)
 
-        # plot_block = new_res_inr
-        # image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
-        # plt.imshow(image, origin='lower', cmap='viridis')
-        # plt.colorbar()
-        # plt.show()
-
         # Save results
         results.append(new_res_inr.astype(int))
 
-        # Create mask for values below the lowest integer value for stacking
-        mask = new_res_inr.astype(int) > 0
+        # Store original scalar values
+        scalar_values.append(iso_values)
+
+    # TODO: These will both not work with faults
+    # Get indices for each lithological group
+    lith_group_indices = np.arange(len(input_data.mapping_object.keys()))
+
+    # Create scalar fields masks
+    masks = []
+    masks.append(np.ones_like(scalar_fields[0], dtype=bool))
+
+    # reverse order of scalar fields
+    scalar_fields = scalar_fields[::-1]
+    # reverse order of scalar values
+    scalar_values = scalar_values[::-1]
+
+    for i in range(len(lith_group_indices) - 1):
+        mask = scalar_fields[i] <= scalar_values[i][0]
         masks.append(mask)
 
-    # Stack result based on stack
-    combined_result = np.zeros(results[0].shape)
+    # inverse order of results
+    results = results[::-1]
 
-    # Iterate over the results and masks arrays in reverse order
-    for i in reversed(range(len(results) - 1, -1, -1)):
+    # Stack result based on stack
+    combined_result = np.zeros_like(results[0])
+    # Iterate over the results and masks arrays
+    for i in range(len(results)):
         combined_result[masks[i]] = results[i][masks[i]]
 
     # Reverse everything to match gempy, probably have to rewrite everything at some point
@@ -414,14 +425,40 @@ def geo_inr_interpolator(input_data: InputData, beta: int = 10):
     # Apply the mapping to the array
     combined_result = np.vectorize(mapping.get)(combined_result)
 
-    # plot_block = combined_result
-    # image = plot_block[:, int(np.rint(input_data.resolution[1] / 2)), :].T
-    # plt.imshow(image, origin='lower', cmap='viridis')
-    # plt.colorbar()
-    # plt.show()
+    # TODO: These will both not work with faults
+    # Get indices for each lithological group
+    lith_group_indices = np.arange(len(input_data.mapping_object.keys()))
 
-    # Extract the surface meshes using marching cubes, does not consider faults as not possible atm
-    mc_vertices, mc_edges = marching_cubes(combined_result, unique_elements, grid.spacing, input_data.extent)
+    # Extract surface meshes
+    mc_vertices_masked = []
+    mc_edges_masked = []
+    mc_vertices_all = []
+    mc_edges_all = []
+
+    for idx in lith_group_indices:
+
+        for i in reversed(range(len(scalar_values[idx]))):
+            # masked version
+            vertices, edges = marching_cubes_per_element(scalar_fields[idx], scalar_values[idx][i],
+                                                         grid.spacing, input_data.extent,
+                                                         mask=masks[idx])
+            mc_vertices_masked.append(vertices)
+            mc_edges_masked.append(edges)
+
+            # complete version going through unconformities
+            vertices, edges = marching_cubes_per_element(scalar_fields[idx], scalar_values[idx][i],
+                                                         grid.spacing, input_data.extent,
+                                                         mask=None)
+            mc_vertices_all.append(vertices)
+            mc_edges_all.append(edges)
+
+    # Extract surface meshes for structured meshing from combined block
+    mc_vertices_combined, mc_edges_combined = marching_cubes(combined_result, unique_elements, grid.spacing,
+                                                             input_data.extent)
+
+    # Combine all meshes
+    mc_vertices = [mc_vertices_masked, mc_vertices_all, mc_vertices_combined]
+    mc_edges = [mc_edges_masked, mc_edges_all, mc_edges_combined]
 
     # Create a GeomodelResults instance
     results_instance = GeomodelResults(name=input_data.name,
