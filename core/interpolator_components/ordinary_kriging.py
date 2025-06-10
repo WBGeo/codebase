@@ -10,9 +10,10 @@ from core.grids.grid_classes import RegularGrid
 def ordinary_kriging_interpolator(input_data: InputData,
                                   var_model="gaussian",
                                   var_sill=1,
-                                  var_range=500,
+                                  var_range=500, # need to set a more reasonable default
                                   var_nugget=0,
-                                  anisotropy_scaling_z=0.3) -> GeomodelResults:
+                                  anisotropy_scaling_z=0.3, # need to set a more reasonable default
+                                  neighbors=None) -> GeomodelResults:
     """
     Compute a model based on input data using kriging interpolation
 
@@ -23,6 +24,7 @@ def ordinary_kriging_interpolator(input_data: InputData,
         var_range (float): The range of the variogram. Default is 500.
         var_nugget (float): The nugget of the variogram. Default is 0.
         anisotropy_scaling_z (float): The scaling factor for the z-axis. Default is 0.3.
+        neighbors (int or None): The number of neighbors to use for the kriging interpolation. Default is None,
 
     Returns:
         resultsGeomodelResults: The results of the geological model.
@@ -59,12 +61,15 @@ def ordinary_kriging_interpolator(input_data: InputData,
             structural_group_df['X'], structural_group_df['Y'], structural_group_df['Z'],
             structural_group_df['formation'], variogram_model=var_model,
             variogram_parameters=[var_sill, var_range, var_nugget],
-            anisotropy_scaling_z=anisotropy_scaling_z
+            anisotropy_scaling_z=anisotropy_scaling_z,
         )
+
         k3d1, ss3d = ok3d.execute("grid",
                                   grid.gridx,
                                   grid.gridy,
-                                  grid.gridz)
+                                  grid.gridz,
+                                  # backend="loop", # Might be an option for debugging, but is very slow
+                                  n_closest_points=neighbors)
 
         # Store original scalar fields
         scalar_fields.append(k3d1.T.copy())
@@ -87,23 +92,6 @@ def ordinary_kriging_interpolator(input_data: InputData,
     for i in range(len(lith_group_indices) - 1):
         mask = scalar_fields[i] <= scalar_values[i][-1]
         masks.append(mask)
-
-    # plot slice of mask in y direction
-    # 0 alles true
-    # 1 nur oben true
-    # import matplotlib.pyplot as plt
-    # mask = masks[1].T
-    # mask = mask[:, 25, :]
-    # plt.imshow(mask, origin='lower')
-    # plt.show()
-
-    # plot slice of result in y direction
-    # 1 ist untere grupe
-    # 0 ist obere gruppe
-    # result=results[1].T
-    # result = result[:, 25, :]
-    # plt.imshow(result, origin='lower')
-    # plt.show()
 
     # Stack result based on stack
     combined_result = np.zeros_like(results[0])
@@ -152,8 +140,6 @@ def ordinary_kriging_interpolator(input_data: InputData,
     mc_edges = [mc_edges_masked, mc_edges_all, mc_edges_combined]
 
     # convert combined from masked array to normal array
-    # combined_result = combined_result.flatten().astype(np.int64)
-    # print(np.unique(combined_result))
     combined_result = np.where(combined_result == None, 0, combined_result).flatten().astype(np.int64)
 
     results_instance = GeomodelResults(name=input_data.name,
