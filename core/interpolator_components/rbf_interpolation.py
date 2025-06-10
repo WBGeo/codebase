@@ -17,8 +17,10 @@ def rbf_interpolator(input_data: InputData,
     Args:
         input_data (InputData): The input data for the structural geological model.
         kernel (str): The kernel to use for the RBF interpolation. Default is 'linear'.
+        smoothing (float): The smoothing parameter for the RBF interpolation. Default is 0.
+        neighbors (int or None): The number of neighbors to use for the RBF interpolation. Default is None,
+        which uses all points.
         epsilon (float): The epsilon value for the RBF interpolation. Default is 1.
-        mask_surfaces (bool): Whether to mask surfaces. Default is True.
 
     Returns:
         resultsGeomodelResults: The results of the geological model.
