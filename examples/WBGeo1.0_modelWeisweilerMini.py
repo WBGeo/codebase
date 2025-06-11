@@ -8,6 +8,7 @@ from core.interpolator_components.universal_cokriging import universal_cokriging
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
+from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 
 #%%
@@ -43,7 +44,8 @@ plot_3d(data_test)
 # results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=11000, anisotropy_scaling_z=0.3)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.00013)
-results_test = geo_inr_interpolator(data_test, beta=5) # TODO: Find reasonable parameters for INR
+# results_test = geo_inr_interpolator(data_test, beta=5) # TODO: Find reasonable parameters for INR
+results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
 #%%
 
