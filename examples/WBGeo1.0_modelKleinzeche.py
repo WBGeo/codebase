@@ -55,8 +55,8 @@ plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, 
                   '#ec7a10','#828701', '#ec7a10', "#a619e7"])
 
 #%%
-
-plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked",
+# TODO: Meshes shifted in z-direction, why?
+plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="unmasked",
         colors = ['#959595', '#000000', '#00c401', '#828701', '#ec7a10', '#828701',
                   '#ec7a10','#828701', '#ec7a10', "#a619e7"])
 

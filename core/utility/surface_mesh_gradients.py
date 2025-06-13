@@ -4,19 +4,25 @@ from core.object_components import InputData, GeomodelResults
 from core.utility.conversions import normalize_vectors
 
 
-def get_surface_mesh_gradients(geo_model_results, norm=True):
+def get_surface_mesh_gradients(geo_model_results, norm=True, mesh_type="unmasked"):
     """
     Get the gradient vector field at the surface mesh vertices
     Args:
         geo_model_results (GeomodelResults): The results of the geological model.
         norm (bool): Normalize the gradient vectors. Default is True.
+        mesh_type (str): The type of surface mesh to use. Default is "unmasked".
     Returns:
         points_list (list): The surface mesh vertices per element
         vectors_list (list): The gradient vector field at the surface mesh vertices per element
     """
     scalar_fields = geo_model_results.scalar_fields
 
-    mesh_type=1
+    if mesh_type == "masked":
+        mesh_counter = 0
+    elif mesh_type == "unmasked":
+        mesh_counter = 1
+    elif mesh_type == "combined":
+        mesh_counter = 2
 
     points_list = []
     vectors_list = []
@@ -65,7 +71,7 @@ def get_surface_mesh_gradients(geo_model_results, norm=True):
             (x_sorted, y_sorted, z_sorted), grad_z_sorted, bounds_error=False, fill_value=None
         )
 
-        new_points = geo_model_results.surface_meshes_vertices[mesh_type][i]
+        new_points = geo_model_results.surface_meshes_vertices[mesh_counter][i]
 
         # Interpolate gradients at new points
         grad_x_new = interp_grad_x(new_points)

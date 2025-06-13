@@ -46,14 +46,14 @@ results_test = universal_cokriging_interpolator(data_test)
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True,
         direction="y", slice_int=12)
-plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
+plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked")
 
 #%%
 
 # Calculate gradients at the surface mesh vertices
 from core.utility import surface_mesh_gradients
 
-points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results_test)
+points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results_test, mesh_type="unmasked")
 
 #%%
 
