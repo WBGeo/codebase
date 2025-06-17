@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Dict, Tuple, Optional, List, Union
 from pydantic import BaseModel, Field, PrivateAttr
 from enum import Enum
+from core.grids.grid_classes import RegularGrid
 
 
 #%%
@@ -281,43 +282,55 @@ class StructuralGroup(BaseModel):
 class StructuralFrame(BaseModel):
     """
     A structural frame that contains multiple structural groups and associated data.
-    Attributes:
-        structural_groups: List of StructuralGroup objects.
-        surface_points: DataFrame containing surface points with columns for formation names and coordinates.
-        orientations: Optional DataFrame containing orientations for each formation.
     """
     structural_groups: List[StructuralGroup] = Field(default_factory=list)
-    surface_points: pd.DataFrame
-    orientations: Optional[pd.DataFrame] = None
+
+    _grid: Optional[RegularGrid] = PrivateAttr(default=None)
+    _surface_points: Optional[pd.DataFrame] = PrivateAttr(default=None)
+    _orientations: Optional[pd.DataFrame] = PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
+
+    # Properties to access the private attributes
+    @property
+    def grid(self) -> RegularGrid:
+        return self._grid
+
+    @property
+    def surface_points(self) -> pd.DataFrame:
+        return self._surface_points
+
+    @property
+    def orientations(self) -> Optional[pd.DataFrame]:
+        return self._orientations
+
+    # Getters
+    def get_surface_points_for_element(self, element_name: str) -> pd.DataFrame:
+        return self._surface_points[self._surface_points["formation"] == element_name]
+
+    def get_orientations_for_element(self, element_name: str) -> Optional[pd.DataFrame]:
+        if self._orientations is None:
+            return None
+        return self._orientations[self._orientations["formation"] == element_name]
+
+    def get_surface_points_for_group(self, group_name: str) -> pd.DataFrame:
+        group = self[group_name]
+        element_names = [e.name for e in group.structural_elements]
+        return self._surface_points[self._surface_points["formation"].isin(element_names)]
+
+    def get_orientations_for_group(self, group_name: str) -> Optional[pd.DataFrame]:
+        if self._orientations is None:
+            return None
+        group = self[group_name]
+        element_names = [e.name for e in group.structural_elements]
+        return self._orientations[self._orientations["formation"].isin(element_names)]
 
     def __getitem__(self, group_name: str) -> StructuralGroup:
         for group in self.structural_groups:
             if group.name == group_name:
                 return group
         raise KeyError(f"Structural group '{group_name}' not found.")
-
-    def get_surface_points_for_element(self, element_name: str) -> pd.DataFrame:
-        return self.surface_points[self.surface_points["formation"] == element_name]
-
-    def get_orientations_for_element(self, element_name: str) -> Optional[pd.DataFrame]:
-        if self.orientations is None:
-            return None
-        return self.orientations[self.orientations["formation"] == element_name]
-
-    def get_surface_points_for_group(self, group_name: str) -> pd.DataFrame:
-        group = self[group_name]
-        element_names = [e.name for e in group.structural_elements]
-        return self.surface_points[self.surface_points["formation"].isin(element_names)]
-
-    def get_orientations_for_group(self, group_name: str) -> Optional[pd.DataFrame]:
-        if self.orientations is None:
-            return None
-        group = self[group_name]
-        element_names = [e.name for e in group.structural_elements]
-        return self.orientations[self.orientations["formation"].isin(element_names)]
 
     def summary(self):
         print("📦 Structural Frame Summary")

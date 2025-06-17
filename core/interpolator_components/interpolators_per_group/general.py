@@ -11,13 +11,19 @@ from core.utility.surface_mesh_extraction import marching_cubes_per_element, mar
 
 from typing import Callable, Dict, Tuple, Optional
 
-from core.interpolator_components.interpolators_per_group.ordinary_kriging_per_group import interpolate_group_ordinary_kriging
-from core.interpolator_components.interpolators_per_group.radial_basis_function_per_group import interpolate_group_radial_basis_function
-from core.interpolator_components.interpolators_per_group.universal_cokriging_per_group import interpolate_group_universal_cokriging
-from core.interpolator_components.interpolators_per_group.loop_structural_per_group import interpolate_group_loop_structural
+from core.interpolator_components.interpolators_per_group.ordinary_kriging_per_group import \
+    interpolate_group_ordinary_kriging
+from core.interpolator_components.interpolators_per_group.radial_basis_function_per_group import \
+    interpolate_group_radial_basis_function
+from core.interpolator_components.interpolators_per_group.universal_cokriging_per_group import \
+    interpolate_group_universal_cokriging
+from core.interpolator_components.interpolators_per_group.loop_structural_per_group import \
+    interpolate_group_loop_structural
 from core.interpolator_components.interpolators_per_group.geoinr_per_group import interpolate_group_geo_inr
 
 from core.structural_objects.objects import StructuralFrame, StructuralGroup, StructuralElement, InterpolationMethod
+
+
 #%%
 
 def set_scalar_masks(structural_frame: 'StructuralFrame'):
@@ -48,7 +54,8 @@ def set_scalar_masks(structural_frame: 'StructuralFrame'):
 
             oldest_element = group.structural_elements[-1]
             if oldest_element.scalar_value is None:
-                raise ValueError(f"Oldest element '{oldest_element.name}' in group '{group.name}' has no scalar value set.")
+                raise ValueError(
+                    f"Oldest element '{oldest_element.name}' in group '{group.name}' has no scalar value set.")
 
             mask = scalar_field >= oldest_element.scalar_value
 
@@ -106,13 +113,14 @@ def compute_lithology_block(structural_frame: 'StructuralFrame') -> np.ndarray:
 
     return lith_block
 
+
 def extract_all_meshes(
-    structural_frame: StructuralFrame,
-    grid_spacing: np.ndarray,
-    extent: np.ndarray,
-    combined_lithology_block: np.ndarray,
-    marching_cubes_per_element: Callable,
-    marching_cubes: Callable
+        structural_frame: StructuralFrame,
+        grid_spacing: np.ndarray,
+        extent: np.ndarray,
+        combined_lithology_block: np.ndarray,
+        marching_cubes_per_element: Callable,
+        marching_cubes: Callable
 ):
     """
     Extracts 'masked', 'unmasked', and 'combined' surface meshes for all structural elements in a frame.
@@ -137,8 +145,7 @@ def extract_all_meshes(
             mask = np.ones_like(scalar_field, dtype=bool)
         else:
             # Take mask from the previous group
-            mask = ~structural_frame.structural_groups[i-1].mask
-
+            mask = ~structural_frame.structural_groups[i - 1].mask
 
         if scalar_field is None:
             raise ValueError(f"Group '{group.name}' is missing a scalar field.")
@@ -169,10 +176,9 @@ def extract_all_meshes(
             )
             element.set_mesh("unmasked", vertices, edges)
 
-
     # Combined mesh extraction
     unique_ids = [
-        element.id-0.1  # Adjust IDs to get contour levels slightly below the lowest ID
+        element.id - 0.1  # Adjust IDs to get contour levels slightly below the lowest ID
         for group in structural_frame.structural_groups
         for element in group.structural_elements
         if element.id is not None
@@ -193,7 +199,7 @@ def extract_all_meshes(
             idx += 1
 
 
-def combined_interpolator(frame, grid):
+def combined_interpolator(frame):
     """
     Compute a model based on input data using a combination of Ordinary Kriging and RBF interpolation.
     """
@@ -209,7 +215,7 @@ def combined_interpolator(frame, grid):
             interpolate_group_ordinary_kriging(
                 group=group,
                 group_surface_points_df=group_surface_points,
-                grid=grid
+                grid=frame.grid
             )
         elif group.interpolation_method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
             # Perform Radial Basis Function interpolation
@@ -217,14 +223,14 @@ def combined_interpolator(frame, grid):
             interpolate_group_radial_basis_function(
                 group=group,
                 group_surface_points_df=group_surface_points,
-                grid=grid
+                grid=frame.grid
             )
         elif group.interpolation_method == InterpolationMethod.UNIVERSAL_COKRIGING:
             # Perform Universal CoKriging interpolation
             print("Hello, I am Universal CoKriging")
             interpolate_group_universal_cokriging(
                 group=group,
-                grid=grid,
+                grid=frame.grid,
                 group_surface_points_df=group_surface_points,
                 group_orientations_points_df=frame.get_orientations_for_group(group.name),
             )
@@ -233,7 +239,7 @@ def combined_interpolator(frame, grid):
             print("Hello, I am GeoINR")
             interpolate_group_geo_inr(
                 group=group,
-                grid=grid,
+                grid=frame.gridd,
                 group_surface_points_df=group_surface_points,
                 group_orientations_points_df=frame.get_orientations_for_group(group.name)
             )
@@ -243,7 +249,7 @@ def combined_interpolator(frame, grid):
             print("Hello, I am Loop Structural")
             interpolate_group_loop_structural(
                 group=group,
-                grid=grid,
+                grid=frame.grid,
                 group_surface_points_df=group_surface_points,
                 group_orientations_points_df=frame.get_orientations_for_group(group.name),
             )
@@ -266,8 +272,8 @@ def combined_interpolator(frame, grid):
     # 7. Extract surface meshes based on the combined result, scalar fields and scalar values
     extract_all_meshes(
         structural_frame=frame,
-        grid_spacing=grid.spacing,
-        extent=grid.extent,
+        grid_spacing=frame.grid.spacing,
+        extent=frame.grid.extent,
         combined_lithology_block=lith_block,
         marching_cubes_per_element=marching_cubes_per_element,
         marching_cubes=marching_cubes_new
@@ -276,6 +282,7 @@ def combined_interpolator(frame, grid):
     print("Mesh extraction done")
 
     return frame, lith_block
+
 
 #%%
 
@@ -311,6 +318,8 @@ def generate_grouped_colors_per_element(groups, base_colormap="Accent"):
 
 def build_structural_frame(
         mapping_object: Dict[str, Tuple[str, ...]],
+        extent: np.ndarray,
+        resolution: np.ndarray,
         surface_points: pd.DataFrame,
         orientations: Optional[pd.DataFrame] = None,
         default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING
@@ -354,10 +363,11 @@ def build_structural_frame(
         elements = [StructuralElement(name=name) for name in element_names]
         group = StructuralGroup(
             name=group_name,
-            interpolation_method=default_interpolation,
-            scalar_field=np.array([]),  # placeholder
+            interpolation_method=None,  # placeholder
+            scalar_field=np.array([]),
             structural_elements=elements
         )
+        group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
 
     # Generate colors AFTER groups exist
@@ -370,8 +380,12 @@ def build_structural_frame(
             elem.set_color(color_map[elem.name])
             element_objects[elem.name] = elem
 
-    return StructuralFrame(
-        structural_groups=group_objects,
-        surface_points=surface_points,
-        orientations=orientations
-    )
+    # Create regular grid
+    grid = RegularGrid(extent=extent, resolution=resolution)
+
+    frame = StructuralFrame(structural_groups=group_objects)
+    frame._grid = grid
+    frame._surface_points = surface_points
+    frame._orientations = orientations
+
+    return frame
