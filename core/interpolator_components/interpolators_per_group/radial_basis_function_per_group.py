@@ -11,11 +11,7 @@ from core.structural_objects.objects import StructuralGroup, StructuralElement, 
 def interpolate_group_radial_basis_function(
         group: StructuralGroup,
         group_surface_points_df: pd.DataFrame,  # Only points relevant to this group
-        grid,
-        kernel: str = 'linear',
-        smoothing: int = 0,
-        epsilon: int = 1,
-        neighbors: Optional[int] = None
+        grid
 ) -> None:
 
     # 1. Assign strictly increasing scalar values: oldest = 1, youngest = n
@@ -34,12 +30,15 @@ def interpolate_group_radial_basis_function(
     y = group_surface_points_df['Y'].values
     z = group_surface_points_df['Z'].values
 
+    # Get interpolation parameters from group
+    params = group.get_interpolation_params()
+
     # Create RBF interpolator
     rbfi = RBFInterpolator(np.stack((x,y,z), axis=1),
-                           scalar_values, kernel=kernel,
-                           smoothing=smoothing,
-                           neighbors=neighbors,  # Use None to use all points
-                           epsilon=epsilon)
+                           scalar_values, kernel=params.kernel,
+                           smoothing=params.smoothing,
+                           neighbors=params.neighbors,  # Use None to use all points
+                           epsilon=params.epsilon)
 
     # Interpolate the function on the grid
     rbf_res = rbfi(grid.grid_coordinates)

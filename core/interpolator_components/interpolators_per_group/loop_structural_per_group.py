@@ -10,7 +10,6 @@ def interpolate_group_loop_structural(
         grid,
         group_surface_points_df: pd.DataFrame,  # Only points relevant to this group
         group_orientations_points_df=pd.DataFrame,  # Only orientations relevant to this group
-        interpolator_type="FDI",
 ) -> None:
 
     if group_surface_points_df.empty:
@@ -71,9 +70,12 @@ def interpolate_group_loop_structural(
     # features = [input_data.mapping_object.keys()]
     strat_features = []
 
+    # Get the parameters from the group
+    params = group.get_interpolation_params()
+
     strat = model.create_and_add_foliation(
             group.name,
-            interpolatortype=interpolator_type,  # try changing this to 'PLI'
+            interpolatortype=params.interpolator_type,  # try changing this to 'PLI'
             nelements=1e4,  # try changing between 1e3 and 5e4
             buffer=0,
             solver="cg",

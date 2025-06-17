@@ -91,8 +91,6 @@ def compute_lithology_block(structural_frame: 'StructuralFrame') -> np.ndarray:
         # for element in reversed(group.structural_elements):
         for element in group.structural_elements:
 
-            print(element.name, element.id, element.scalar_value)
-
             if element.scalar_value is None:
                 raise ValueError(f"Element '{element.name}' missing scalar_value.")
 
@@ -200,18 +198,6 @@ def combined_interpolator(frame, grid):
     Compute a model based on input data using a combination of Ordinary Kriging and RBF interpolation.
     """
 
-    # 1. Create a Grid instance
-    # grid = RegularGrid(input_data.extent, input_data.resolution)
-
-    # print("grid done")
-
-    # 2. Build the structural frame from input data
-    # frame = build_structural_frame(input_data.mapping_object, input_data.surface_points, input_data.orientations)
-
-    # print("frame done")
-
-    # 3.
-
     # 4. Perform interpolation for each structural group based on its method
     # TODO: This needs to return a scalar field per group and scalar values per element in this group
     for group in frame.structural_groups:
@@ -223,11 +209,7 @@ def combined_interpolator(frame, grid):
             interpolate_group_ordinary_kriging(
                 group=group,
                 group_surface_points_df=group_surface_points,
-                grid=grid,
-                variogram_model='gaussian',
-                variogram_parameters=[1, 500, 0],  # Example parameters, adjust as needed
-                anisotropy_scaling_z=0.3,
-                neighbors=None
+                grid=grid
             )
         elif group.interpolation_method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
             # Perform Radial Basis Function interpolation
@@ -235,11 +217,7 @@ def combined_interpolator(frame, grid):
             interpolate_group_radial_basis_function(
                 group=group,
                 group_surface_points_df=group_surface_points,
-                grid=grid,
-                kernel='cubic',  # Example kernel, adjust as needed
-                smoothing=0,
-                epsilon=1,
-                neighbors=None  # Use None to use all points
+                grid=grid
             )
         elif group.interpolation_method == InterpolationMethod.UNIVERSAL_COKRIGING:
             # Perform Universal CoKriging interpolation
@@ -257,8 +235,7 @@ def combined_interpolator(frame, grid):
                 group=group,
                 grid=grid,
                 group_surface_points_df=group_surface_points,
-                group_orientations_points_df=frame.get_orientations_for_group(group.name),
-                beta=10 # Example beta value, adjust as needed
+                group_orientations_points_df=frame.get_orientations_for_group(group.name)
             )
             pass
         elif group.interpolation_method == InterpolationMethod.LOOP_STRUCTURAL:
@@ -269,23 +246,22 @@ def combined_interpolator(frame, grid):
                 grid=grid,
                 group_surface_points_df=group_surface_points,
                 group_orientations_points_df=frame.get_orientations_for_group(group.name),
-                interpolator_type="FDI" # Example type, adjust as needed
             )
             pass
         else:
             raise ValueError(f"Unsupported interpolation method: {group.interpolation_method}")
 
-    print("interpolation done, scalar fields confirmed correct")
+    print("Interpolation done")
 
     # 5. Create masks based on order of structural groups, scalar fields and scalar values
     set_scalar_masks(frame)
 
-    print("masks done, confirmed correct")
+    print("Masking done")
 
     # 6. Create a combined result (lith_block) based on masks, scalar fields and scalar values
     lith_block = compute_lithology_block(frame)
 
-    print("lithology block done")
+    print("Combining lithology block done")
 
     # 7. Extract surface meshes based on the combined result, scalar fields and scalar values
     extract_all_meshes(
@@ -297,7 +273,7 @@ def combined_interpolator(frame, grid):
         marching_cubes=marching_cubes_new
     )
 
-    print("surface meshes done")
+    print("Mesh extraction done")
 
     return frame, lith_block
 

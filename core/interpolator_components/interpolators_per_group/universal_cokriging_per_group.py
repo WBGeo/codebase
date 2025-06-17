@@ -66,6 +66,9 @@ def interpolate_group_universal_cokriging(
 
     # TODO: This completely ignores faults
 
+    # Get parameters for Universal CoKriging
+    params = group.get_interpolation_params()
+
     # 4. Perform Universal CoKriging
     # Compute the geological model
     gp.compute_model(geo_model)

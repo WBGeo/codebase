@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field, PrivateAttr
 from enum import Enum
 
 
-
 #%%
 
 class InterpolationMethod(str, Enum):
@@ -15,6 +14,91 @@ class InterpolationMethod(str, Enum):
     UNIVERSAL_COKRIGING = "Universal Co-Kriging"
     GEOINR = "GeoINR"
     LOOP_STRUCTURAL = "Loop Structural"
+
+
+class OrdinaryKrigingParams(BaseModel):
+    """
+    Configuration parameters for Ordinary Kriging interpolation.
+
+    Attributes:
+        variogram_model: The type of variogram model to use. Common choices are "spherical", "exponential", or "gaussian".
+        range: The range of the variogram model, typically the distance at which spatial correlation becomes negligible.
+        sill: The sill value (plateau) of the variogram model, representing the maximum semi-variance.
+        nugget: The nugget effect, representing microscale variation or measurement error.
+        anisotropy_scaling_z: Scaling factor for the z-axis in 3D kriging, used to account for vertical anisotropy.
+        neighbors: Optional; the number of nearest neighbors to use in kriging. If None, all points are used.
+    """
+    variogram_model: str = Field("gaussian",
+                                 description="Type of variogram model (e.g., spherical, exponential, gaussian).")
+    range: float = Field(500.0, description="Range of the variogram (distance at which correlation tapers off).")
+    sill: float = Field(1.0, description="Sill of the variogram (max variance level).")
+    nugget: float = Field(0.0, description="Nugget effect (variance at zero distance).")
+    anisotropy_scaling_z: float = Field(1.0, description="Scaling factor for the z-axis in 3D kriging.")
+    neighbors: Optional[int] = Field(None,
+                                     description="Number of nearest neighbors to use in kriging. If None, uses all points.")
+
+
+class RBFParams(BaseModel):
+    """
+    Parameters for Radial Basis Function (RBF) interpolation.
+
+    Attributes:
+        kernel: The radial basis function kernel to use. Common options include 'linear', 'cubic', 'thin_plate', etc.
+        smoothing: Smoothing parameter. Larger values allow more smoothing of the interpolation surface.
+        epsilon: Shape parameter for kernels like multiquadric or inverse multiquadric.
+        neighbors: Optional number of nearest neighbors to use. If None, all data points are considered.
+    """
+
+    kernel: str = Field("linear", description="Radial basis function kernel. Common options: 'linear', 'cubic', 'thin_plate'.")
+    smoothing: int = Field(0, description="Smoothing parameter for RBF. Higher values increase smoothing (0 = exact fit).")
+    epsilon: int = Field(1, description="Shape parameter for certain kernels like multiquadric or inverse multiquadric.")
+    neighbors: Optional[int] = Field(None, description="Number of nearest neighbors to use. If None, all points are used.")
+
+
+class GeoINRParams(BaseModel):
+    """
+    Parameters for GeoINR interpolation.
+
+    Attributes:
+        beta: Regularization or weighting parameter controlling the influence of constraints
+              in the neural representation.
+    """
+
+    beta: int = Field(1,
+                      escription="Regularization parameter controlling the influence of geometric constraints in the model.")
+
+
+class LoopStructuralMethod(str, Enum):
+    FDI = "FDI"
+    PLI = "PLI"
+
+
+class LoopStructuralParams(BaseModel):
+    """
+    Parameters for LoopStructural interpolation.
+
+    Attributes:
+        interpolator_type: The type of interpolator to use in LoopStructural.
+                           Must be either 'FDI' (Finite Difference Interpolator)
+                           or 'PLI' (Piecewise Linear Interpolator).
+    """
+    interpolator_type: LoopStructuralMethod = Field(
+        default=LoopStructuralMethod.FDI,
+        description="Type of LoopStructural interpolator. Choose 'FDI' or 'PLI'."
+    )
+
+
+class UniversalCoKrigingParams(BaseModel):
+    """
+    Placeholder class for Universal Co-Kriging interpolation parameters.
+
+    Currently, Universal Co-Kriging does not require any parameters,
+    but this class is in place to support future configuration needs.
+    """
+    pass
+
+
+InterpolationParameterSet = Union[OrdinaryKrigingParams, RBFParams, GeoINRParams, LoopStructuralParams, UniversalCoKrigingParams]
 
 
 class StructuralElement(BaseModel):
@@ -79,8 +163,8 @@ class StructuralElement(BaseModel):
         """
         if mesh_type not in {"masked", "unmasked", "combined"}:
             raise ValueError(f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined.")
-        if mesh_type in self._vertices or mesh_type in self._edges:
-            raise ValueError(f"Mesh type '{mesh_type}' already set for element '{self.name}'.")
+        # if mesh_type in self._vertices or mesh_type in self._edges:
+        #     raise ValueError(f"Mesh type '{mesh_type}' already set for element '{self.name}'.")
 
         self._vertices[mesh_type] = vertices
         self._edges[mesh_type] = edges
@@ -108,12 +192,14 @@ class StructuralGroup(BaseModel):
         interpolation_method: Interpolation method used.
         scalar_field: Computed scalar field (1D or multi-D array), set after interpolation.
         mask: Optional mask for the scalar field (1D or multi-D array), set after interpolation.
+        interpolation_params: Optional parameters for the interpolation method.
     """
     name: str
     structural_elements: List['StructuralElement'] = Field(default_factory=list)
     _interpolation_method: Optional['InterpolationMethod'] = PrivateAttr(default=None)
     _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
     _mask: Optional[np.ndarray] = PrivateAttr(default=None)
+    _interpolation_params: Optional[InterpolationParameterSet] = PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -159,8 +245,47 @@ class StructuralGroup(BaseModel):
 
         self._interpolation_method = method
 
+        # Set default parameters when method is set
+        if method == InterpolationMethod.ORDINARY_KRIGING:
+            self._interpolation_params = OrdinaryKrigingParams()
+        elif method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
+            self._interpolation_params = RBFParams()
+        elif method == InterpolationMethod.UNIVERSAL_COKRIGING:
+            self._interpolation_params = UniversalCoKrigingParams()
+        elif method == InterpolationMethod.GEOINR:
+            self._interpolation_params = GeoINRParams()
+        elif method == InterpolationMethod.LOOP_STRUCTURAL:
+            self._interpolation_params = LoopStructuralParams()
+        else:
+            self._interpolation_params = None  # fallback
+
+    def set_interpolation_params(self, params: InterpolationParameterSet):
+        self._interpolation_params = params
+
+    def get_interpolation_params(self) -> Optional[InterpolationParameterSet]:
+        return self._interpolation_params
+
+    def configure_interpolation_params(self, **kwargs):
+        if self._interpolation_params is None:
+            raise ValueError("Interpolation parameters have not been initialized. "
+                             "Make sure to call set_interpolation_method() first.")
+
+        for key, value in kwargs.items():
+            if not hasattr(self._interpolation_params, key):
+                raise AttributeError(
+                    f"'{key}' is not a valid parameter for {type(self._interpolation_params).__name__}."
+                )
+            setattr(self._interpolation_params, key, value)
+
 
 class StructuralFrame(BaseModel):
+    """
+    A structural frame that contains multiple structural groups and associated data.
+    Attributes:
+        structural_groups: List of StructuralGroup objects.
+        surface_points: DataFrame containing surface points with columns for formation names and coordinates.
+        orientations: Optional DataFrame containing orientations for each formation.
+    """
     structural_groups: List[StructuralGroup] = Field(default_factory=list)
     surface_points: pd.DataFrame
     orientations: Optional[pd.DataFrame] = None
@@ -194,45 +319,86 @@ class StructuralFrame(BaseModel):
         element_names = [e.name for e in group.structural_elements]
         return self.orientations[self.orientations["formation"].isin(element_names)]
 
-    def pretty_print(self):
-        print("📦 Structural Frame Overview")
+    def summary(self):
+        print("📦 Structural Frame Summary")
         print("────────────────────────────")
+        print(f"• Groups: {len(self.structural_groups)}\n")
+
+        for group in self.structural_groups:
+            print(f"▶ {group.name} — {group.interpolation_method}")
+            print("  Elements:")
+            for elem in group.structural_elements:
+                name = elem.name
+                color = elem.color or "#AAAAAA"
+                try:
+                    # Use ANSI escape for color (truecolor if supported)
+                    r, g, b = tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
+                    print(f"    \033[38;2;{r};{g};{b}m{name}\033[0m")
+                except Exception:
+                    print(f"    {name} (color: {color})")
+            print()  # blank line between groups
+
+    def detailed_report(self):
+        print("📦 Structural Frame — Detailed Report")
+        print("─────────────────────────────────────")
         print(f"• Number of structural groups: {len(self.structural_groups)}")
         print(f"• Total surface points: {len(self.surface_points)} entries")
         if self.orientations is not None:
-            print(f"• Total orientations: {len(self.orientations)} entries")
+            print(f"• Total orientations: {len(self.orientations)} entries\n")
         else:
-            print("• Orientation data: None")
-
-        print("\n🧱 Structural Groups:\n")
+            print("• Orientation data: None\n")
 
         for group in self.structural_groups:
-            print(f"  ▶ Group: {group.name}")
-            print(f"    ├─ Interpolation method: {group.interpolation_method}")
+            print(f"▶ {group.name}")
+            print(f"  ├─ Interpolation method: {group.interpolation_method}")
 
-            # Count surface points for group
-            group_element_names = [e.name for e in group.structural_elements]
-            group_surface_points = self.surface_points[self.surface_points["formation"].isin(group_element_names)]
-            print(f"    ├─ Surface points in group: {len(group_surface_points)}")
+            # Interpolation parameters
+            try:
+                params = group.get_interpolation_params()
+                param_dict = params.dict()
+            except Exception:
+                param_dict = {}
 
-            # Count orientations for group
-            if self.orientations is not None:
-                group_orientations = self.orientations[self.orientations["formation"].isin(group_element_names)]
-                print(f"    ├─ Orientations in group: {len(group_orientations)}")
+            if param_dict:
+                param_str = ", ".join(f"{k}={v}" for k, v in param_dict.items())
+                print(f"  ├─ Parameters: {param_str}")
+            else:
+                print(f"  ├─ Parameters: None")
 
-            print(f"    └─ Structural Elements:")
+            # Elements with color
+            print("  ├─ Elements:")
+            element_names = []
             for elem in group.structural_elements:
-                print(f"        • {elem.name}")
-                if elem.color:
-                    print(f"           - Color: {elem.color}")
+                name = elem.name
+                color = elem.color or "#AAAAAA"
+                try:
+                    r, g, b = tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
+                    colored_name = f"\033[38;2;{r};{g};{b}m{name}\033[0m"
+                except Exception:
+                    colored_name = name
+                element_names.append(colored_name)
+            print(f"  │   {' | '.join(element_names)}")
 
-                elem_surface_points = self.surface_points[self.surface_points["formation"] == elem.name]
-                print(f"           - Surface points: {len(elem_surface_points)}")
+            # Surface points in group
+            element_names_raw = [e.name for e in group.structural_elements]
+            group_surface_points = self.surface_points[self.surface_points["formation"].isin(element_names_raw)]
+            print(f"  ├─ Surface points in group: {len(group_surface_points)}")
 
-                if self.orientations is not None:
-                    elem_orientations = self.orientations[self.orientations["formation"] == elem.name]
-                    print(f"           - Orientations: {len(elem_orientations)}")
-            print()  # Blank line between groups
+            # Per-element surface point counts
+            sp_counts = [
+                f"{name}: {len(self.surface_points[self.surface_points['formation'] == name])}"
+                for name in element_names_raw
+            ]
+            print(f"  ├─ Per-element surface points: {', '.join(sp_counts)}")
 
+            # Per-element orientation counts, if available
+            if self.orientations is not None:
+                ori_counts = [
+                    f"{name}: {len(self.orientations[self.orientations['formation'] == name])}"
+                    for name in element_names_raw
+                ]
+                print(f"  └─ Per-element orientations: {', '.join(ori_counts)}\n")
+            else:
+                print(f"  └─ Per-element orientations: N/A\n")
 
 

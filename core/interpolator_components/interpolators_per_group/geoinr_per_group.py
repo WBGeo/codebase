@@ -18,8 +18,7 @@ def interpolate_group_geo_inr(
         group: StructuralGroup,  # Only points relevant to this group
         grid,
         group_surface_points_df: pd.DataFrame,  # Only points relevant to this group
-        group_orientations_points_df=pd.DataFrame,
-        beta: int = 10
+        group_orientations_points_df=pd.DataFrame
 ) -> None:
     """
     Perform GeoINR for a single structural group.
@@ -68,6 +67,9 @@ def interpolate_group_geo_inr(
     surface_points_temp_arr = surface_points_temp[['label', 'X', 'Y', 'Z']].values  # labels in the first column
     orientations_temp_arr = orientations_temp[['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z']].values
 
+    # Get interpolation parameters from group
+    params = group.get_interpolation_params()
+
     # 4. Perform geoINR
     res_inr, iso_values = stratigraphic_ConcatMLP(interface_data=surface_points_temp_arr,
                                                   orientation_data=orientations_temp_arr,
@@ -79,7 +81,7 @@ def interpolate_group_geo_inr(
                                                   out_dim=1,
                                                   n_hidden_layers=1,  # number of hidden layers
                                                   activation='Softplus',
-                                                  beta=beta,
+                                                  beta=params.beta,
                                                   concat=False,
                                                   epochs=5000,
                                                   lr=0.01)  # learning rate
