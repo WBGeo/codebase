@@ -6,15 +6,15 @@ def adjust_z_values(all_points_array, n_gx, n_gy, z_threshold=0.2, tolerance=0.5
     Adjusts z-values of points in consecutive rows if they are within a tolerance distance.
 
     Args:
-        all_points_array (np.array): Array containing points for each surface and its intermediate points, where:
+        - all_points_array (np.array): Array containing points for each surface and its intermediate points, where:
                                      - x = all_points_array[:, :n_gx * n_gy]
                                      - y = all_points_array[:, n_gx * n_gy: 2 * n_gx * n_gy]
                                      - z = all_points_array[:, 2 * n_gx * n_gy: 3 * n_gx * n_gy]
                                      - ids = all_points_array[:, -n_gx * n_gy:]
-        n_gx (int): Grid size in x direction.
-        n_gy (int): Grid size in y direction.
-        z_threshold (float): Value for moving a point in z direction.
-        tolerance (float): Tolerance for comparing location of two points.
+        - n_gx (int): Grid size in x direction.
+        - n_gy (int): Grid size in y direction.
+        - z_threshold (float): Value for moving a point in z direction.
+        - tolerance (float): Tolerance for comparing location of two points.
 
     Returns:
         np.array: Adjusted array with updated z values.
@@ -57,12 +57,12 @@ def create_hexahedral_elements_with_nodes(adjusted_array, n_gx, n_gy):
     Saves both elements and nodes data.
 
     Args:
-        adjusted_array (np.array): Array of points with shape (n_layers, 3 * n_gx * n_gy + 1).
-        n_gx (int): Grid size in the x direction.
-        n_gy (int): Grid size in the y direction.
+        - adjusted_array (np.array): Array of points with shape (n_layers, 3 * n_gx * n_gy + 1).
+        - n_gx (int): Grid size in the x direction.
+        - n_gy (int): Grid size in the y direction.
 
     Returns:
-        tuple:
+        tuples containing:
             - elements_array (np.array): Array of elements where each row contains:
                 [element_id, node0, node1, node2, node3, node4, node5, node6, node7, surface_id].
             - nodes_array (np.array): Array of nodes where each row contains:

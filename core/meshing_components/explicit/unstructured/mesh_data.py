@@ -1,294 +1,504 @@
-import numpy as np
 import gmsh
-import os
-import glob
-import pyvista as pv
-from scipy.interpolate import Rbf
-import pandas as pd
+import meshio
+import numpy as np
+from collections import defaultdict
+from scipy.spatial import cKDTree
+
+
 from core.object_components import MeshResults
+from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
+from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
 
 
-def create_surface_grid(geomodel_result):
+def point_on_line_segment(pt, p1, p2, tol=1e-6):
     """
-    Sort the surface vertices into a grid, and then interpolate the z values based on
-    the sorted grid. Also ensures the extent values are included in the grid.
-
-    Args:
-        geomodel_result (GeomodelResults): Geological model results containing surfaces.
-    Returns:
-        list: A list of arrays containing interpolated grids for each surface.
+    Check if a point lies on the infinite line defined by p1 and p2 using symmetric line equation.
     """
+    pt = np.array(pt, dtype=np.float64)
+    p1 = np.array(p1, dtype=np.float64)
+    p2 = np.array(p2, dtype=np.float64)
 
-    # Get the extent from the results instance
-    extent = geomodel_result.extent
-    x_min, x_max, y_min, y_max, z_min, z_max = extent
-    interpolated_surfaces = []
+    # Avoid division by zero: check each coordinate separately
+    ratios = []
+    for i in range(3):
+        delta = p2[i] - p1[i]
+        if abs(delta) > tol:
+            ratio = (pt[i] - p1[i]) / delta
+            ratios.append(ratio)
+        else:
+            # If delta is nearly zero, pt must match p1 in this coordinate
+            if abs(pt[i] - p1[i]) > tol:
+                return False
 
-    # Perform interpolation for each surface, index 1 refers to surface mesh type
-    for i, vertices in enumerate(geomodel_result.surface_meshes_vertices[2]):
-        # Get the x, y, z coordinates of the current surface
-        x = vertices[:, 0]
-        y = vertices[:, 1]
-        z = vertices[:, 2]
+    # Now check all computed ratios are (nearly) the same
+    if len(ratios) <= 1:
+        return True  # Point lies on a degenerate or axis-aligned line
+    return max(ratios) - min(ratios) < tol
 
-        # Remove duplicates to avoid interpolation issues
-        df = pd.DataFrame({'x': x, 'y': y, 'z': z}).drop_duplicates()
-        x_cleaned = df['x'].values
-        y_cleaned = df['y'].values
-        z_cleaned = df['z'].values
 
-        # Sort the vertices by x and y to create a structured grid
-        sorted_indices = np.lexsort((x_cleaned, y_cleaned))
-        x_sorted = x_cleaned[sorted_indices]
-        y_sorted = y_cleaned[sorted_indices]
 
-        unique_x = np.unique(x_sorted)
-        unique_y = np.unique(y_sorted)
-
-        # Number of grid points in x and y directions
-        n_gx = len(unique_x)
-        n_gy = len(unique_y)
-        # Create grid
-        grid_x, grid_y = np.meshgrid(np.linspace(x_min, x_max, n_gx), np.linspace(y_min, y_max, n_gy))
-
-        # Define the radial basis function interpolator
-        rbf = Rbf(x_cleaned, y_cleaned, z_cleaned, function='multiquadric', epsilon=2, smooth=1e-5)
-
-        # Perform interpolation on the grid
-        z_interpolated = rbf(grid_x, grid_y)
-        z_interpolated = np.round(z_interpolated)
-
-        # Combine the grid with interpolated z values
-        interpolated_grid = np.column_stack((grid_x.flatten(), grid_y.flatten(), z_interpolated.flatten()))
-
-        # Store the interpolated grid in the list
-        interpolated_surfaces.append(interpolated_grid)
-    print('Interpolation is done!')
-    return interpolated_surfaces
-
-def import_surfaces(interpolated_s):
+def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_to_child_fragments, grid_litho, mesh_size=20, curve_mesh_size=5):
   """
-    Gets a list of interpolated surface grids and creates B-spline surfaces using GMSH.
-
-    This function initializes GMSH, processes the provided surface grids, defines control points,
-    and generates smooth B-spline surfaces.
+    The function uses GMSH to create and export a 3D tetrahedral mesh from given volumes. It samples 150 random
+    nodes from each tetrahedral block and assigns a dominant lithology based on proximity to known lithology
+    points (`grid_litho`). If no lithology dominates, the block is ignored. Tetrahedral blocks with the same
+    lithology are merged into single blocks for export. The function returns the final cleaned-up mesh with
+    tetrahedra grouped by lithology and surfaces preserved.
 
     Args:
-        interpolated_s (list of np.ndarray):
-            A list where each element is a NumPy array containing (x, y, z) coordinates of an interpolated surface.
+    ov : List of GMSH entities where each tuple contains the dimension and tag of an entity. Only 3D volumes (dimension == 3) will be considered for meshing.
+    tagsss : List of GMSH physical group tags for fault surfaces (triangles) that should be preserved and re-associated with corresponding triangle mesh elements in the final mesh.
+    grid_litho : A DataFrame containing 4 columns: the first three represent x, y, z coordinates, and the fourth column contains lithology numbers. These are used to assign lithology to mesh blocks via nearest-neighbor classification.
+    number_random_sample : number of samples selected from mesh blocks which should be compared with geological grid points to assign the correct physical group for each layer
+    mesh_size : Mesh element size to be used by GMSH during mesh generation (default is 20).
 
     Returns:
-        list: A list of GMSH surface IDs representing the created B-spline surfaces.
+    nodes : Array of mesh node coordinates (shape: [n_nodes, 3]).
+    new_cells : List of meshio CellBlock objects representing the cells (elements) of the mesh. Tetrahedral elements are grouped by lithology, and triangle elements are preserved and re-associated with their physical tags.
+
   """
-  # List to store the B-spline surfaces
-  surfaces = []
-  # Initialize GMSH
-  gmsh.initialize()
-
-  # Loop through each surface file and create the corresponding B-spline surface
-  for surface_points in interpolated_s:
-      # Ensure surface_points is in the correct format (a 2D grid of points)
-      if not isinstance(surface_points, np.ndarray) or surface_points.shape[1] != 3:
-          print("Invalid surface points format")
-          continue
-
-      # Extract x, y, and z columns
-      x = surface_points[:, 0]
-      y = surface_points[:, 1]
-      z = surface_points[:, 2]
-
-
-      # Find unique values for x and y
-      unique_x = np.unique(x)
-      unique_y = np.unique(y)
-
-      # Count the number of unique values
-      numPointsU = len(unique_x)
-      numPointsV = len(unique_y)
-
-      # Create the control points list (ps) for this surface
-      ps = surface_points.tolist()
-
-      # Create the control points list (ps) for this surface
-      ps = []
-
-      # Create the control points for the current surface
-      for i in range(numPointsU):
-          for j in range(numPointsV):
-              index = i * numPointsV + j
-              if index < len(surface_points):
-                  point = surface_points[index]
-                  ps.append(gmsh.model.occ.addPoint(point[0], point[1], point[2]))
-
-      # Check if the number of control points matches the expected size
-      assert len(ps) == numPointsU * numPointsV, f"Number of control points for {surface_file} doesn't match the expected size."
-
-      # Create the B-spline surface for the current surface
-      s = gmsh.model.occ.addBSplineSurface(ps, numPointsU=numPointsU)
-      surfaces.append(s)
-  print('B-spline surfaces have been imported!')
-  return surfaces
-
-
-def fragment_surfaces(surfaces, extent):
-    """
-    Fragments a set of B-spline surfaces within a defined bounding box using GMSH.
-    This function creates a 3D bounding box and fragments it with the provided B-spline surfaces.
-    The surfaces are sequentially fragmented to ensure they are correctly incorporated.
-    After fragmentation, GMSH synchronizes the changes to update the model.
-
-    Args:
-        surfaces (list):
-            A list of surface IDs representing B-spline surfaces in GMSH.
-        extent (tuple):
-            A tuple (x_min, x_max, y_min, y_max, z_min, z_max) defining the bounding box for fragmentation.
-
-    Returns:
-        tuple: Two lists (ov, ovv) containing the fragmented volume and surface entities.
-    """
-
-    # Create a box for fragmenting
-    x_min, x_max, y_min, y_max, z_min, z_max = extent
-    v = gmsh.model.occ.addBox(x_min, y_min, z_min, x_max, y_max, z_max)
-
-    # Fragment the box with all the B-spline surfaces
-    fragmented_surfaces = [(2, surfaces[0])]
-    for surface in surfaces[1:]:
-        try:
-            fragmented_surfaces, _ = gmsh.model.occ.fragment(
-                fragmented_surfaces, [(2, surface)]
-            )
-            gmsh.model.occ.synchronize()
-            print(f"Fragmented with surface {surface}")
-        except Exception as e:
-            print(f"Fragmentation failed with surface {surface}: {e}")
-
-    # Final fragmentation of the bounding box with the surfaces
-    ov, ovv = gmsh.model.occ.fragment(
-        [(3, v)], [(2, s[1]) for s in fragmented_surfaces],
-        removeObject=True,
-        removeTool=True
-    )
-
-    gmsh.model.occ.synchronize()
-    return ov, ovv
-
-
-def mesh_generator(ov, mesh_size=50, visualize=False):
   # Extract volumes tags
   volumes = [tag for dim, tag in ov if dim == 3]
-
-  print("Volumes (3D):", volumes)
 
   # Add physical groups for volumes only
   for i, tag in enumerate(volumes):
       gmsh.model.addPhysicalGroup(3, [tag], i + 1)
       gmsh.model.setPhysicalName(3, i + 1, f"Volume {i + 1}")
       print((3, i + 1, f"Volume {i + 1}"), 'physical')
-
-  # Assign a mesh size to all the points
+  gmsh.model.occ.synchronize()
+  gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
 
   gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
+  gmsh.model.mesh.removeDuplicateNodes()
+
+
 
   # Generate 3D mesh
+  if source_tag:
+      for volume_tag in volumes:
+          for s_tag in source_tag:
+              gmsh.model.mesh.embed(0, [s_tag], 3, volume_tag)
+
+  # Finally, let's specify a global mesh size and mesh the partitioned model:
+  gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
+
+
   gmsh.model.mesh.generate(3)
-  # Visualize the result (if needed)
-  if visualize:
-      gmsh.fltk.initialize()
-      while gmsh.fltk.isAvailable():
-          gmsh.fltk.wait()
-
-  ########################## <get nodes and elements for creating different mesh formats #######################
-  # Get nodes Tag and their coordinates
-  nodeTags,coord, n = gmsh.model.mesh.getNodesByElementType(4,-1,  False)
-  # Make it unique
-  uniqueNodeTags = set(nodeTags)
-  # Convert back to a list
-  uniqueNodeTagsList = list(uniqueNodeTags)
-  # Make it an integer array
-  uniqueNodeTagsList = np.array(uniqueNodeTagsList, dtype=int)
-  # Create an empty list to store the results
-  node_data = []
-
-  for n in uniqueNodeTagsList:
-      coord = gmsh.model.mesh.getNode(n)
-      node_data.append([n-1, coord[0][0], coord[0][1], coord[0][2]])
-
-  # Convert to NumPy array
-  unique_nodes_with_coords = np.array(node_data)
-
-  # Get elements grouped by volume
-  elements_by_volume_array = []
-  for volume in volumes:
-      dim = 3
-      elementTypes, element_tags, nodeTags = gmsh.model.mesh.getElements(dim, volume)
-      elements_by_volume_array.append((element_tags[0], volume))
-
-  # Create a volume lookup table
-  volume_map = {}
-  for  elements, vol in elements_by_volume_array:
-      print(f"Volume {vol} contains elements: {elements}", len(elements))
-      for el in elements:
-          volume_map[el] = vol
-
-  # Get element ids and respective nodes
-  elementType = gmsh.model.mesh.getElementType("tetrahedron", 1)
-  elementTags, elementNodeTags= gmsh.model.mesh.getElementsByType(elementType)
-  element_ids = elementTags
-  # Reshape node data in order to have 4 nodes (since elements are tetrahedrons) in each row
-  nodes_reshaped = elementNodeTags.reshape(-1, 4)
-
-  # Find the volume for each element id
-  volumes = np.array([volume_map[el] for el in element_ids])
-  # Stack element ids, their respective nodes, and volume info
-  elements = np.column_stack((element_ids-1, nodes_reshaped-1, volumes))
 
 
-  # Finalize GMSH
-  gmsh.finalize()
-  return elements, unique_nodes_with_coords
+  gmsh.model.occ.synchronize()
+  ####gmsh.fltk.initialize()
+  ###while gmsh.fltk.isAvailable():
+  ###      gmsh.fltk.wait()
+  # Save the mesh
+  mesh_file = "generated_mesh.msh"
+  gmsh.write(mesh_file)
+  # Read the mesh and get nodes and elements information
+  mesh_model=meshio.read(mesh_file)
+  nodes = mesh_model.points  # Coordinates of the nodes
+  cells = mesh_model.cells  # Elements (cells)
 
 
-def create_unstructured_mesh_data(geomodel_result, mesh_size=20, visualize=False):
+  # Access the cells and their types
+  for block in mesh_model.cells:
+      print(f"Cell type: {block.type}, Number of cells: {len(block.data)}")
+  # Get tetra blocks (only 3D elements)
+  tetra_blocks = [block for block in cells if block.type == "tetra"]
+  print(f"Number of tetrahedral blocks: {len(tetra_blocks)}")
+
+
+  if shaft_tags:
+      tetra_blocks_orgin=tetra_blocks
+      # Reconstruct tag → block mapping using the known volumes and shaft fragments
+      tag_dict = {}
+
+      # Step 1: Reconstruct tag → block mapping
+      tag_list_all = volumes.copy()
+
+      for shaft_tag, frag_list in shaft_to_child_fragments.items():
+        tag_list_all.extend(frag_list)
+        tag_dict[shaft_tag] = frag_list
+
+
+      assert len(tag_list_all) == len(tetra_blocks_orgin), \
+          f"Mismatch: {len(tag_list_all)} tags vs {len(tetra_blocks_orgin)} tetra blocks"
+      tag_list_all.sort()
+      tag_to_block = dict(zip(tag_list_all, tetra_blocks_orgin))
+
+      # Build full set of shaft child tags
+      shaft_child_tags = set()
+      for frag_list in shaft_to_child_fragments.values():
+          shaft_child_tags.update(frag_list)
+
+
+      # Use original tag order to separate blocks
+      regular_blocks = []
+      shaft_blocks_dict = {}  # key = shaft_tag, value = list of blocks
+
+      # 1. First, create shaft block lists using tag_dict
+      for shaft_tag, frag_list in tag_dict.items():
+        shaft_blocks = []
+        for tag in frag_list:
+            block = tag_to_block[tag]
+
+            shaft_blocks.append(block)
+        shaft_blocks_dict[shaft_tag] = shaft_blocks  # Save blocks per shaft
+
+
+      # 2. Then, build regular blocks (those not in any shaft)
+      all_shaft_child_tags = set(tag for frag_list in tag_dict.values() for tag in frag_list)
+
+      for tag in tag_list_all:
+        if tag not in all_shaft_child_tags:
+            block = tag_to_block[tag]
+            regular_blocks.append(block)
+
+      # Update the main tetra_blocks with only the regular ones
+      tetra_blocks = regular_blocks
+
+      # Optionally, print the results
+      print(tetra_blocks, "Regular tetra blocks after removing shafts")
+      print(f"Number of shafts: {len(shaft_blocks_dict)}")
+      for shaft_tag, blocks in shaft_blocks_dict.items():
+        print(f"Shaft {shaft_tag} has {len(blocks)} blocks")
+
+
+
+
+  # === assign lithology to different blocks ===
+
+  lithology_numbers = []
+  number_random_sample = 800
+
+  for block in tetra_blocks:
+      num_nodes_in_block = np.unique(block.data).size
+      if num_nodes_in_block < number_random_sample:
+          number_random_sample = int(num_nodes_in_block)
+
+      random_nodes = np.random.choice(block.data.flatten(), size=number_random_sample, replace=False)
+      random_nodes_coords = nodes[random_nodes]
+
+      block_lithology_numbers = []
+      for random_coord in random_nodes_coords:
+          distances = np.linalg.norm(grid_litho.iloc[:, :3].to_numpy() - random_coord, axis=1)
+          nearest_idx = np.argmin(distances)
+          lithology_number = grid_litho.iloc[nearest_idx, 3]
+          block_lithology_numbers.append(lithology_number)
+
+      lithology_numbers.append(block_lithology_numbers)
+
+  threshold = int(0.7 * number_random_sample)
+
+  final_litho = []
+  for row in lithology_numbers:
+      unique_values, counts = np.unique(row, return_counts=True)
+      max_count_idx = np.argmax(counts)
+      if counts[max_count_idx] >= threshold:
+          final_litho.append(unique_values[max_count_idx])
+      else:
+          final_litho.append(None)
+
+  # === Group blocks by lithology ===
+
+  litho_to_blocks = defaultdict(list)
+  for block_index, (lith, block) in enumerate(zip(final_litho, tetra_blocks)):
+      litho_to_blocks[lith].append(block_index)
+
+  # === Merge blocks per lithology ===
+
+  merged_tetra_blocks = []
+  for lith, block_indices in litho_to_blocks.items():
+      merged_nodes = []
+      for idx in block_indices:
+          merged_nodes.extend(tetra_blocks[idx].data)
+      merged_tetra_blocks.append(meshio.CellBlock(cell_type="tetra", data=np.array(merged_nodes)))
+
+  # === Add shaft blocks as a separate CellBlock ===
+
+  if shaft_tags:
+      for shaft_tag, shaft_blocks in shaft_blocks_dict.items():
+          all_shaft_data = []
+          for block in shaft_blocks:
+              all_shaft_data.extend(block.data)
+          merged_tetra_blocks.append(
+              meshio.CellBlock(cell_type="tetra", data=np.array(all_shaft_data))
+          )
+
+  # === Now merged_tetra_blocks includes lithology-based and shaft_child CellBlocks ===
+
+  print(f"Total merged meshio blocks: {len(merged_tetra_blocks)}")
+  print(f"Lithologies: {list(litho_to_blocks.keys())}, + shaft_child group")
+
+  # Print details of merged blocks
+  for i, block in enumerate(merged_tetra_blocks):
+      print(f"Merged Block {i}: {block.data.shape[0]} tetrahedra")
+  # Save the merged_blocks
+  if merged_tetra_blocks:
+    cells_n = [block for block in cells if block.type != "tetra"]  # Keep non-triangle blocks
+    cells_n.extend(merged_tetra_blocks)  # Add merged triangle block
+  else:
+    cells_n= cells
+
+  new_cells = [block for block in cells_n if (block.type != "triangle") and (block.type != "line") and (block.type != "vertex")]
+
+
+  if tagsss:
+      # Extract only triangle elements from cells
+      triangle_blocks = [block for block in cells_n if block.type == "triangle"]
+      other_blocks = [block for block in cells_n if block.type not in {"triangle", "line", "vertex"}]
+
+
+
+      # Get GMSH global nodes and reshape coordinates
+      all_tags, all_coords_flat, _ = gmsh.model.mesh.getNodes()
+      all_coords = np.array(all_coords_flat).reshape(-1, 3)
+
+      # Match meshio nodes to GMSH tags via KDTree
+      tree = cKDTree(all_coords)
+      dist, idx = tree.query(nodes, distance_upper_bound=1e-1)
+
+
+      # Build mapping between meshio indices <-> GMSH tags
+      # meshio index → GMSH tag ;
+      # idx: the result of cKDTree.query(...), gives for each meshio point the index j of the closest GMSH point (within the distance_upper_bound).
+      # all_tags[j]: gives the GMSH tag corresponding to that matched node.
+      # i: is the meshio local index.
+      local_to_gmsh_tag = {i: all_tags[j] for i, j in enumerate(idx) if j < len(all_tags)}
+      # Just inverts the previous mapping.
+      # GMSH tag → meshio index
+      gmsh_tag_to_local = {v: k for k, v in local_to_gmsh_tag.items()}
+
+      # For each tag (surface), find triangles that belong to it
+      tag_to_triangles = {}
+
+      for tag in tagsss:
+          # Get GMSH node tags on this surface
+          surface_tags, _ = gmsh.model.mesh.getNodesForPhysicalGroup(2, tag)
+
+          # Convert to local meshio indices
+          local_surface_nodes = {gmsh_tag_to_local[t] for t in surface_tags if t in gmsh_tag_to_local}
+
+          # Collect triangles with ≥2 nodes on the surface
+          matched_triangles = []
+
+          for block in triangle_blocks:
+              for tri in block.data:
+                  if sum(n in local_surface_nodes for n in tri) == 3:
+                      matched_triangles.append(tri)
+
+          if matched_triangles:
+              tag_to_triangles[tag] = np.array(matched_triangles)
+
+      # Build new_cells with surface triangles grouped by tag
+      new_cells = other_blocks.copy()
+
+      for tag, triangles in tag_to_triangles.items():
+          new_cells.append(meshio.CellBlock(cell_type="triangle", data=triangles))
+
+
+
+  if well_tags:
+          well_lines = []  # Each element is a list of segments for one well
+
+          for well_flat in wells:
+              # Group every 3 values into a 3D point
+              well_points = [(well_flat[i], well_flat[i + 1], well_flat[i + 2]) for i in range(0, len(well_flat), 3)]
+
+              if len(well_points) < 2:
+                  continue  # Not enough points to make a line
+
+              segments = []
+              for i in range(len(well_points) - 1):
+                  p1 = well_points[i]
+                  p2 = well_points[i + 1]
+                  segments.append([p1, p2])  # Each segment is a list of 2 points
+
+              well_lines.append(segments)  # Add this well's segments to the main list
+
+
+
+          line_blocks = [block for block in cells_n if block.type == "line"]
+          points_by_well = {i: [] for i, well in enumerate(well_tags)}
+
+
+
+          for block in line_blocks:
+              for j in range(len(block.data)):
+                  point1 = nodes[int(block.data[j][0])]
+                  point2 = nodes[int(block.data[j][1])]
+                  for well_id, segments in enumerate(well_lines):
+                    for p1, p2 in segments:
+                        if point_on_line_segment(point1, p1, p2) or point_on_line_segment(point2, p1, p2):
+                            points_by_well[well_id].append(block.data)
+                            break  # Match found for this segment, break inner loop
+                    else:
+                        continue  # No match in this well, continue to next well
+                    break  # Match found in this well, skip to next line
+
+
+          for line_tag, line_points in points_by_well.items():
+
+            if len(line_points) > 0:  # skip empty
+                new_cells.append(meshio.CellBlock(cell_type="line", data=np.vstack(line_points)))
+
+          #new_cells.append(meshio.CellBlock(cell_type="line", data=points_by_well))
+
+
+  if source_tag:
+        vertex_blocks = [block for block in cells_n if block.type == "vertex"]
+        # Original vertex tags (point indices)
+        vertex_indices = np.concatenate([block.data.flatten() for block in vertex_blocks])
+
+
+
+        for idx in (vertex_indices):
+            new_cells.append(meshio.CellBlock(cell_type="vertex", data=np.array([[idx]])))
+
+
+
+  if new_cells:
+    return nodes, new_cells
+
+  else:
+    print('No tags found')
+    return nodes, cells_n
+
+
+def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells=[], num_sources=0, sources=[], num_shafts=0, centers=[],
+                                  axes=[], radii=[], num_planes=0, extra_planes=[], tolerance=50,  mesh_size= 30, curve_mesh_size=5,
+                                  DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, extent =[],
+                                  buffer_dist=0, smooth =1e-5):
     """
-    Generates a geological mesh and returns a MeshData object.
+    Generates an unstructured geological mesh using a geomodel and additional structures
+    such as wells, sources, shafts, and extra planes. It performs surface cleaning,
+    fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        results_test (object): Object containing data to create the grid.
-        refinement_data (list): list of refinement values.
-        z_threshold (float): Threshold for Z-value adjustment.
-        tolerance (float): Distance tolerance for Z-value adjustment.
-        visualize(bool): Visualize the result via gmsh
-
+        data_test (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
+        geomodel_result (object): Output object from the geomodel interpolation, e.g. from `universal_cokriging_interpolator`.
+        num_wells (int): Number of wells.
+        wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
+        num_sources (int): Number of source points.
+        sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
+        num_shafts (int): Number of mine shafts.
+        centers (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z).
+        axes (list of tuples): List of direction vectors (dx, dy, dz) for the axes of mine shaft cylinders.
+        radii (list of floats): List of radii for the mine shaft cylinders.
+        num_planes (int): Number of extra planes.
+        extra_planes (list of tuples): Each tuple contains coordinates of 4 corners (12 values) defining an extra plane.
+        tolerance (float): Distance threshold to identify boarder of mesh.
+        mesh_size (int): Default mesh size for surface and volume meshing (default is 30).
+        curve_mesh_size (int): Mesh size applied to curves (default is 5).
+        DISTANCE_THRESHOLD (float): Maximum distance used to filter overlapping points between surfaces.
+        PROJECTION_THRESHOLD (float): Distance threshold for projecting points when calculating extrusion.
+        EXTRUSION_FACTOR (float): Factor that scales extrusion distance.
+        z_threshold (float): Threshold for determining whether two surfaces on either side of a fault are close in elevation.
+        extent (list): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
+        buffer_dist (float): extent of interpolated surfaces
+        smooth (float): smoothness factor for interpolation of surfaces
     Returns:
         MeshResults: An instance of the MeshResults class.
     """
+    # Validate that num_wells is an int
+    if not isinstance(num_wells, int):
+        print("❌ 'num_wells' must be an integer.")
+        return
+    # Validate that wells is a list of tuples with at least 6 coordinates and length is a multiple of 3
+    if not isinstance(wells, list) or not all(isinstance(w, tuple) and len(w) >= 6 and len(w) % 3 == 0 for w in wells):
+        print("❌ 'wells' must be a list of tuples, each containing 2 or more 3D coordinate points (e.g., 6, 9, 12 values, etc.).")
+        return  # Exit the function early
 
+    # Check number of wells matches
+    if num_wells > 0 and len(wells) != num_wells:
+        print(f"❌ Number of well entries ({len(wells)}) does not match 'num_wells' ({num_wells}).")
+        return
 
-    interpolated_s = create_surface_grid(geomodel_result)
-    surfaces= import_surfaces(interpolated_s)
+    # Validate that num_sources is an int
+    if not isinstance(num_sources, int):
+        print("❌ 'num_sources' must be an integer.")
+        return
+    # Validate that sources is a list of tuples
+    if not all(isinstance(s, tuple) and len(s) == 3 for s in sources):
+        print("❌ 'sources' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
+        return  # Exit the function early
+    # Check number of sources matches
+    if num_sources > 0 and len(sources) != num_sources:
+        print(f"❌ Number of source entries ({len(sources)}) does not match 'num_sources' ({num_sources}).")
+        return
+
+   # Validate that num_shafts is an int
+    if not isinstance(num_shafts, int):
+        print("❌ 'num_shafts' must be an integer.")
+        return
+     # Validate that centers is a list of 3D tuples
+    if not all(isinstance(center, tuple) and len(center) == 3 for center in centers):
+        print("❌ 'centers' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
+        return
+    # If shafts are specified, check the number of centers
+    if num_shafts > 0 and len(centers) != num_shafts:
+        print(f"❌ Number of shaft centers ({len(centers)}) does not match 'num_shafts' ({num_shafts}).")
+        return
+    # Validate that axes is a list of tuples
+    if not all(isinstance(axis, tuple) and len(axis) == 3 for axis in axes):
+        print("❌ 'axes' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
+        return  # Exit the function early
+    # Check number of axes matches num_shafts if specified
+    if num_shafts > 0 and len(axes) != num_shafts:
+        print(f"❌ Number of axes ({len(axes)}) does not match 'num_shafts' ({num_shafts}).")
+        return
+    # Validate that radiis is a list of int
+    if not isinstance(radii, list) or not all(isinstance(r, int) for r in radii):
+        print("❌ 'radii' must be a list of integers like [10, 20, 30].")
+        return
+    # Check if the number of radii matches num_shafts
+    if num_shafts > 0 and len(radii) != num_shafts:
+        print(f"❌ Number of radii ({len(radii)}) does not match 'num_shafts' ({num_shafts}).")
+        return
+
+    # Validate that num_planes is an int
+    if not isinstance(num_planes, int):
+        print("❌ 'num_planes' must be an integer.")
+        return
+    # Validate that sources is a list of tuples
+    if not all(isinstance(extra, tuple) and len(extra) == 12 for extra in extra_planes):
+        print("❌ 'extra_planes' must be a list of four sets of 3D coordinate tuples like [(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4), ...].")
+        return  # Exit the function early
+    # Validate that number of extra_planes matches num_planes
+    if num_planes > 0 and len(extra_planes) != num_planes:
+        print(f"❌ Number of extra_planes ({len(extra_planes)}) does not match 'num_planes' ({num_planes}).")
+        return
+
+    gmsh.initialize()  # Initialize GMSH once
+    cleaned_surfaces, ref_surface_indices , grid_litho, wells, extra_planes, mine_shafts, source_points = data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD, EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold, num_wells=num_wells, wells=wells, num_sources=num_sources, sources=sources, num_shafts=num_shafts, centers=centers, axes=axes, radii=radii, num_planes=num_planes,extra_planes=extra_planes)
+
+    interpolated_s = create_surface_grid(cleaned_surfaces, buffer_dist = buffer_dist, smooth=smooth)
+    #### plot_surfaces_individually(interpolated_s)
 
     # fragment
-    # Extract extent values
-    extent = geomodel_result.extent
-    ov,ovv = fragment_surfaces(surfaces, extent)
-    elements, nodes = mesh_generator(ov, mesh_size, visualize)
-    # Change the format
-    nodes = np.array(nodes, dtype=float)
-    elements = elements.astype(int)
-    # surface id stats from 1. Changing it to start from zero
-    # Subtract 1 from the last column
-    elements[:, -1] -= 1
-    # Since in implicit mesh the numbering is reversed, here I also reverse them
-    # Find unique values in the last column
-    unique_values = np.unique(elements[:, -1])
-    # Create a mapping: max value → 0, min value → max, etc.
-    mapping = {val: i for i, val in enumerate(unique_values[::-1])}
-    # Apply the mapping to the last column
-    elements[:, -1] = np.vectorize(mapping.get)(elements[:, -1])
-    print("Shape of nodes_array:", elements.shape)
-    print("First few rows:", elements[:5])
+    if extent ==[]:
+        extent = geomodel_result.extent
+    else:
+        extent= np.array(extent)
+
+
+    surfaces_orginal, bounds = import_surfaces(interpolated_s, extent, tolerance=tolerance)
+    print(bounds, 'biii')
+
+    ###gmsh.model.occ.synchronize()
+    ###gmsh.fltk.initialize()
+    ###while gmsh.fltk.isAvailable():
+    ###    gmsh.fltk.wait()
+
+
+
+
+
+    surfaces=surfaces_orginal.copy()
+    ov,ovv, tagssss, well_tags, shaft_tags,shaft_to_child_fragments,  source_tag = fragment_surfaces(surfaces, bounds, ref_surface_indices,wells, extra_planes, source_points, mine_shafts, mesh_size=mesh_size,curve_mesh_size=curve_mesh_size )
+    nodes, cells = mesh_generator(ov, tagssss, wells, well_tags, source_tag, shaft_tags, shaft_to_child_fragments,  grid_litho, curve_mesh_size=curve_mesh_size )
+
+
     # Create and return a MeshData instance
-    return MeshResults(elements=elements,
+    return MeshResults(elements=cells,
                        nodes=nodes,
                        )

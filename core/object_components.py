@@ -1,6 +1,7 @@
 import pyvista
 import typing
-from py_api_wbgeo.nodesapi import wbgeo_type, AnnotatedScriptType
+import numpy as np
+#from py_api_wbgeo.nodesapi import wbgeo_type, AnnotatedScriptType
 from pydantic.dataclasses import dataclass
 from typing import Optional
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
@@ -9,8 +10,12 @@ from typing import TypeVar, Dict, List
 from typing import Dict, List, Any
 import pyvista as pv
 import meshio
+from typing import Optional, Union, List
+from pydantic_numpy.typing import NpNDArrayInt64, NpNDArrayFp64
+
+
 from core.meshing_components.mesh_format.Exodus.Exo_format import ExosInputs
-from core.meshing_components.mesh_format.VTK.VTK_format import VTKInputs
+from core.meshing_components.mesh_format.VTU.VTU_format import VTUInputs
 from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
@@ -35,7 +40,7 @@ PandasDataFrame = typing.Annotated[
     pd.DataFrame, PlainSerializer(df_serializer), BeforeValidator(df_validator)]
 
 
-@wbgeo_type(name='Input data for a geological model', color='orange', identifier='InputData')
+#@wbgeo_type(name='Input data for a geological model', color='orange', identifier='InputData')
 @dataclass(config={"arbitrary_types_allowed": True})
 class InputData:
     """
@@ -71,7 +76,7 @@ class InputData:
         self.surface_points['formation'] = self.surface_points['formation'].astype(str)
 
 
-@wbgeo_type(name='Result os structural geological model', color='blue', identifier='GeomodelResults')
+#@wbgeo_type(name='Result os structural geological model', color='blue', identifier='GeomodelResults')
 @dataclass(config={"arbitrary_types_allowed": True})
 class GeomodelResults:
     """
@@ -99,48 +104,40 @@ class GeomodelResults:
     scalar_fields: Optional[List[NpNDArrayFp64]] = None
 
 
-@wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
+#@wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True})
 class MeshResults:
-    """
-    Data class to hold 3D mesh data.
-
-    Attributes:
-        elements (NpNDArrayInt64): A 2D array representing the hexahedral/tetrahedral elements of the mesh.
-        nodes (NpNDArrayFp64): A 2D array representing the information of nodes.
-        mesh (Optional[pyvista.MultiBlock]): A pyvista mesh object.
-    """
-    elements: NpNDArrayInt64
-    nodes: NpNDArrayFp64
+    elements: Union[np.ndarray, List[meshio.CellBlock]]
+    nodes: np.ndarray
     mesh: Optional[pyvista.MultiBlock] = None
 
     def __post_init__(self):
-        # Initialize the VTMInputs
-        self.vtm_in = VTMInputs(nodes_array=self.nodes, elements_array=self.elements)
 
-        # Create the VTM mesh
+        self.vtm_in = VTMInputs(nodes_array=self.nodes, elements_array=self.elements)
+        print('[INFO] VTMInputs initialized successfully.')
+
         self.mesh = self.vtm_in.create_mesh()
 
-        # Initialize separate attributes for Nodes and Elements
-        self.nodes_obj = Nodes(node_array=self.nodes)
-        self.elements_obj = Elements(element_array=self.elements, node_array=self.nodes)
+        # initialize node/element objects only for ndarray elements
+        if isinstance(self.elements, np.ndarray):
+            self.nodes_obj = Nodes(node_array=self.nodes)
+            self.elements_obj = Elements(element_array=self.elements, node_array=self.nodes)
 
 
-
-    def export_vtk(self, filename: str):
+    def export_vtu(self, filename: str):
         """
-        Export the mesh data to a VTK file.
+        Export the mesh data to a VTU file.
         Args:
-            filename (str): The name of the VTK file to export.
+            filename (str): The name of the VTU file to export.
         """
-        vtk_in = VTKInputs(nodes_array=self.nodes, elements_array=self.elements)
+        vtu_in = VTUInputs(nodes_array=self.nodes, elements_array=self.elements)
 
-        # Create the VTK mesh
-        mesh = vtk_in.create_mesh()
+        # Create the VTU mesh
+        mesh = vtu_in.create_mesh()
 
-        # Write the mesh to a VTK file
-        mesh.write(filename, file_format="vtk")
-        print(f"VTK file '{filename}' created successfully!")
+        # Write the mesh to a VTU file
+        mesh.write(filename, file_format="vtu")
+        print(f"VTU file '{filename}' created successfully!")
 
     def export_exodus(self, filename: str):
         """

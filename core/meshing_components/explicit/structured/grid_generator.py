@@ -115,7 +115,7 @@ def store_points_in_array(dataframes):
     - Last n_gx * n_gy entries: z values of the surface
     Repeated for each surface in the dataset.
 
-    Parameters:
+    Args:
     - dataframes: A list of pandas DataFrames, each representing a surface, with columns 'X', 'Y', and 'Z'.
 
     Returns:
