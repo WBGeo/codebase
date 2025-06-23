@@ -3,6 +3,24 @@ import pandas as pd
 import os
 import sys
 def create_surfaces_with_grids_for_bottom_and_top(min_x, max_x, min_y, max_y, min_z, max_z, n_gx, n_gy):
+    """
+    Generate two 3D surface grids (bottom and top) over a specified x-y range at given z levels.
+
+    Args:
+        - min_x (float): Minimum x-coordinate of the grid.
+        - max_x (float): Maximum x-coordinate of the grid.
+        - min_y (float): Minimum y-coordinate of the grid.
+        - max_y (float): Maximum y-coordinate of the grid.
+        - min_z (float): z-coordinate for the bottom surface.
+        - max_z (float): z-coordinate for the top surface.
+        - n_gx (int): Number of grid points along the x-axis.
+        - n_gy (int): Number of grid points along the y-axis.
+
+    Returns:
+        numpy.ndarray: A 2x(3 * n_gx * n_gy) array containing:
+            - Row 0: Flattened x, y, z values for the bottom surface (at min_z).
+            - Row 1: Flattened x, y, z values for the top surface (at max_z).
+    """
     # Generate the bottom (min_z) and top (max_z) surfaces with grid
     x_vals = np.linspace(min_x, max_x, n_gx)
     y_vals = np.linspace(min_y, max_y, n_gy)
@@ -39,8 +57,8 @@ def read_refinement_file(file_path, expected_surfaces):
     Reads refinement data from a file and checks if the number of data entries matches the expected number of surfaces + 1.
 
     Args:
-        file_path (str): The path to the file containing the data.
-        expected_surfaces (int): The expected number of surfaces.
+        - file_path (str): The path to the file containing the data.
+        - expected_surfaces (int): The expected number of surfaces.
 
     Returns:
         List of refinement data if valid, else prints an error.
@@ -74,12 +92,12 @@ def create_intermediate_layers(bottom_top_surfaces, output_array, refinement_dat
     Creates intermediate layers of points between the bottom and top surfaces based on refinement data.
 
     Args:
-        bottom_top_surfaces (np.array): Array containing two rows. The first row is the bottom surface, and
+        - bottom_top_surfaces (np.array): Array containing two rows. The first row is the bottom surface, and
                                         the second row is the top surface.
-        output_array (np.array): Array of shape (n_surfaces, 3 * n_gx * n_gy), containing multiple surfaces.
-        refinement_data (list): List of refinement data to scale z-differences between layers.
-        n_gx (int): Grid size in x direction.
-        n_gy (int): Grid size in y direction.
+        - output_array (np.array): Array of shape (n_surfaces, 3 * n_gx * n_gy), containing multiple surfaces.
+        - refinement_data (list): List of refinement data to scale z-differences between layers.
+        - n_gx (int): Grid size in x direction.
+        - n_gy (int): Grid size in y direction.
 
     Returns:
         np.array: Updated array with intermediate layers between the bottom and top surfaces.

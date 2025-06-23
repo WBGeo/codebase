@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<VTKFile type="vtkMultiBlockDataSet" version="1.0" byte_order="LittleEndian" header_type="UInt32" compressor="vtkZLibDataCompressor">
+  <vtkMultiBlockDataSet>
+    <DataSet index="0" name="Block_0_tetra" file="file/file_0.vtu"/>
+    <DataSet index="1" name="Block_1_tetra" file="file/file_1.vtu"/>
+    <DataSet index="2" name="Block_2_tetra" file="file/file_2.vtu"/>
+    <DataSet index="3" name="Block_3_tetra" file="file/file_3.vtu"/>
+    <DataSet index="4" name="Block_4_triangle" file="file/file_4.vtu"/>
+    <DataSet index="5" name="Block_5_line" file="file/file_5.vtu"/>
+    <DataSet index="6" name="Block_6_line" file="file/file_6.vtu"/>
+    <DataSet index="7" name="Block_7_vertex" file="file/file_7.vtu"/>
+    <DataSet index="8" name="Block_8_vertex" file="file/file_8.vtu"/>
+  </vtkMultiBlockDataSet>
+</VTKFile>

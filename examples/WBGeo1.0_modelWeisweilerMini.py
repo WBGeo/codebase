@@ -2,6 +2,8 @@
 import numpy as np
 import pandas as pd
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
@@ -10,6 +12,7 @@ from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 #%%
 
@@ -21,7 +24,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='WeisweilerMini',
                       extent=np.array([5623500, 5640000, 32304500, 32305500, -3000, 500]),
-                      resolution=np.array([240, 20, 205]),
+                      resolution=np.array([250, 20, 125]),
                       surface_points=pd.read_csv(
                           cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv"),
                       orientations=pd.read_csv(
@@ -29,6 +32,7 @@ data_test = InputData(name='WeisweilerMini',
                       mapping_object={
                           "Strat_Series1": ('BreitgangFM','KrebsTraufeFM', 'WilhelmineFM',
                                 'ObererKohlenkalkGP','MittlererKohlenkalkGP', 'CondrozGP')},
+                      faults=[False]
                       )
 
 #%%
@@ -46,6 +50,7 @@ plot_3d(data_test)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.00013)
 # results_test = geo_inr_interpolator(data_test, beta=5) # TODO: Find reasonable parameters for INR
 results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
+print(type(results_test.extent), results_test.extent)
 
 #%%
 
@@ -55,6 +60,37 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 
 #%%
+
+# Geberate mesh
+mesh_test = create_unstructured_mesh_data(
+    data_test= data_test,
+    geomodel_result=results_test,
+    num_wells=1,
+    wells=[(5624000,32305000,-3000,15624000,32305000,-2000)],
+    num_sources=0,
+    sources=[],
+    num_shafts=0,
+    centers=[],
+    axes=[],
+    radii=[],
+    num_planes=0,
+    extra_planes=[],
+    tolerance=300,
+    mesh_size=50,
+    curve_mesh_size=5,
+    DISTANCE_THRESHOLD = 60,
+    PROJECTION_THRESHOLD = 60,
+    EXTRUSION_FACTOR = 80,
+    z_threshold = 10,
+    extent=[5623500, 5640000, 32304500, 32305500, -3000, 450]
+)
+
+
+mesh_test.export_vtm('file.vtm')
+print('doneeeeee')
+mesh_ex=mesh_test.export_exodus("filename.exo")
+mesh_vtu=mesh_test.export_vtu("filename.vtu")
+
 
 
 

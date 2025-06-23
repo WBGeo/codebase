@@ -2,6 +2,8 @@
 import numpy as np
 import pandas as pd
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
@@ -23,7 +25,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='Model_13',
                       extent=np.array([0, 1000, 0, 500, 0, 1000]),
-                      resolution=np.array([50, 50, 50]),
+                      resolution=np.array([100, 50, 100]),
                       surface_points=pd.read_csv(
                           cwd + "/examples/data/model13_surface_points_df.csv"),
                       orientations=pd.read_csv(
@@ -32,6 +34,7 @@ data_test = InputData(name='Model_13',
                           "Shallow_Strat": ('shallow_rock3', 'shallow_rock2', 'shallow_rock1'),
                           "Medium_Strat": ('medium_rock3', 'medium_rock2', 'medium_rock1'),
                           "Deep_Strat": ('deep_rock4', 'deep_rock3', 'deep_rock2', 'deep_rock1')},
+                      faults=[False, False,False]
                       )
 
 #%%
@@ -70,9 +73,36 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 
 # TODO: Mesh creation fails for unstructured mesh creation, needs to be fixed
 mesh_test = create_unstructured_mesh_data(
+    data_test= data_test,
     geomodel_result=results_test,
-    mesh_size=20
+    num_wells=0,
+    wells=[],
+    num_sources=0,
+    sources=[],
+    num_shafts=0,
+    centers=[],
+    axes=[],
+    radii=[],
+    num_planes=0,
+    extra_planes=[],
+    tolerance=50,
+    mesh_size=20,
+    curve_mesh_size=2,
+    DISTANCE_THRESHOLD = 60,
+    PROJECTION_THRESHOLD = 60,
+    EXTRUSION_FACTOR = 80,
+    z_threshold = 10,
+    extent=[],
+    buffer_dist=20,
+    smooth =2
 )
+
+
+mesh_test.export_vtm('file.vtm')
+print('doneeeeee')
+mesh_ex=mesh_test.export_exodus("filename.exo")
+mesh_vtu=mesh_test.export_vtu("filename.vtu")
+
 
 
 #%%

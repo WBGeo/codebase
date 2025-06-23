@@ -2,10 +2,13 @@
 import numpy as np
 import pandas as pd
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 
 #%%
@@ -18,7 +21,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='Model_7_UCK',
                       extent=np.array([0, 2500, 0, 1000, 0, 1000]),
-                      resolution=np.array([62, 25, 25]),
+                      resolution=np.array([125, 50, 50]),
                       mapping_object={
                           "Fault_Series": ('fault'),
                           "Strat_Series1": ('rock3'),
@@ -105,4 +108,34 @@ plotter.add_mesh(
                             np.insert(results_test.surface_meshes_edges[1][unit], 0, 3, axis=1).ravel()),
                 color=colors[unit], style="wireframe")
 plotter.show()
+
+# Geberate mesh
+mesh_test = create_unstructured_mesh_data(
+    data_test= data_test,
+    geomodel_result=results_test,
+    num_wells=2,
+    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
+    num_sources=2,
+    sources=[(100,300,500), (400,600,700)],
+    num_shafts=0,
+    centers=[],
+    axes=[],
+    radii=[],
+    num_planes=0,
+    extra_planes=[],
+    tolerance=50,
+    mesh_size=20,
+    curve_mesh_size=2,
+    DISTANCE_THRESHOLD = 80,
+    PROJECTION_THRESHOLD = 80,
+    EXTRUSION_FACTOR = 80,
+    z_threshold = 10
+)
+
+
+mesh_test.export_vtm('file.vtm')
+print('doneeeeee')
+mesh_ex=mesh_test.export_exodus("filename.exo")
+mesh_vtu=mesh_test.export_vtu("filename.vtu")
+
 

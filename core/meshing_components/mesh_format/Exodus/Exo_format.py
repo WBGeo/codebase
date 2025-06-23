@@ -1,21 +1,33 @@
 import meshio
+from typing import Union, List, Optional
+import numpy as np
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 import pyvista as pv
 
 
 class ExosInputs:
-    def __init__(self, nodes_array, elements_array):
+    def __init__(
+    self,
+    nodes_array: Union[np.ndarray, List[List[float]]],
+    elements_array: Union[np.ndarray, List[meshio.CellBlock]],
+    ):
+
         """
-        Initializes the ExosInputs class.
+        Initializes the VTMInputs class.
 
         Args:
-            nodes_array (np.ndarray): Array of nodes with columns [node_id, x, y, z, surface_id].
-            elements_array (np.ndarray): Array of elements with columns [element_id, node_id_1, ..., node_id_n, surface_id].
+            nodes_array: Array of node coordinates.
+            elements_block: Either an array of elements with columns
+                            [element_id, node_id_1, ..., node_id_n, surface_id]
+                            or a list of meshio.CellBlock.
+            output_filename: Optional filename for saving/plotting.
         """
-        # Use composition: ExosInputs contains instances of Nodes and Elements
-        self.nodes = Nodes(node_array=nodes_array)
-        self.elements = Elements(element_array=elements_array, node_array=nodes_array)
+        self.nodes_array = np.array(nodes_array, dtype=float)
+        self.elements_block = elements_array
+        if self.nodes_array.shape[1]  != 3:
+            self.nodes = Nodes(node_array=nodes_array)
+            self.elements = Elements(element_array=elements_array, node_array=nodes_array)
 
     def create_mesh(self):
         """
@@ -24,31 +36,40 @@ class ExosInputs:
         Returns:
             meshio.Mesh: The mesh object.
         """
-        # Get the formatted nodes (excluding the first and last columns)
-        formatted_nodes = self.nodes.get_coordinates().astype(float)
+        if self.nodes_array.shape[1]  == 3:
+            # Create the meshio.Mesh object
+            mesh = meshio.Mesh(
+                points=self.nodes_array,
+                cells=self.elements_block
+            )
 
-        # Get elements by surface ID
-        elements_by_surface_id = self.elements.element_by_surface_id()
 
-        # Create cells list
-        if self.elements.element_array.shape[1] == 10:
-            cells = [("hexahedron", elements.tolist()) for elements in elements_by_surface_id.values()]
         else:
-            cells = [("tetra", elements.tolist()) for elements in elements_by_surface_id.values()]
+            # Get the formatted nodes (excluding the first and last columns)
+            formatted_nodes = self.nodes.get_coordinates().astype(float)
 
-        # Get boundary nodes
-        nodes_on_boundaries = self.nodes.nodes_on_boundaries()
+            # Get elements by surface ID
+            elements_by_surface_id = self.elements.element_by_surface_id()
 
-        # Create the meshio.Mesh object
-        mesh = meshio.Mesh(
-            points=formatted_nodes,
-            cells=cells,
-            point_sets=nodes_on_boundaries
-        )
+            # Create cells list
+            if self.elements.element_array.shape[1] == 10:
+                cells = [("hexahedron", elements.tolist()) for elements in elements_by_surface_id.values()]
+            else:
+                cells = [("tetra", elements.tolist()) for elements in elements_by_surface_id.values()]
+
+            # Get boundary nodes
+            nodes_on_boundaries = self.nodes.nodes_on_boundaries()
+
+            # Create the meshio.Mesh object
+            mesh = meshio.Mesh(
+                points=formatted_nodes,
+                cells=cells,
+                point_sets=nodes_on_boundaries
+            )
 
         # Write the mesh to an Exodus file
-        # mesh.write(self.output_filename, file_format="exodus")
-        # print(f"Exodus file '{self.output_filename}' created successfully!")
+        #mesh.write(self.output_filename, file_format="exodus")
+        #print(f"Exodus file '{self.output_filename}' created successfully!")
 
         return mesh
 
