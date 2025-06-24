@@ -239,7 +239,7 @@ def combined_interpolator(frame):
             print("Hello, I am GeoINR")
             interpolate_group_geo_inr(
                 group=group,
-                grid=frame.gridd,
+                grid=frame.grid,
                 group_surface_points_df=group_surface_points,
                 group_orientations_points_df=frame.get_orientations_for_group(group.name)
             )
