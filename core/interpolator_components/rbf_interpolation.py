@@ -28,7 +28,7 @@ def rbf_interpolator(input_data: InputData,
     """
     # Test validity of input data for this interpolation
     # Check for faults
-    if input_data.faults is not None:
+    if input_data.faults is not None and any(input_data.faults):
         raise ValueError("Interpolator can not handle faults in the current state")
 
     # Check if there are at least to values per key in mapping object
