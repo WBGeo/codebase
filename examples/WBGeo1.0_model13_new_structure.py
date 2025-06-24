@@ -50,11 +50,11 @@ visualize_structural_frame(frame, show_points=True, show_orientations=True, note
 
 frame["Shallow_Strat"].set_interpolation_method("Loop Structural")
 frame["Medium_Strat"].set_interpolation_method("Universal Co-Kriging")
-# frame["Deep_Strat"].set_interpolation_method("GeoINR")
+frame["Deep_Strat"].set_interpolation_method("GeoINR")
 
 # frame["Shallow_Strat"].set_interpolation_method("Ordinary Kriging")
 # frame["Medium_Strat"].set_interpolation_method("Radial Basis Function")
-frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
+# frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
 
 # frame.pretty_print()
 
@@ -64,7 +64,7 @@ frame.summary()
 
 frame["Shallow_Strat"].configure_interpolation_params(interpolator_type="FDI")
 frame["Medium_Strat"].configure_interpolation_params()
-frame["Deep_Strat"].configure_interpolation_params(range=1500, anisotropy_scaling_z=0.3)
+frame["Deep_Strat"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.3)
 
 #%%
 
@@ -72,7 +72,7 @@ frame.detailed_report()
 
 #%%
 
-# TODO: When executed twice throws error when meshing
+# Compute solution
 frame, block = general.combined_interpolator(frame)
 
 

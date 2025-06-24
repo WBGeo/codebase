@@ -2,13 +2,11 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+#from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 
 #%%

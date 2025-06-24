@@ -2,8 +2,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
@@ -46,9 +44,9 @@ plot_3d(data_test)
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test) # TODO: Missing basement when generating unstructured mesh
 # results_test = ordinary_kriging_interpolator(data_test, var_range=500)
-# results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
+results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
 # results_test = geo_inr_interpolator(data_test)
-results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
+# results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
 #%%
 
@@ -92,16 +90,16 @@ mesh_test = create_unstructured_mesh_data(
     smooth =3
 )
 
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
+# mesh_test.export_vtm('file.vtm')
+# print('doneeeeee')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 
 #%%
 
 # 4.5: Plot the meshing result (only 3D at current state)
-plot_mesh_3d(mesh_test, data_test, style="surface")
+plot_mesh_3d(mesh_test, data_test, style="wireframe")
 
 
 #%%

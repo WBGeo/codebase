@@ -2,11 +2,10 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 
 #%%
@@ -41,7 +40,7 @@ data_test = InputData(name='Kleinzeche',
 
 # 1.5: Plot the input data (2D and 3D possible) - Should be an option of the input data component
 plot_2d(data_test)
-# plot_3d(data_test)
+plot_3d(data_test)
 
 
 #%%
@@ -57,15 +56,20 @@ plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, 
                   '#ec7a10','#828701', '#ec7a10', "#a619e7"])
 
 #%%
-# TODO: Meshes shifted in z-direction, why?
+
+# TODO: For some reason the meshes are shifted in z-direction, this is a workaround
+for j in range(len(results_test.surface_meshes_vertices)):
+    for i in range(len(results_test.surface_meshes_vertices[j])):
+        results_test.surface_meshes_vertices[j][i][:,2]= results_test.surface_meshes_vertices[j][i][:,2] - 55
+
+#%%
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="unmasked",
         colors = ['#959595', '#000000', '#00c401', '#828701', '#ec7a10', '#828701',
                   '#ec7a10','#828701', '#ec7a10', "#a619e7"])
 
+#%%
 
-
-
-# Geberate mesh
+# Generate mesh
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
@@ -88,7 +92,7 @@ mesh_test = create_unstructured_mesh_data(
     z_threshold = 10
 )
 
-
+#%%
 mesh_test.export_vtm('file.vtm')
 print('doneeeeee')
 mesh_ex=mesh_test.export_exodus("filename.exo")
