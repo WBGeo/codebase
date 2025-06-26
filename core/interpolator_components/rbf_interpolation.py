@@ -4,11 +4,21 @@ from scipy.interpolate import RBFInterpolator
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 from core.grids.grid_classes import RegularGrid
 
+from py_api_wbgeo.nodesapi import wbgeo_component
+
 
 #%%
+@wbgeo_component(identifier='rbf_interpolator',  # unique identifier
+                 title='Radial Basis Function interpolator',  # human readable (Default) title
+                 description='Compute a model based on input data using RBF interpolation',
+                 color='#f4a259',
+                 border_color='#000000',
+                 group='Interpolation',
+                 return_name='results',  # name of the returned port
+                 )
 def rbf_interpolator(input_data: InputData,
-                     kernel='linear',
-                     smoothing=0,
+                     kernel: str = 'linear',
+                     smoothing: float = 0,
                      neighbors=None,
                      epsilon=1) -> GeomodelResults:
     """

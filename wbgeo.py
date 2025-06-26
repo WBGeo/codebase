@@ -166,44 +166,44 @@ from py_api_wbgeo import nodesapi
 #                                    'param': 'result', 'type': GeomodelResultsType,
 #                                }])
 
-nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifier
-                               title='Radial Basis Function interpolator',  # human readable (Default) title
-                               inputs=[  # the (list of) input ports
-                                   {
-                                       'param': 'input_data',  # the name of this port
-                                       'type': InputDataType,  # the ports type (as in ScriptType)
-                                       'data_requirements': [does_not_have_faults],
-                                   },
-                                   {
-                                       'param': 'kernel',
-                                       'type': StringDataType,
-                                       'default': "linear",
-                                   },
-                                   {
-                                       'param': 'smoothing',
-                                       'type': IntDataType,
-                                       'default': 0,
-                                   },
-                                   {
-                                       'param': 'neighbors',
-                                       'type': IntDataType,
-                                       'default': None,
-                                   },
-                                   {
-                                       'param': 'epsilon',
-                                       'type': IntDataType,
-                                       'default': 1,
-                                   }
-                               ],
-                               execute=nodesapi.create_geo_execute(rbf_interpolator),
-                               description='Compute a model based on input data using RBF interpolation',
-                               color='#f4a259',
-                               border_color='#000000',
-                               group='Interpolation',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': GeomodelResultsType,
-                               }])
+# nodesapi.register_script_block(identifier='rbf_interpolator',  # unique identifier
+#                                title='Radial Basis Function interpolator',  # human readable (Default) title
+#                                inputs=[  # the (list of) input ports
+#                                    {
+#                                        'param': 'input_data',  # the name of this port
+#                                        'type': InputDataType,  # the ports type (as in ScriptType)
+#                                        'data_requirements': [does_not_have_faults],
+#                                    },
+#                                    {
+#                                        'param': 'kernel',
+#                                        'type': StringDataType,
+#                                        'default': "linear",
+#                                    },
+#                                    {
+#                                        'param': 'smoothing',
+#                                        'type': IntDataType,
+#                                        'default': 0,
+#                                    },
+#                                    {
+#                                        'param': 'neighbors',
+#                                        'type': IntDataType,
+#                                        'default': None,
+#                                    },
+#                                    {
+#                                        'param': 'epsilon',
+#                                        'type': IntDataType,
+#                                        'default': 1,
+#                                    }
+#                                ],
+#                                execute=nodesapi.create_geo_execute(rbf_interpolator),
+#                                description='Compute a model based on input data using RBF interpolation',
+#                                color='#f4a259',
+#                                border_color='#000000',
+#                                group='Interpolation',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'result', 'type': GeomodelResultsType,
+#                                }])
 
 nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # unique identifier
                                title='Ordinary Kriging interpolator',  # human readable (Default) title
