@@ -16,3 +16,20 @@ class RegularGrid:
         coords = self.gridx, self.gridy, self.gridz
         self.g = np.meshgrid(*coords, indexing="ij")
         self.grid_coordinates = np.vstack(tuple(map(np.ravel, self.g))).T.astype("float64")
+
+    def xyz_to_indices(self, coords: np.ndarray) -> np.ndarray:
+        """
+        Convert (X, Y, Z) world coordinates to voxel indices (i, j, k).
+
+        Args:
+            coords (np.ndarray): Array of shape (N, 3) with [X, Y, Z] coordinates.
+
+        Returns:
+            np.ndarray: Array of shape (N, 3) with [i, j, k] voxel indices.
+        """
+        if not hasattr(self, "spacing"):
+            raise AttributeError("Grid must have 'origin' and 'spacing' attributes defined.")
+
+        relative = coords - np.array((self.extent[0], self.extent[2], self.extent[4]))
+        indices = np.floor_divide(relative, self.spacing).astype(int)
+        return indices
