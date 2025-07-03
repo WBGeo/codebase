@@ -2,8 +2,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
@@ -47,44 +45,34 @@ plot_3d(data_test)
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test)
-# results_test = ordinary_kriging_interpolator(data_test, var_range=1500)
+results_test = ordinary_kriging_interpolator(data_test, var_range=1500)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001)
 # results_test = geo_inr_interpolator(data_test, beta=1)
-results_test = loop_structural_interpolator(data_test, interpolator_type="PLI")
+# results_test = loop_structural_interpolator(data_test, interpolator_type="PLI")
 
 
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
-plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True,
-        direction="y", slice_int=0)
+plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, direction="y", slice_int=0)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked")
 
 
 #%%
 
 # 4: Meshing for Process Simulation
+# TODO: Does not work properly as layers dont extend to the full extent of the model
 # mesh_test = create_structured_mesh_data(
 #     geomodel_result=results_test,
-#     refinement_data=[10,10,10],
+#     refinement_data=[10,10,10,10,10,10,10,10,10,10,10],
 #     z_threshold=0.1,
 #     tolerance=1
 # )
 
-# TODO: Mesh creation fails for unstructured mesh creation, needs to be fixed
+# TODO: Mesh creation fails for unstructured mesh creation
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
-    num_wells=0,
-    wells=[],
-    num_sources=0,
-    sources=[],
-    num_shafts=0,
-    centers=[],
-    axes=[],
-    radii=[],
-    num_planes=0,
-    extra_planes=[],
     tolerance=50,
     mesh_size=20,
     curve_mesh_size=2,
@@ -97,15 +85,15 @@ mesh_test = create_unstructured_mesh_data(
     smooth =2
 )
 
-
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
-
-
-
 #%%
 
 # 4.5: Plot the meshing result (only 3D at current state)
 plot_mesh_3d(mesh_test, data_test)
+
+#%%
+
+# Bonus: Export mesh to VTM, Exodus, and VTU formats
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
+

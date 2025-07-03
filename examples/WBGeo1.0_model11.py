@@ -2,14 +2,13 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+
 #%%
 
 cwd = os.getcwd()
@@ -49,33 +48,27 @@ results_test = universal_cokriging_interpolator(data_test)
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
-# Geberate mesh
-mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
-    geomodel_result=results_test,
-    num_wells=2,
-    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
-    sources=[(100,300,500), (400,600,700)],
-    num_shafts=2,
-    centers=[(200,500,400), (100,200,700)],
-    axes=[(1000,0,0), (1000,0,0)],
-    radii=[30, 20],
-    num_planes=2,
-    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400), (0,0,600,1000,0,600,1000,1000,600,0,1000,600)],
-    tolerance=50,
-    mesh_size=20,
-    curve_mesh_size=5,
-    DISTANCE_THRESHOLD = 80,
-    PROJECTION_THRESHOLD = 80,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10
-)
+#%%
 
+# TODO: Does not work for this model, Marzieh says faults to flat
+# 4: Meshing for Process Simulation
+# mesh_test = create_unstructured_mesh_data(
+#     data_test= data_test,
+#     geomodel_result=results_test,
+#     tolerance=50,
+#     mesh_size=20,
+#     curve_mesh_size=5,
+#     DISTANCE_THRESHOLD = 80,
+#     PROJECTION_THRESHOLD = 80,
+#     EXTRUSION_FACTOR = 80,
+#     z_threshold = 10
+# )
 
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
+#%%
+
+# Bonus: Export mesh to VTM, Exodus, and VTU formats
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 

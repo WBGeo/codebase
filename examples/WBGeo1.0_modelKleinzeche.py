@@ -67,5 +67,34 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
         colors = ['#959595', '#000000', '#00c401', '#828701', '#ec7a10', '#828701',
                   '#ec7a10','#828701', '#ec7a10', "#a619e7"])
 
+#%%
+
+# TODO: Mesh creation fails for unstructured mesh creation
+mesh_test = create_unstructured_mesh_data(
+    data_test= data_test,
+    geomodel_result=results_test,
+    tolerance=50,
+    mesh_size=20,
+    curve_mesh_size=2,
+    DISTANCE_THRESHOLD = 60,
+    PROJECTION_THRESHOLD = 60,
+    EXTRUSION_FACTOR = 80,
+    z_threshold = 10,
+    extent=[],
+    buffer_dist=20,
+    smooth =2
+)
+
+#%%
+
+# 4.5: Plot the meshing result (only 3D at current state)
+plot_mesh_3d(mesh_test, data_test)
+
+#%%
+
+# Bonus: Export mesh to VTM, Exodus, and VTU formats
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 
