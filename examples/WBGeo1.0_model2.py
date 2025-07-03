@@ -2,13 +2,14 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from core.interpolator_components.geo_inr import geo_inr_interpolator
+from core.interpolator_components.loopstructural import loop_structural_interpolator
+
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -41,9 +42,11 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-results_test = universal_cokriging_interpolator(data_test)
-#results_test = ordinary_kriging_interpolator(data_test)
+# results_test = universal_cokriging_interpolator(data_test)
+# results_test = ordinary_kriging_interpolator(data_test)
 # results_test = rbf_interpolator(data_test)
+# results_test = loop_structural_interpolator(data_test)
+results_test = geo_inr_interpolator(data_test)
 
 #%%
 
@@ -61,28 +64,9 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 #     tolerance=1
 # )
 
-
-
-
-#%%
-
-
-
-
-# Geberate mesh
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
-    num_wells=2,
-    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
-    sources=[(100,300,500), (400,600,700)],
-    num_shafts=1,
-    centers=[(0,0,700)],
-    axes=[(1000,0,0)],
-    radii=[20],
-    num_planes=1,
-    extra_planes=[(0, 0, 100, 1000, 0,100, 1000,1000,100, 0,1000,100)],
     tolerance=50,
     mesh_size=20,
     curve_mesh_size=2,
@@ -92,11 +76,17 @@ mesh_test = create_unstructured_mesh_data(
     z_threshold = 10
 )
 
+#%%
+# 4.5: Plot the mesh (2D and 3D possible) - Should be an option of the mesh component
+plot_mesh_3d(mesh_test, data_test, style="surface")
 
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
+#%%
+
+# Bonus: Export mesh to VTM, Exodus, and VTU formats
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
+
 
 
 

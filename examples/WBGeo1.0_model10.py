@@ -2,12 +2,10 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
-from core.visualization_components import plot_2d, plot_3d
+from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 #%%
@@ -52,65 +50,7 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 #%%
 
-# Calculate gradients at the surface mesh vertices
-from core.utility import surface_mesh_gradients
-
-points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results_test)
-
-
-#%%
-
-# Plotting the gradient vector field
-
-import pyvista as pv
-
-colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
-        '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
-        '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
-
-# Create a PyVista dataset
-# Plot the arrows
-plotter = pv.Plotter()
-
-for i in range(len(points_list)):
-    pdata = pv.PolyData(points_list[i])
-    pdata["vectors"] = vectors_list[i]  # Add vector field
-
-    # Create arrow glyphs
-    arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
-
-    # Plot the arrows
-    plotter.add_mesh(arrows, color=colors[i])
-    plotter.add_mesh(
-                    pv.PolyData(results_test.surface_meshes_vertices[1][i],
-                                np.insert(results_test.surface_meshes_edges[1][i], 0, 3, axis=1).ravel()),
-                    color=colors[i])
-plotter.show()
-
-#%%
-
-# Create a PyVista dataset
-# Plot the arrows
-plotter = pv.Plotter()
-
-unit=1
-
-pdata = pv.PolyData(points_list[unit])
-pdata["vectors"] = vectors_list[unit]  # Add vector field
-
-# Create arrow glyphs
-arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
-
-# Plot the arrows
-plotter.add_mesh(arrows, color=colors[unit])
-plotter.add_mesh(
-                pv.PolyData(results_test.surface_meshes_vertices[1][unit],
-                            np.insert(results_test.surface_meshes_edges[1][unit], 0, 3, axis=1).ravel()),
-                color=colors[unit], style="wireframe")
-plotter.show()
-
-
-# Geberate mesh
+# 4: Meshing for Process Simulation, includes wells, sources, shafts, and planes
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
@@ -133,10 +73,16 @@ mesh_test = create_unstructured_mesh_data(
     z_threshold = 10
 )
 
+#%%
 
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
+# 4.5: Plot the mesh (2D and 3D possible) - Should be an option of the mesh component
+plot_mesh_3d(mesh_test, data_test, style="surface")
+
+#%%
+
+# Bonus: Export mesh to VTM, Exodus, and VTU formats
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 

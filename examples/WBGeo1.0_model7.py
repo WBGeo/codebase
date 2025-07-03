@@ -6,8 +6,7 @@ import os
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
-#from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 #%%
 
@@ -45,11 +44,12 @@ results_test = universal_cokriging_interpolator(data_test)
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
-plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True,
-        direction="y", slice_int=12)
+plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, direction="y", slice_int=12)
 plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked")
 
 #%%
+
+# Example how to retrieve gradients from surface meshes for meshing
 
 # Calculate gradients at the surface mesh vertices
 from core.utility import surface_mesh_gradients
@@ -87,27 +87,29 @@ plotter.show()
 
 #%%
 
-# Create a PyVista dataset
-# Plot the arrows
-plotter = pv.Plotter()
+# 4: Meshing for Process Simulation
+# TODO: This throws an error
+mesh_test = create_unstructured_mesh_data(
+    data_test= data_test,
+    geomodel_result=results_test,
+    tolerance=50,
+    mesh_size=20,
+    curve_mesh_size=2,
+    DISTANCE_THRESHOLD = 80,
+    PROJECTION_THRESHOLD = 80,
+    EXTRUSION_FACTOR = 80,
+    z_threshold = 10
+)
 
-unit=2
+#%%
 
-pdata = pv.PolyData(points_list[unit])
-pdata["vectors"] = vectors_list[unit]  # Add vector field
+# 4.5: Plot the mesh (2D and 3D possible) - Should be an option of the mesh component
+plot_mesh_3d(mesh_test, data_test, style="surface")
 
-# Create arrow glyphs
-arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
+#%%
 
-# Plot the arrows
-plotter.add_mesh(arrows, color=colors[unit])
-plotter.add_mesh(
-                pv.PolyData(results_test.surface_meshes_vertices[1][unit],
-                            np.insert(results_test.surface_meshes_edges[1][unit], 0, 3, axis=1).ravel()),
-                color=colors[unit], style="wireframe")
-plotter.show()
-
-# Geberate mesh
+# Bonus: Mesh with wells and sources
+# TODO: This throws an error
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
@@ -130,10 +132,11 @@ mesh_test = create_unstructured_mesh_data(
     z_threshold = 10
 )
 
+#%%
 
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
+# Bonus: Export mesh to VTM, Exodus, and VTU formats
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 
