@@ -50,11 +50,11 @@ visualize_structural_frame(frame, show_points=True, show_orientations=True, note
 
 frame["Shallow_Strat"].set_interpolation_method("Loop Structural")
 frame["Medium_Strat"].set_interpolation_method("Universal Co-Kriging")
-frame["Deep_Strat"].set_interpolation_method("GeoINR")
+# frame["Deep_Strat"].set_interpolation_method("GeoINR")
 
 # frame["Shallow_Strat"].set_interpolation_method("Ordinary Kriging")
 # frame["Medium_Strat"].set_interpolation_method("Radial Basis Function")
-# frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
+frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
 
 # frame.pretty_print()
 

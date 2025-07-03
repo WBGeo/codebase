@@ -67,35 +67,5 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
         colors = ['#959595', '#000000', '#00c401', '#828701', '#ec7a10', '#828701',
                   '#ec7a10','#828701', '#ec7a10', "#a619e7"])
 
-#%%
-
-# Generate mesh
-mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
-    geomodel_result=results_test,
-    num_wells=2,
-    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
-    sources=[(100,300,500), (400,600,700)],
-    num_shafts=2,
-    centers=[(200,500,400), (100,200,700)],
-    axes=[(1000,0,0), (1000,0,0)],
-    radii=[30, 20],
-    num_planes=2,
-    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400), (0,0,600,1000,0,600,1000,1000,600,0,1000,600)],
-    tolerance=50,
-    mesh_size=20,
-    curve_mesh_size=5,
-    DISTANCE_THRESHOLD = 60,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10
-)
-
-#%%
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 
