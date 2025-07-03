@@ -205,125 +205,125 @@ from py_api_wbgeo import nodesapi
 #                                    'param': 'result', 'type': GeomodelResultsType,
 #                                }])
 
-nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # unique identifier
-                               title='Ordinary Kriging interpolator',  # human readable (Default) title
-                               inputs=[  # the (list of) input ports
-                                   {
-                                       'param': 'input_data',  # the name of this port
-                                       'type': InputDataType,  # the ports type (as in ScriptType)
-                                       'data_requirements': [does_not_have_faults],
-                                   },
-{
-                                       'param': 'var_model',
-                                       'type': StringDataType,
-                                       'default': "gaussian"
-                                   },
-{
-                                       'param': 'var_sill',
-                                       'type': IntDataType,
-                                       'default': 1,
-                                       'data_requirements': [lambda
-                                                                 var_sill: None if var_sill > 0 else "var_range must be greater than 0"]
-                                   },
-                                   {
-                                       'param': 'var_range',
-                                       'type': IntDataType,
-                                       'default': 500,
-                                       'data_requirements': [lambda
-                                                                 var_range: None if var_range > 0 else "var_range must be greater than 0"]
-                                   },
-{
-                                       'param': 'var_nugget',
-                                       'type': IntDataType,
-                                       'default': 0,
-                                       'data_requirements': [lambda
-                                                                 var_range: None if var_range >= 0 else "var_range must be 0 or greater"]
-                                   },
-{
-                                       'param': 'anisotropy_scaling_z=0.3',
-                                       'type': IntDataType,
-                                       'default': 0.3,
-                                   },
-
-                               ],
-                               execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
-                               description='Compute a model based on input data using kriging interpolation',
-                               color='#f4a259',
-                               border_color='#000000',
-                               group='Interpolation',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': GeomodelResultsType,
-                               }])
-
-nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  # unique identifier
-                               title='Cokriging interpolator',  # human readable (Default) title
-                               inputs=[  # the input ports
-                                   {
-                                       'param': 'input_data',  # the name of this port
-                                       'type': InputDataType,  # the ports type (as in ScriptType)
-                                       'data_requirements': [does_have_orientations]
-                                   }],
-                               execute=nodesapi.create_geo_execute(universal_cokriging_interpolator),
-                               description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
-                               color='#f4a259',
-                               border_color='#000000',
-                               group='Interpolation',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': GeomodelResultsType,
-                               }])
-
-# meshing
-nodesapi.register_script_block(identifier='meshing',  # unique identifier
-                               title='structured meshing',  # human readable (Default) title
-                               inputs=[  # the input ports
-                                   {
-                                       'param': 'geomodel_result',  # the name of this port
-                                       'type': GeomodelResultsType,  # the ports type (as in ScriptType)
-                                   }, {
-                                       'param': 'refinement_data_str',
-                                       'type': StringDataType,
-                                       'default': '25, 21, 16, 5, 6',
-                                   }, {
-                                       'param': 'z_threshold',
-                                       'type': IntDataType,
-                                       'default': 0.1,
-                                   }, {
-                                       'param': 'tolerance',
-                                       'type': IntDataType,
-                                       'default': 1,
-                                   }],
-                               execute=nodesapi.create_geo_execute(create_structured_mesh_data_str),
-                               description='Create a structured mesh based on the Structural Geological Model',
-                               color='#5b8e7d',
-                               border_color='#000000',
-                               group='Meshing',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': MeshOutputType,
-                               }])
-
-nodesapi.register_script_block(identifier='meshing_unstructured',  # unique identifier
-                               title='unstructured meshing',  # human readable (Default) title
-                               inputs=[  # the input ports
-                                   {
-                                       'param': 'geomodel_result',  # the name of this port
-                                       'type': GeomodelResultsType,  # the ports type (as in ScriptType)
-                                   }, {
-                                       'param': 'mesh_size',
-                                       'type': IntDataType,
-                                       'default': 30,
-                                   }],
-                               execute=nodesapi.create_geo_execute(create_unstructured_mesh_data),
-                               description='Create a unstructured mesh based on the Structural Geological Model',
-                               color='#5b8e7d',
-                               border_color='#000000',
-                               group='Meshing',
-                               # the method which actually performs the calculation
-                               outputs=[{  # the output ports
-                                   'param': 'result', 'type': MeshOutputType,
-                               }])
+# nodesapi.register_script_block(identifier='ordinary_kriging_interpolator',  # unique identifier
+#                                title='Ordinary Kriging interpolator',  # human readable (Default) title
+#                                inputs=[  # the (list of) input ports
+#                                    {
+#                                        'param': 'input_data',  # the name of this port
+#                                        'type': InputDataType,  # the ports type (as in ScriptType)
+#                                        'data_requirements': [does_not_have_faults],
+#                                    },
+# {
+#                                        'param': 'var_model',
+#                                        'type': StringDataType,
+#                                        'default': "gaussian"
+#                                    },
+# {
+#                                        'param': 'var_sill',
+#                                        'type': IntDataType,
+#                                        'default': 1,
+#                                        'data_requirements': [lambda
+#                                                                  var_sill: None if var_sill > 0 else "var_range must be greater than 0"]
+#                                    },
+#                                    {
+#                                        'param': 'var_range',
+#                                        'type': IntDataType,
+#                                        'default': 500,
+#                                        'data_requirements': [lambda
+#                                                                  var_range: None if var_range > 0 else "var_range must be greater than 0"]
+#                                    },
+# {
+#                                        'param': 'var_nugget',
+#                                        'type': IntDataType,
+#                                        'default': 0,
+#                                        'data_requirements': [lambda
+#                                                                  var_range: None if var_range >= 0 else "var_range must be 0 or greater"]
+#                                    },
+# {
+#                                        'param': 'anisotropy_scaling_z=0.3',
+#                                        'type': IntDataType,
+#                                        'default': 0.3,
+#                                    },
+#
+#                                ],
+#                                execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
+#                                description='Compute a model based on input data using kriging interpolation',
+#                                color='#f4a259',
+#                                border_color='#000000',
+#                                group='Interpolation',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'result', 'type': GeomodelResultsType,
+#                                }])
+#
+# nodesapi.register_script_block(identifier='universal_cokriging_interpolator',  # unique identifier
+#                                title='Cokriging interpolator',  # human readable (Default) title
+#                                inputs=[  # the input ports
+#                                    {
+#                                        'param': 'input_data',  # the name of this port
+#                                        'type': InputDataType,  # the ports type (as in ScriptType)
+#                                        'data_requirements': [does_have_orientations]
+#                                    }],
+#                                execute=nodesapi.create_geo_execute(universal_cokriging_interpolator),
+#                                description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
+#                                color='#f4a259',
+#                                border_color='#000000',
+#                                group='Interpolation',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'result', 'type': GeomodelResultsType,
+#                                }])
+#
+# # meshing
+# nodesapi.register_script_block(identifier='meshing',  # unique identifier
+#                                title='structured meshing',  # human readable (Default) title
+#                                inputs=[  # the input ports
+#                                    {
+#                                        'param': 'geomodel_result',  # the name of this port
+#                                        'type': GeomodelResultsType,  # the ports type (as in ScriptType)
+#                                    }, {
+#                                        'param': 'refinement_data_str',
+#                                        'type': StringDataType,
+#                                        'default': '25, 21, 16, 5, 6',
+#                                    }, {
+#                                        'param': 'z_threshold',
+#                                        'type': IntDataType,
+#                                        'default': 0.1,
+#                                    }, {
+#                                        'param': 'tolerance',
+#                                        'type': IntDataType,
+#                                        'default': 1,
+#                                    }],
+#                                execute=nodesapi.create_geo_execute(create_structured_mesh_data_str),
+#                                description='Create a structured mesh based on the Structural Geological Model',
+#                                color='#5b8e7d',
+#                                border_color='#000000',
+#                                group='Meshing',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'result', 'type': MeshOutputType,
+#                                }])
+#
+# nodesapi.register_script_block(identifier='meshing_unstructured',  # unique identifier
+#                                title='unstructured meshing',  # human readable (Default) title
+#                                inputs=[  # the input ports
+#                                    {
+#                                        'param': 'geomodel_result',  # the name of this port
+#                                        'type': GeomodelResultsType,  # the ports type (as in ScriptType)
+#                                    }, {
+#                                        'param': 'mesh_size',
+#                                        'type': IntDataType,
+#                                        'default': 30,
+#                                    }],
+#                                execute=nodesapi.create_geo_execute(create_unstructured_mesh_data),
+#                                description='Create a unstructured mesh based on the Structural Geological Model',
+#                                color='#5b8e7d',
+#                                border_color='#000000',
+#                                group='Meshing',
+#                                # the method which actually performs the calculation
+#                                outputs=[{  # the output ports
+#                                    'param': 'result', 'type': MeshOutputType,
+#                                }])
 
 
 # Register 3 yet-to-be-implemented block types
@@ -348,37 +348,37 @@ def placeholder_m(**kwargs):
 #                                    'param': 'mesh', 'type': MeshOutputType
 #                                }]
 #                                )
-
-nodesapi.register_script_block(identifier='nyi_ps',
-                               title='Process Simulation',
-                               inputs=[
-                                   {
-                                       'param': 'mesh',
-                                       'type': MeshOutputType,
-                                       'data_requirements': [],
-                                   }],
-                               execute=nodesapi.create_geo_execute(placeholder_m),
-                               color='#bc4b51',
-                               border_color='#000000',
-                               group='Process Simulation',
-                               outputs=[
-                                   {'param': 'result', 'type': PMType},
-                               ],
-                               )
-
-nodesapi.register_script_block(identifier='nyi_ar',
-                               title='Cloud AR Visualization',
-                               inputs=[
-                                   {
-                                       'param': 'self',
-                                       'type': PMType,
-                                       'data_requirements': [],
-                                   }],
-                               execute=nodesapi.create_geo_execute(placeholder_m),
-                               color='#f4e285',
-                               border_color='#000000',
-                               group='Οther', # greek Ο due to ordering
-                               outputs=[
-                                   {'param': 'o', 'type': GeomodelResultsType},
-                               ],
-                               )
+#
+# nodesapi.register_script_block(identifier='nyi_ps',
+#                                title='Process Simulation',
+#                                inputs=[
+#                                    {
+#                                        'param': 'mesh',
+#                                        'type': MeshOutputType,
+#                                        'data_requirements': [],
+#                                    }],
+#                                execute=nodesapi.create_geo_execute(placeholder_m),
+#                                color='#bc4b51',
+#                                border_color='#000000',
+#                                group='Process Simulation',
+#                                outputs=[
+#                                    {'param': 'result', 'type': PMType},
+#                                ],
+#                                )
+#
+# nodesapi.register_script_block(identifier='nyi_ar',
+#                                title='Cloud AR Visualization',
+#                                inputs=[
+#                                    {
+#                                        'param': 'self',
+#                                        'type': PMType,
+#                                        'data_requirements': [],
+#                                    }],
+#                                execute=nodesapi.create_geo_execute(placeholder_m),
+#                                color='#f4e285',
+#                                border_color='#000000',
+#                                group='Οther', # greek Ο due to ordering
+#                                outputs=[
+#                                    {'param': 'o', 'type': GeomodelResultsType},
+#                                ],
+#                                )
