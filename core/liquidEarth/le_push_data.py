@@ -1,4 +1,33 @@
 import liquid_earth_sdk as le
+import subsurface as ss
+import numpy as np
+import pandas as pd
+
+def convert_to_subsurface_mesh(geosolution):
+
+
+    vertex: list[np.ndarray] = geosolution.surface_meshes_vertices
+    simplex_list: list[np.ndarray] = geosolution.surface_meshes_edges
+
+    idx_max = 0
+    for simplex_array in simplex_list:
+        simplex_array += idx_max
+        idx_max = simplex_array.max() + 1
+
+    vertex_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(vertex)]
+    cell_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(simplex_list)]
+
+    concatenated_id_array = np.concatenate(vertex_id_array)
+    concatenated_cell_id_array = np.concatenate(cell_id_array)
+
+    meshes: ss.UnstructuredData = ss.UnstructuredData.from_array(
+        vertex=np.concatenate(vertex),
+        cells=np.concatenate(simplex_list),
+        vertex_attr=pd.DataFrame({'id': concatenated_id_array}),
+        cells_attr=pd.DataFrame({'id': concatenated_cell_id_array})
+    )
+
+    return meshes
 
 def push_geosolution_to_le(geosolution, space_name, model_name, api_token):
     """
@@ -13,6 +42,6 @@ def push_geosolution_to_le(geosolution, space_name, model_name, api_token):
     Returns:
     - link: The link to the uploaded mesh in Liquid Earth.
     """
-    meshes = geosolution.meshes_to_subsurface() # Convert geosolution to subsurface mesh format.requires a gempy solution
+    meshes = convert_to_subsurface_mesh(geosolution) # Convert geosolution to subsurface mesh format.requires a gempy solution
     link = le.upload_mesh_to_new_space(space_name, meshes, model_name, api_token)
     return link
