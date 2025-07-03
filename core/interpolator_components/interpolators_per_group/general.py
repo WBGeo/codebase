@@ -23,6 +23,7 @@ from core.interpolator_components.interpolators_per_group.geoinr_per_group impor
 
 from core.structural_objects.objects import StructuralFrame, StructuralGroup, StructuralElement, InterpolationMethod
 
+# test comment
 
 #%%
 
