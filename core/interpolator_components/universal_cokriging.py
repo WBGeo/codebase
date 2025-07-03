@@ -6,7 +6,16 @@ from core.utility.conversions import element_list_from_dict
 from core.utility.model_cleaning import remove_outliers_3d
 from core.utility.surface_mesh_extraction import marching_cubes_per_element
 
+from py_api_wbgeo.nodesapi import wbgeo_component
 
+@wbgeo_component(identifier='uck_interpolator',  # unique identifier
+                 title='Universal Co-Kriging interpolator',  # human readable (Default) title
+                 description='Compute a model based on input data using UCK interpolation',
+                 color='#f4a259',
+                 border_color='#000000',
+                 group='Interpolation',
+                 return_name='results',  # name of the returned port
+                 )
 def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
     """
     Compute a model based on input data using universal co-kriging interpolation (gempy)

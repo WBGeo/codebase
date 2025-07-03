@@ -3,6 +3,8 @@ from core.object_components import InputData, GeomodelResults
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 from core.grids.grid_classes import RegularGrid
 
+from py_api_wbgeo.nodesapi import wbgeo_component
+
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -305,7 +307,14 @@ def stratigraphic_ConcatMLP(interface_data, orientation_data, meshgrid_data, ext
 
     return predictions.ravel(), iso_values  # stratigraphic_mesh, grid_mesh_final
 
-
+@wbgeo_component(identifier='geoinr_interpolator',  # unique identifier
+                 title='GeoINR interpolator',  # human readable (Default) title
+                 description='Compute a model based on input data using GeoINR interpolation',
+                 color='#f4a259',
+                 border_color='#000000',
+                 group='Interpolation',
+                 return_name='results',  # name of the returned port
+                 )
 def geo_inr_interpolator(input_data: InputData,
                          beta: int = 10
                         ) -> GeomodelResults:
