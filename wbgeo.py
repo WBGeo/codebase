@@ -12,6 +12,7 @@ from core.interpolator_components.rbf_interpolation import rbf_interpolator
 # from core.interpolator_components.loopstructural_old import loop_structural_interpolator # removed until updated
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.liquidEarth.le_push_data import push_geosolution_to_le
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -325,6 +326,35 @@ nodesapi.register_script_block(identifier='meshing_unstructured',  # unique iden
                                    'param': 'result', 'type': MeshOutputType,
                                }])
 
+nodesapi.register_script_block(identifier='geosolution_liquidearth_visualization',
+                               title='Push Geosolution to LiquidEarth',
+                               inputs=[
+                                   {
+                                       'param': 'API key',
+                                       'type': StringDataType,
+                                       'data_requirements': [],
+                                   },
+                                   {
+                                       'param': 'geosolution',
+                                       'type': GeomodelResultsType,
+                                       'data_requirements': [],
+                                   },
+                                   {
+                                       'param': 'Space Name',
+                                       'type': StringDataType,
+                                       'data_requirements': [],
+                                   }
+                               ],
+
+                               execute=nodesapi.create_geo_execute(push_geosolution_to_le),
+                               color='#f4e285',
+                               border_color='#000000',
+                               group='Οther', # greek Ο due to ordering
+                               outputs=[
+                                   {'param': 'link', 'type': StringDataType}, # output is a string, e.g. a URL to the LiquidEarth Space
+                               ],
+                               )
+
 
 # Register 3 yet-to-be-implemented block types
 
@@ -366,19 +396,4 @@ nodesapi.register_script_block(identifier='nyi_ps',
                                ],
                                )
 
-nodesapi.register_script_block(identifier='nyi_ar',
-                               title='Cloud AR Visualization',
-                               inputs=[
-                                   {
-                                       'param': 'self',
-                                       'type': PMType,
-                                       'data_requirements': [],
-                                   }],
-                               execute=nodesapi.create_geo_execute(placeholder_m),
-                               color='#f4e285',
-                               border_color='#000000',
-                               group='Οther', # greek Ο due to ordering
-                               outputs=[
-                                   {'param': 'o', 'type': GeomodelResultsType},
-                               ],
-                               )
+
