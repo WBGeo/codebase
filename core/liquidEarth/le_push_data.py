@@ -39,7 +39,7 @@ def convert_to_subsurface_mesh(geosolution):
                  group='visualization',
                  return_name='space link',  # name of the returned port
                  )
-def push_geosolution_to_le(geosolution, space_name, model_name, api_token):
+def push_geosolution_to_le(geosolution, space_name, model_name, api_token) -> str:
     """
     Push a geosolution to Liquid Earth.
 
