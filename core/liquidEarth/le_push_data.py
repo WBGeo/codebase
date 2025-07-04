@@ -36,8 +36,8 @@ def convert_to_subsurface_mesh(geosolution):
                  description='push the geosolution to a new space in Liquid Earth',
                  color='#f4a259',
                  border_color='#000000',
-                 group='Interpolation',
-                 return_name='results',  # name of the returned port
+                 group='visualization',
+                 return_name='space link',  # name of the returned port
                  )
 def push_geosolution_to_le(geosolution, space_name, model_name, api_token):
     """
