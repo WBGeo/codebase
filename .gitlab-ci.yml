@@ -40,6 +40,7 @@ pages:
   stage: deploy
   rules:
     - when: always
+      if: CI_COMMIT_BRANCH == "main"
   dependencies:
     - test
   script:
