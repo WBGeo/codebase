@@ -16,7 +16,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component
                  group='Interpolation',
                  return_name='results',  # name of the returned port
                  )
-def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI"):
+def loop_structural_interpolator(input_data: InputData, interpolator_type: str = "FDI") -> GeomodelResults:
     """
     Compute a model based on input data using loop structural.
 

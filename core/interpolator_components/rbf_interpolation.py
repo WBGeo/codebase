@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 from core.object_components import InputData, GeomodelResults
 from scipy.interpolate import RBFInterpolator
@@ -19,8 +21,8 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 def rbf_interpolator(input_data: InputData,
                      kernel: str = 'linear',
                      smoothing: float = 0,
-                     neighbors=None,
-                     epsilon=1) -> GeomodelResults:
+                     neighbors: Optional[int]=None,
+                     epsilon: float=1) -> GeomodelResults:
     """
     Compute a model based on input data using RBF interpolation
 
