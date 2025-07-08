@@ -6,7 +6,6 @@ from core.object_components import InputData, GeomodelResults
 from py_api_wbgeo.nodesapi import wbgeo_component
 from py_api_wbgeo import apitypes
 
-from wbgeo import StringDataType
 
 
 def convert_to_subsurface_mesh(geosolution):
