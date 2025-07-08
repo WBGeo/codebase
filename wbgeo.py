@@ -326,34 +326,7 @@ from py_api_wbgeo import nodesapi
 #                                    'param': 'result', 'type': MeshOutputType,
 #                                }])
 
-nodesapi.register_script_block(identifier='geosolution_liquidearth_visualization',
-                               title='Push Geosolution to LiquidEarth',
-                               inputs=[
-                                   {
-                                       'param': 'API key',
-                                       'type': StringDataType,
-                                       'data_requirements': [],
-                                   },
-                                   {
-                                       'param': 'geosolution',
-                                       'type': GeomodelResultsType,
-                                       'data_requirements': [],
-                                   },
-                                   {
-                                       'param': 'Space Name',
-                                       'type': StringDataType,
-                                       'data_requirements': [],
-                                   }
-                               ],
 
-                               execute=nodesapi.create_geo_execute(push_geosolution_to_le),
-                               color='#f4e285',
-                               border_color='#000000',
-                               group='Οther', # greek Ο due to ordering
-                               outputs=[
-                                   {'param': 'link', 'type': StringDataType}, # output is a string, e.g. a URL to the LiquidEarth Space
-                               ],
-                               )
 
 
 # Register 3 yet-to-be-implemented block types
