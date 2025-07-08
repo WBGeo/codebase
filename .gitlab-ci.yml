@@ -8,15 +8,20 @@ test:
     - source venv/bin/activate
     - pip install -r requirements.txt --extra-index-url https://glpat:glpat-S8CVCE2QtMPsVgXdu89J@git.rwth-aachen.de/api/v4/projects/102532/packages/pypi/simple --extra-index-url https://download.pytorch.org/whl/cpu
     - pip install pytest coverage
+    - apt update && apt install -y  musl-dev libc-dev  libgl1 ffmpeg  libgl1-mesa-glx xvfb  libglu1-mesa libxi-dev libxmu-dev libglu1-mesa-dev libxinerama-dev
   script:
     - python -m coverage run -m pytest --junitxml=report.xml
   after_script:
     - pip install coverage
+    - coverage xml
     - coverage html
   artifacts:
     when: always
     reports:
       junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
     paths:
       - htmlcov/
     expire_in: 2 weeks
@@ -35,6 +40,7 @@ pages:
   stage: deploy
   rules:
     - when: always
+      if: $CI_COMMIT_BRANCH == "main"
   dependencies:
     - test
   script:

@@ -51,16 +51,24 @@ class TestUniversalCokriging(unittest.TestCase):
                                       "surface meshes vertices length missmatch")
 
         for i in range(0, len(results_test.surface_meshes_vertices)):
-            np.testing.assert_array_equal(results_test.surface_meshes_vertices[i],
-                                          results_to_regression_test_against.surface_meshes_vertices[i],
-                                          "surface meshes vertices data missmatch " + str(i))
+            self.assertEqual(len(results_test.surface_meshes_vertices[i]),
+                             len(results_to_regression_test_against.surface_meshes_vertices[i]),
+                             "surface meshes vertices length missmatch of list " + str(i))
+            for j in range(0, len(results_test.surface_meshes_vertices[i])):
+                np.testing.assert_array_equal(results_test.surface_meshes_vertices[i][j],
+                                              results_to_regression_test_against.surface_meshes_vertices[i][j],
+                                              "surface meshes vertices data missmatch " + str(i) + " " + str(j))
         self.assertEqual(len(results_test.surface_meshes_edges),
                          len(results_to_regression_test_against.surface_meshes_edges),
                          "surface meshes edges length data missmatch")
         for i in range(0, len(results_to_regression_test_against.surface_meshes_edges)):
-            np.testing.assert_array_equal(results_test.surface_meshes_edges[i],
-                                          results_to_regression_test_against.surface_meshes_edges[i],
-                                          "surface meshes edges {} data missmatch".format(i))
+            for j in range(0, len(results_to_regression_test_against.surface_meshes_edges[i])):
+                self.assertEqual(len(results_test.surface_meshes_edges[i]),
+                                 len(results_to_regression_test_against.surface_meshes_edges[i]),
+                                 "surface meshes edges length missmatch of list " + str(i))
+                np.testing.assert_array_equal(results_test.surface_meshes_edges[i][j],
+                                              results_to_regression_test_against.surface_meshes_edges[i][j],
+                                              "surface meshes edges {}:{} data missmatch".format(i, j))
         np.testing.assert_array_equal(results_test.grid, results_to_regression_test_against.grid,
                                       "surface meshes edges data missmatch")
 
