@@ -2,7 +2,12 @@ import liquid_earth_sdk as le
 import subsurface as ss
 import numpy as np
 import pandas as pd
+from core.object_components import InputData, GeomodelResults
 from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo import apitypes
+
+from wbgeo import StringDataType
+
 
 def convert_to_subsurface_mesh(geosolution):
 
@@ -30,16 +35,15 @@ def convert_to_subsurface_mesh(geosolution):
 
     return meshes
 
-#%%
 @wbgeo_component(identifier='geosolution_liquidearth_visualization',  # unique identifier
                  title='Push Geosolution to LiquidEarth',  # human readable (Default) title
                  description='push the geosolution to a new space in Liquid Earth',
                  color='#f4a259',
                  border_color='#000000',
-                 group='visualization',
+                 group='visualisation',
                  return_name='space link',  # name of the returned port
                  )
-def push_geosolution_to_le(geosolution, space_name, model_name, api_token) -> str:
+def push_geosolution_to_le(geosolution: GeomodelResults , space_name:str, model_name:str, api_token:str) -> str:
     """
     Push a geosolution to Liquid Earth.
 
@@ -53,5 +57,5 @@ def push_geosolution_to_le(geosolution, space_name, model_name, api_token) -> st
     - link: The link to the space  in Liquid Earth.
     """
     meshes = convert_to_subsurface_mesh(geosolution) # Convert geosolution to subsurface mesh format.requires a gempy solution
-    link = le.upload_mesh_to_new_space(space_name, meshes, model_name, api_token)
+    link = le.upload_mesh_to_new_space(space_name, meshes, model_name, api_token).deep_link
     return link
