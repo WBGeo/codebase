@@ -27,12 +27,14 @@ def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
     interpolated_surfaces = []
     max_n_gx=250
     max_n_gy=100
-    for _, points in cleaned_surfaces:  # Extract points directly
+    for id, points in cleaned_surfaces:  # Extract points directly
         # Create DataFrame and remove duplicates
         df = pd.DataFrame({'x': points[:, 0], 'y': points[:, 1], 'z': points[:, 2]}).drop_duplicates()
         x_cleaned = df['x'].values
         y_cleaned = df['y'].values
         z_cleaned = df['z'].values
+        if id == 1:
+            np.savetxt("point_cloud.csv", points, delimiter=",", header="x,y,z", comments='')
 
         #x_min, x_max = np.min(x_cleaned), np.max(x_cleaned)
         #y_min, y_max = np.min(y_cleaned), np.max(y_cleaned)
@@ -60,7 +62,8 @@ def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
 
         # Interpolation using RBF
         rbf = Rbf(x_cleaned, y_cleaned, z_cleaned, function='multiquadric', epsilon=2, smooth=smooth)
-        z_interpolated = np.round(rbf(grid_x, grid_y))
+
+        z_interpolated = (rbf(grid_x, grid_y))
 
         # Combine into final interpolated surface
         interpolated_grid = np.column_stack((grid_x.flatten(), grid_y.flatten(), z_interpolated.flatten()))
@@ -205,7 +208,7 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
         shaft_to_child_fragments (dict): Mapping from shaft tags to the IDs of intersecting or resulting child fragments (used to track mesh regions influenced by mine shafts).
         source_tag (int): GMSH physical group tag assigned to the source points.
     """
-    outside_threshold = 0.5  # Define the threshold for coordinates of points outside the model domain
+    outside_threshold = 0.1  # Define the threshold for coordinates of points outside the model domain
 
     # Create a box for fragmenting
     x_min, x_max, y_min, y_max, z_min, z_max = extent
@@ -302,6 +305,8 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
             mine_shaft_volumes.append(tag)
         gmsh.model.occ.synchronize()
 
+    print("Number of surfaces:", len(surfaces))
+    print("Surface tags:", surfaces)
 
     tool_entities = [(2, s) for s in surfaces]  # start with surfaces
 
@@ -315,7 +320,9 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
 
     if mine_shafts:
         tool_entities += [(3, tag) for tag in mine_shaft_volumes]
-
+    #gmsh.write("model.brep")  # Saves full geometry
+    # or
+    #gmsh.write("model.geo_unrolled")  # For readable Gmsh .geo
 
     ov, ovv = gmsh.model.occ.fragment(
         [(3, v)] + tool_entities, [],
@@ -331,6 +338,9 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
     gmsh.option.setNumber("Mesh.AngleToleranceFacetOverlap", 1e-4)
 
     gmsh.model.occ.synchronize()
+    #gmsh.write("fragmented_model.brep")  # Saves full geometry
+    # or
+    #gmsh.write("fragmented_model.geo_unrolled")  # For readable Gmsh .geo
 
     tagsss = []  # List to store physical groups
 
@@ -374,10 +384,8 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
 
             for e in zip_info:
                 print("parent " + str(e[0]) + " -> child " + str(e[1]))
-            print('doneeeeeee')
             zipped_list = list(zip_info)  # Convert zip object to a list
-            print(zipped_list, 'zopp')
-            print(zip_info, 'infooo')
+
             for i in range(1, len(zipped_list)):
                 if i == ref_index + 1:
                     values = [item[1] for item in zipped_list[i][1]]
@@ -697,7 +705,6 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
     if source_points:
           source_tag=[]
           for i in range(len(source)):
-            print(source, source[i], 'iiiiii')
             tag_source= gmsh.model.addPhysicalGroup(0, [source[i]], 2000+i+1)
             source_tag.append(tag_source)
     else:

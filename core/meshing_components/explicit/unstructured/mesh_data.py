@@ -394,7 +394,7 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
         EXTRUSION_FACTOR (float): Factor that scales extrusion distance.
         z_threshold (float): Threshold for determining whether two surfaces on either side of a fault are close in elevation.
         extent (list): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
-        buffer_dist (float): extent of interpolated surfaces
+        buffer_dist (float): extent of interpolated surfaces (extrapolation)
         smooth (float): smoothness factor for interpolation of surfaces
     Returns:
         MeshResults: An instance of the MeshResults class.
@@ -468,11 +468,15 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
         print(f"❌ Number of extra_planes ({len(extra_planes)}) does not match 'num_planes' ({num_planes}).")
         return
 
+
     gmsh.initialize()  # Initialize GMSH once
-    cleaned_surfaces, ref_surface_indices , grid_litho, wells, extra_planes, mine_shafts, source_points = data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD, EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold, num_wells=num_wells, wells=wells, num_sources=num_sources, sources=sources, num_shafts=num_shafts, centers=centers, axes=axes, radii=radii, num_planes=num_planes,extra_planes=extra_planes)
+    cleaned_surfaces, ref_surface_indices , grid_litho, wells, extra_planes, mine_shafts, source_points = data_prepration(data_test,
+                                                                                                                geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
+                                                                                                                EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold, num_wells=num_wells, wells=wells,
+                                                                                                                num_sources=num_sources, sources=sources, num_shafts=num_shafts, centers=centers, axes=axes, radii=radii,
+                                                                                                                num_planes=num_planes,extra_planes=extra_planes)
 
     interpolated_s = create_surface_grid(cleaned_surfaces, buffer_dist = buffer_dist, smooth=smooth)
-    #### plot_surfaces_individually(interpolated_s)
 
     # fragment
     if extent ==[]:
@@ -484,10 +488,10 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
     surfaces_orginal, bounds = import_surfaces(interpolated_s, extent, tolerance=tolerance)
     print(bounds, 'biii')
 
-    ###gmsh.model.occ.synchronize()
-    ###gmsh.fltk.initialize()
-    ###while gmsh.fltk.isAvailable():
-    ###    gmsh.fltk.wait()
+    gmsh.model.occ.synchronize()
+    #gmsh.fltk.initialize()
+    #while gmsh.fltk.isAvailable():
+    #    gmsh.fltk.wait()
 
 
 

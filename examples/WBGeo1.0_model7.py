@@ -2,8 +2,12 @@
 import numpy as np
 import pandas as pd
 import os
-
+import sys
+from scipy.interpolate import Rbf
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 #from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -111,22 +115,22 @@ plotter.show()
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
-    num_wells=2,
-    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
-    sources=[(100,300,500), (400,600,700)],
-    num_shafts=0,
-    centers=[],
-    axes=[],
-    radii=[],
+    num_wells=1,
+    wells=[(100,100,980,100,100,600)],
+    num_sources=1,
+    sources=[(300,100,900)],
+    num_shafts=1,
+    centers=[(100,100,100)],
+    axes=[(2000,0,0)],
+    radii=[30],
     num_planes=0,
     extra_planes=[],
     tolerance=50,
     mesh_size=20,
-    curve_mesh_size=2,
-    DISTANCE_THRESHOLD = 80,
-    PROJECTION_THRESHOLD = 80,
-    EXTRUSION_FACTOR = 80,
+    curve_mesh_size=10,
+    DISTANCE_THRESHOLD = 50,
+    PROJECTION_THRESHOLD = 60,
+    EXTRUSION_FACTOR = 120,
     z_threshold = 10
 )
 

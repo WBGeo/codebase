@@ -2,12 +2,15 @@
 import numpy as np
 import pandas as pd
 import os
-
+import sys
+from scipy.interpolate import Rbf
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 
 from core.interpolator_components.interpolators_per_group import general
 
 from core.visualization_components_new import visualize_structural_frame, plot_structural_slice
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 
 #%%
@@ -92,8 +95,38 @@ contour_levels = [frame["Strat_Series2"]["rock1"].scalar_value, frame["Strat_Ser
 contour = plt.contour(group.scalar_field[:, 0, :], levels=contour_levels, colors='white', linewidths=0.5)
 plt.clabel(contour, inline=True, fontsize=8, fmt='%1.1f')
 
+
 plt.colorbar()
 plt.title("Scalar Field Section for Strat_Series1")
 plt.xlabel("X-axis")
 plt.ylabel("Z-axis")
 plt.show()
+
+# Geberate mesh
+mesh_test = create_unstructured_mesh_data(
+    data_test= data_test,
+    geomodel_result=results_test,
+    num_wells=1,
+    wells=[(100,100,980,100,100,600)],
+    num_sources=1,
+    sources=[(300,100,900)],
+    num_shafts=1,
+    centers=[(100,100,100)],
+    axes=[(2000,0,0)],
+    radii=[30],
+    num_planes=0,
+    extra_planes=[],
+    tolerance=50,
+    mesh_size=20,
+    curve_mesh_size=10,
+    DISTANCE_THRESHOLD = 50,
+    PROJECTION_THRESHOLD = 60,
+    EXTRUSION_FACTOR = 120,
+    z_threshold = 10
+)
+
+mesh_test.export_vtm('file.vtm')
+print('doneeeeee')
+mesh_ex=mesh_test.export_exodus("filename.exo")
+mesh_vtu=mesh_test.export_vtu("filename.vtu")
+

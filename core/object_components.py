@@ -14,9 +14,14 @@ from typing import Optional, Union, List
 from pydantic_numpy.typing import NpNDArrayInt64, NpNDArrayFp64
 
 
-from core.meshing_components.mesh_format.Exodus.Exo_format import ExosInputs
+from core.meshing_components.mesh_format.EXUDOS.Exo_format import ExosInputs
 from core.meshing_components.mesh_format.VTU.VTU_format import VTUInputs
 from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
+from core.meshing_components.mesh_format.STL.STL_format import STLInputs
+from core.meshing_components.mesh_format.GMSH.GMSH_format import GMSHInputs
+from core.meshing_components.mesh_format.ABAQUS.Abaqus_format import AbaqusInputs
+from core.meshing_components.mesh_format.ANSYS.Ansys_format import AnsysInputs
+
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
@@ -152,6 +157,61 @@ class MeshResults:
         # Write the mesh to an Exodus file
         mesh.write(filename, file_format="exodus")
         print(f"Exodus file '{filename}' created successfully!")
+
+    def export_abaqus(self, filename: str):
+        """
+        Export the mesh data to an Abaqus file.
+        Args:
+            filename (str): The name of the Abaqus file to export.
+        """
+        Abaqus_in = AbaqusInputs(nodes_array=self.nodes, elements_array=self.elements)
+        # Create mesh
+        mesh = Abaqus_in.create_mesh()
+
+        # Write the mesh to an Exodus file
+        mesh.write(filename, file_format="abaqus")
+        print(f"Abaqus file '{filename}' created successfully!")
+
+    def export_ansys(self, filename: str):
+        """
+        Export the mesh data to an Ansys file.
+        Args:
+            filename (str): The name of the Ansys file to export.
+        """
+        Ansys_in = AnsysInputs(nodes_array=self.nodes, elements_array=self.elements)
+        # Create mesh
+        mesh = Ansys_in.create_mesh()
+
+        # Write the mesh to an Exodus file
+        mesh.write(filename, file_format="ansys")
+        print(f"Ansys file '{filename}' created successfully!")
+
+    def export_gmsh(self, filename: str):
+        """
+        Export the mesh data to an GMSH file.
+        Args:
+            filename (str): The name of the GMSH file to export.
+        """
+        gmsh_in = GMSHInputs(nodes_array=self.nodes, elements_array=self.elements)
+        # Create mesh
+        mesh = gmsh_in.create_mesh()
+        if mesh is None:
+           print('GMSH cannot be created for structure mesh')
+        else:
+            # Write the mesh to an Exodus file
+            mesh.write(filename, file_format="gmsh22")
+            print(f"GMSH file '{filename}' created successfully!")
+
+    def export_stl(self, filename: str):
+        """
+        Export the mesh data to STL files.
+        Args:
+            filename (str): The name of the STL files to export.
+        """
+        stl_in = STLInputs(nodes_array=self.nodes, elements_array=self.elements)
+        stl_in.output_filename = filename  # <--- REQUIRED!
+        stl_in.create_mesh()
+
 
     def export_vtm(self, filename: str):
         """

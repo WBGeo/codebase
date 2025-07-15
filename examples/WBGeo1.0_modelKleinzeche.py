@@ -2,11 +2,15 @@
 import numpy as np
 import pandas as pd
 import os
-
+import sys
+from scipy.interpolate import Rbf
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
+from core.utility import surface_mesh_gradients
+import pyvista as pv
 
 #%%
 
@@ -18,7 +22,7 @@ cwd = os.getcwd()
 # Component 1: Input data
 data_test = InputData(name='Kleinzeche',
                       extent=np.array([0, 90, 0, 10, 55, 125]),
-                      resolution=np.array([180, 10, 140]),
+                      resolution=np.array([180, 20, 140]),
                       surface_points=pd.read_csv(
                           cwd + "/examples/data/modelKleinzeche_surface_points_df.csv"),
                       orientations=pd.read_csv(
@@ -69,27 +73,86 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 
 #%%
 
+points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results_test, mesh_type="unmasked")
+
+
+
+# Stack all arrays vertically
+all_points = np.vstack(points_list)
+
+# Get overall min and max per column (x, y, z)
+min_vals = np.min(all_points, axis=0)
+max_vals = np.max(all_points, axis=0)
+print(min_vals, max_vals)
+
+colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
+        '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
+        '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
+
+# Create a PyVista dataset
+# Plot the arrows
+plotter = pv.Plotter()
+print('0')
+for i in range(len(points_list)):
+    pdata = pv.PolyData(points_list[i])
+    pdata["vectors"] = vectors_list[i]  # Add vector field
+
+    # Create arrow glyphs
+    arrows = pdata.glyph(orient="vectors", scale="vectors", factor=5)
+
+    # Plot the arrows
+    plotter.add_mesh(arrows, color=colors[i])
+    plotter.add_mesh(
+                    pv.PolyData(results_test.surface_meshes_vertices[1][i],
+                                np.insert(results_test.surface_meshes_edges[1][i], 0, 3, axis=1).ravel()),
+                    color=colors[i])
+plotter.show()
+#%%
+print('1')
+# Create a PyVista dataset
+# Plot the arrows
+plotter = pv.Plotter()
+
+unit=1
+
+pdata = pv.PolyData(points_list[unit])
+pdata["vectors"] = vectors_list[unit]  # Add vector field
+
+# Create arrow glyphs
+arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
+
+# Plot the arrows
+plotter.add_mesh(arrows, color=colors[unit])
+plotter.add_mesh(
+                pv.PolyData(results_test.surface_meshes_vertices[1][unit],
+                            np.insert(results_test.surface_meshes_edges[1][unit], 0, 3, axis=1).ravel()),
+                color=colors[unit], style="wireframe")
+plotter.show()
+
+
+
 # Generate mesh
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
-    num_wells=2,
-    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
-    sources=[(100,300,500), (400,600,700)],
-    num_shafts=2,
-    centers=[(200,500,400), (100,200,700)],
-    axes=[(1000,0,0), (1000,0,0)],
-    radii=[30, 20],
-    num_planes=2,
-    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400), (0,0,600,1000,0,600,1000,1000,600,0,1000,600)],
-    tolerance=50,
-    mesh_size=20,
-    curve_mesh_size=5,
-    DISTANCE_THRESHOLD = 60,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10
+    num_wells=1,
+    wells=[(20,2,124.5,20,2,100,40,2,100)],
+    num_sources=1,
+    sources=[(70,2,80)],
+    num_shafts=1,
+    centers=[(0,4,70)],
+    axes=[(100,0,0)],
+    radii=[3],
+    num_planes=0,
+    extra_planes=[],
+    tolerance=0.01,
+    mesh_size=0.5,
+    curve_mesh_size=0.5,
+    DISTANCE_THRESHOLD = 3,
+    PROJECTION_THRESHOLD = 3.5,
+    EXTRUSION_FACTOR = 5.5,
+    z_threshold = 0.1,
+    extent=[1, 89, 1, 9, 60, 124.5]
 )
 
 #%%

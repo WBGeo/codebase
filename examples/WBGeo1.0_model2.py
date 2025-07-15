@@ -54,12 +54,12 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 #%%
 
 # 4: Meshing for Process Simulation
-# mesh_test = create_structured_mesh_data(
+#mesh_test = create_structured_mesh_data(
 #     geomodel_result=results_test,
 #     refinement_data=[10,10,10],
 #     z_threshold=0.1,
 #     tolerance=1
-# )
+#)
 
 
 
@@ -93,10 +93,15 @@ mesh_test = create_unstructured_mesh_data(
 )
 
 
+
 mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
 mesh_ex=mesh_test.export_exodus("filename.exo")
 mesh_vtu=mesh_test.export_vtu("filename.vtu")
+mesh_stl=mesh_test.export_stl("filename.stl")
+mesh_gmsh=mesh_test.export_gmsh("filename.msh")
+mesh_aba=mesh_test.export_abaqus("filename.inp")
+mesh_ansys=mesh_test.export_ansys("filename_ansys.msh")
+
 
 
 
