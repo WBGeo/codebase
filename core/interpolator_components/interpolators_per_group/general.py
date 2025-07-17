@@ -20,10 +20,11 @@ from core.interpolator_components.interpolators_per_group.universal_cokriging_pe
 from core.interpolator_components.interpolators_per_group.loop_structural_per_group import \
     interpolate_group_loop_structural
 from core.interpolator_components.interpolators_per_group.geoinr_per_group import interpolate_group_geo_inr
+from core.interpolator_components.interpolators_per_group.geo_ml_per_group import interpolate_group_geoml
+from core.interpolator_components.interpolators_per_group.inverse_distance_per_group import interpolate_group_idw
+
 
 from core.structural_objects.objects import StructuralFrame, StructuralGroup, StructuralElement, InterpolationMethod
-
-# test comment
 
 #%%
 
@@ -253,6 +254,24 @@ def combined_interpolator(frame):
                 grid=frame.grid,
                 group_surface_points_df=group_surface_points,
                 group_orientations_points_df=frame.get_orientations_for_group(group.name),
+            )
+            pass
+        elif group.interpolation_method == InterpolationMethod.GEO_ML:
+            # Perform Loop Structural interpolation
+            print("Hello, I am GeoML")
+            interpolate_group_geoml(
+                group=group,
+                grid=frame.grid,
+                group_surface_points_df=group_surface_points,
+            )
+            pass
+        elif group.interpolation_method == InterpolationMethod.IDW:
+            # Perform Loop Structural interpolation
+            print("Hello, I am IDW")
+            interpolate_group_idw(
+                group=group,
+                grid=frame.grid,
+                group_surface_points_df=group_surface_points,
             )
             pass
         else:

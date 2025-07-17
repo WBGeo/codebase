@@ -38,6 +38,7 @@ frame = general.build_structural_frame(data_test.mapping_object,
                                         data_test.orientations)
 frame.summary()
 
+
 #%%
 
 # Plot a slice of the structural model
@@ -48,8 +49,11 @@ visualize_structural_frame(frame, show_points=True, show_orientations=True, note
 
 #%%
 
-frame["Strat_Series1"].set_interpolation_method("Loop Structural")
-frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
+# frame["Strat_Series1"].set_interpolation_method("Loop Structural")
+# frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
+
+frame["Strat_Series1"].set_interpolation_method("GeoML")
+frame["Strat_Series2"].set_interpolation_method("GeoML")
 
 frame.detailed_report()
 

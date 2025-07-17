@@ -48,12 +48,12 @@ visualize_structural_frame(frame, show_points=True, show_orientations=True, note
 
 #%%
 
-frame["Shallow_Strat"].set_interpolation_method("Loop Structural")
-frame["Medium_Strat"].set_interpolation_method("Universal Co-Kriging")
+# frame["Shallow_Strat"].set_interpolation_method("Loop Structural")
+# frame["Medium_Strat"].set_interpolation_method("Universal Co-Kriging")
 # frame["Deep_Strat"].set_interpolation_method("GeoINR")
 
-# frame["Shallow_Strat"].set_interpolation_method("Ordinary Kriging")
-# frame["Medium_Strat"].set_interpolation_method("Radial Basis Function")
+frame["Shallow_Strat"].set_interpolation_method("Ordinary Kriging")
+frame["Medium_Strat"].set_interpolation_method("Inverse Distance Weighting")
 frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
 
 # frame.pretty_print()
@@ -62,8 +62,9 @@ frame.summary()
 
 #%%
 
-frame["Shallow_Strat"].configure_interpolation_params(interpolator_type="FDI")
-frame["Medium_Strat"].configure_interpolation_params()
+# frame["Shallow_Strat"].configure_interpolation_params(interpolator_type="FDI")
+frame["Shallow_Strat"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.3)
+frame["Medium_Strat"].configure_interpolation_params(power=3, anisotropy_scaling=(1.0,1.0,0.1))
 frame["Deep_Strat"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.3)
 
 #%%
@@ -87,6 +88,16 @@ plot_structural_slice(frame, lith_block=block, axis='y', index=0, show_scalar_co
 # Visualize the structural frame with options for surface meshes, points, and orientations
 visualize_structural_frame(frame, show_surface_meshes=True, show_points=True, show_orientations=True, notebook=False, show=True)
 
+#%%
 
+
+# plot section of scalar field
+import matplotlib.pyplot as plt
+plt.figure(figsize=(10, 6))
+plt.imshow(frame.structural_groups[0]._scalar_field[:, frame.structural_groups[0]._scalar_field.shape[1] // 2, :].T, cmap='viridis', origin='lower')
+plt.colorbar(label='Scalar Value')
+plt.xlabel('X Coordinate')
+plt.ylabel('Z Coordinate')
+plt.show()
 
 

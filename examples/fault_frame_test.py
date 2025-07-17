@@ -5,6 +5,10 @@ import pandas as pd
 from core.grids.grid_classes import RegularGrid
 import gempy as gp
 
+from core.utility.surface_mesh_extraction import marching_cubes_new
+
+from core.visualization_components_new import visualize_fault_frame
+
 
 #%%
 class FaultElement(BaseModel):
@@ -282,7 +286,6 @@ class FaultFrame(BaseModel):
             print(f"  │   └─ Orientations: {ori_count}")
         print("")
 
-
     def generate_fault_domains(self) -> None:
         """
         Interpolates all faults and generates a domain map across the model grid.
@@ -306,16 +309,6 @@ class FaultFrame(BaseModel):
             # Extract surface point/orientation data for this fault
             points = self.get_surface_points_for_element(name)
             orientations = self.get_orientations_for_element(name)
-
-            # points = self._fault_surface_points_df[
-            #     self._fault_surface_points_df["formation"] == name
-            #     ]
-            # orientations = (
-            #     self._fault_surface_orientations_df[
-            #         self._fault_surface_orientations_df["formation"] == name
-            #         ]
-            #     if self._fault_surface_orientations_df is not None else pd.DataFrame()
-            # )
 
             if points.empty:
                 raise ValueError(f"❌ No surface points found for fault '{name}'.")
@@ -351,6 +344,16 @@ class FaultFrame(BaseModel):
         remapped_map = np.vectorize(remap.get)(domain_map)
         self._domain_map = remapped_map
 
+        # Extrac surfaces meshes for faults
+        for i, fault in enumerate(reversed(self._fault_elements)):
+            vertices, edges = marching_cubes_new(fault.scalar_field.T,
+                                                 [fault.scalar_value],
+                                                 grid.spacing,
+                                                 grid.extent)
+
+            fault.set_vertices(vertices[0])
+            fault.set_edges(edges[0])
+
 
 def generate_vertical_fault_data(x_pos: float, name: str, y_range=(100, 900), z_range=(100, 900), n_points=10):
     """
@@ -377,6 +380,7 @@ def generate_vertical_fault_data(x_pos: float, name: str, y_range=(100, 900), z_
     })
 
     return surface_points, orientations
+
 
 def generate_horizontal_fault_data(z_pos: float, name: str, x_range=(100, 900), y_range=(100, 900), n_points=10):
     """
@@ -443,6 +447,7 @@ def build_fault_frame(
 
     return fault_frame
 
+
 def interpolate_group_universal_cokriging_for_faults(
         element: FaultElement,
         grid,
@@ -505,6 +510,7 @@ def interpolate_group_universal_cokriging_for_faults(
     # Set the domain mask based on the scalar field
     element.set_domain_mask(element.scalar_field > element.scalar_value)
 
+
 #%%
 
 # Generate fault data
@@ -516,7 +522,6 @@ sp_c, ori_c = generate_vertical_fault_data(x_pos=500, name="FaultC")
 # Combine into full DataFrames
 fault_surface_points_df = pd.concat([sp_a, sp_b, sp_c], ignore_index=True)
 fault_orientations_df = pd.concat([ori_a, ori_b, ori_c], ignore_index=True)
-
 
 #%%
 
@@ -537,81 +542,24 @@ fault_frame = build_fault_frame(
 )
 
 #%%
-
-fault_frame._fault_orientations_df
-
-#%%
-
-fault_frame.get_orientations_df()
-
-#%%
 fault_frame.detailed_report()
 
-
-#%%
-fault_frame.get_orientations_for_element("FaultA")
-
 #%%
 
-fault_frame.get_surface_points_for_element("FaultA")
-
-#%%
-
+# Compute result for fault frame
 fault_frame.generate_fault_domains()
 
 #%%
 
 fault_frame.detailed_report()
 
-#%%
-
-# Plot slice of the scalar field for FaultA
-import matplotlib.pyplot as plt
-
-
-# Reshape scalar field to match grid resolution
-scalar_field_reshaped = fault_frame.get_element_by_name("FaultA")._scalar_field.reshape(grid.resolution)
-
-# Plotting
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.imshow(scalar_field_reshaped[:,25,:], extent=grid.extent[:4], origin='lower', cmap='viridis')
-# add contour lines for a single contour at the scalar value
-ax.contour(scalar_field_reshaped[:,25,:],
-           extent=grid.extent[:4],
-           levels=[fault_frame.get_element_by_name("FaultA")._scalar_value],
-           colors='red',
-           linewidths=1.5)
-# ax.colorbar(label='Scalar Field Value')
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-plt.show()
+# TODO: Plotting functions for fault frame, 3D Draft done, 2 D missing
 
 #%%
 
+# Plot the fault meshes using pyvista
+visualize_fault_frame(fault_frame)  # TODO: is this actually correct?, iffy about x and y axis
 
-
-#%%
-
-# Reshape scalar field to match grid resolution
-mask_reshaped = fault_frame.get_element_by_name("FaultC")._mask.reshape(grid.resolution)
-
-# Plotting
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.imshow(mask_reshaped[:,25,:], extent=grid.extent[:4], origin='lower', cmap='viridis')
-# ax.colorbar(label='Scalar Field Value')
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-plt.show()
-
-#%%
-
-# Plotting
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.imshow(fault_frame.domain_map[:,25,:], extent=grid.extent[:4], origin='lower', cmap='viridis')
-# ax.colorbar(label='Scalar Field Value')
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-plt.show()
 
 #%%
 
@@ -645,78 +593,6 @@ def assign_domain_ids_to_points(grid: RegularGrid, domain_map: np.ndarray, df: p
     df["domain_id"] = domain_ids
     return df
 
-
-#%%
-
-def generate_random_surface_points(n: int, formations: list[str]) -> pd.DataFrame:
-    """
-    Generate a DataFrame with n randomly scattered surface points within model extent.
-
-    Args:
-        n (int): Number of points to generate.
-        formations (list of str): Formation names to assign to points (cycled if fewer than n).
-
-    Returns:
-        pd.DataFrame: DataFrame with columns X, Y, Z, formation.
-    """
-    data = {
-        "X": np.random.uniform(0, 1000, n),
-        "Y": np.random.uniform(0, 1000, n),
-        "Z": np.random.uniform(0, 1000, n),
-        "formation": [formations[i % len(formations)] for i in range(n)]
-    }
-    return pd.DataFrame(data)
-
-#%%
-
-# Example usage:
-formations = ["UnitA", "UnitB", "UnitC"]
-test_surface_points = generate_random_surface_points(100, formations)
-
-#%%
-
-
-# Assuming you have a StructuralFrame and FaultFrame
-surface_points = assign_domain_ids_to_points(fault_frame.grid, fault_frame.domain_map, test_surface_points)
-# orientations = assign_domain_ids_to_points(fault_frame.grid, fault_frame.domain_map, structural_frame.orientations)
-
-#%%
-surface_points.head()
-
-#%%
-
-# Plotting
-fig, ax = plt.subplots(figsize=(10, 6))
-# ax.imshow(fault_frame.domain_map[:,25,:], extent=grid.extent[:4], origin='lower', cmap='viridis')
-ax.contour(fault_frame.domain_map[:,25,:],levels=np.unique(fault_frame.domain_map), extent=grid.extent[:4], origin='lower', cmap='viridis')
-ax.scatter(surface_points['X'], surface_points['Z'], c=surface_points['domain_id'], cmap='viridis', s=10, alpha=1)
-ax.set_aspect("equal")
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-plt.show()
-
-#%%
-
-plt.scatter(surface_points['X'], surface_points['Z'], c=surface_points['domain_id'], cmap='viridis', s=10, alpha=1)
-plt.colorbar()
-plt.show()
-
-#%%
-
-# filter surface points df for domain id==3
-domain_id = 3
-filtered_points = surface_points[surface_points['domain_id'] == domain_id]
-filtered_points.head()
-
-#%%
-
-surface_points.head()
-
-#
-
-# think about how to combine this with the structural frame
-# how to combine and store scalar fields
-# how to extract meshes if unit stretches over multiple fault blocks
 
 #%%
 
@@ -769,13 +645,12 @@ from core.visualization_components_new import visualize_structural_frame, plot_s
 #%%
 
 # Create a StructuralFrame
-frame = general.build_structural_frame({"Top": ('UnitD', 'UnitC'),"Bot": ('UnitB', 'UnitA')},
-                                        np.array([0, 1000, 0, 1000, 0, 1000]),
-                                        np.array([50, 50, 50]),
-                                        structural_surface_points_df,
-                                        structural_orientations_df)
+frame = general.build_structural_frame({"Top": ('UnitD', 'UnitC'), "Bot": ('UnitB', 'UnitA')},
+                                       np.array([0, 1000, 0, 1000, 0, 1000]),
+                                       np.array([50, 50, 50]),
+                                       structural_surface_points_df,
+                                       structural_orientations_df)
 frame.detailed_report()
-
 
 #%%
 
@@ -783,18 +658,13 @@ frame.detailed_report()
 plot_structural_slice(frame, axis='y', index=10, show_scalar_contours=True)
 
 # Visualize the structural frame with options for surface meshes, points, and orientations
-# visualize_structural_frame(frame, show_points=True, show_orientations=True, notebook=False, show=True)
+visualize_structural_frame(frame, show_points=True, show_orientations=True, notebook=False, show=True)
 
 #%%
 
 frame["Top"].set_interpolation_method("Universal Co-Kriging")
 frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
-# frame["Top"].set_interpolation_method("Ordinary Kriging")
-# frame["Bot"].set_interpolation_method("Ordinary Kriging")
-#
-# frame["Top"].configure_interpolation_params(range=10000, anisotropy_scaling_z=0.3)
-# frame["Bot"].configure_interpolation_params(range=10000, anisotropy_scaling_z=0.3)
 
 #%%
 
@@ -810,11 +680,11 @@ frame, block = general.combined_interpolator(frame)
 # Plot a slice of the structural model
 plot_structural_slice(frame, lith_block=block, axis='y', index=0, show_scalar_contours=True)
 
-
 #%%
 
 # Visualize the structural frame with options for surface meshes, points, and orientations
-visualize_structural_frame(frame, show_surface_meshes=True, show_points=True, show_orientations=True, notebook=False, show=True)
+visualize_structural_frame(frame, show_surface_meshes=True, show_points=True, show_orientations=True, notebook=False,
+                           show=True)
 
 #%%
 
@@ -829,9 +699,6 @@ from core.interpolator_components.interpolators_per_group.ordinary_kriging_per_g
 
 from core.interpolator_components.interpolators_per_group.general import set_scalar_masks, compute_lithology_block
 
-#%%
-
-frame.structural_groups
 
 #%%
 
@@ -845,6 +712,11 @@ def combine_group_scalar_fields(groups):
             mask = group_field >= value  # Or your logic
             combined[mask] = value
     return combined
+
+
+#%%
+
+import matplotlib.pyplot as plt
 
 #%%
 
@@ -864,28 +736,22 @@ domain_ids = np.unique(domain_map)
 # 2️⃣ Loop through domains
 final_lith_blocks = []
 
+# TODO: This is where I need to set the storage options
+# Need to store scalar field per domain and group
+# Need to store scalar values per domain
+
+# Preparation: Assign domain IDs to surface points and orientations
+sp_in_domain = assign_domain_ids_to_points(grid, domain_map, surface_points)
+ori_in_domain = assign_domain_ids_to_points(grid, domain_map, orientations)
+
 for domain_id in domain_ids:
     print(f"🔎 Processing domain {domain_id}")
 
-    # 2a. Filter surface points and orientations to this domain
-    sp_in_domain = assign_domain_ids_to_points(grid, domain_map, surface_points)
-    ori_in_domain = assign_domain_ids_to_points(grid, domain_map, orientations)
-
+    # 1. Filter surface points and orientations for this domain
     sp_filtered = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
     ori_filtered = ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
 
-    # Plot domain map slice and surface points
-    # fig, ax = plt.subplots(figsize=(10, 6))
-    # # ax.imshow(fault_frame.domain_map[:,25,:], extent=grid.extent[:4], origin='lower', cmap='viridis')
-    # ax.contour(fault_frame.domain_map[:, 25, :], levels=np.unique(fault_frame.domain_map), extent=grid.extent[:4],
-    #            origin='lower', cmap='viridis')
-    # ax.scatter(sp_in_domain['X'], sp_in_domain['Z'], c=sp_in_domain['domain_id'], cmap='viridis', s=10, alpha=1)
-    # ax.set_aspect("equal")
-    # ax.set_xlabel('X')
-    # ax.set_ylabel('Y')
-    # plt.show()
-
-    # 2b. Check data sufficiency per group
+    # Check: Sufficient data in domain
     for group in groups:
         element_names = [e.name for e in group.structural_elements]
         for name in element_names:
@@ -896,40 +762,20 @@ for domain_id in domain_ids:
     # 2c. Deepcopy group to avoid overwriting
     domain_groups = deepcopy(groups)
 
-    print(domain_groups)
-    # TODO: for some reason looks like this result uses all points, at least its not flat
     for group in domain_groups:
-        print(group.name)
         interpolate_group_universal_cokriging(
             group=group,
             grid=frame.grid,
             group_surface_points_df=sp_filtered,
             group_orientations_points_df=ori_filtered,
         )
-        # scatter plot of used points
-        plt.scatter(sp_filtered['X'], sp_filtered['Z'], c=sp_filtered['formation'].astype('category').cat.codes, cmap='viridis', s=10, alpha=1)
-        plt.title(f"Domain {domain_id} - Group {group.name} Surface Points")
-        plt.xlabel('X')
-        plt.ylabel('Z')
-        plt.show()
 
-        # slice of scalar field
-        # scalar_field = group.scalar_field.reshape(grid.resolution)
-        # fig, ax = plt.subplots(figsize=(10, 6))
-        # ax.imshow(scalar_field[:, 25, :], extent=grid.extent[:4], origin='lower', cmap='viridis')
-        # ax.scatter(sp_filtered['X'], sp_filtered['Z'], c=sp_filtered['formation'].astype('category').cat.codes, cmap='viridis', s=10, alpha=1)
-        # ax.set_xlabel('X')
-        # ax.set_ylabel('Z')
-        # plt.title(f"Domain {domain_id} - Group {group.name} Scalar Field")
-        # plt.show()
+        # TODO: THis is where I need to store the stuff
+        scalar_fields.append(group.scalar_field)
+        scalar_values.append(group.scalar_value)
 
 
 
-        # interpolate_group_ordinary_kriging(
-        #     group=group,
-        #     group_surface_points_df=sp_filtered,
-        #     grid=frame.grid
-        # )
 
     # 5. Create masks based on order of structural groups, scalar fields and scalar values
     set_scalar_masks(frame)
@@ -943,7 +789,8 @@ for domain_id in domain_ids:
     lith_block_reshaped = lith_block.reshape(grid.resolution)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.imshow(lith_block_reshaped[:, 0, :], extent=grid.extent[:4], origin='lower', cmap='viridis')
-    ax.scatter(sp_filtered['X'], sp_filtered['Z'], c=sp_filtered['formation'].astype('category').cat.codes, cmap='viridis', s=10, alpha=1)
+    ax.scatter(sp_filtered['X'], sp_filtered['Z'], c=sp_filtered['formation'].astype('category').cat.codes,
+               cmap='viridis', s=10, alpha=1)
     ax.set_xlabel('X')
     ax.set_ylabel('Z')
     plt.title(f"Domain {domain_id} Lith Block")
@@ -961,7 +808,6 @@ for domain_id, lith_block in final_lith_blocks:
 
 print("✅ Final lithology model constructed.")
 
-
 #%%
 
 final_model.shape
@@ -973,9 +819,9 @@ import matplotlib.pyplot as plt
 final_model_reshaped = final_model.reshape(grid.resolution)
 # Plotting
 fig, ax = plt.subplots(figsize=(10, 6))
-ax.imshow(final_model_reshaped[:,25,:], extent=grid.extent[:4], origin='lower', cmap='viridis')
+ax.imshow(final_model_reshaped[:, 25, :], extent=grid.extent[:4], origin='lower', cmap='viridis')
 # add contour lines for a single contour at the scalar value
-ax.contour(final_model_reshaped[:,25,:],
+ax.contour(final_model_reshaped[:, 25, :],
            extent=grid.extent[:4],
            levels=np.unique(final_model_reshaped),
            colors='red',

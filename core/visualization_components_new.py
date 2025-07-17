@@ -261,3 +261,61 @@ def plot_structural_slice(frame, lith_block=None, axis='z', index=0, show_scalar
     plt.tight_layout()
     plt.show()
 
+
+def visualize_fault_frame(fault_frame, show_surface_meshes=True, show_points=True,
+                               show_orientations=True, notebook=False, show=True):
+    pv.global_theme.allow_empty_mesh = True
+    plotter = pv.Plotter(notebook=notebook)
+
+    # legend_entries = []
+    #
+    # # Build entries in order from youngest to oldest
+    # for group in frame.structural_groups:  # Order preserved: youngest to oldest
+    #     group_entries = []
+    #     for element in group.structural_elements:
+    #         group_entries.append((f"• {element.name}", element.color))
+    #     legend_entries.append((group.name, group_entries))
+
+    # Build ordered legend entries (youngest to oldest, consistent with structural_frame)
+    # legend_entries = []
+
+
+    for element in fault_frame._fault_elements:
+        # Plot surface mesh
+        if show_surface_meshes:
+            if len(element._vertices) > 0 and len(element._edges) > 0:
+                faces = np.insert(element._edges, 0, 3, axis=1).ravel()
+                mesh = pv.PolyData(element._vertices, faces)
+                plotter.add_mesh(mesh, color=element.color, name=element.name, label=f"{element.name}")
+
+        # Plot surface points
+        if show_points and not fault_frame._fault_surface_points_df.empty:
+            df_points = fault_frame.get_surface_points_for_element(element.name)
+            if not df_points.empty:
+                cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values)
+                plotter.add_points(cloud, color=element.color, point_size=8, render_points_as_spheres=True)
+
+        # Plot orientations
+        if show_orientations and fault_frame._fault_orientations_df is not None:
+            df_ori = fault_frame.get_orientations_for_element(element.name)
+            if df_ori is not None and not df_ori.empty:
+                start = df_ori[["X", "Y", "Z"]].values
+                direction = df_ori[["G_x", "G_y", "G_z"]].values
+                scale = 50.0
+                for i in range(len(start)):
+                    arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
+                    plotter.add_mesh(arrow, color=element.color)
+
+    # Add bounds/grid
+    plotter.show_bounds(bounds=fault_frame.grid.extent, location="furthest", grid=True)
+
+    # Camera setup
+    plotter.camera.view_angle = 30.0
+    plotter.camera.azimuth = 25.0
+    plotter.camera.elevation = -15.0
+
+    # Return or show
+    if show:
+        plotter.show()
+    return plotter
+
