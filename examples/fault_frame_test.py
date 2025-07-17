@@ -5,9 +5,11 @@ import pandas as pd
 from core.grids.grid_classes import RegularGrid
 import gempy as gp
 
-from core.utility.surface_mesh_extraction import marching_cubes_new
+from core.utility.surface_mesh_extraction import marching_cubes_new, marching_cubes_per_element
 
 from core.visualization_components_new import visualize_fault_frame
+
+from core.structural_objects.objects import StructuralFrame, StructuralGroup, StructuralElement
 
 
 #%%
@@ -531,7 +533,7 @@ grid = RegularGrid(
 )
 
 fault_names = ["FaultC", "FaultA", "FaultB"]  # FaultB is younger than FaultA
-fault_colors = ["#FF0000", "#00FF00", "#00FF00"]
+fault_colors = ["#A9A9A9", "#A9A9A9", "#A9A9A9"]
 
 fault_frame = build_fault_frame(
     fault_surface_points_df=fault_surface_points_df,
@@ -672,22 +674,6 @@ frame.detailed_report()
 
 #%%
 
-# Compute solution
-frame, block = general.combined_interpolator(frame)
-
-#%%
-
-# Plot a slice of the structural model
-plot_structural_slice(frame, lith_block=block, axis='y', index=0, show_scalar_contours=True)
-
-#%%
-
-# Visualize the structural frame with options for surface meshes, points, and orientations
-visualize_structural_frame(frame, show_surface_meshes=True, show_points=True, show_orientations=True, notebook=False,
-                           show=True)
-
-#%%
-
 import numpy as np
 import pandas as pd
 from copy import deepcopy
@@ -702,21 +688,67 @@ from core.interpolator_components.interpolators_per_group.general import set_sca
 
 #%%
 
-def combine_group_scalar_fields(groups):
-    # Assume each group has `scalar_field`, and elements have `scalar_value`
-    combined = np.full(groups[0].scalar_field.shape, fill_value=-1.0)
-    for group in groups:
-        group_field = group.scalar_field
-        for elem in group.structural_elements:
-            value = elem.scalar_value
-            mask = group_field >= value  # Or your logic
-            combined[mask] = value
-    return combined
+# def combine_group_scalar_fields(groups):
+#     # Assume each group has `scalar_field`, and elements have `scalar_value`
+#     combined = np.full(groups[0].scalar_field.shape, fill_value=-1.0)
+#     for group in groups:
+#         group_field = group.scalar_field
+#         for elem in group.structural_elements:
+#             value = elem.scalar_value
+#             mask = group_field >= value  # Or your logic
+#             combined[mask] = value
+#     return combined
 
 
 #%%
 
 import matplotlib.pyplot as plt
+
+#%%
+
+def set_scalar_masks_per_domain(
+    structural_frame: StructuralFrame,
+    scalar_fields_per_domain: dict,
+    scalar_values_per_domain: dict,
+) -> dict:
+    """
+    Compute lithology masks per domain and group based on scalar field and scalar values.
+
+    Returns:
+        masks_per_domain: dict of {domain_id: {group_name: mask}}
+    """
+    masks_per_domain = {}
+    groups = structural_frame.structural_groups
+
+    for domain_id, scalar_fields_for_groups in scalar_fields_per_domain.items():
+        masks_per_domain[domain_id] = {}
+
+        for group in groups:
+            scalar_field = scalar_fields_for_groups.get(group.name)
+            if scalar_field is None:
+                raise ValueError(f"Domain {domain_id}, group '{group.name}': No scalar field found.")
+
+            if group.name not in scalar_values_per_domain[domain_id]:
+                raise ValueError(f"Domain {domain_id}: No scalar values found for group '{group.name}'.")
+
+            # Get scalar values of elements in the group (in defined order)
+            element_names = [e.name for e in group.structural_elements]
+            element_values = [scalar_values_per_domain[domain_id][group.name][name] for name in element_names]
+
+            if not element_values:
+                raise ValueError(f"Group '{group.name}' has no scalar values.")
+
+            if group == groups[-1]:
+                # Oldest group: full True mask
+                mask = np.ones_like(scalar_field, dtype=bool)
+            else:
+                oldest_scalar = element_values[-1]
+                mask = scalar_field >= oldest_scalar
+
+            masks_per_domain[domain_id][group.name] = mask
+
+    return masks_per_domain
+
 
 #%%
 
@@ -736,31 +768,39 @@ domain_ids = np.unique(domain_map)
 # 2️⃣ Loop through domains
 final_lith_blocks = []
 
-# TODO: This is where I need to set the storage options
-# Need to store scalar field per domain and group
-# Need to store scalar values per domain
 
 # Preparation: Assign domain IDs to surface points and orientations
 sp_in_domain = assign_domain_ids_to_points(grid, domain_map, surface_points)
 ori_in_domain = assign_domain_ids_to_points(grid, domain_map, orientations)
 
+# TODO: This is where I need to set the storage options
+scalar_fields_per_domain = {}
+scalar_values_per_domain = {}
+masks_per_domain = dict()  # {domain_id: {group_name: lith_mask}}
+
 for domain_id in domain_ids:
     print(f"🔎 Processing domain {domain_id}")
 
-    # 1. Filter surface points and orientations for this domain
+    # Filter input data for this domain
     sp_filtered = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
     ori_filtered = ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
 
-    # Check: Sufficient data in domain
+    # Check sufficient points per element
     for group in groups:
-        element_names = [e.name for e in group.structural_elements]
-        for name in element_names:
-            sp_count = len(sp_filtered[sp_filtered["formation"] == name])
-            if sp_count < 2:
-                raise ValueError(f"❌ Not enough surface points for element '{name}' in domain {domain_id}")
+        for elem in group.structural_elements:
+            count = len(sp_filtered[sp_filtered["formation"] == elem.name])
+            if count < 2:
+                raise ValueError(f"❌ Not enough surface points for '{elem.name}' in domain {domain_id}")
 
-    # 2c. Deepcopy group to avoid overwriting
+    # Copy groups to avoid mutating original
     domain_groups = deepcopy(groups)
+
+    # Initialize storage for this domain
+    scalar_fields_per_domain[domain_id] = {}
+    scalar_values_per_domain[domain_id] = {}
+
+    # Inside the loop for each domain:
+    masks_per_domain[domain_id] = {}
 
     for group in domain_groups:
         interpolate_group_universal_cokriging(
@@ -770,64 +810,308 @@ for domain_id in domain_ids:
             group_orientations_points_df=ori_filtered,
         )
 
-        # TODO: THis is where I need to store the stuff
-        scalar_fields.append(group.scalar_field)
-        scalar_values.append(group.scalar_value)
+        # Store scalar field
+        scalar_fields_per_domain[domain_id][group.name] = group.scalar_field
 
+        if group.name not in scalar_values_per_domain[domain_id]:
+            scalar_values_per_domain[domain_id][group.name] = {}
 
+        for elem in group.structural_elements:
+            scalar_values_per_domain[domain_id][group.name][elem.name] = elem.scalar_value
 
-
-    # 5. Create masks based on order of structural groups, scalar fields and scalar values
-    set_scalar_masks(frame)
-
-    print("Masking done")
-
-    # 6. Create a combined result (lith_block) based on masks, scalar fields and scalar values
-    lith_block = compute_lithology_block(frame)
-
-    # Plot slice of the lith block
-    lith_block_reshaped = lith_block.reshape(grid.resolution)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.imshow(lith_block_reshaped[:, 0, :], extent=grid.extent[:4], origin='lower', cmap='viridis')
-    ax.scatter(sp_filtered['X'], sp_filtered['Z'], c=sp_filtered['formation'].astype('category').cat.codes,
-               cmap='viridis', s=10, alpha=1)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Z')
-    plt.title(f"Domain {domain_id} Lith Block")
-    plt.show()
-
-    final_lith_blocks.append((domain_id, lith_block))
-
-# 3️⃣ Combine all lith blocks into a single model
-# You might resolve overlaps using the age of groups or just stack in order
-final_model = np.full(grid.resolution, fill_value=-1)
-
-for domain_id, lith_block in final_lith_blocks:
-    mask = domain_map == domain_id
-    final_model[mask] = lith_block[mask]
-
-print("✅ Final lithology model constructed.")
+masks_per_domain = set_scalar_masks_per_domain(
+    structural_frame=frame,
+    scalar_fields_per_domain=scalar_fields_per_domain,
+    scalar_values_per_domain=scalar_values_per_domain,
+)
 
 #%%
 
-final_model.shape
+# Access specific scalar field for a domain and group
+scalar_fields_per_domain[0]["Top"]
 
-# plot slice of final model
-import matplotlib.pyplot as plt
+#%%
 
-# Reshape final model to match grid resolution
-final_model_reshaped = final_model.reshape(grid.resolution)
-# Plotting
+# Access specific scalar field for a domain and group
+scalar_values_per_domain[0]["Top"]["UnitD"]
+
+#%%
+masks_per_domain
+
+#%%
+
+# plot a section of a specific scalar field
+def plot_scalar_field_section(scalar_field, grid, axis='y', index=0):
+    """
+    Plot a section of a scalar field along a specified axis at a given index.
+    """
+    if axis == 'y':
+        data_slice = scalar_field[:, index, :]
+        extent = grid.extent[:4]
+    elif axis == 'x':
+        data_slice = scalar_field[index, :, :]
+        extent = grid.extent[[0, 2, 4, 1]]
+    elif axis == 'z':
+        data_slice = scalar_field[:, :, index]
+        extent = grid.extent[[0, 2, 1, 3]]
+    else:
+        raise ValueError("Axis must be 'x', 'y', or 'z'.")
+
+    plt.imshow(data_slice, extent=extent, origin='lower', cmap='viridis')
+    plt.colorbar(label='Scalar Value')
+    plt.xlabel('X')
+    plt.ylabel('Z')
+    plt.title(f"Scalar Field Section along {axis.upper()} at Index {index}")
+    plt.show()
+
+
+
+#%%
+
+plot_scalar_field_section(scalar_fields_per_domain[1]["Bot"], frame.grid, index=25)
+
+#%%
+
+plot_scalar_field_section(masks_per_domain[1]["Top"], frame.grid, index=25)
+
+#%%
+
+def compute_lithology_block_from_domains(
+    structural_frame: 'StructuralFrame',
+    scalar_fields_per_domain: dict,
+    scalar_values_per_domain: dict,
+    masks_per_domain: dict,
+    domain_map: np.ndarray,
+) -> np.ndarray:
+    """
+    Combines scalar fields and masks from multiple fault domains into a single lithology block.
+
+    Args:
+        structural_frame: StructuralFrame containing groups and elements.
+        scalar_fields_per_domain: dict[domain_id][group_name] = scalar_field (3D array)
+        scalar_values_per_domain: dict[domain_id][group_name][element_name] = scalar_value
+        masks_per_domain: dict[domain_id][group_name] = mask (3D bool array)
+        domain_map: 3D array with domain IDs.
+
+    Returns:
+        lith_block: 3D NumPy array with lithology IDs (0 = undefined)
+    """
+    shape = domain_map.shape
+    lith_block = np.zeros(shape, dtype=int)
+
+    # 1️⃣ Assign unique IDs globally (same element -> same ID across domains)
+    current_id = 1
+    element_id_map = {}
+
+    for group in reversed(structural_frame.structural_groups):  # oldest to youngest
+        for element in reversed(group.structural_elements):
+            if element.name not in element_id_map:
+                element.set_id(current_id)
+                element_id_map[element.name] = current_id
+                current_id += 1
+
+    # 2️⃣ Loop over domains and compute lithology per domain
+    domain_ids = np.unique(domain_map)
+
+    for domain_id in domain_ids:
+        domain_lith_block = np.zeros(shape, dtype=int)
+
+        for group in reversed(structural_frame.structural_groups):  # oldest to youngest
+            group_name = group.name
+
+            scalar_field = scalar_fields_per_domain[domain_id][group_name]
+            mask = masks_per_domain[domain_id][group_name]
+            group_block = np.zeros(shape, dtype=int)
+
+            for element in group.structural_elements:
+                scalar_value = scalar_values_per_domain[domain_id][group_name][element.name]
+                element_id = element_id_map[element.name]
+
+                # Build element mask
+                element_mask = (scalar_field >= scalar_value) & (group_block == 0)
+                group_block[element_mask] = element_id
+
+            # Apply group-level mask
+            group_block = np.where(mask, group_block, 0)
+
+            # Combine into domain_lith_block (youngest group takes precedence)
+            domain_lith_block = np.where(group_block > 0, group_block, domain_lith_block)
+
+        # 3️⃣ Mask domain-specific values into the global lith_block
+        domain_mask = domain_map == domain_id
+        lith_block[domain_mask] = domain_lith_block[domain_mask]
+
+    return lith_block
+
+#%%
+
+# Compute the lithology block from all domains
+lith_block = compute_lithology_block_from_domains(
+    structural_frame=frame,
+    scalar_fields_per_domain=scalar_fields_per_domain,
+    scalar_values_per_domain=scalar_values_per_domain,
+    masks_per_domain=masks_per_domain,
+    domain_map=domain_map
+)
+
+#%%
+
+# Plot the lithology block slice, not as fucntion
+lith_block_reshaped = lith_block.reshape(grid.resolution)
 fig, ax = plt.subplots(figsize=(10, 6))
-ax.imshow(final_model_reshaped[:, 25, :], extent=grid.extent[:4], origin='lower', cmap='viridis')
-# add contour lines for a single contour at the scalar value
-ax.contour(final_model_reshaped[:, 25, :],
-           extent=grid.extent[:4],
-           levels=np.unique(final_model_reshaped),
-           colors='red',
-           linewidths=1.5)
+ax.imshow(lith_block_reshaped[:, 1, :], extent=grid.extent[:4], origin='lower', cmap='viridis')
+ax.scatter(sp_filtered['X'], sp_filtered['Z'], c=sp_filtered['formation'].astype('category').cat.codes,
+           cmap='viridis', s=10, alpha=1)
 ax.set_xlabel('X')
 ax.set_ylabel('Z')
+plt.title("Lithology Block Slice")
 plt.show()
 
 #%%
+
+def extract_masked_meshes_per_domain(
+    structural_frame: StructuralFrame,
+    grid_spacing: np.ndarray,
+    extent: np.ndarray,
+    scalar_fields_per_domain: dict,
+    scalar_values_per_domain: dict,
+    masks_per_domain: dict,
+    domain_map: np.ndarray,
+) -> dict:
+    """
+    Extract masked surface meshes per element per fault domain.
+
+    Args:
+        structural_frame: The StructuralFrame with groups/elements.
+        grid_spacing: (dx, dy, dz) tuple for marching cubes.
+        extent: (xmin, xmax, ymin, ymax, zmin, zmax)
+        scalar_fields_per_domain: dict[domain][group] = 3D scalar field
+        scalar_values_per_domain: dict[domain][group][element] = scalar value
+        masks_per_domain: dict[domain][group] = 3D bool mask
+        domain_map: 3D domain block array
+        marching_cubes_per_element: Callable(scalar_field.T, isovalue, grid_spacing, extent, mask.T)
+
+    Returns:
+        dict[domain][element_name] = (vertices, edges)
+    """
+    meshes_per_domain = {}
+
+    domain_ids = np.unique(domain_map)
+    groups = structural_frame.structural_groups
+
+    for domain_id in domain_ids:
+        domain_mask = domain_map == domain_id
+        domain_meshes = {}
+
+        for i, group in enumerate(groups):
+            group_name = group.name
+            scalar_field = scalar_fields_per_domain[domain_id][group_name]
+            group_mask = masks_per_domain[domain_id][group_name]
+
+            # Domain + lithology masking
+            combined_mask = group_mask & domain_mask
+
+            for element in group.structural_elements:
+                element_name = element.name
+                scalar_value = scalar_values_per_domain[domain_id][group_name][element_name]
+
+                # Extract masked surface mesh
+                vertices, edges = marching_cubes_per_element(
+                    scalar_field.T,
+                    scalar_value,
+                    grid_spacing,
+                    extent,
+                    mask=combined_mask.T
+                )
+
+                domain_meshes[element_name] = (vertices, edges)
+
+        meshes_per_domain[domain_id] = domain_meshes
+
+    return meshes_per_domain
+
+#%%
+
+meshes_per_domain = extract_masked_meshes_per_domain(frame,
+                                             grid_spacing=frame.grid.spacing,
+                                             extent=frame.grid.extent,
+                                             scalar_fields_per_domain=scalar_fields_per_domain,
+                                             scalar_values_per_domain=scalar_values_per_domain,
+                                             masks_per_domain=masks_per_domain,
+                                             domain_map=domain_map)
+
+#%%
+
+meshes_per_domain[0]["UnitD"]
+
+#%%
+
+import pyvista as pv
+import numpy as np
+from matplotlib import cm
+from matplotlib.colors import Normalize
+
+
+def plot_3d_geology_model(
+    meshes_per_domain: dict,
+    fault_frame,
+    structural_frame,
+    point_size=6,
+    show_faults=True,
+):
+    import pyvista as pv
+    import numpy as np
+
+    p = pv.Plotter()
+
+    # Create a lookup for structural elements by name
+    element_color_map = {
+        element.name: getattr(element, "color", "blue")
+        for group in structural_frame.structural_groups
+        for element in group.structural_elements
+    }
+
+    # 2️⃣ Plot structural element meshes
+    for domain_id, domain_meshes in meshes_per_domain.items():
+        for element_name, (vertices, faces) in domain_meshes.items():
+            if len(vertices) == 0 or len(faces) == 0:
+                continue
+
+            # Get color
+            color = element_color_map.get(element_name, "blue")
+
+            # Prepare mesh
+            faces_flat = np.hstack([[3, *tri] for tri in faces])
+            surf = pv.PolyData(vertices, faces_flat)
+
+            # Add to plot
+            p.add_mesh(surf, color=color, opacity=1.0, label=f"{element_name} (D{domain_id})")
+
+    # 3️⃣ Plot fault meshes
+    if show_faults:
+        for fault in fault_frame.fault_elements:
+            if len(fault.vertices) == 0 or len(fault.edges) == 0:
+                continue
+
+            # Default to black if color not set
+            fault_color = getattr(fault, "color", "black")
+
+            fault_faces_flat = np.hstack([[3, *tri] for tri in fault.edges])
+            mesh = pv.PolyData(fault.vertices, fault_faces_flat)
+            p.add_mesh(mesh, color=fault_color, opacity=1.0, label=f"Fault: {fault.name}")
+
+    # 4️⃣ Add legend and show
+    p.add_legend()
+    p.show()
+
+
+#%%
+
+fault_frame.fault_elements[0].edges
+
+
+#%%
+
+plot_3d_geology_model(meshes_per_domain, fault_frame, frame, show_faults=True)
+
+
