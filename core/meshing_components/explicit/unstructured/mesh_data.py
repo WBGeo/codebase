@@ -11,6 +11,8 @@ from core.meshing_components.explicit.unstructured.create_grid_fragment_surface 
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
 
 
+
+
 def point_on_line_segment(pt, p1, p2, tol=1e-6):
     """
     Check if a point lies on the infinite line defined by p1 and p2 using symmetric line equation.
@@ -363,6 +365,15 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
   else:
     print('No tags found')
     return nodes, cells_n
+# Register this function as a component
+#@wbgeo_component(description='Provides unstructured mesh',
+#                 title='Create Unstructured Mesh',  # The title shown in the GUI
+#                 color='#8cb369',  # the color of the components
+#                 border_color='#000000',  # and its border color
+#                 group='Mesh',
+#                 identifier='create_unstructured_mesh_data',  # a unique identifier
+#                 return_name='Mesh',  # the name for the returned-port
+#                 )  # inputs are handled via the method signature
 
 def create_unstructured_mesh_data(
     data_test: InputData,
