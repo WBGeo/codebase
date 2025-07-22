@@ -9,6 +9,7 @@ from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 
 #%%
 
@@ -110,42 +111,23 @@ plotter.add_mesh(
 plotter.show()
 
 
-# Geberate mesh
-#mesh_test = create_unstructured_mesh_data(
-#    data_test= data_test,
-#    geomodel_result=results_test,
-#    num_wells=2,
-#    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-#    num_sources=2,
-#    sources=[(100,300,500), (400,600,700)],
-#    num_shafts=2,
-#    centers=[(200,500,400), (100,200,700)],
-#    axes=[(1000,0,0), (1000,0,0)],
-#    radii=[30, 20],
-#    num_planes=2,
-#    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400), (0,0,600,1000,0,600,1000,1000,600,0,1000,600)],
-#    tolerance=50,
-#    mesh_size=20,
-#    curve_mesh_size=10,
-#    DISTANCE_THRESHOLD = 40,
-#    PROJECTION_THRESHOLD = 60,
-#    EXTRUSION_FACTOR = 80,
-#    z_threshold = 10
-#)
+mesh_test=create_structured_mesh_data(geomodel_result=results_test,
+                                      refinement_data=(10,20,20,20,20,20),
+                                      z_threshold=0.1, tolerance=1)
 
 #mesh_test = create_unstructured_mesh_data(
 #    data_test= data_test,
 #    geomodel_result=results_test,
 #    num_wells=2,
-#    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
+#    wells=[(100,100,100,100,100,500), (500,500,500,500,500,900)],
 #    num_sources=2,
-#    sources=[(100,300,500), (400,600,700)],
-#    num_shafts=2,
-#    centers=[(200,500,400), (100,200,700)],
-#    axes=[(1000,0,0), (1000,0,0)],
-#    radii=[30, 20],
-#    num_planes=2,
-#    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400), (0,0,600,1000,0,600,1000,1000,600,0,1000,600)],
+#    sources=[(900,300,900), (400,600,700)],
+#    num_shafts=1,
+#    centers=[(200,500,800)],
+#    axes=[(1000,0,0)],
+#    radii=[20],
+#    num_planes=1,
+#    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400)],
 #    tolerance=50,
 #    mesh_size=20,
 #    curve_mesh_size=10,
@@ -154,31 +136,11 @@ plotter.show()
 #    EXTRUSION_FACTOR = 80,
 #    z_threshold = 10
 #)
-mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
-    geomodel_result=results_test,
-    num_wells=2,
-    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
-    sources=[(900,300,900), (400,600,700)],
-    num_shafts=1,
-    centers=[(200,500,800)],
-    axes=[(1000,0,0)],
-    radii=[20],
-    num_planes=1,
-    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400)],
-    tolerance=50,
-    mesh_size=20,
-    curve_mesh_size=10,
-    DISTANCE_THRESHOLD = 40,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10
-)
 
 mesh_test.export_vtm('file.vtm')
 print('doneeeeee')
 mesh_ex=mesh_test.export_exodus("filename.exo")
 mesh_vtu=mesh_test.export_vtu("filename.vtu")
+mesh_aba=mesh_test.export_abaqus("filename.inp")
 
 

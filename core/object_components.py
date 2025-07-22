@@ -158,19 +158,93 @@ class MeshResults:
         mesh.write(filename, file_format="exodus")
         print(f"Exodus file '{filename}' created successfully!")
 
+
+
     def export_abaqus(self, filename: str):
         """
-        Export the mesh data to an Abaqus file.
-        Args:
-            filename (str): The name of the Abaqus file to export.
+        Export mesh data to an Abaqus .inp file with nodes, tetrahedral (C3D4),
+        and triangular (CP3S) elements, including a valid material and section definition.
         """
-        Abaqus_in = AbaqusInputs(nodes_array=self.nodes, elements_array=self.elements)
-        # Create mesh
-        mesh = Abaqus_in.create_mesh()
+        abq_in = AbaqusInputs(nodes_array=self.nodes, elements_array=self.elements)
+        mesh = abq_in.create_mesh()
+        node_array = mesh.points
+        elements = mesh.cells
 
-        # Write the mesh to an Exodus file
-        mesh.write(filename, file_format="abaqus")
-        print(f"Abaqus file '{filename}' created successfully!")
+        element_type_map = {
+            "line": "T3D2",
+            "tetra": "C3D4",
+            "triangle": "S3R",
+            "hexahedron": "C3D8"
+        }
+
+        with open(filename, 'w') as f:
+            # Write header
+            f.write("*" * 37 + "\n")
+            f.write("*HEADING\n")
+            f.write("ICEM - ABAQUS INTERFACES VERSION 4.3.1\n")
+            f.write("*" * 37 + "\n")
+
+            # Write nodes
+            f.write("*NODE, NSET=All\n")
+            for i, coord in enumerate(node_array, start=1):
+                x, y, z = coord
+                f.write(f"{i}, {x:.8E}, {y:.8E}, {z:.8E}\n")
+
+            # Track ELSETs
+            solid_elsets = []
+            tus_elsets = []
+            shel_elsets = []
+
+            # Write elements
+            element_id = 1
+            for i, block in enumerate(elements):
+                abaqus_type = element_type_map.get(block.type)
+                if abaqus_type is None:
+                    print(f"⚠️ Skipping unsupported element type: {block.type}")
+                    continue
+
+                elset_name = f"ELSET{i+1}"
+                f.write(f"*ELEMENT,TYPE={abaqus_type},ELSET={elset_name}\n")
+                for conn in block.data:
+                    conn_str = ", ".join(str(int(n) + 1) for n in conn)
+                    f.write(f"{element_id}, {conn_str}\n")
+                    element_id += 1
+
+                if abaqus_type == "C3D4" or abaqus_type == "C3D8":
+                    solid_elsets.append(elset_name)
+                elif abaqus_type == "T3D2":
+                    tus_elsets.append(elset_name)
+                elif abaqus_type == "S3":
+                    shel_elsets.append(elset_name)
+
+            # Hardcoded material block (no input)
+            # For tetras or hexas
+            f.write("*MATERIAL, NAME=DefaultMaterial\n")
+            f.write("*ELASTIC\n")
+            f.write("2.100000E+05, 0.300000\n")  # Young's modulus, Poisson's ratio
+
+            for elset in solid_elsets:
+                f.write(f"*SOLID SECTION, ELSET={elset}, MATERIAL=DefaultMaterial\n")
+
+            # For triangles
+            f.write("*MATERIAL, NAME=myrock\n")
+            f.write("*ELASTIC\n")
+            f.write("2.100000E+05, 0.300000\n")
+            for elset in shel_elsets:
+                f.write(f"*SHELL SECTION, ELSET={elset}, MATERIAL=myrock\n")
+                f.write("0.01\n")
+
+            # For lines
+            f.write("*MATERIAL, NAME=STEEL\n")
+            f.write("*ELASTIC\n")
+            f.write("2.100000E+05, 0.300000\n")
+            for elset in tus_elsets:
+                f.write(f"*SOLID SECTION, ELSET={elset}, MATERIAL=STEEL\n")
+                f.write("0.01\n")
+
+        print(f"✅ Abaqus .inp file '{filename}' written successfully.")
+
+
 
     def export_ansys(self, filename: str):
         """
