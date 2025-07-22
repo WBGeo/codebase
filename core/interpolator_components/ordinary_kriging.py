@@ -1,19 +1,28 @@
+import typing
+
 import numpy as np
 from core.object_components import InputData, GeomodelResults
 from pykrige.ok3d import OrdinaryKriging3D
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
-from skimage import measure
 from core.grids.grid_classes import RegularGrid
 
+from py_api_wbgeo.nodesapi import wbgeo_component
 
-#%%
+@wbgeo_component(identifier='ok_interpolator',  # unique identifier
+                 title='Ordinary Kriging interpolator',  # human readable (Default) title
+                 description='Compute a model based on input data using OK interpolation',
+                 color='#f4a259',
+                 border_color='#000000',
+                 group='Interpolation',
+                 return_name='results',  # name of the returned port
+                 )
 def ordinary_kriging_interpolator(input_data: InputData,
-                                  var_model="gaussian",
-                                  var_sill=1,
-                                  var_range=500, # need to set a more reasonable default
-                                  var_nugget=0,
-                                  anisotropy_scaling_z=0.3, # need to set a more reasonable default
-                                  neighbors=None) -> GeomodelResults:
+                                  var_model: str = "gaussian",
+                                  var_sil0: float = 1,
+                                  var_range: float = 500,  # need to set a more reasonable default
+                                  var_nugget: float = 0,
+                                  anisotropy_scaling_z: float = 0.3,  # need to set a more reasonable default
+                                  neighbors: typing.Optional[float] = None) -> GeomodelResults:
     """
     Compute a model based on input data using kriging interpolation
 

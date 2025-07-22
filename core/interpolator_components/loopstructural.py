@@ -5,9 +5,18 @@ from core.utility.surface_mesh_extraction import marching_cubes_per_element, mar
 import pandas as pd
 from core.grids.grid_classes import RegularGrid
 
+from py_api_wbgeo.nodesapi import wbgeo_component
 
-#%%
-def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI"):
+
+@wbgeo_component(identifier='loop_interpolator',  # unique identifier
+                 title='Loop Structural interpolator',  # human readable (Default) title
+                 description='Compute a model based on input data using FDI/PLI interpolation',
+                 color='#f4a259',
+                 border_color='#000000',
+                 group='Interpolation',
+                 return_name='results',  # name of the returned port
+                 )
+def loop_structural_interpolator(input_data: InputData, interpolator_type: str = "FDI") -> GeomodelResults:
     """
     Compute a model based on input data using loop structural.
 
