@@ -33,8 +33,6 @@ def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
         x_cleaned = df['x'].values
         y_cleaned = df['y'].values
         z_cleaned = df['z'].values
-        if id == 1:
-            np.savetxt("point_cloud.csv", points, delimiter=",", header="x,y,z", comments='')
 
         #x_min, x_max = np.min(x_cleaned), np.max(x_cleaned)
         #y_min, y_max = np.min(y_cleaned), np.max(y_cleaned)

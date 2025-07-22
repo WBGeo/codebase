@@ -4,7 +4,8 @@ import numpy as np
 from collections import defaultdict
 from scipy.spatial import cKDTree
 
-
+from typing import List, Tuple, Union
+from core.object_components import InputData, GeomodelResults
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
@@ -363,11 +364,29 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
     print('No tags found')
     return nodes, cells_n
 
-
-def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells=[], num_sources=0, sources=[], num_shafts=0, centers=[],
-                                  axes=[], radii=[], num_planes=0, extra_planes=[], tolerance=50,  mesh_size= 30, curve_mesh_size=5,
-                                  DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, extent =[],
-                                  buffer_dist=0, smooth =1e-5):
+def create_unstructured_mesh_data(
+    data_test: InputData,
+    geomodel_result: GeomodelResults,
+    num_wells: int = 0,
+    wells: List[Tuple[float, ...]] = [],
+    num_sources: int = 0,
+    sources: List[Tuple[float, ...]] = [],
+    num_shafts: int = 0,
+    centers: List[Tuple[float, float, float]] = [],
+    axes: List[Tuple[float, float, float]] = [],
+    radii: List[float] = [],
+    num_planes: int = 0,
+    extra_planes: List[Tuple[float, ...]] = [],
+    tolerance: float = 50,
+    mesh_size: float = 30,
+    curve_mesh_size: float = 5,
+    DISTANCE_THRESHOLD: float = 50,
+    PROJECTION_THRESHOLD: float = 60,
+    EXTRUSION_FACTOR: float = 100,
+    z_threshold: float = 10,
+    extent: List[float] = [],
+    buffer_dist: float = 0,
+    smooth: float = 1e-5 ):
     """
     Generates an unstructured geological mesh using a geomodel and additional structures
     such as wells, sources, shafts, and extra planes. It performs surface cleaning,
@@ -399,24 +418,12 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
     Returns:
         MeshResults: An instance of the MeshResults class.
     """
-    # Validate that num_wells is an int
-    if not isinstance(num_wells, int):
-        print("❌ 'num_wells' must be an integer.")
-        return
+
     # Validate that wells is a list of tuples with at least 6 coordinates and length is a multiple of 3
     if not isinstance(wells, list) or not all(isinstance(w, tuple) and len(w) >= 6 and len(w) % 3 == 0 for w in wells):
         print("❌ 'wells' must be a list of tuples, each containing 2 or more 3D coordinate points (e.g., 6, 9, 12 values, etc.).")
         return  # Exit the function early
 
-    # Check number of wells matches
-    if num_wells > 0 and len(wells) != num_wells:
-        print(f"❌ Number of well entries ({len(wells)}) does not match 'num_wells' ({num_wells}).")
-        return
-
-    # Validate that num_sources is an int
-    if not isinstance(num_sources, int):
-        print("❌ 'num_sources' must be an integer.")
-        return
     # Validate that sources is a list of tuples
     if not all(isinstance(s, tuple) and len(s) == 3 for s in sources):
         print("❌ 'sources' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
@@ -426,10 +433,7 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
         print(f"❌ Number of source entries ({len(sources)}) does not match 'num_sources' ({num_sources}).")
         return
 
-   # Validate that num_shafts is an int
-    if not isinstance(num_shafts, int):
-        print("❌ 'num_shafts' must be an integer.")
-        return
+
      # Validate that centers is a list of 3D tuples
     if not all(isinstance(center, tuple) and len(center) == 3 for center in centers):
         print("❌ 'centers' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
@@ -455,10 +459,6 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
         print(f"❌ Number of radii ({len(radii)}) does not match 'num_shafts' ({num_shafts}).")
         return
 
-    # Validate that num_planes is an int
-    if not isinstance(num_planes, int):
-        print("❌ 'num_planes' must be an integer.")
-        return
     # Validate that sources is a list of tuples
     if not all(isinstance(extra, tuple) and len(extra) == 12 for extra in extra_planes):
         print("❌ 'extra_planes' must be a list of four sets of 3D coordinate tuples like [(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4), ...].")

@@ -8,4 +8,8 @@
 **/__pycache__/
 mesh.mesh
 /model7/
+file*
+mesh.msh
+generated_mesh.msh
+
 

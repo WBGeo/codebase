@@ -111,31 +111,28 @@ plotter.add_mesh(
 plotter.show()
 
 
-mesh_test=create_structured_mesh_data(geomodel_result=results_test,
-                                      refinement_data=(10,20,20,20,20,20),
-                                      z_threshold=0.1, tolerance=1)
 
-#mesh_test = create_unstructured_mesh_data(
-#    data_test= data_test,
-#    geomodel_result=results_test,
-#    num_wells=2,
-#    wells=[(100,100,100,100,100,500), (500,500,500,500,500,900)],
-#    num_sources=2,
-#    sources=[(900,300,900), (400,600,700)],
-#    num_shafts=1,
-#    centers=[(200,500,800)],
-#    axes=[(1000,0,0)],
-#    radii=[20],
-#    num_planes=1,
-#    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400)],
-#    tolerance=50,
-#    mesh_size=20,
-#    curve_mesh_size=10,
-#    DISTANCE_THRESHOLD = 40,
-#    PROJECTION_THRESHOLD = 60,
-#    EXTRUSION_FACTOR = 80,
-#    z_threshold = 10
-#)
+mesh_test = create_unstructured_mesh_data(
+    data_test= data_test,
+    geomodel_result=results_test,
+    num_wells=2,
+    wells=[(100,100,100,100,100,500), (500,500,500,500,500,900)],
+    num_sources=2,
+    sources=[(900,300,900), (400,600,700)],
+    num_shafts=1,
+    centers=[(200,500,800)],
+    axes=[(1000,0,0)],
+    radii=[20],
+    num_planes=1,
+    extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400)],
+    tolerance=50,
+    mesh_size=20,
+    curve_mesh_size=10,
+    DISTANCE_THRESHOLD = 40,
+    PROJECTION_THRESHOLD = 60,
+    EXTRUSION_FACTOR = 80,
+    z_threshold = 10
+)
 
 mesh_test.export_vtm('file.vtm')
 print('doneeeeee')
