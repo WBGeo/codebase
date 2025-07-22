@@ -42,6 +42,8 @@ def calculate_normals(points, cleaned_surfaces, cleaned_normals, file_index):
         norm (np.ndarray): Array of normals corresponding to the given points.
     """
     # Find the desired surface and its normal vectors by searching for its lable
+
+
     for label, surface in cleaned_surfaces:
         if label== file_index:
             surface_points=surface
@@ -68,56 +70,46 @@ def calculate_normals(points, cleaned_surfaces, cleaned_normals, file_index):
     return norm
 
 
-def correct_extrusion_direction(points, normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR=100):
+def correct_extrusion_direction(points, normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR=100, num_steps=5):
     """
-    Correct the extrusion direction by extruding points perpendicular to the normal vector in the x-z plane.
+    Extrude points along the corrected perpendicular direction in fixed number of steps.
 
     Parameters:
         points: (n, 3) array of 3D points to adjust the extrusion direction.
         normals: (n, 3) array of normal vectors for each point.
         file: file identifier for the nearest points.
-        intersection_points: points where intersections occur.
+        intersection_points: array of points where intersections occur.
         nearest_points_dict: dictionary of nearest points for each file.
-        EXTRUSION_FACTOR: Factor to scale the extrusion length.
+        EXTRUSION_FACTOR: Total extrusion length.
+        num_steps: Number of extrusion steps (default 5).
 
     Returns:
-        extruded_points: Corrected points with updated extrusion direction.
+        extruded_points: (n, num_steps + 1, 3) array of extruded point paths.
     """
 
+    intersection_tree = cKDTree(intersection_points)
+    near_point_tree = cKDTree(nearest_points_dict[file])
+
+    step_size = EXTRUSION_FACTOR / num_steps
     extruded_points = []
+
     for i, point in enumerate(points):
-        # Extract the normal for the current point
         normal = normals[i]
-
-        # Compute a perpendicular vector in the x-z plane
         perpendicular_vector = np.array([-normal[2], 0, normal[0]])
-
-        # Normalize to ensure consistent scaling
         perpendicular_vector /= np.linalg.norm(perpendicular_vector)
 
-        # Extrude the point in the perpendicular direction
-        extruded_point = point.copy()
-        extruded_point += EXTRUSION_FACTOR * perpendicular_vector  # Move in the perpendicular direction
+        test_point = point + EXTRUSION_FACTOR * perpendicular_vector
+        d2, _ = intersection_tree.query(test_point)
+        d3, _ = near_point_tree.query(test_point)
 
-        # Find the nearest intersection point (d2)
-        intersection_tree = cKDTree(intersection_points)
-        d2, idx1 = intersection_tree.query(extruded_point)
-        nearest_intersection_point = intersection_points[idx1]
-
-        # Find the nearest point from the dictionary (d3)
-        near_point_tree = cKDTree(nearest_points_dict[file])
-        d3, idx2 = near_point_tree.query(extruded_point)
-        nearest_point = nearest_points_dict[file][idx2]
-
-        # Check if extrusion is valid, otherwise reverse direction
         if d3 < d2:
-            extruded_point = point.copy()
-            extruded_point -= EXTRUSION_FACTOR * perpendicular_vector  # Reverse direction
+            perpendicular_vector *= -1
 
-        # Store the extruded point
-        extruded_points.append(extruded_point)
+        extrusion_path = [point + i * step_size * perpendicular_vector for i in range(num_steps + 1)]
+        extruded_points.append(extrusion_path)
 
     return np.array(extruded_points)
+
 
 
 
@@ -217,6 +209,37 @@ def plot_surface_with_normals(points, normals, title="Surface Normals"):
     plt.tight_layout()
     plt.show()
 
+def plot_cleaned_surfaces(cleaned_surfaces, output_file=None):
+    """
+    Plot cleaned surfaces with surface ID annotations.
+
+    Args:
+        cleaned_surfaces (list of tuples): List of (surface_id, np.ndarray of shape Nx3).
+        output_file (str, optional): Path to save the figure. If None, just shows the plot.
+    """
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    for surface_id, surface_points in cleaned_surfaces:
+            # Scatter plot the surface
+            ax.scatter(surface_points[:, 0], surface_points[:, 1], surface_points[:, 2],
+                    label=f"Surface {surface_id}", s=1)
+
+            # Annotate at the mean point of surface
+            center = surface_points.mean(axis=0)
+            ax.text(center[0], center[1], center[2], f"{surface_id}", fontsize=10, color='black')
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.set_title("Cleaned Surfaces with IDs")
+    ax.legend(loc='upper right', fontsize='small')
+
+    if output_file:
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {output_file}")
+    else:
+        plt.show()
 
 def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, num_wells=0, wells=[], num_sources=0, sources=[], num_shafts=0, centers=[], axes=[], radii=[], num_planes=0,extra_planes=[]):
 
@@ -354,121 +377,141 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
 
             if file not in ref_surface_indices:  # Skip if it's already a reference surface
                 print(f"Processing {file} against reference surfaces")
+                # check if  plane has no offset with respect to fault ignore splitting the plane
+                # Extract z-values from the list of points
+                z_values = [point[2] for point in points]
 
-                filtered=[]
-                dist_po=[]
-                # Check against each reference surface
-                for ref_file, ref_points in ref_surfaces:
-                    print(f"Using {ref_file} as reference")
-                    # Get normal vectors of ref_points
-                    normal_vec_ref = normal_surfaces[ref_file]
-                    normals_points=get_normals(ref_points, ref_points, normal_vec_ref)
-                    # Create a k-d tree from the current surface points
-                    points_tree = cKDTree(points)
+                # Get maximum z
+                max_z = max(z_values)
+                min_z = min(z_values)
 
+                # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
+                # then it dose not remove the points near the fault and dose not seprate the surface into two parts
+                if abs(min_z -max_z) <= z_threshold:
+                    print(f"All points have almost the same z for {file}, skipping removing.")
+                    cleaned_surfaces.append((file, points))
 
-                    # Find all current surface points that are within DISTANCE_THRESHOLD of any reference point
-                    indices_list = points_tree.query_ball_point(ref_points, r=DISTANCE_THRESHOLD)
-
-                    # Flatten list and get unique indices
-                    indices = np.unique(np.hstack(indices_list))
-
-                    # Extract points within the distance
-                    nearest_to_ref = points[indices.astype(int)]
-                    # Find the normal vectors of these near points to reference surface
-                    normal_vec_point = normal_surfaces[file]
-                    normals_ref_points = get_normals(nearest_to_ref, points, normal_vec_point)
-
-                    # Build KDTree for ref_points (to find nearest ref_point for each nearest_to_ref point)
-                    ref_tree = cKDTree(ref_points)
-
-                    filtered_in=[]
-                    for i, pt in enumerate(nearest_to_ref):
-                        # For each point near the reference surface, find its nearest reference point
-                        dist_in, nearest_idx = ref_tree.query(pt)
-
-                        # Get the normal of this nearest reference point
-                        normal_ref = normals_points[nearest_idx]
-
-                        # Get the normal of the nearest_to_ref point
-                        normal_near = normals_ref_points[i]
-
-                        # Compute the dot product of the two normals
-                        dot_product = np.dot(normal_ref, normal_near)
-
-                        # Check if the normals are parallel
-                        if abs(dot_product) > 0.95:
-
-                            filtered_in.append(pt)
-                            dist_po.append(dist_in)
-
-
-                    max_dist = max(dist_po)
-
-                    # Remove points in distance less than max_dist (to keep the filtered points in uniform distance)
-                    for i, pt in enumerate(nearest_to_ref):
-                        # Find the nearest ref_point for each nearest_to_ref point
-                        dist_in, nearest_idx = ref_tree.query(pt)
-                        if dist_in <= max_dist:
-                            filtered_in.append(pt)
-
-                    # Extract z-values from the list of points
-                    z_values = [point[2] for point in filtered_in]
-
-                    # Get maximum z
-                    max_z = max(z_values)
-                    min_z = min(z_values)
-
-                    # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
-                    # then it dose not remove the points near the fault and dose not seprate the surface into two parts
-                    if abs(min_z -max_z) <= z_threshold:
-                        print(f"All points have almost the same z for {file}, skipping removing.")
-                        continue
-                    else:
-                        filtered.append(filtered_in)
-
-
-                if len(filtered) > 0:
-                    filtered_array = np.vstack(filtered)
-                    filtered_array = np.unique(filtered_array, axis=0)
-
-                # Ensure both arrays are numpy arrays
-                points = np.array(points)
-                filtered_array = np.array(filtered_array)
-
-                ## Create a mask to keep only points NOT in filtered_array
-                mask = ~np.any(np.all(points[:, None, :] == filtered_array, axis=2), axis=1)
-
-                # Apply the mask to get the filtered points
-                filtered_points = points[mask]
-
-                if len(filtered_points) == 0:
-                    print(f"All points removed for {file}, skipping clustering.")
                     continue
-                # Filter corresponding normals using the same mask
-                filtered_normals = normal_surfaces[file][1][mask]
+                else:
+                    filtered=[]
+                    dist_po=[]
 
-                # Perform clustering to identify disconnected parts
-                # cluster must have at least 10 points (min_cluster_size=10) and
-                # Points that have fewer than 10 neighbors within the "core distance" may be labeled as noise (min_samples=10).
-                clustering = HDBSCAN(min_cluster_size=10, min_samples=10).fit(filtered_points)
-                labels = clustering.labels_
-                unique_labels = np.unique(labels)
+                    # Check against each reference surface
+                    for ref_file, ref_points in ref_surfaces:
+                        print(f"Using {ref_file} as reference")
+                        # Get normal vectors of ref_points
+                        normal_vec_ref = normal_surfaces[ref_file]
+                        normals_points=get_normals(ref_points, ref_points, normal_vec_ref)
+                        # Create a k-d tree from the current surface points
+                        points_tree = cKDTree(points)
 
-                # Store separated clusters
-                for label in unique_labels:
-                  if label != -1:  # Ignore noise (-1)
-                      cluster_points = filtered_points[labels == label]
-                      cluster_normals = filtered_normals[labels == label]  # Corresponding normals for the cluster
 
-                      cluster_file = f"{file}_surface_{label}"  # Unique name for the cluster
+                        # Find all current surface points that are within DISTANCE_THRESHOLD of any reference point
+                        indices_list = points_tree.query_ball_point(ref_points, r=DISTANCE_THRESHOLD)
 
-                      # Store in cleaned_surfaces
-                      cleaned_surfaces.append((cluster_file, cluster_points))
-                      # Also store the corresponding normals in cleaned_normals
-                      cleaned_normals.append((cluster_file, cluster_normals))
+                        # Flatten list and get unique indices
+                        indices = np.unique(np.hstack(indices_list))
+
+                        # Extract points within the distance
+                        nearest_to_ref = points[indices.astype(int)]
+                        # Find the normal vectors of these near points to reference surface
+                        normal_vec_point = normal_surfaces[file]
+                        normals_ref_points = get_normals(nearest_to_ref, points, normal_vec_point)
+
+                        # Build KDTree for ref_points (to find nearest ref_point for each nearest_to_ref point)
+                        ref_tree = cKDTree(ref_points)
+
+                        filtered_in=[]
+                        for i, pt in enumerate(nearest_to_ref):
+                            # For each point near the reference surface, find its nearest reference point
+                            dist_in, nearest_idx = ref_tree.query(pt)
+
+                            # Get the normal of this nearest reference point
+                            normal_ref = normals_points[nearest_idx]
+
+                            # Get the normal of the nearest_to_ref point
+                            normal_near = normals_ref_points[i]
+
+                            # Compute the dot product of the two normals
+                            dot_product = np.dot(normal_ref, normal_near)
+
+                            # Check if the normals are parallel
+                            if abs(dot_product) > 0.95:
+
+                                filtered_in.append(pt)
+                                dist_po.append(dist_in)
+
+
+                        #max_dist = max(dist_po)
+                        max_dist = DISTANCE_THRESHOLD
+                        # Remove points in distance less than max_dist (to keep the filtered points in uniform distance)
+                        for i, pt in enumerate(nearest_to_ref):
+                            # Find the nearest ref_point for each nearest_to_ref point
+                            dist_in, nearest_idx = ref_tree.query(pt)
+                            if dist_in <= max_dist:
+                                filtered_in.append(pt)
+
+                        # Extract z-values from the list of points
+                        z_values = [point[2] for point in filtered_in]
+
+                        # Get maximum z
+                        max_z = max(z_values)
+                        min_z = min(z_values)
+
+                        # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
+                        # then it dose not remove the points near the fault and dose not seprate the surface into two parts
+                        if abs(min_z -max_z) <= z_threshold:
+                            print(f"All points have almost the same z for {file}, skipping removing.")
+                            continue
+                        else:
+                            filtered.append(filtered_in)
+
+
+                    if len(filtered) > 0:
+                        filtered_array = np.vstack(filtered)
+                        filtered_array = np.unique(filtered_array, axis=0)
+
+                    # Ensure both arrays are numpy arrays
+                    points = np.array(points)
+                    filtered_array = np.array(filtered_array)
+
+                    ## Create a mask to keep only points NOT in filtered_array
+                    mask = ~np.any(np.all(points[:, None, :] == filtered_array, axis=2), axis=1)
+
+                    # Apply the mask to get the filtered points
+                    filtered_points = points[mask]
+
+                    if len(filtered_points) == 0:
+                        print(f"All points removed for {file}, skipping clustering.")
+
+                        continue
+                    # Filter corresponding normals using the same mask
+                    filtered_normals = normal_surfaces[file][1][mask]
+
+                    # Perform clustering to identify disconnected parts
+                    # cluster must have at least 10 points (min_cluster_size=10) and
+                    # Points that have fewer than 10 neighbors within the "core distance" may be labeled as noise (min_samples=10).
+                    clustering = HDBSCAN(min_cluster_size=10, min_samples=10).fit(filtered_points)
+                    labels = clustering.labels_
+                    unique_labels = np.unique(labels)
+
+                    # Store separated clusters
+                    for label in unique_labels:
+                        if label != -1:  # Ignore noise (-1)
+                            cluster_points = filtered_points[labels == label]
+                            cluster_normals = filtered_normals[labels == label]  # Corresponding normals for the cluster
+
+                            cluster_file = f"{file}_surface_{label}"  # Unique name for the cluster
+
+
+                            cleaned_surfaces.append((cluster_file, cluster_points))
+
+                        # Also store the corresponding normals in cleaned_normals
+                            cleaned_normals.append((cluster_file, cluster_normals))
 
         print(f"Reference surfaces are located at indices: {ref_surface_indices}", len(cleaned_surfaces))
+        #plot_cleaned_surfaces(cleaned_surfaces)
+
 
 
         # Call the plotting function after processing cleaned_surfaces
@@ -494,17 +537,18 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
               # Create a k-d tree from the current surface points
               points_tree = cKDTree(points)
               # Find all current surface points that are within DISTANCE_THRESHOLD of any reference point
-              indices_list = points_tree.query_ball_point(ref_points, r=DISTANCE_THRESHOLD)
+              indices_list = points_tree.query_ball_point(ref_points, r=PROJECTION_THRESHOLD)
               # Flatten list and get unique indices
               indices = np.unique(np.hstack(indices_list))
 
               # Extract points within the distance
               nearest_to_ref = points[indices.astype(int)]
 
+
               if nearest_to_ref.size > 0:
 
                 close_ref_points_mask = distances_ref <= PROJECTION_THRESHOLD
-                nearest_ref_points = ref_points[indices_ref[close_ref_points_mask]]  # Get closest points from Surface 0
+                nearest_ref_points = ref_points[indices_ref[close_ref_points_mask]]  # Get closest points from ref_surface
                 # Create a k-d tree from the current surface points
                 near_point_tree = cKDTree(points)
                 distances_point, indices_point = near_point_tree.query(ref_points, distance_upper_bound=PROJECTION_THRESHOLD)
@@ -512,7 +556,65 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
                 close_points_mask = distances_point <= PROJECTION_THRESHOLD
                 nearest_or_points = np.unique(points[indices_point[close_points_mask]], axis=0)  # Get closest points from currect Surface
 
+                # Extract unique y values
+                unique_y = np.unique(nearest_or_points[:, 1])
+
+                # Store farthest points per y
+                farthest_x_points = []
+
+                for y in unique_y:
+                    # Subset of points with this y
+                    subset = nearest_or_points[nearest_or_points[:, 1] == y]
+
+                    # Compute mean x of faults at this y (you could also pick closest in 3D or just use one)
+                    fault_subset = nearest_ref_points[nearest_ref_points[:, 1] == y]
+
+                    if len(fault_subset) == 0:
+                        continue  # skip if no fault point at this y
+
+                    # You can choose: mean x of fault, or the one closest in 3D. Let's do closest:
+                    # Choose center of subset
+                    center_point = np.mean(subset, axis=0)
+
+                    # Find closest fault point to center_point
+                    distances = np.linalg.norm(fault_subset - center_point, axis=1)
+                    closest_fault_point = fault_subset[np.argmin(distances)]
+                    fault_x = closest_fault_point[0]
+
+                    # Now, from subset, find the point farthest in x from fault_x
+                    x_values = subset[:, 0]
+                    x_distances = np.abs(x_values - fault_x)
+                    farthest_idx = np.argmax(x_distances)
+                    farthest_point = subset[farthest_idx]
+
+                    farthest_x_points.append(farthest_point)
+
+                # Convert result to array
+                nearest_or_points= np.array(farthest_x_points)
                 nearest_points_dict[file] = nearest_or_points  # Store points associated with the surface file
+
+
+                ###fig = plt.figure()
+                ###ax = fig.add_subplot(111, projection='3d')
+
+                        # Plot current surface points
+                ####ax.scatter(points[:, 0], points[:, 1], points[:, 2], c='gray', s=1, label='Surface Points')
+
+                        # Plot reference surface points
+                ####ax.scatter(ref_points[:, 0], ref_points[:, 1], ref_points[:, 2], c='yellow', s=2, label='Reference Points')
+                ####ax.scatter(nearest_or_points[:, 0], nearest_or_points[:, 1], nearest_or_points[:, 2], c='green', s=8, label='Reference Points')
+                ####ax.scatter(nearest_ref_points[:, 0], nearest_ref_points[:, 1], nearest_ref_points[:, 2], c='orange', s=8, label='Reference Points')
+
+                        # Plot nearest points to reference surface
+                #ax.scatter(nearest_to_ref[:, 0], nearest_to_ref[:, 1], nearest_to_ref[:, 2], c='red', s=5, label='Nearest to Ref')
+
+                ###ax.set_title(f'Surface {i} vs Ref Surface')
+                ###ax.legend()
+                ###ax.set_xlabel('X')
+                ###ax.set_ylabel('Y')
+                ###ax.set_zlabel('Z')
+                ###plt.show()
+
                # Check if fault plane is within the surface (meaning the surface cutting the faukt has almost the same z and it is not clustered)
                 x_points = [points_sur[0] for points_sur in points]
                 x_ref = [points_reference[0] for points_reference in nearest_ref_points]
@@ -522,9 +624,12 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
                 x_min=min(x_points)
                 x_range_min = min(x_min, x_max)
                 x_range_max = max(x_min, x_max)
+
                 if  nearest_or_points.size > 0 :
                   # If the surface is not clustered ignore it
-                  if x_range_min <= x_mean_ref <= x_range_max:
+                  close_points_mask = distances_point <= (DISTANCE_THRESHOLD/4)
+                  nearest_thres_points = np.unique(points[indices_point[close_points_mask]], axis=0)  # Get closest points from currect Surface
+                  if nearest_thres_points.size !=0:
                     continue
                   else:
                     # Calculate normals for the current surface
@@ -536,26 +641,31 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
 
                 # Extrude the intersection points and check the direction
                 if nearest_ref_points.size > 0:
+
                     # If the surface is not clustered ignore it
-                    if x_range_min <= x_mean_ref <= x_range_max:
+                    if nearest_thres_points.size !=0:
                       continue
                     else:
+
                       # Extrude intersection points along the direction of perpendicular to their normals, and check the direction
                       extruded_intersection_points = correct_extrusion_direction(nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR)
+
                       # Add extruded points to the surface
-                      extruded_points_all_surfaces.append(extruded_intersection_points)
+                      extruded_points_all_surfaces = np.array(extruded_points_all_surfaces).reshape(-1, 3)
+
                       # Add extruded points to the surface
                       all_extruded_points_for_current_surface.append(extruded_intersection_points)
 
             if all_extruded_points_for_current_surface:
               # Stack all extruded points
               extruded_combined = np.vstack(all_extruded_points_for_current_surface)
-              updated_points = np.vstack([points, extruded_combined])
+              updated_points = np.vstack([points, extruded_combined.reshape(-1, 3)])
+
               cleaned_surfaces[i] = (file, updated_points)
 
         # Optionally, visualize all surfaces including extruded points
-        ####plotter = pv.Plotter()
-        ####colors = cc.glasbey[:len(cleaned_surfaces)]  # Get distinct colors
+        ###plotter = pv.Plotter()
+        ###colors = cc.glasbey[:len(cleaned_surfaces)]  # Get distinct colors
 
         ##### Plot the original surfaces
         ###for idx, (file, points) in enumerate(cleaned_surfaces):
@@ -568,10 +678,7 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
         ###    intersection_cloud = pv.PolyData(intersection_points_all)
         ###    plotter.add_mesh(intersection_cloud, color='black', point_size=5, render_points_as_spheres=True)
 
-            # Plot the extruded points (red stars)
-        ###    extruded_points_all_surfaces = np.vstack(extruded_points_all_surfaces)
-        ###    extruded_cloud = pv.PolyData(extruded_points_all_surfaces)
-        ###    plotter.add_mesh(extruded_cloud, color='darkgreen', point_size=10, render_points_as_spheres=True)
+
 
         #### Show the plot
         ###plotter.show()

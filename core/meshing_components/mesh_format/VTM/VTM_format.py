@@ -32,16 +32,27 @@ class VTMInputs:
             self.nodes = Nodes(node_array=nodes_array)
             self.elements = Elements(element_array=elements_array, node_array=nodes_array)
 
-    def create_mesh(self) -> pv.MultiBlock:
-        """
-        Creates a VTM (MultiBlock) mesh using PyVista.
+    def _cell_block_type_to_vtk(self, meshio_type: str) -> int:
+        mapping = {
+            "vertex": 1,         # VTK_VERTEX
+            "line": 3,           # VTK_LINE
+            "triangle": 5,       # VTK_TRIANGLE
+            "quad": 9,           # VTK_QUAD
+            "tetra": 10,         # VTK_TETRA
+            "hexahedron": 12,    # VTK_HEXAHEDRON
+            "wedge": 13,         # VTK_WEDGE
+            "pyramid": 14,       # VTK_PYRAMID
+        }
 
-        Returns:
-            pv.MultiBlock: Multi-block mesh grouped by surface ID or cell block.
-        """
+        if meshio_type not in mapping:
+            raise ValueError(f"Unsupported meshio cell type: {meshio_type}")
+        return mapping[meshio_type]
+
+
+    def create_mesh(self) -> pv.MultiBlock:
         multi_block = pv.MultiBlock()
-        # Case 1: meshio.CellBlock list (VTU-like input)
-        if self.nodes_array.shape[1]  == 3:
+
+        if self.nodes_array.shape[1] == 3:
             for idx, cell_block in enumerate(self.elements_block):
                 vtk_cell_type = self._cell_block_type_to_vtk(cell_block.type)
                 cells_flat = []
@@ -57,14 +68,9 @@ class VTMInputs:
                 grid = pv.UnstructuredGrid(cells_flat, cell_types, self.nodes_array)
                 multi_block[f"Block_{idx}_{cell_block.type}"] = grid
 
-        # Case 2: elements array with surface ID in last column
         else:
             formatted_nodes = self.nodes.get_coordinates().astype(float)
             elements_by_surface_id = self.elements.element_by_surface_id()
-
-            multi_block = pv.MultiBlock()
-            elements = self.elements_block
-            surface_ids = np.unique(elements[:, -1])
 
             for surface_id, elements in elements_by_surface_id.items():
                 cells = []
@@ -72,19 +78,16 @@ class VTMInputs:
 
                 if self.elements.element_array.shape[1] == 10:
                     for element in elements:
-                        cell = [8] + element.tolist()  # 8-node hexahedron
+                        cell = [8] + element.tolist()
                         cells.extend(cell)
-                        cell_types.append(12)  # VTK_HEXAHEDRON is type 12
-
-                    expected_size = len(elements) * 9  # 8 points + 1 count per cell
-
+                        cell_types.append(12)
+                    expected_size = len(elements) * 9
                 else:
                     for element in elements:
-                        cell = [4] + element.tolist()  # 4-node tetrahedron
+                        cell = [4] + element.tolist()
                         cells.extend(cell)
-                        cell_types.append(10)  # VTK_TETRA is type 10
-
-                    expected_size = len(elements) * 5  # 4 points + 1 count per cell
+                        cell_types.append(10)
+                    expected_size = len(elements) * 5
 
                 cells_flat = np.array(cells, dtype=np.int32)
                 cell_types = np.array(cell_types, dtype=np.uint8)
@@ -96,30 +99,14 @@ class VTMInputs:
                     )
 
                 grid = pv.UnstructuredGrid(cells_flat, cell_types, formatted_nodes)
-                multi_block[f"Surface_ID_{surface_id}"] = grid  # Ensure all blocks are added
+                multi_block[f"Surface_ID_{surface_id}"] = grid
 
-
+        # ✅ Save the MultiBlock to disk correctly
+        if self.output_filename:
+            pv.save_meshio(self.output_filename, multi_block)  # saves .vtm and .vtu sub-files
 
         return multi_block
 
-    def _cell_block_type_to_vtk(self, cell_type_str: str) -> int:
-        """
-        Maps meshio cell type string to VTK cell type code.
-
-        Args:
-            cell_type_str (str): meshio cell type, e.g. 'tetra', 'hexahedron'
-
-        Returns:
-            int: Corresponding VTK cell type.
-        """
-        vtk_type_map = {
-            'tetra': 10,
-            'hexahedron': 12,
-            'triangle': 5,
-            'quad': 9,
-            'line': 3,
-        }
-        return vtk_type_map.get(cell_type_str, 0)
 
     def plot_mesh(self):
         """

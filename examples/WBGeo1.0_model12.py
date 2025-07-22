@@ -2,7 +2,9 @@
 import numpy as np
 import pandas as pd
 import os
-
+import sys
+from scipy.interpolate import Rbf
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
@@ -11,6 +13,7 @@ from core.interpolator_components.geo_inr import geo_inr_interpolator
 from core.interpolator_components.loopstructural import loop_structural_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 #%%
@@ -42,9 +45,9 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-results_test = universal_cokriging_interpolator(data_test)
+# results_test = universal_cokriging_interpolator(data_test) # TODO: Missing basement when generating unstructured mesh
 # results_test = ordinary_kriging_interpolator(data_test, var_range=500)
-# results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
+results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
 # results_test = geo_inr_interpolator(data_test)
 # results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
@@ -64,57 +67,37 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 #    tolerance=1
 # )
 
-mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
-    geomodel_result=results_test,
-    tolerance=50,
-    mesh_size=20,
-    curve_mesh_size=5,
-    DISTANCE_THRESHOLD = 60,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10,
-    extent=[],
-    buffer_dist=0,
-    smooth =3
-)
 
 #%%
 
-# 4.5: Plot the meshing result (only 3D at current state)
-plot_mesh_3d(mesh_test, data_test, style="surface")
 
-#%%
 
-# Bonus: Mesh with wells and sources
+# Geberate mesh
 mesh_test = create_unstructured_mesh_data(
     data_test= data_test,
     geomodel_result=results_test,
-    num_wells=2,
-    wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
-    sources=[(100,300,500), (400,600,700)],
+    num_wells=1,
+    wells=[(100,100,980,100,100,600)],
+    num_sources=1,
+    sources=[(300,100,900)],
     num_shafts=1,
-    centers=[(200,200,200)],
-    axes=[(1000,0,0)],
-    radii=[20],
-    num_planes=1,
-    extra_planes=[(0,0,100,1000,0,100,1000,1000,100,0,1000,100)],
+    centers=[(100,100,100)],
+    axes=[(2000,0,0)],
+    radii=[30],
+    num_planes=0,
+    extra_planes=[],
     tolerance=50,
     mesh_size=20,
-    curve_mesh_size=5,
-    DISTANCE_THRESHOLD = 60,
+    curve_mesh_size=10,
+    DISTANCE_THRESHOLD = 50,
     PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10,
-    extent=[],
-    buffer_dist=0,
-    smooth =3
+    EXTRUSION_FACTOR = 120,
+    z_threshold = 10
 )
 
-#%%
+mesh_test.export_vtm('file.vtm')
+print('doneeeeee')
+mesh_ex=mesh_test.export_exodus("filename.exo")
+mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
-# Bonus: Export mesh to VTM, Exodus, and VTU formats
-# mesh_test.export_vtm('file.vtm')
-# mesh_ex=mesh_test.export_exodus("filename.exo")
-# mesh_vtu=mesh_test.export_vtu("filename.vtu")
+
