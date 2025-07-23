@@ -9,16 +9,18 @@ from core.meshing_components.explicit.structured.node_element_generator import a
 from core.object_components import MeshResults
 from typing import Tuple
 from core.object_components import GeomodelResults
+from py_api_wbgeo.nodesapi import wbgeo_component
+
 
 # Register this function as a component
-#@wbgeo_component(description='Provides structured mesh',
-#                 title='Create Structured Mesh',  # The title shown in the GUI
-#                 color='#8cb369',  # the color of the components
-#                 border_color='#000000',  # and its border color
-#                 group='Mesh',
-#                 identifier='create_structured_mesh_data',  # a unique identifier
-#                 return_name='Mesh',  # the name for the returned-port
-#                 )  # inputs are handled via the method signature
+@wbgeo_component(description='Provides structured mesh',
+                 title='Creates Structured Mesh',  # The title shown in the GUI
+                 color='#800000',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Mesh',
+                 identifier='create_structured_mesh_data',  # a unique identifier
+                 return_name='Mesh',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
 
 
 def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_data: Tuple[int, ...] =(25,21,16,5,6),

@@ -10,6 +10,8 @@ from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
 
+from py_api_wbgeo.nodesapi import wbgeo_component
+
 
 
 
@@ -366,14 +368,14 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
     print('No tags found')
     return nodes, cells_n
 # Register this function as a component
-#@wbgeo_component(description='Provides unstructured mesh',
-#                 title='Create Unstructured Mesh',  # The title shown in the GUI
-#                 color='#8cb369',  # the color of the components
-#                 border_color='#000000',  # and its border color
-#                 group='Mesh',
-#                 identifier='create_unstructured_mesh_data',  # a unique identifier
-#                 return_name='Mesh',  # the name for the returned-port
-#                 )  # inputs are handled via the method signature
+@wbgeo_component(description='Provides unstructured mesh',
+                 title='Creates Unstructured Mesh',  # The title shown in the GUI
+                 color='#800000',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Mesh',
+                 identifier='create_unstructured_mesh_data',  # a unique identifier
+                 return_name='Mesh',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
 
 def create_unstructured_mesh_data(
     data_test: InputData,
