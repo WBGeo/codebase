@@ -24,7 +24,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 
 
 def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_data: Tuple[int, ...] =(25,21,16,5,6),
-                                z_threshold: float =0.1, tolerance: float =1):
+                                z_threshold: float =0.1, tolerance: float =1) -> MeshResults:
     """
     Generates a geological mesh and returns a MeshData object.
 

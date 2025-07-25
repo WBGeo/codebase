@@ -399,7 +399,7 @@ def create_unstructured_mesh_data(
     z_threshold: float = 10,
     extent: List[float] = [],
     buffer_dist: float = 0,
-    smooth: float = 1e-5 ):
+    smooth: float = 1e-5 ) -> MeshResults:
     """
     Generates an unstructured geological mesh using a geomodel and additional structures
     such as wells, sources, shafts, and extra planes. It performs surface cleaning,
