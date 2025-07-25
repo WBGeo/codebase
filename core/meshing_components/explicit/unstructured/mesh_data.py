@@ -1,3 +1,5 @@
+import typing
+
 import gmsh
 import meshio
 import numpy as np
@@ -10,9 +12,7 @@ from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
 
-from py_api_wbgeo.nodesapi import wbgeo_component
-
-
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 
 
 def point_on_line_segment(pt, p1, p2, tol=1e-6):
@@ -367,6 +367,19 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
   else:
     print('No tags found')
     return nodes, cells_n
+
+WellData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='well', color='aqua', identifier='mesh::WellData')]
+SourcesData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData')]
+
+CenterData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData')]
+AxesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='axes', color='aqua', identifier='mesh::AxesData')]
+RadiData = typing.Annotated[List[float], AnnotatedScriptType(name='radi', color='aqua', identifier='mesh::RadiData')]
+
+PlanesData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='planes', color='aqua', identifier='mesh::PlanesData')]
+RadiiData = typing.Annotated[List[float], AnnotatedScriptType(name='radii', color='aqua', identifier='mesh::RadiiData')]
+ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
+
+
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
                  title='Creates Unstructured Mesh',  # The title shown in the GUI
@@ -381,15 +394,15 @@ def create_unstructured_mesh_data(
     data_test: InputData,
     geomodel_result: GeomodelResults,
     num_wells: int = 0,
-    wells: List[Tuple[float, ...]] = [],
+    wells: WellData = [],
     num_sources: int = 0,
-    sources: List[Tuple[float, ...]] = [],
+    sources: SourcesData = [],
     num_shafts: int = 0,
-    centers: List[Tuple[float, float, float]] = [],
-    axes: List[Tuple[float, float, float]] = [],
-    radii: List[float] = [],
+    centers: CenterData = [],
+    axes: AxesData = [],
+    radii: RadiiData = [],
     num_planes: int = 0,
-    extra_planes: List[Tuple[float, ...]] = [],
+    extra_planes: PlanesData = [],
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,
@@ -397,7 +410,7 @@ def create_unstructured_mesh_data(
     PROJECTION_THRESHOLD: float = 60,
     EXTRUSION_FACTOR: float = 100,
     z_threshold: float = 10,
-    extent: List[float] = [],
+    extent: ExtentData = [],
     buffer_dist: float = 0,
     smooth: float = 1e-5 ) -> MeshResults:
     """

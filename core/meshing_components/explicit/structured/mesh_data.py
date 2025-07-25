@@ -9,7 +9,11 @@ from core.meshing_components.explicit.structured.node_element_generator import a
 from core.object_components import MeshResults
 from typing import Tuple
 from core.object_components import GeomodelResults
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
+import typing
+
+
+RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData')]
 
 
 # Register this function as a component
@@ -23,7 +27,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component
                  )  # inputs are handled via the method signature
 
 
-def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_data: Tuple[int, ...] =(25,21,16,5,6),
+def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_data: RefinementData =(25,21,16,5,6),
                                 z_threshold: float =0.1, tolerance: float =1) -> MeshResults:
     """
     Generates a geological mesh and returns a MeshData object.
