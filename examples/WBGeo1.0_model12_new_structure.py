@@ -37,6 +37,14 @@ frame = general.build_structural_frame(data_test.mapping_object,
                                         data_test.surface_points,
                                         data_test.orientations)
 
+#%%
+
+print(frame.structural_groups[0].structural_elements[0].scalar_value)
+
+
+
+
+
 
 #%%
 
@@ -49,10 +57,6 @@ visualize_structural_frame(frame, show_points=True, show_orientations=True, note
 #%%
 
 frame.detailed_report()
-
-#%%
-
-print(frame.structural_groups[0].structural_elements[0].scalar_value)
 
 
 #%%
@@ -110,3 +114,7 @@ plt.title("Scalar Field Section for Strat_Series1")
 plt.xlabel("X-axis")
 plt.ylabel("Z-axis")
 plt.show()
+
+# %%
+
+frame.structural_groups[0].structural_elements[0].edges

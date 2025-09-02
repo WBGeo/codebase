@@ -152,6 +152,7 @@ class FaultFrame(BaseModel):
     _fault_surface_points_df: Optional[pd.DataFrame] = PrivateAttr(default=None)
     _fault_orientations_df: Optional[pd.DataFrame] = PrivateAttr(default=None)
     _domain_map: Optional[np.ndarray] = PrivateAttr(default=None)
+    _domain_masks: dict[int, np.ndarray] = PrivateAttr(default_factory=dict)
 
     def __init__(self, fault_elements: List[FaultElement], fault_relations: Optional[np.ndarray] = None):
         super().__init__()
@@ -183,6 +184,11 @@ class FaultFrame(BaseModel):
     @property
     def domain_map(self) -> Optional[np.ndarray]:
         return self._domain_map
+
+    @property
+    def domain_masks(self) -> dict[int, np.ndarray]:
+        """Boolean masks for each final domain ID."""
+        return self._domain_masks
 
     def _generate_default_relations(self) -> np.ndarray:
         """By default, younger faults affect all older ones."""
@@ -288,6 +294,96 @@ class FaultFrame(BaseModel):
             print(f"  │   └─ Orientations: {ori_count}")
         print("")
 
+    def check_fault_crosscuts_via_isovalue_bands(
+            self,
+            thickness_world: float | None = None,
+            voxels: float = 1.0,
+            use_gradient: bool = True,
+    ) -> None:
+        """
+        Detect cross-cutting faults by overlapping 'isovalue bands' around each fault's own scalar isovalue.
+
+        For each fault i with scalar field φ_i and isovalue L_i (fault.scalar_value):
+            band_i = |φ_i - L_i| <= tol_scalar_i
+
+        If any voxel satisfies band_i & band_j for i!=j, the faults crosscut.
+
+        Parameters
+        ----------
+        thickness_world : float | None
+            Desired half-thickness (in world units, e.g. meters) of each isovalue band.
+            If None, it is computed as `voxels * min(grid.spacing)`.
+        voxels : float
+            If `thickness_world` is None, use this many voxels (based on min spacing) as the half-thickness.
+        use_gradient : bool
+            If True (recommended), convert the world thickness to scalar tolerance per-fault using
+            that fault's median gradient magnitude: tol_scalar_i = thickness_world * median(|∇φ_i|).
+            If False, assumes φ is approximately a signed distance function and uses tol_scalar_i = thickness_world.
+
+        Raises
+        ------
+        ValueError
+            If any pair of faults' bands overlap (i.e., cross-cut is detected).
+        """
+
+        if self._grid is None:
+            raise ValueError("FaultFrame grid must be set.")
+        spacing = getattr(self._grid, "spacing", None)
+        if spacing is None:
+            raise ValueError("Grid.spacing must be defined to compute band thickness.")
+
+        # Determine band thickness in world units (meters)
+        if thickness_world is None:
+            thickness_world = float(voxels) * float(np.min(spacing))
+
+        # Collect faults that have scalar fields and an isovalue
+        faults = []
+        for f in self._fault_elements:
+            field = getattr(f, "scalar_field", None)
+            level = getattr(f, "scalar_value", None)
+            if field is None or level is None:
+                continue
+            if not isinstance(field, np.ndarray) or field.size == 0:
+                continue
+            faults.append((f.name, field, float(level)))
+
+        if len(faults) < 2:
+            return  # nothing to compare
+
+        # Compute per-fault scalar tolerances from world thickness
+        tol_scalar = []
+        for nm, fld, _ in faults:
+            if use_gradient:
+                # gradient in scalar units per meter along each axis
+                gx, gy, gz = np.gradient(fld, *spacing, edge_order=1)
+                grad_mag = np.sqrt(gx * gx + gy * gy + gz * gz)
+                med = float(np.nanmedian(grad_mag)) if np.isfinite(grad_mag).any() else 0.0
+                # guard against tiny gradients
+                if med <= 1e-12:
+                    med = 1e-12
+                tol_scalar.append(thickness_world * med)
+            else:
+                # assume φ is approx. signed distance
+                tol_scalar.append(thickness_world)
+
+        # Build boolean bands once
+        bands = []
+        for (nm, fld, level), ts in zip(faults, tol_scalar):
+            band = np.abs(fld - level) <= ts
+            bands.append((nm, band))
+
+        # Pairwise overlap test
+        for i in range(len(bands)):
+            name_i, band_i = bands[i]
+            if not band_i.any():
+                continue
+            for j in range(i + 1, len(bands)):
+                name_j, band_j = bands[j]
+                if not band_j.any():
+                    continue
+                if np.any(band_i & band_j):
+                    raise ValueError(f"❌ Fault '{name_i}' crosscuts fault '{name_j}' (isovalue-band overlap).")
+
     def generate_fault_domains(self) -> None:
         """
         Interpolates all faults and generates a domain map across the model grid.
@@ -346,6 +442,17 @@ class FaultFrame(BaseModel):
         remapped_map = np.vectorize(remap.get)(domain_map)
         self._domain_map = remapped_map
 
+        # Remap domain IDs to consecutive values starting from 0
+        unique_ids = np.unique(domain_map)
+        remap = {old: new for new, old in enumerate(unique_ids)}
+        remapped_map = np.vectorize(remap.get)(domain_map)
+        self._domain_map = remapped_map
+
+        #  Store per-domain masks
+        self._domain_masks = {}
+        for uid in np.unique(remapped_map):
+            self._domain_masks[uid] = remapped_map == uid
+
         # Extrac surfaces meshes for faults
         for i, fault in enumerate(reversed(self._fault_elements)):
             vertices, edges = marching_cubes_new(fault.scalar_field.T,
@@ -355,6 +462,9 @@ class FaultFrame(BaseModel):
 
             fault.set_vertices(vertices[0])
             fault.set_edges(edges[0])
+
+        # 🔎 After all faults are processed
+        self.check_fault_crosscuts_via_isovalue_bands()
 
 
 def generate_vertical_fault_data(x_pos: float, name: str, y_range=(100, 900), z_range=(100, 900), n_points=10):
@@ -553,14 +663,8 @@ fault_frame.generate_fault_domains()
 
 #%%
 
-fault_frame.detailed_report()
-
-# TODO: Plotting functions for fault frame, 3D Draft done, 2 D missing
-
-#%%
-
 # Plot the fault meshes using pyvista
-visualize_fault_frame(fault_frame)  # TODO: is this actually correct?, iffy about x and y axis
+visualize_fault_frame(fault_frame)
 
 
 #%%
@@ -687,17 +791,17 @@ from core.interpolator_components.interpolators_per_group.general import set_sca
 
 
 #%%
-
-# def combine_group_scalar_fields(groups):
-#     # Assume each group has `scalar_field`, and elements have `scalar_value`
-#     combined = np.full(groups[0].scalar_field.shape, fill_value=-1.0)
-#     for group in groups:
-#         group_field = group.scalar_field
-#         for elem in group.structural_elements:
-#             value = elem.scalar_value
-#             mask = group_field >= value  # Or your logic
-#             combined[mask] = value
-#     return combined
+#
+# # def combine_group_scalar_fields(groups):
+# #     # Assume each group has `scalar_field`, and elements have `scalar_value`
+# #     combined = np.full(groups[0].scalar_field.shape, fill_value=-1.0)
+# #     for group in groups:
+# #         group_field = group.scalar_field
+# #         for elem in group.structural_elements:
+# #             value = elem.scalar_value
+# #             mask = group_field >= value  # Or your logic
+# #             combined[mask] = value
+# #     return combined
 
 
 #%%
@@ -872,7 +976,7 @@ plot_scalar_field_section(scalar_fields_per_domain[1]["Bot"], frame.grid, index=
 
 #%%
 
-plot_scalar_field_section(masks_per_domain[1]["Top"], frame.grid, index=25)
+plot_scalar_field_section(masks_per_domain[2]["Top"].T, frame.grid, index=25)
 
 #%%
 
@@ -1115,3 +1219,35 @@ fault_frame.fault_elements[0].edges
 plot_3d_geology_model(meshes_per_domain, fault_frame, frame, show_faults=True)
 
 
+#%%
+
+# TODO: The big questions
+# Overarching storage and setup structure (combine structural frame and fault frame?)
+# Think what happens if there is no fault
+# How to store the scalar fields, values, masks per domain?
+# How to store the meshes per domain?
+# How to store the lithology block per domain?
+
+# Warnings ad stops
+# if faults are cross-cutting each other
+# Check for data in each fault domain/group (what happens if no data for group in domain)
+
+# Logical additions
+# age relations between faults and groups (fault eroded etc), how to model that?
+# mainly this means rewriting the masking process at the end I think
+# might also require changes to the actual masks or new masks
+
+# Efficiency
+# Implement Computation only within domain to reduce overhead
+
+
+
+#%%
+
+# TODO: Are these masks actually correct in how I want them?
+# TODO> remove rault relations at current state, are not used/should not be used?
+fault_frame.fault_elements[0].mask
+
+# plot slice of that mask
+plt.imshow(fault_frame.fault_elements[2].mask[:, 1, :], extent=grid.extent[:4], origin='lower', cmap='gray')
+plt.show()
