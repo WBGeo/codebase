@@ -1,0 +1,19 @@
+
+# echo "glpat-S8CVCE2QtMPsVgXdu89J" | docker login registry.git.rwth-aachen.de -u any --password-stdin
+# docker login registry.git.rwth-aachen.de
+#  any username, glpat-S8CVCE2QtMPsVgXdu89J pwd
+
+services:
+  # launch the backend on port 4242
+  backend:
+    image: registry.git.rwth-aachen.de/wbgeo/proof-of-concept-backend:backend
+    ports:
+      - "4242:4242"
+    volumes:
+     - ".:/usr/src/app/codebase"
+  # launch the frontend on port 8080
+  frontend:
+    image: registry.git.rwth-aachen.de/wbgeo/proof-of-concept-backend:frontend
+    ports:
+      - "8080:80"
+  # visit http://localhost:8080
