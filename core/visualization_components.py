@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pyvista as pv
 from core.object_components import InputData, GeomodelResults, MeshResults
+from py_api_wbgeo import nodesapi
 
 
 def plot_2d(input_data: InputData, geomodel_results: GeomodelResults = None,
@@ -378,3 +379,16 @@ def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData, colors=None, 
         plotter.show()
 
     return plotter
+
+@nodesapi.wbgeo_component(identifier='wbgeo::inspect_2d_id', title='inspect_interpolated_result',
+                          description='')
+@nodesapi.wbgeo_inspector()
+async def inspect_2d_id(data: InputData, _inspector: nodesapi.InspectorHelper):
+  plot_2d(input_data=data, geomodel_results=None, show_results=False)
+
+@nodesapi.wbgeo_component(identifier='wbgeo::inspect_2d_res', title='inspect_interpolated_result',
+                          description='')
+@nodesapi.wbgeo_inspector()
+async def inspect_2d_res(data: GeomodelResults, _inspector: nodesapi.InspectorHelper):
+  input_data_trace = await _inspector.trace(InputData)
+  plot_2d(input_data=await input_data_trace.get_value(), geomodel_results=data, show_results=True)
