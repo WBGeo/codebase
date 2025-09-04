@@ -139,5 +139,6 @@ print('doneeeeee')
 mesh_ex=mesh_test.export_exodus("filename.exo")
 mesh_vtu=mesh_test.export_vtu("filename.vtu")
 mesh_aba=mesh_test.export_abaqus("filename.inp")
+mesh_feflow=mesh_test.export_feflow("filename.fem")
 
 

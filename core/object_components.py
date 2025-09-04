@@ -21,6 +21,7 @@ from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
 from core.meshing_components.mesh_format.STL.STL_format import STLInputs
 from core.meshing_components.mesh_format.GMSH.GMSH_format import GMSHInputs
 from core.meshing_components.mesh_format.ABAQUS.Abaqus_format import AbaqusInputs
+from core.meshing_components.mesh_format.FEFLOW.Feflow_format import FeflowInputs, C_FeFlow
 from core.meshing_components.mesh_format.ANSYS.Ansys_format import AnsysInputs
 
 from core.meshing_components.geometry.Elements import Elements
@@ -296,3 +297,149 @@ class MeshResults:
         """
         self.mesh.save(filename)
         print(f"VTM file '{filename}' with multiple blocks created successfully!")
+
+    def export_feflow(self, filename: str):
+        """
+        Export mesh data to an Feflow.fem file with nodes, tetrahedral,
+        and triangular and line elements.
+        """
+        feflow_in = FeflowInputs(nodes_array=self.nodes, elements_array=self.elements)
+        mesh = feflow_in.create_mesh()
+        node_array = mesh.points
+        elements = mesh.cells
+
+        # Gather all tetra, triangle, and line elements, and assign group-based markers
+        tetra_all = []
+        tetra_markers = []
+        triangle_all = []
+        triangle_markers = []
+        edge_all = []
+        edge_markers = []
+
+        for idx, block in enumerate(elements):
+            if block.type == "tetra":
+                tetra_all.append(block.data)
+                tetra_markers.append(np.full(len(block.data), idx + 1))  # use idx+1 as region ID
+            elif block.type == "triangle":
+                triangle_all.append(block.data)
+                triangle_markers.append(np.full(len(block.data), idx + 1))  # same logic
+            elif block.type == "line":
+                edge_all.append(block.data)
+                edge_markers.append(np.full(len(block.data), idx + 1))
+
+        # Concatenate all
+        tetra = np.vstack(tetra_all) if tetra_all else np.empty((0, 4), dtype=int)
+        tetra_markers = np.concatenate(tetra_markers) if tetra_markers else None
+
+        triangles = np.vstack(triangle_all) if triangle_all else np.empty((0, 3), dtype=int)
+        triangle_markers = np.concatenate(triangle_markers) if triangle_markers else None
+
+        edges = np.vstack(edge_all) if edge_all else np.empty((0, 2), dtype=int)
+        edge_markers = np.concatenate(edge_markers) if edge_markers else None
+
+        # Start writing FeFlow file
+        with open(filename, 'w') as f:
+            num_points = len(node_array)
+            num_tetra = len(tetra)
+            f.write("PROBLEM:\n")
+            f.write("CLASS (v.7)\n")
+            f.write("   2    1    0    3    0    0    8    8    0    0\n")
+            f.write("DIMENS\n")
+            f.write(f"   {num_points}     {num_tetra}     0      1      0      0      0      0      0      2     0      0      1      0      0      0      0\n")
+
+            f.write("SCALE\n")
+            f.write("   1.0, 1.0, 1.0, 1.0, 0.0, 0.0\n")
+            f.write("VARNODE\n")
+            f.write(f"   {num_tetra}     4     4\n")
+
+            # Write tetrahedra connectivity (1-based)
+            for t in range(num_tetra):
+                tet_nodes = tetra[t] + 1
+                f.write(f"   6     {tet_nodes[0]}     {tet_nodes[1]}     {tet_nodes[2]}     {tet_nodes[3]}\n")
+
+            f.write("XYZCOOR\n")
+            for x, y, z in node_array:
+                f.write(f"     {x}, {y}, {z}\n")
+
+            # ELEMENTALSETS
+            if tetra_markers is not None:
+                f.write("ELEMENTALSETS\n")
+                for m in sorted(set(tetra_markers)):
+                    f.write(f"     \"Region: Name: R{m}\"")
+                    havewritten = 0
+                    for t, mark in enumerate(tetra_markers):
+                        if mark == m:
+                            if (havewritten % 10) == 0:
+                                f.write("\n\t\t")
+                            f.write(f"{t + 1} ")
+                            havewritten += 1
+                    f.write("\n")
+
+            # Create all unique triangles from tets
+            FeFlowObj =C_FeFlow()
+            print(tetra)
+            FeFlowObj.generateAllTriangles(tetra)
+            print('done')
+
+            if triangle_markers is not None and len(triangle_markers) > 0:
+                f.write("FACESETS\n")
+                minMat = int(np.min(triangle_markers))
+                maxMat = int(np.max(triangle_markers))
+
+                for m in range(minMat, maxMat + 1):
+                    mask = triangle_markers == m
+                    triangles_with_marker = triangles[mask]
+
+                    # Reuse FeFlowObj (already has all unique triangles from tets)
+                    FeFlowObj.generateUndefinedTriangles(
+                        marker=m,
+                        triangle_markers=triangle_markers,
+                        triangle_list=triangles
+                    )
+                    FeFlowObj.generateDefinedTriangles()
+
+                    marker_triangle_indices = [tri.index for tri in FeFlowObj.definedTriangles]
+
+                    f.write(f'     "Surface: Name: S{m}"')
+                    havewritten = 0
+                    for tri in marker_triangle_indices:
+                        if (havewritten % 10) == 0:
+                            f.write("\n\t\t")
+                        f.write(f"{tri + 1} ")
+                        havewritten += 1
+                    f.write("\n")
+
+
+
+            # EDGESETS (Lines)
+            # Create all unique edges from lines
+            FeFlowObj.generateAllEdges(tetra)
+
+            if edge_markers is not None and len(edge_markers) > 0:
+                f.write("EDGESETS\n")
+                minEdgeMat = int(np.min(edge_markers))
+                maxEdgeMat = int(np.max(edge_markers))
+
+                for m in range(minEdgeMat, maxEdgeMat + 1):
+                    marker_to_extract = m
+
+                    # Boolean mask for edges with the desired marker
+                    mask = edge_markers == marker_to_extract
+
+                    # Apply mask to get edges block
+                    edges_with_marker = edges[mask]
+                    marker_edge_indices = FeFlowObj.generateMarkerEdges(edges_with_marker)
+
+                    f.write(f'     "Polyline: Name: P{m}"')
+                    havewritten = 0
+                    for edge in marker_edge_indices:
+                        if (havewritten % 10) == 0:
+                            f.write("\n\t\t")
+                        f.write(f"{edge + 1} ")
+                        havewritten += 1
+                    f.write("\n")
+
+
+            f.write("END\n")
+
+        print(f"✅ Feflow file '{filename}' written successfully.")
