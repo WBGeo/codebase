@@ -11,6 +11,7 @@ from core.interpolator_components.rbf_interpolation import rbf_interpolator
 # from core.interpolator_components.loopstructural_old import loop_structural_interpolator # removed until updated
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.liquidEarth.le_push_data import push_geosolution_to_le
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -323,6 +324,8 @@ from py_api_wbgeo import nodesapi
 #                                outputs=[{  # the output ports
 #                                    'param': 'result', 'type': MeshOutputType,
 #                                }])
+
+
 
 
 # Register 3 yet-to-be-implemented block types
