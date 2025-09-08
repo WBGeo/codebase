@@ -2,7 +2,6 @@ from typing import Optional
 
 from py_api_wbgeo import apitypes
 
-from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.object_components import InputData, GeomodelResults
 from core.loading_components.geo_input_data import geo_input_data_fix
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
