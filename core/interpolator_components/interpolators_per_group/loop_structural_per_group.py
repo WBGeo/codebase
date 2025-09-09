@@ -1,106 +1,117 @@
-
-import pandas as pd
 import numpy as np
-from pykrige.ok3d import OrdinaryKriging3D
-from core.structural_objects.objects import StructuralGroup
+import pandas as pd
+from typing import Dict, Tuple
 from LoopStructural import GeologicalModel
 
 def interpolate_group_loop_structural(
-        group: StructuralGroup,# Only points relevant to this group
-        grid,
-        group_surface_points_df: pd.DataFrame,  # Only points relevant to this group
-        group_orientations_points_df=pd.DataFrame,  # Only orientations relevant to this group
-) -> None:
+    *,
+    group,                        # StructuralGroup
+    grid,                         # RegularGrid (has extent, resolution, grid_coordinates)
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> Tuple[np.ndarray, Dict[str, float]]:
+    """
+    LoopStructural interpolation for a single structural group (pure function).
 
-    if group_surface_points_df.empty:
-        raise ValueError(f"No surface points provided for group {group.name}")
+    Returns:
+        scalar_field : np.ndarray shaped to tuple(grid.resolution)
+        scalar_values_by_element : Dict[str, float] (element_name -> scalar value)
 
-    if group_orientations_points_df.empty:
-        raise ValueError(f"No orientations provided for group {group.name}")
+    Notes
+    -----
+    - We follow your convention: assign strictly increasing scalar values with
+      **oldest = 1, youngest = n**.
+    - The values are injected into LoopStructural via a 'val' column.
+    - LoopStructural’s `evaluate_feature_value` typically returns a flat array;
+      we reshape to `grid.resolution` and (to match your previous code) apply `.T`.
+      If your other pure interpolators return without transpose, feel free to
+      drop the `.T` here for consistency across methods in your pipeline.
+    - This function does **not** mutate `group`.
+    """
+    # --- validation ---
+    if group_surface_points_df is None or group_surface_points_df.empty:
+        raise ValueError(f"No surface points provided for group '{group.name}'")
+    if group_orientations_points_df is None or group_orientations_points_df.empty:
+        raise ValueError(f"No orientations provided for group '{group.name}'")
 
-    # 1. Assign strictly increasing scalar values: oldest = 1, youngest = n
-    for i, elem in enumerate(reversed(group.structural_elements), start=1):
-        elem.set_scalar_value(float(i))
+    for col in ("X", "Y", "Z", "formation"):
+        if col not in group_surface_points_df.columns:
+            raise ValueError(f"Surface points for '{group.name}' missing column '{col}'")
+    for col in ("X", "Y", "Z", "G_x", "G_y", "G_z", "formation"):
+        if col not in group_orientations_points_df.columns:
+            raise ValueError(f"Orientations for '{group.name}' missing column '{col}'")
 
-    # Convert surface_points to loopstructural input DataFrame
-    surface_points_temp = group_surface_points_df.copy()
-    orientations_temp = group_orientations_points_df.copy()
+    # Ensure all formations in the DFs belong to this group
+    group_elem_names = [e.name for e in group.structural_elements]
+    unknown_sp = set(group_surface_points_df["formation"].unique()) - set(group_elem_names)
+    unknown_ori = set(group_orientations_points_df["formation"].unique()) - set(group_elem_names)
+    if unknown_sp:
+        raise ValueError(
+            f"Surface points for group '{group.name}' contain formations not in the group: {sorted(unknown_sp)}"
+        )
+    if unknown_ori:
+        raise ValueError(
+            f"Orientations for group '{group.name}' contain formations not in the group: {sorted(unknown_ori)}"
+        )
 
-    # Map from formation name to scalar value
-    formation_to_scalar = {
-        element.name: element.scalar_value
-        for element in group.structural_elements
+    # --- per-element scalar values (oldest=1 ... youngest=n) ---
+    names_old_to_young = [e.name for e in reversed(group.structural_elements)]
+    scalar_values_by_element: Dict[str, float] = {
+        name: float(i) for i, name in enumerate(names_old_to_young, start=1)
     }
 
-    # Add 'feature_name' and 'val' columns
-    surface_points_temp["feature_name"] = group.name
-    surface_points_temp["val"] = surface_points_temp["formation"].map(formation_to_scalar)
+    # Map formation name -> scalar ('val') for LoopStructural
+    formation_to_scalar = scalar_values_by_element
 
-    # Reorder columns if necessary
-    surface_points_temp = surface_points_temp[['X', 'Y', 'Z', 'val', 'feature_name']]
-    surface_points_temp['gx'] = np.nan
-    surface_points_temp['gy'] = np.nan
-    surface_points_temp['gz'] = np.nan
+    # --- build LoopStructural input tables ---
+    # Surface points table
+    surface_points = group_surface_points_df.copy()
+    surface_points["feature_name"] = group.name
+    surface_points["val"] = surface_points["formation"].map(formation_to_scalar)
+    # LS expects columns: X, Y, Z, val, feature_name, gx, gy, gz
+    surface_points = surface_points[["X", "Y", "Z", "val", "feature_name"]]
+    surface_points["gx"] = np.nan
+    surface_points["gy"] = np.nan
+    surface_points["gz"] = np.nan
 
-    # TODO: Location of these orientations seems to matter (a lot) for a loopstructural model
-    # Add 'feature_name' and 'val' columns
-    orientations_temp["feature_name"] = group.name
-    orientations_temp["val"] = orientations_temp["formation"].map(formation_to_scalar)
+    # Orientations table
+    orientations = group_orientations_points_df.copy()
+    orientations["feature_name"] = group.name
+    orientations["val"] = orientations["formation"].map(formation_to_scalar)
+    orientations = orientations.rename(columns={"G_x": "gx", "G_y": "gy", "G_z": "gz"})
+    orientations = orientations[["X", "Y", "Z", "val", "feature_name", "gx", "gy", "gz"]]
 
-    orientations_temp = orientations_temp.rename(columns={'G_x': 'gx', 'G_y': 'gy', 'G_z': 'gz'})
-    orientations_temp = orientations_temp[['X', 'Y', 'Z', 'val', 'feature_name', 'gx', 'gy', 'gz']]
+    # Combined table
+    data_combined = pd.concat([surface_points, orientations], ignore_index=True)
 
-    # Create final combined df for loopstructural
-    data_combined = pd.concat([surface_points_temp, orientations_temp], ignore_index=True)
-
-    # 4. Perform Loop Structural Interpolation
-
-    # Create a GeologicalModel instance
+    # --- build LoopStructural model ---
+    # GeologicalModel(min_bounds, max_bounds)
     model = GeologicalModel(grid.extent[::2], grid.extent[1::2])
     model.set_model_data(data_combined)
 
-    # Set stratigraphic column
-    stratigraphic_column = {}
-    stratigraphic_column[group.name] = {}
+    # Stratigraphic column: keep your original order (group.structural_elements)
+    stratigraphic_column = {group.name: {}}
     for i, rock in enumerate(group.structural_elements):
         stratigraphic_column[group.name][rock.name] = {"min": i, "max": i + 1, "id": i}
-
     model.set_stratigraphic_column(stratigraphic_column)
 
-    # features = [input_data.mapping_object.keys()]
-    strat_features = []
+    # Interpolator params
+    params = group.get_interpolation_params()  # LoopStructuralParams (expects .interpolator_type)
 
-    # Get the parameters from the group
-    params = group.get_interpolation_params()
+    # Create the foliation / feature
+    _ = model.create_and_add_foliation(
+        group.name,
+        interpolatortype=params.interpolator_type,  # "FDI" or "PLI"
+        nelements=1e4,
+        buffer=0,
+        solver="cg",
+        damp=True,
+    )
 
-    strat = model.create_and_add_foliation(
-            group.name,
-            interpolatortype=params.interpolator_type,  # try changing this to 'PLI'
-            nelements=1e4,  # try changing between 1e3 and 5e4
-            buffer=0,
-            solver="cg",
-            # npw=1,
-            # gpw=100000,
-            # regularisation=1,
-            damp=True,
-        )
+    # Evaluate on grid
+    regular_grid = grid.grid_coordinates  # (N, 3)
+    sf_flat = model.evaluate_feature_value(group.name, regular_grid, scale=True)
+    # Match your previous implementation: reshape then transpose
+    scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
 
-    strat_features.append(strat)
-
-    # Set grid # TODO: Check if this is necessary
-    regular_grid = grid.grid_coordinates
-
-    sf = model.evaluate_feature_value(group.name, regular_grid, scale=True)
-    sf = sf.reshape(grid.resolution).T
-
-    # 5. Set scalar field result in group (k3d1 is a numpy array with shape matching grid)
-    group.set_scalar_field(sf)
-
-
-
-
-
-
-
-
-
+    return scalar_field, scalar_values_by_element

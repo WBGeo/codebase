@@ -15,8 +15,6 @@ warnings.filterwarnings("ignore")
 
 from typing import Dict, Tuple, Optional
 
-warnings.filterwarnings("ignore")
-
 
 def interpolate_group_geo_inr(
     *,
@@ -96,7 +94,7 @@ def interpolate_group_geo_inr(
     )
 
     # `res_inr` -> (nx, ny, nz) without transpose
-    scalar_field = np.asarray(res_inr).reshape(tuple(grid.resolution)).T
+    scalar_field = np.asarray(res_inr).reshape(tuple(grid.resolution))
 
     # Map per-element scalar values:
     # Your previous code effectively used iso_values[0] for oldest, ... iso_values[-1] for youngest.
@@ -112,6 +110,7 @@ def interpolate_group_geo_inr(
     }
 
     return scalar_field, scalar_values_by_element
+
 
 
 # used in implicit neural representation

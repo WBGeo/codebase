@@ -17,8 +17,6 @@ class InterpolationMethod(str, Enum):
     UNIVERSAL_COKRIGING = "Universal Co-Kriging"
     GEOINR = "GeoINR"
     LOOP_STRUCTURAL = "Loop Structural"
-    GEO_ML = "GeoML"
-    IDW = "Inverse Distance Weighting"
 
 
 class OrdinaryKrigingParams(BaseModel):
@@ -117,28 +115,12 @@ class GeoMLParams(BaseModel):
     pass
 
 
-class IDWParams(BaseModel):
-    """
-    Parameters for Inverse Distance Weighting (IDW) interpolation.
-    Attributes:
-        power: The power parameter for IDW, controlling the influence of distance on weights.
-        neighbors: Optional; the number of nearest neighbors to consider. If None, all points are used.
-    """
-    power: float = Field(2.0,
-                         description="The power parameter for IDW, controlling the influence of distance on weights")
-    neighbors: Optional[int] = Field(None,
-                                     description="Number of nearest neighbors to use. If None, all points are used.")
-    anisotropy_scaling: Optional[tuple[float, float, float]] = Field((1.0, 1.0, 1.0),
-                                                                     description="Anisotropy scaling factors for x, y, z axes. Default is (1.0, 1.0, 1.0).")
-
-
 InterpolationParameterSet = Union[OrdinaryKrigingParams,
 RBFParams,
 GeoINRParams,
 LoopStructuralParams,
 UniversalCoKrigingParams,
-GeoMLParams,
-IDWParams]
+GeoMLParams]
 
 
 class StructuralElement(BaseModel):
@@ -342,10 +324,6 @@ class StructuralGroup(BaseModel):
             self._interpolation_params = GeoINRParams()
         elif method == InterpolationMethod.LOOP_STRUCTURAL:
             self._interpolation_params = LoopStructuralParams()
-        elif method == InterpolationMethod.GEO_ML:
-            self._interpolation_params = GeoMLParams()
-        elif method == InterpolationMethod.IDW:
-            self._interpolation_params = IDWParams()
         else:
             self._interpolation_params = None  # fallback
 

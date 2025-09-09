@@ -1,50 +1,74 @@
 
-import pandas as pd
 import numpy as np
-from typing import Optional
+import pandas as pd
+from typing import Dict, Tuple, Optional
 from scipy.interpolate import RBFInterpolator
-from core.structural_objects.objects import StructuralGroup, StructuralElement, StructuralFrame
-
-
-#%%
 
 def interpolate_group_radial_basis_function(
-        group: StructuralGroup,
-        group_surface_points_df: pd.DataFrame,  # Only points relevant to this group
-        grid
-) -> None:
+    *,
+    group,                       # StructuralGroup
+    grid,                        # RegularGrid with grid.resolution and either grid.grid_coordinates or (grid.gridx, grid.gridy, grid.gridz)
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: Optional[pd.DataFrame] = None,  # unused here
+) -> Tuple[np.ndarray, Dict[str, float]]:
+    """
+    Radial Basis Function interpolation for a single structural group (pure).
 
-    # 1. Assign strictly increasing scalar values: oldest = 1, youngest = n
-    for i, elem in enumerate(reversed(group.structural_elements), start=1):
-        elem.set_scalar_value(float(i))
+    Returns:
+        scalar_field : np.ndarray, shape == grid.resolution (nx, ny, nz)
+        scalar_values_by_element : Dict[str, float] (element_name -> scalar value)
 
-    if group_surface_points_df.empty:
-        raise ValueError(f"No surface points provided for group {group.name}")
+    Notes:
+        - Assigns strictly increasing scalar values: oldest = 1, youngest = n
+        - Uses params from group.get_interpolation_params() (your RBFParams)
+        - Does NOT mutate `group`
+    """
+    if group_surface_points_df is None or group_surface_points_df.empty:
+        raise ValueError(f"No surface points provided for group '{group.name}'")
 
-    # 2. Map formation (element name) to scalar_value
-    formation_to_scalar = {elem.name: elem.scalar_value for elem in group.structural_elements}
-    scalar_values = group_surface_points_df['formation'].map(formation_to_scalar).values.astype(float)
+    for col in ("X", "Y", "Z", "formation"):
+        if col not in group_surface_points_df.columns:
+            raise ValueError(f"Surface points for '{group.name}' missing column '{col}'")
 
-    # 3. Extract coordinates
-    x = group_surface_points_df['X'].values
-    y = group_surface_points_df['Y'].values
-    z = group_surface_points_df['Z'].values
+    # 1) scalar values oldest->youngest = 1..n (your groups list is youngest->oldest, so reverse)
+    scalar_values_by_element: Dict[str, float] = {
+        elem.name: float(i)
+        for i, elem in enumerate(reversed(group.structural_elements), start=1)
+    }
 
-    # Get interpolation parameters from group
-    params = group.get_interpolation_params()
+    # 2) map formations -> scalar values
+    vals = (
+        group_surface_points_df["formation"]
+        .map(scalar_values_by_element)
+        .astype(float)
+        .to_numpy()
+    )
 
-    # Create RBF interpolator
-    rbfi = RBFInterpolator(np.stack((x,y,z), axis=1),
-                           scalar_values, kernel=params.kernel,
-                           smoothing=params.smoothing,
-                           neighbors=params.neighbors,  # Use None to use all points
-                           epsilon=params.epsilon)
+    # 3) coordinates of control points
+    coords = group_surface_points_df[["X", "Y", "Z"]].to_numpy()
 
-    # Interpolate the function on the grid
-    rbf_res = rbfi(grid.grid_coordinates)
+    # 4) parameters
+    params = group.get_interpolation_params()  # should be your RBFParams instance
 
-    # Reshape the result to resolution
-    rbf_res = rbf_res.reshape(grid.resolution)
+    # 5) fit RBF
+    rbfi = RBFInterpolator(
+        coords,
+        vals,
+        kernel=params.kernel,
+        smoothing=params.smoothing,
+        epsilon=params.epsilon,
+        neighbors=params.neighbors,  # None => all points
+    )
 
-    # Store original scalar fields
-    group.set_scalar_field(rbf_res.T)
+    # 6) evaluate on grid
+    # Prefer a precomputed (N,3) array if your grid exposes it; otherwise build from axes.
+    if hasattr(grid, "grid_coordinates") and grid.grid_coordinates is not None:
+        grid_points = grid.grid_coordinates
+    else:
+        gx, gy, gz = np.meshgrid(grid.gridx, grid.gridy, grid.gridz, indexing="ij")
+        grid_points = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+
+    scalar_flat = rbfi(grid_points)
+    scalar_field = scalar_flat.reshape(tuple(grid.resolution)).T  # (nx, ny, nz)
+
+    return scalar_field, scalar_values_by_element

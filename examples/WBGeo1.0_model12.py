@@ -52,7 +52,7 @@ results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, direction="y")
-plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="combined", show_plotter=True)
+plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked", show_plotter=True)
 
 #%%
 
