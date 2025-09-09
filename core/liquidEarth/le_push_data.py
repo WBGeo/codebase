@@ -9,25 +9,44 @@ from py_api_wbgeo import apitypes
 
 
 def convert_to_subsurface_mesh(geosolution):
+    # Note: surface_meshes_vertices and surface_meshes_edges are List[List[NpNDArrayFp64/Int64]]
+    vertex_groups: List[List[np.ndarray]] = geosolution.surface_meshes_vertices
+    simplex_groups: List[List[np.ndarray]] = geosolution.surface_meshes_edges
 
-
-    vertex: list[np.ndarray] = geosolution.surface_meshes_vertices
-    simplex_list: list[np.ndarray] = geosolution.surface_meshes_edges
+    # Flatten the nested lists to get individual arrays
+    vertex = []
+    simplex_list = []
+    
+    for vertex_group in vertex_groups:
+        vertex.extend(vertex_group)
+    
+    for simplex_group in simplex_groups:
+        simplex_list.extend(simplex_group)
 
     idx_max = 0
     for simplex_array in simplex_list:
-        simplex_array += idx_max
-        idx_max = simplex_array.max() + 1
+        # Ensure we're working with numpy arrays
+        if isinstance(simplex_array, np.ndarray) and simplex_array.size > 0:
+            simplex_array += idx_max
+            idx_max = simplex_array.max() + 1
 
-    vertex_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(vertex)]
-    cell_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(simplex_list)]
+    # Create ID arrays
+    vertex_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(vertex) if isinstance(v, np.ndarray) and v.size > 0]
+    cell_id_array = [np.full(s.shape[0], i + 1) for i, s in enumerate(simplex_list) if isinstance(s, np.ndarray) and s.size > 0]
+
+    # Filter out empty or invalid arrays
+    valid_vertex = [v for v in vertex if isinstance(v, np.ndarray) and v.size > 0]
+    valid_simplex = [s for s in simplex_list if isinstance(s, np.ndarray) and s.size > 0]
+    
+    if not valid_vertex or not valid_simplex:
+        raise ValueError("No valid mesh data found in geosolution")
 
     concatenated_id_array = np.concatenate(vertex_id_array)
     concatenated_cell_id_array = np.concatenate(cell_id_array)
 
     meshes: ss.UnstructuredData = ss.UnstructuredData.from_array(
-        vertex=np.concatenate(vertex),
-        cells=np.concatenate(simplex_list),
+        vertex=np.concatenate(valid_vertex),
+        cells=np.concatenate(valid_simplex),
         vertex_attr=pd.DataFrame({'id': concatenated_id_array}),
         cells_attr=pd.DataFrame({'id': concatenated_cell_id_array})
     )
