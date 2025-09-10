@@ -386,13 +386,28 @@ def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData, colors=None, 
 async def inspect_2d_id(data: InputData, _inspector: nodesapi.InspectorHelper):
   plot_2d(input_data=data, geomodel_results=None, show_results=False)
 
-@nodesapi.wbgeo_component(identifier='wbgeo::inspect_2d_res', title='inspect_interpolated_result',
+@nodesapi.wbgeo_component(identifier='wbgeo::inspect_2d_res', title='Inspect InterpolatedRes(2D)',
                           description='')
 @nodesapi.wbgeo_inspector()
 async def inspect_2d_res(data: GeomodelResults, _inspector: nodesapi.InspectorHelper):
   input_data_trace = await _inspector.trace(InputData)
   plot_2d(input_data=await input_data_trace.get_value(), geomodel_results=data, show_results=True)
 
+@nodesapi.wbgeo_component(identifier='wbgeo::inspect_3d_res', title='Inspect InterpolatedRes(3D)',
+                          description='')
+@nodesapi.wbgeo_inspector()
+async def inspect_3d_res(data: GeomodelResults, _inspector: nodesapi.InspectorHelper):
+  input_data_trace = await _inspector.trace(InputData)
+  plot_3d(input_data=await input_data_trace.get_value(), geomodel_results=data, show_results=True)
+
+
+@nodesapi.wbgeo_component(identifier='wbgeo::inspect_3d_mesh', title='Inspect Mesh(3D)',
+                          description='')
+@nodesapi.wbgeo_inspector()
+async def inspect_3d_mesh(data: MeshResults, _inspector: nodesapi.InspectorHelper):
+  res_trace = await _inspector.trace(GeomodelResults)
+  input_data_trace = await res_trace.trace(InputData)
+  plot_mesh_3d(input_data=await input_data_trace.get_value(), mesh_results=data)
 
 @nodesapi.wbgeo_component(identifier='wbgeo::inspect_gradients', title='Inspect the gradient vector field',
                           description='')
