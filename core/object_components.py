@@ -26,7 +26,7 @@ from core.meshing_components.mesh_format.ANSYS.Ansys_format import AnsysInputs
 
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
+from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator, Field
 
 
 
@@ -116,9 +116,12 @@ class GeomodelResults:
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True})
 class MeshResults:
-    elements: Union[np.ndarray, List[meshio.CellBlock]]
-    nodes: np.ndarray
-    mesh: Optional[pyvista.MultiBlock] = None
+    elements: Union[NpNDArrayFp64, List[meshio.CellBlock]]
+    nodes: NpNDArrayFp64 # TODO: int or FP?
+    # mesh is a transient/derived field
+    mesh : Optional[pyvista.MultiBlock]  = Field(default=None, exclude = True) #  exclude this field from serialization
+
+
 
     def __post_init__(self):
 
