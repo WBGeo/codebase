@@ -90,7 +90,7 @@ def push_geosolution_to_le(geosolution: GeomodelResults, space_name: str = 'WBGe
     if model_name is None:
       model_name = geosolution.name
     if api_token is None:
-      raise Exception("No LIQUIDEARTH_TOKEN")
+      raise Exception("No api_token or LIQUIDEARTH_TOKEN environment variable")
 
     meshes = convert_to_subsurface_mesh(geosolution) # Convert geosolution to subsurface mesh format.requires a gempy solution
     link = le.upload_mesh_to_new_space(space_name, meshes, model_name, api_token).deep_link
