@@ -94,7 +94,6 @@ plotter.show()
 # 4: Meshing for Process Simulation
 # TODO: This throws an error
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
     tolerance=50,
     mesh_size=20,
@@ -115,17 +114,12 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 # Bonus: Mesh with wells and sources
 # TODO: This throws an error
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
-    num_wells=1,
     wells=[(100,100,980,100,100,600)],
-    num_sources=1,
     sources=[(300,100,900)],
-    num_shafts=1,
     centers=[(100,100,100)],
     axes=[(2000,0,0)],
     radii=[30],
-    num_planes=0,
     extra_planes=[],
     tolerance=50,
     mesh_size=20,

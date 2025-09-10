@@ -99,6 +99,7 @@ class GeomodelResults:
             resolution (np.ndarray): The resolution of the model.
             mapping_object (dict): Mapping of structural groups to structural elements.
             scalar_fields (Optional[List[np.ndarray]]): List of scalar fields.
+            faults (Optional[List[bool]]): List of groups that are faults.
     """
     name: str
     lith_block: NpNDArrayInt64
@@ -109,6 +110,7 @@ class GeomodelResults:
     resolution: NpNDArrayInt64
     mapping_object: Dict
     scalar_fields: Optional[List[NpNDArrayFp64]] = None
+    faults: Optional[List[bool]] = None
 
 
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')

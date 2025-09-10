@@ -14,7 +14,6 @@ from core.interpolator_components.loopstructural import loop_structural_interpol
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 #%%
 
@@ -74,17 +73,12 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 
 # Geberate mesh
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
-    num_wells=1,
     wells=[(100,100,980,100,100,600)],
-    num_sources=1,
     sources=[(300,100,900)],
-    num_shafts=1,
     centers=[(100,100,100)],
     axes=[(2000,0,0)],
     radii=[30],
-    num_planes=0,
     extra_planes=[],
     tolerance=50,
     mesh_size=20,

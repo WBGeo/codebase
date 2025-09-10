@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import colorcet as cc
+
+from core.object_components import GeomodelResults
 from core.utility import surface_mesh_gradients
 from sklearn.cluster import HDBSCAN
 from scipy.spatial import cKDTree, KDTree
@@ -241,30 +243,25 @@ def plot_cleaned_surfaces(cleaned_surfaces, output_file=None):
     else:
         plt.show()
 
-def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, num_wells=0, wells=[], num_sources=0, sources=[], num_shafts=0, centers=[], axes=[], radii=[], num_planes=0,extra_planes=[]):
+def data_prepration(geomodel_result: GeomodelResults, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, wells=[],
+                    sources=[], centers=[], axes=[], radii=[], extra_planes=[]):
 
     """
     Prepares geological surface data by cleaning overlapping points, identifying faults,
     clustering remaining surfaces, and computing extrusion based on proximity to reference (fault) surfaces.
 
     Args:
-        data_test (InputData): Object containing model metadata, surface points, orientations, fault flags,
-                               and the extent/resolution of the model.
         geomodel_result (list of np.ndarray): List of interpolated geological surfaces,
                                               each with shape (N, 3) representing (x, y, z) points.
         DISTANCE_THRESHOLD (int, optional): Distance used to filter overlapping points between surfaces. Default is 50.
         PROJECTION_THRESHOLD (int, optional): Distance threshold for projecting surface points to reference surfaces. Default is 60.
         EXTRUSION_FACTOR (int, optional): Scale factor for extruding surface points along normals. Default is 100.
         z_threshold (int, optional): Vertical threshold to identify surfaces at similar levels across faults. Default is 10.
-        num_wells (int, optional): Number of wells in the model.
         wells (list of tuples, optional): List of well coordinates as tuples of at least 6 floats (x1,y1,z1,x2,y2,z2) per well.
-        num_sources (int, optional): Number of point sources in the model.
         sources (list of tuples, optional): List of (x, y, z) coordinates for point sources.
-        num_shafts (int, optional): Number of mine shafts in the model.
         centers (list of tuples, optional): List of center points (x, y, z) for cylindrical shafts.
         axes (list of tuples, optional): List of axis direction vectors (x, y, z) for each shaft.
         radii (list of float, optional): List of radii for the cylindrical shafts.
-        num_planes (int, optional): Number of additional planes.
         extra_planes (list of tuples, optional): List of 4-corner planes defined as 12-tuple (x1,y1,z1,...,x4,y4,z4).
     Returns:
         cleaned_surfaces (list of tuples): Each tuple is (surface ID, cleaned surface points),representing the processed and de-overlapped surfaces.
@@ -278,7 +275,7 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
 
 
     mine_shafts = []
-    if num_shafts !=0:
+    if len(centers) !=0:
       for i in range(len(centers)):
         mine_shafts.append({
             "center": centers[i],
@@ -296,9 +293,9 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
       mine_shafts = []
 
     # Fault information
-    faults= data_test.faults
+    faults= geomodel_result.faults
     # Mapping rocks in different layers
-    mapping=data_test.mapping_object
+    mapping=geomodel_result.mapping_object
     # Ensure all values are tuples
     maping = {
             k: v if isinstance(v, tuple) else (v,)

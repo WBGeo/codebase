@@ -392,3 +392,73 @@ async def inspect_2d_id(data: InputData, _inspector: nodesapi.InspectorHelper):
 async def inspect_2d_res(data: GeomodelResults, _inspector: nodesapi.InspectorHelper):
   input_data_trace = await _inspector.trace(InputData)
   plot_2d(input_data=await input_data_trace.get_value(), geomodel_results=data, show_results=True)
+
+
+@nodesapi.wbgeo_component(identifier='wbgeo::inspect_gradients', title='Inspect the gradient vector field',
+                          description='')
+@nodesapi.wbgeo_inspector()
+def inspect_gradients(results: GeomodelResults, _inspector: nodesapi.InspectorHelper=None):
+  # Calculate gradients at the surface mesh vertices
+  from core.utility import surface_mesh_gradients
+
+  points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results)
+
+
+  # Plotting the gradient vector field
+
+  import pyvista as pv
+
+  colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
+            '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
+            '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
+
+  # Create a PyVista dataset
+  # Plot the arrows
+  plotter = pv.Plotter()
+
+  for i in range(len(points_list)):
+    pdata = pv.PolyData(points_list[i])
+    pdata["vectors"] = vectors_list[i]  # Add vector field
+
+    # Create arrow glyphs
+    arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
+
+    # Plot the arrows
+    plotter.add_mesh(arrows, color=colors[i])
+    plotter.add_mesh(
+      pv.PolyData(results.surface_meshes_vertices[1][i],
+                  np.insert(results.surface_meshes_edges[1][i], 0, 3, axis=1).ravel()),
+      color=colors[i])
+  plotter.show()
+
+
+@nodesapi.wbgeo_component(identifier='wbgeo::inspect_gradients_wf', title='Inspect the gradient vf (wireframe)',
+                          description='')
+@nodesapi.wbgeo_inspector()
+def inspect_gradients_wf(results: GeomodelResults, _inspector: nodesapi.InspectorHelper=None):
+  from core.utility import surface_mesh_gradients
+
+  points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results)
+  colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
+            '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
+            '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
+
+  # Create a PyVista dataset
+  # Plot the arrows
+  plotter = pv.Plotter()
+
+  unit=1
+
+  pdata = pv.PolyData(points_list[unit])
+  pdata["vectors"] = vectors_list[unit]  # Add vector field
+
+  # Create arrow glyphs
+  arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
+
+  # Plot the arrows
+  plotter.add_mesh(arrows, color=colors[unit])
+  plotter.add_mesh(
+    pv.PolyData(results.surface_meshes_vertices[1][unit],
+                np.insert(results.surface_meshes_edges[1][unit], 0, 3, axis=1).ravel()),
+    color=colors[unit], style="wireframe")
+  plotter.show()

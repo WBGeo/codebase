@@ -173,6 +173,7 @@ def loop_structural_interpolator(input_data: InputData, interpolator_type: str =
                                        grid=grid.grid_coordinates,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution,
-                                       mapping_object=input_data.mapping_object)
+                                       mapping_object=input_data.mapping_object,
+                                       faults=input_data.faults)
 
     return results_instance

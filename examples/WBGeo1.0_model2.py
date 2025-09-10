@@ -71,17 +71,13 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 
 # Geberate mesh
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
-    num_wells=2,
     wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
-    num_sources=2,
     sources=[(100,300,500), (400,600,700)],
     #num_shafts=1,
     #centers=[(0,0,700)],
     #axes=[(1000,0,0)],
     #radii=[20],
-    num_planes=1,
     extra_planes=[(0, 0, 100, 1000, 0,100, 1000,1000,100, 0,1000,100)],
     tolerance=50,
     mesh_size=20,

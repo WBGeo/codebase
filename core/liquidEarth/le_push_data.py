@@ -1,9 +1,12 @@
+import os
+import typing
+
 import liquid_earth_sdk as le
 import subsurface as ss
 import numpy as np
 import pandas as pd
 from core.object_components import InputData, GeomodelResults
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_inspector
 from py_api_wbgeo import apitypes
 
 
@@ -16,10 +19,10 @@ def convert_to_subsurface_mesh(geosolution):
     # Flatten the nested lists to get individual arrays
     vertex = []
     simplex_list = []
-    
+
     for vertex_group in vertex_groups:
         vertex.extend(vertex_group)
-    
+
     for simplex_group in simplex_groups:
         simplex_list.extend(simplex_group)
 
@@ -37,7 +40,7 @@ def convert_to_subsurface_mesh(geosolution):
     # Filter out empty or invalid arrays
     valid_vertex = [v for v in vertex if isinstance(v, np.ndarray) and v.size > 0]
     valid_simplex = [s for s in simplex_list if isinstance(s, np.ndarray) and s.size > 0]
-    
+
     if not valid_vertex or not valid_simplex:
         raise ValueError("No valid mesh data found in geosolution")
 
@@ -53,6 +56,13 @@ def convert_to_subsurface_mesh(geosolution):
 
     return meshes
 
+# define our own data type as a secret
+SecretDataType = typing.Annotated[str, AnnotatedScriptType(name='secret', color='aqua', identifier='secret', controlled='password')]
+
+#and annotate a string as being a liquid earth link
+LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', identifier='liquidearth_target')]
+
+
 @wbgeo_component(identifier='geosolution_liquidearth_visualization',  # unique identifier
                  title='Push Geosolution to LiquidEarth',  # human readable (Default) title
                  description='push the geosolution to a new space in Liquid Earth',
@@ -61,7 +71,8 @@ def convert_to_subsurface_mesh(geosolution):
                  group='visualisation',
                  return_name='space link',  # name of the returned port
                  )
-def push_geosolution_to_le(geosolution: GeomodelResults , space_name:str, model_name:str, api_token:str) -> str:
+def push_geosolution_to_le(geosolution: GeomodelResults, space_name: str = 'WBGeo: Demo',
+                           model_name: str = None, api_token: SecretDataType = None) -> LETarget:
     """
     Push a geosolution to Liquid Earth.
 
@@ -74,6 +85,21 @@ def push_geosolution_to_le(geosolution: GeomodelResults , space_name:str, model_
     Returns:
     - link: The link to the space  in Liquid Earth.
     """
+    if api_token is None:
+      api_token = os.getenv("LIQUIDEARTH_TOKEN")
+    if model_name is None:
+      model_name = geosolution.name
+    if api_token is None:
+      raise Exception("No LIQUIDEARTH_TOKEN")
+
     meshes = convert_to_subsurface_mesh(geosolution) # Convert geosolution to subsurface mesh format.requires a gempy solution
     link = le.upload_mesh_to_new_space(space_name, meshes, model_name, api_token).deep_link
     return link
+
+# the LE component outputs a `str`
+# this component just provides a nice naming
+@wbgeo_component(identifier='geosolution_liquidearth_visualization_open', title='Open in LiquidEarth',
+                          description='')
+@wbgeo_inspector()
+def geosolution_liquidearth_visualization_open(space_link: LETarget):
+  print(space_link) # the editor turns links in text into clickable links

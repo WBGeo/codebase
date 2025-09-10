@@ -53,40 +53,12 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 #%%
 
-# Calculate gradients at the surface mesh vertices
-from core.utility import surface_mesh_gradients
-
-points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results_test)
-
+from core.visualization_components import inspect_gradients
+inspect_gradients(results_test)
 
 #%%
-
-# Plotting the gradient vector field
-
-import pyvista as pv
-
-colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
-        '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
-        '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
-
-# Create a PyVista dataset
-# Plot the arrows
-plotter = pv.Plotter()
-
-for i in range(len(points_list)):
-    pdata = pv.PolyData(points_list[i])
-    pdata["vectors"] = vectors_list[i]  # Add vector field
-
-    # Create arrow glyphs
-    arrows = pdata.glyph(orient="vectors", scale="vectors", factor=50)
-
-    # Plot the arrows
-    plotter.add_mesh(arrows, color=colors[i])
-    plotter.add_mesh(
-                    pv.PolyData(results_test.surface_meshes_vertices[1][i],
-                                np.insert(results_test.surface_meshes_edges[1][i], 0, 3, axis=1).ravel()),
-                    color=colors[i])
-plotter.show()
+from core.visualization_components import inspect_gradients_wf
+inspect_gradients_wf(results_test)
 
 #%%
 
@@ -141,4 +113,12 @@ mesh_vtu=mesh_test.export_vtu("filename.vtu")
 mesh_aba=mesh_test.export_abaqus("filename.inp")
 mesh_feflow=mesh_test.export_feflow("filename.fem")
 
+
+#%%
+from dotenv import load_dotenv
+load_dotenv(cwd + "/.env")
+print(results_test.name)
+from core.liquidEarth.le_push_data import push_geosolution_to_le
+res = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
+print(res)
 

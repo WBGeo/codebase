@@ -11,5 +11,5 @@ mesh.mesh
 file*
 mesh.msh
 generated_mesh.msh
-
-
+.env
+*.iml

@@ -249,6 +249,7 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
                                        extent=model_instance.grid.regular_grid.extent,
                                        resolution=model_instance.grid.regular_grid.resolution,
                                        mapping_object=input_data.mapping_object,
-                                       scalar_fields=scalar_fields)
+                                       scalar_fields=scalar_fields,
+                                       faults=input_data.faults,)
 
     return results_instance

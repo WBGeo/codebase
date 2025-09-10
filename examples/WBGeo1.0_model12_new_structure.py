@@ -104,7 +104,6 @@ plt.show()
 
 # Geberate mesh
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
     num_wells=1,
     wells=[(100,100,980,100,100,600)],
