@@ -390,6 +390,18 @@ ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', co
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
+def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited amount of inputs
+    geomodel_result: GeomodelResults,
+    tolerance: float = 50,
+    mesh_size: float = 30,
+    curve_mesh_size: float = 5,
+    DISTANCE_THRESHOLD: float = 50,
+    PROJECTION_THRESHOLD: float = 60,
+    EXTRUSION_FACTOR: float = 100,
+    z_threshold: float = 10,
+    buffer_dist: float = 0,
+    smooth: float = 1e-5 ) -> MeshResults:
+  return create_unstructured_mesh_data(**locals())
 
 def create_unstructured_mesh_data(
     geomodel_result: GeomodelResults,
