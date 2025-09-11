@@ -19,9 +19,9 @@ RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='ref
 # Register this function as a component
 @wbgeo_component(description='Provides structured mesh',
                  title='Creates Structured Mesh',  # The title shown in the GUI
-                 color='#800000',  # the color of the components
+                 color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
-                 group='Mesh',
+                 group='Meshing',
                  identifier='create_structured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
