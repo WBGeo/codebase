@@ -66,7 +66,7 @@ LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', 
 @wbgeo_component(identifier='geosolution_liquidearth_visualization',  # unique identifier
                  title='Push Geosolution to LiquidEarth',  # human readable (Default) title
                  description='push the geosolution to a new space in Liquid Earth',
-                 color='#f4a259',
+                 color='#9fc5e8',
                  border_color='#000000',
                  group='visualisation',
                  return_name='space link',  # name of the returned port
