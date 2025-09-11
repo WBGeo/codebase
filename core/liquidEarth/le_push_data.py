@@ -16,15 +16,16 @@ def convert_to_subsurface_mesh(geosolution):
     vertex_groups: List[List[np.ndarray]] = geosolution.surface_meshes_vertices
     simplex_groups: List[List[np.ndarray]] = geosolution.surface_meshes_edges
 
-    # Flatten the nested lists to get individual arrays
-    vertex = []
-    simplex_list = []
+    # Use only the first group (group 0)
+    if not vertex_groups or not simplex_groups:
+        raise ValueError("No mesh groups found in geosolution")
 
-    for vertex_group in vertex_groups:
-        vertex.extend(vertex_group)
+    if len(vertex_groups) == 0 or len(simplex_groups) == 0:
+        raise ValueError("Empty mesh groups in geosolution")
 
-    for simplex_group in simplex_groups:
-        simplex_list.extend(simplex_group)
+    # Extract only the first group
+    vertex = vertex_groups[0]
+    simplex_list = simplex_groups[0]
 
     idx_max = 0
     for simplex_array in simplex_list:
@@ -33,16 +34,15 @@ def convert_to_subsurface_mesh(geosolution):
             simplex_array += idx_max
             idx_max = simplex_array.max() + 1
 
-    # Create ID arrays
-    vertex_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(vertex) if isinstance(v, np.ndarray) and v.size > 0]
-    cell_id_array = [np.full(s.shape[0], i + 1) for i, s in enumerate(simplex_list) if isinstance(s, np.ndarray) and s.size > 0]
-
-    # Filter out empty or invalid arrays
+    # Create ID arrays - filter out empty or invalid arrays
     valid_vertex = [v for v in vertex if isinstance(v, np.ndarray) and v.size > 0]
     valid_simplex = [s for s in simplex_list if isinstance(s, np.ndarray) and s.size > 0]
 
     if not valid_vertex or not valid_simplex:
-        raise ValueError("No valid mesh data found in geosolution")
+        raise ValueError("No valid mesh data found in geosolution group 0")
+
+    vertex_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(valid_vertex)]
+    cell_id_array = [np.full(s.shape[0], i + 1) for i, s in enumerate(valid_simplex)]
 
     concatenated_id_array = np.concatenate(vertex_id_array)
     concatenated_cell_id_array = np.concatenate(cell_id_array)
