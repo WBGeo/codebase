@@ -29,7 +29,7 @@ def geo_input_data_fix(name: str = 'Model 12',
                        surface_points_file: CSVFileDataType = 'model12_surface_points_df.csv',
                        orientations_file: CSVFileDataType = 'model12_orientations_df.csv',
                        mapping_file: JSONFileDataType = 'model_12_mapping.json',
-                       with_faults : bool = False
+                       with_faults : bool = True
                        ) -> InputData:
     # TODO: Provide a proper input type which does not require strings
     import os
