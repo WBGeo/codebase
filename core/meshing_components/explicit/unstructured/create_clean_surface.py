@@ -297,10 +297,11 @@ def data_prepration(geomodel_result: GeomodelResults, DISTANCE_THRESHOLD = 50, P
     # Mapping rocks in different layers
     mapping=geomodel_result.mapping_object
     # Ensure all values are tuples
+    # todo: Why do we do this here instead of define it in the interface?
+    # x: [("a", "b")], ... was a possible result with the old code
     maping = {
-            k: v if isinstance(v, tuple) else (v,)
-            for k, v in mapping.items()
-        }
+      k: v if isinstance(v, tuple) else ( tuple(v) if isinstance(v, list) else (v, ) ) for k, v in mapping.items()
+    }
     # Getting fault information for each layer and sublayers
     fault_dict = {}
     for fault_status, key in zip(faults, maping):
