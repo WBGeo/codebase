@@ -383,7 +383,7 @@ ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', co
 
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
-                 title='Creates Unstructured Mesh',  # The title shown in the GUI
+                 title='Create Unstructured Mesh',  # The title shown in the GUI
                  color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Meshing',
