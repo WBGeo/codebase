@@ -1,3 +1,5 @@
+import collections
+
 import pydantic
 import pyvista
 import typing
@@ -133,13 +135,13 @@ class MeshResults:
     @pydantic.field_validator('elements', mode="before")
     @classmethod
     def decode_cellblock(cls, v):
-      if isinstance(v, typing.List) or isinstance(v, list):
+      if isinstance(v, typing.List) or isinstance(v, list) or isinstance(v, collections.abc.Iterable) or True:
         import pickle
         import codecs
         return [
             e if isinstance(e, meshio.CellBlock) else pickle.loads(codecs.decode(e.encode(), "base64")) for e in v
           ]
-      raise ValueError("Unhandled cellblock", v)
+      raise ValueError("Unhandled cellblock", type(v))
 
     def __post_init__(self):
 
