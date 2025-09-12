@@ -53,13 +53,19 @@ def geo_input_data_fix(name: str = 'Model 12',
             import json
             mapping_object = json.load(f)
 
+    # turn list into tuple
+    # todo: is this even necessary?
+    real_mapping_object = {}
+    if 'mapping' in mapping_object:
+      real_mapping_object = {k: tuple(v) for k,v in mapping_object["mapping"].items()}
+
     return InputData(
         name=name,
         extent=extent,
         resolution=resolution,
         surface_points=surface_points,
         orientations=orientations,
-        mapping_object=mapping_object['mapping'] if 'mapping' in mapping_object else {},
+        mapping_object=real_mapping_object,
         faults=mapping_object['faults'] if with_faults and 'faults' in mapping_object else None,
         # fault_relations=np.array(
         #     [[0, 1, 1],
