@@ -117,8 +117,8 @@ class GeomodelResults:
 @dataclass(config={"arbitrary_types_allowed": True})
 class MeshResults:
     # elements: Union[NpNDArrayFp64, List[meshio.CellBlock]]
-    elements: List[meshio.CellBlock] # todo: Why union?
-    nodes: NpNDArrayFp64 # TODO: int or FP?
+    elements: List[meshio.CellBlock] # todo: NpNDArrayFp64 for structured, CellBlock for unstructured - union not possible!
+    nodes: NpNDArrayFp64 # TODO: int or FP array?
     # mesh is a transient/derived field
     mesh : Optional[pyvista.MultiBlock]  = Field(default=None, exclude = True) #  exclude this field from serialization
 
