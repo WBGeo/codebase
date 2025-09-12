@@ -1,3 +1,4 @@
+import pydantic
 import pyvista
 import typing
 import numpy as np
@@ -26,8 +27,8 @@ from core.meshing_components.mesh_format.ANSYS.Ansys_format import AnsysInputs
 
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator, Field
-
+from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, \
+  PlainValidator, Field, ConfigDict
 
 
 # Pydantic adapter for panda DataFrame
@@ -112,9 +113,15 @@ class GeomodelResults:
     scalar_fields: Optional[List[NpNDArrayFp64]] = None
     faults: Optional[List[bool]] = None
 
+# todo: Move into common class?
+def cellblock_encoder(obj: meshio.CellBlock):
+  import pickle
+  import codecs
+  return codecs.encode(pickle.dumps(obj), "base64").decode()
+
 
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
-@dataclass(config={"arbitrary_types_allowed": True})
+@dataclass(config={"arbitrary_types_allowed": True, "json_encoders" : {meshio.CellBlock: cellblock_encoder}})
 class MeshResults:
     # elements: Union[NpNDArrayFp64, List[meshio.CellBlock]]
     elements: List[meshio.CellBlock] # todo: NpNDArrayFp64 for structured, CellBlock for unstructured - union not possible!
@@ -122,7 +129,17 @@ class MeshResults:
     # mesh is a transient/derived field
     mesh : Optional[pyvista.MultiBlock]  = Field(default=None, exclude = True) #  exclude this field from serialization
 
-
+    # todo: Move into common class?
+    @pydantic.field_validator('elements', mode="before")
+    @classmethod
+    def decode_cellblock(cls, v):
+      if isinstance(v, typing.List) or isinstance(v, list):
+        import pickle
+        import codecs
+        return [
+            e if isinstance(e, meshio.CellBlock) else pickle.loads(codecs.decode(e.encode(), "base64")) for e in v
+          ]
+      raise ValueError("Unhandled cellblock", v)
 
     def __post_init__(self):
 
