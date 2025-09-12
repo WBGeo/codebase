@@ -116,7 +116,8 @@ class GeomodelResults:
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True})
 class MeshResults:
-    elements: Union[NpNDArrayFp64, List[meshio.CellBlock]]
+    # elements: Union[NpNDArrayFp64, List[meshio.CellBlock]]
+    elements: List[meshio.CellBlock] # todo: Why union?
     nodes: NpNDArrayFp64 # TODO: int or FP?
     # mesh is a transient/derived field
     mesh : Optional[pyvista.MultiBlock]  = Field(default=None, exclude = True) #  exclude this field from serialization
