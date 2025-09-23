@@ -20,8 +20,6 @@ from core.interpolator_components.interpolators_per_group.universal_cokriging_pe
 from core.interpolator_components.interpolators_per_group.loop_structural_per_group import \
     interpolate_group_loop_structural
 from core.interpolator_components.interpolators_per_group.geoinr_per_group import interpolate_group_geo_inr
-from core.interpolator_components.interpolators_per_group.geo_ml_per_group import interpolate_group_geoml
-from core.interpolator_components.interpolators_per_group.inverse_distance_per_group import interpolate_group_idw
 
 
 from core.structural_objects.objects import StructuralFrame, StructuralGroup, StructuralElement, InterpolationMethod

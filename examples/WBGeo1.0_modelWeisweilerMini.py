@@ -43,12 +43,11 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test)
+results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=11000, anisotropy_scaling_z=0.3)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.00013)
 # results_test = geo_inr_interpolator(data_test, beta=5) # TODO: Find reasonable parameters for INR
-results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
-print(type(results_test.extent), results_test.extent)
+# results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
 #%%
 

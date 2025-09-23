@@ -49,12 +49,11 @@ visualize_structural_frame(frame, show_points=True, show_orientations=True, note
 #%%
 
 # frame["Shallow_Strat"].set_interpolation_method("Loop Structural")
-frame["Medium_Strat"].set_interpolation_method("Universal Co-Kriging")
-# frame["Deep_Strat"].set_interpolation_method("GeoINR")
-
 frame["Shallow_Strat"].set_interpolation_method("Ordinary Kriging")
-# frame["Medium_Strat"].set_interpolation_method("Inverse Distance Weighting")
-frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
+frame["Medium_Strat"].set_interpolation_method("Universal Co-Kriging")
+frame["Deep_Strat"].set_interpolation_method("GeoINR")
+
+# frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
 
 # frame.pretty_print()
 
@@ -64,8 +63,7 @@ frame.summary()
 
 # frame["Shallow_Strat"].configure_interpolation_params(interpolator_type="FDI")
 frame["Shallow_Strat"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.3)
-# frame["Medium_Strat"].configure_interpolation_params(power=3, anisotropy_scaling=(1.0,1.0,0.1))
-frame["Deep_Strat"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.3)
+# # frame["Deep_Strat"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.3)
 
 #%%
 
@@ -90,6 +88,11 @@ visualize_structural_frame(frame, show_surface_meshes=True, show_points=True, sh
 
 #%%
 
+#%%
+
+frame.structural_groups[0]
+
+#%%
 
 # plot section of scalar field
 import matplotlib.pyplot as plt

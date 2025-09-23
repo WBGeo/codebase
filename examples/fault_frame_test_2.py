@@ -163,14 +163,14 @@ frame.detailed_report()
 #%%
 
 # TODO: Works after transposing in function
-# frame["Top"].set_interpolation_method("Universal Co-Kriging")
-# frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+frame["Top"].set_interpolation_method("Universal Co-Kriging")
+frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
 # TODO: Kind of works, needs high range
-frame["Top"].set_interpolation_method("Ordinary Kriging")
-frame["Bot"].set_interpolation_method("Ordinary Kriging")
-frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
-frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+# frame["Top"].set_interpolation_method("Ordinary Kriging")
+# frame["Bot"].set_interpolation_method("Ordinary Kriging")
+# frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+# frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
 
 # TODO: Works after transposing in function
 # frame["Top"].set_interpolation_method("Radial Basis Function")
