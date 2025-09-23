@@ -512,6 +512,6 @@ def create_unstructured_mesh_data(
 
 
     # Create and return a MeshData instance
-    return MeshResults(elements=cells,
+    return MeshResults(elements_unstructured=cells,
                        nodes=nodes,
                        )

@@ -85,6 +85,6 @@ def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_dat
     elements[:, -1] = np.vectorize(mapping.get)(elements[:, -1])
 
     # Create and return a MeshData instance
-    return MeshResults(elements=elements,
+    return MeshResults(elements_structured=elements,
                        nodes=nodes,
                        )

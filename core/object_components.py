@@ -125,14 +125,16 @@ def cellblock_encoder(obj: meshio.CellBlock):
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True, "json_encoders" : {meshio.CellBlock: cellblock_encoder}})
 class MeshResults:
-    # elements: Union[NpNDArrayFp64, List[meshio.CellBlock]]
-    elements: List[meshio.CellBlock] # todo: NpNDArrayFp64 for structured, CellBlock for unstructured - union not possible!
     nodes: NpNDArrayFp64 # TODO: int or FP array?
     # mesh is a transient/derived field
     mesh : Optional[pyvista.MultiBlock]  = Field(default=None, exclude = True) #  exclude this field from serialization
 
+    elements_structured: typing.Optional[NpNDArrayFp64] = None
+    elements_unstructured: typing.Optional[List[meshio.CellBlock]] = None # todo: NpNDArrayFp64 for structured, CellBlock for unstructured - union not possible!
+
+
     # todo: Move into common class?
-    @pydantic.field_validator('elements', mode="before")
+    @pydantic.field_validator('elements_unstructured', mode="before")
     @classmethod
     def decode_cellblock(cls, v):
       if isinstance(v, typing.List) or isinstance(v, list) or isinstance(v, collections.abc.Iterable) or True:
@@ -143,17 +145,24 @@ class MeshResults:
           ]
       raise ValueError("Unhandled cellblock", type(v))
 
-    def __post_init__(self):
+    def get_union_elems(self):
+      if self.elements_structured is not None:
+        return self.elements_structured
+      elif self.elements_unstructured is not None:
+        return self.elements_unstructured
+      else:
+        raise Exception("Elements not initialized")
 
-        self.vtm_in = VTMInputs(nodes_array=self.nodes, elements_array=self.elements)
+    def __post_init__(self):
+        self.vtm_in = VTMInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
         print('[INFO] VTMInputs initialized successfully.')
 
         self.mesh = self.vtm_in.create_mesh()
 
         # initialize node/element objects only for ndarray elements
-        if isinstance(self.elements, np.ndarray):
+        if isinstance(self.get_union_elems(), np.ndarray):
             self.nodes_obj = Nodes(node_array=self.nodes)
-            self.elements_obj = Elements(element_array=self.elements, node_array=self.nodes)
+            self.elements_obj = Elements(element_array=self.get_union_elems(), node_array=self.nodes)
 
 
     def export_vtu(self, filename: str):
@@ -162,7 +171,7 @@ class MeshResults:
         Args:
             filename (str): The name of the VTU file to export.
         """
-        vtu_in = VTUInputs(nodes_array=self.nodes, elements_array=self.elements)
+        vtu_in = VTUInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
 
         # Create the VTU mesh
         mesh = vtu_in.create_mesh()
@@ -177,7 +186,7 @@ class MeshResults:
         Args:
             filename (str): The name of the Exodus file to export.
         """
-        exo_in = ExosInputs(nodes_array=self.nodes, elements_array=self.elements)
+        exo_in = ExosInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
         # Create mesh
         mesh = exo_in.create_mesh()
 
@@ -192,7 +201,7 @@ class MeshResults:
         Export mesh data to an Abaqus .inp file with nodes, tetrahedral (C3D4),
         and triangular (CP3S) elements, including a valid material and section definition.
         """
-        abq_in = AbaqusInputs(nodes_array=self.nodes, elements_array=self.elements)
+        abq_in = AbaqusInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
         mesh = abq_in.create_mesh()
         node_array = mesh.points
         elements = mesh.cells
@@ -279,7 +288,7 @@ class MeshResults:
         Args:
             filename (str): The name of the Ansys file to export.
         """
-        Ansys_in = AnsysInputs(nodes_array=self.nodes, elements_array=self.elements)
+        Ansys_in = AnsysInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
         # Create mesh
         mesh = Ansys_in.create_mesh()
 
@@ -293,7 +302,7 @@ class MeshResults:
         Args:
             filename (str): The name of the GMSH file to export.
         """
-        gmsh_in = GMSHInputs(nodes_array=self.nodes, elements_array=self.elements)
+        gmsh_in = GMSHInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
         # Create mesh
         mesh = gmsh_in.create_mesh()
         if mesh is None:
@@ -309,7 +318,7 @@ class MeshResults:
         Args:
             filename (str): The name of the STL files to export.
         """
-        stl_in = STLInputs(nodes_array=self.nodes, elements_array=self.elements)
+        stl_in = STLInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
         stl_in.output_filename = filename  # <--- REQUIRED!
         stl_in.create_mesh()
 
@@ -328,7 +337,7 @@ class MeshResults:
         Export mesh data to an Feflow.fem file with nodes, tetrahedral,
         and triangular and line elements.
         """
-        feflow_in = FeflowInputs(nodes_array=self.nodes, elements_array=self.elements)
+        feflow_in = FeflowInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
         mesh = feflow_in.create_mesh()
         node_array = mesh.points
         elements = mesh.cells
