@@ -2,9 +2,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-from scipy.interpolate import Rbf
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
@@ -44,7 +41,7 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test) # TODO: Missing basement when generating unstructured mesh
+# results_test = universal_cokriging_interpolator(data_test)
 # results_test = ordinary_kriging_interpolator(data_test, var_range=500)
 results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
 # results_test = geo_inr_interpolator(data_test)
@@ -71,7 +68,7 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 
 
 
-# Geberate mesh
+# Generate mesh
 mesh_test = create_unstructured_mesh_data(
     geomodel_result=results_test,
     wells=[(100,100,980,100,100,600)],
@@ -89,9 +86,23 @@ mesh_test = create_unstructured_mesh_data(
     z_threshold = 10
 )
 
+#%%
+
+# Test, that we can serialize the mesh data
+from pydantic_core import to_jsonable_python
+to_jsonable_python(mesh_test) # do not actually print it
+
+
+#%%
+
+# 4.5: Plot the meshing result (only 3D at current state)
+plot_mesh_3d(mesh_test, data_test, style="surface")
+
+#%%
+
+# Bonus: Export mesh to VTM, Exodus, and VTU formats
+
 mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
 mesh_ex=mesh_test.export_exodus("filename.exo")
 mesh_vtu=mesh_test.export_vtu("filename.vtu")
-
 
