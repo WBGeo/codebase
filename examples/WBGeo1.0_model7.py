@@ -2,9 +2,7 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
 from scipy.interpolate import Rbf
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
