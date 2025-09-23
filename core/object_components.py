@@ -137,11 +137,13 @@ class MeshResults:
     @pydantic.field_validator('elements_unstructured', mode="before")
     @classmethod
     def decode_cellblock(cls, v):
+      if v is None:
+        return None
       if isinstance(v, typing.List) or isinstance(v, list) or isinstance(v, collections.abc.Iterable) or True:
         import pickle
         import codecs
         return [
-            e if isinstance(e, meshio.CellBlock) else pickle.loads(codecs.decode(e.encode(), "base64")) for e in v
+            e if isinstance(e, meshio.CellBlock) or e is None else pickle.loads(codecs.decode(e.encode(), "base64")) for e in v
           ]
       raise ValueError("Unhandled cellblock", type(v))
 
