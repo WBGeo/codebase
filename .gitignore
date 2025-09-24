@@ -6,10 +6,9 @@
 /weisweiler/
 /klein_zech/
 **/__pycache__/
-mesh.mesh
-/model7/
+*.mesh
 file*
-mesh.msh
-generated_mesh.msh
+*.msh
 .env
 *.iml
+.idea/
