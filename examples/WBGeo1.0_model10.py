@@ -7,7 +7,8 @@ from core.interpolator_components.universal_cokriging import universal_cokriging
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-
+from dotenv import load_dotenv
+from core.liquidEarth.le_push_data import push_geosolution_to_le
 #%%
 
 cwd = os.getcwd()
@@ -84,19 +85,17 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 #%%
 
 # Bonus: Export mesh to VTM, Exodus, and VTU formats
-mesh_test.export_vtm('file.vtm')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
-mesh_aba=mesh_test.export_abaqus("filename.inp")
-mesh_feflow=mesh_test.export_feflow("filename.fem")
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
+# mesh_aba=mesh_test.export_abaqus("filename.inp")
+# mesh_feflow=mesh_test.export_feflow("filename.fem")
 
 
 #%%
 
 # Bonus: liquid earth
-from dotenv import load_dotenv
 load_dotenv(cwd + "/.env") # load .env file
-from core.liquidEarth.le_push_data import push_geosolution_to_le
 res = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
 print(res)
 
