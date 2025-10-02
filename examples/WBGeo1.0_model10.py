@@ -85,6 +85,7 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 #%%
 
 # Bonus: Export mesh to VTM, Exodus, and VTU formats
+## (commented out to avoid file creation while running the example)
 # mesh_test.export_vtm('file.vtm')
 # mesh_ex=mesh_test.export_exodus("filename.exo")
 # mesh_vtu=mesh_test.export_vtu("filename.vtu")
@@ -96,6 +97,6 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 
 # Bonus: liquid earth
 load_dotenv(cwd + "/.env") # load .env file
-res = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
-print(res)
+le_link = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
+print(le_link)
 

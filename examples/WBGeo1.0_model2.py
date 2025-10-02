@@ -77,7 +77,6 @@ mesh_test = create_unstructured_mesh_data(
     geomodel_result=results_test,
     wells=[(100,100,100,100,100,500, 300,100,500,300,100,300), (500,500,500,500,500,900)],
     sources=[(100,300,500), (400,600,700)],
-    #num_shafts=1,
     #centers=[(0,0,700)],
     #axes=[(1000,0,0)],
     #radii=[20],
@@ -97,13 +96,14 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 
 #%%
 # Bonus: Export mesh to VTM, Exodus, and VTU formats
-mesh_test.export_vtm('file.vtm')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
-mesh_stl=mesh_test.export_stl("filename.stl")
-mesh_gmsh=mesh_test.export_gmsh("filename.msh")
-mesh_aba=mesh_test.export_abaqus("filename.inp")
-mesh_ansys=mesh_test.export_ansys("filename_ansys.msh")
+## (commented out to avoid file creation while running the example)
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
+# mesh_stl=mesh_test.export_stl("filename.stl")
+# mesh_gmsh=mesh_test.export_gmsh("filename.msh")
+# mesh_aba=mesh_test.export_abaqus("filename.inp")
+# mesh_ansys=mesh_test.export_ansys("filename_ansys.msh")
 
 
 

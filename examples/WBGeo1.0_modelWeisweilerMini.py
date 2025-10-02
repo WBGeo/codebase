@@ -61,7 +61,6 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 # 4: Meshing for Process Simulation
 # TODO: Throws memory error on my machine
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
     tolerance=300,
     mesh_size=50,
@@ -82,17 +81,12 @@ plot_mesh_3d(mesh_test, data_test)
 
 # Bonus: Create a mesh with wells
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
-    num_wells=1,
     wells=[(5624000,32305000,-3000,15624000,32305000,-2000)],
-    num_sources=0,
     sources=[],
-    num_shafts=0,
     centers=[],
     axes=[],
     radii=[],
-    num_planes=0,
     extra_planes=[],
     tolerance=300,
     mesh_size=50,

@@ -66,7 +66,6 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, 
 # )
 
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
     tolerance=50,
     mesh_size=20,
@@ -88,6 +87,7 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 #%%
 
 # Bonus: Export mesh to VTM, Exodus, and VTU formats
+## (commented out to avoid file creation while running the example)
 # mesh_test.export_vtm('file.vtm')
 # mesh_ex=mesh_test.export_exodus("filename.exo")
 # mesh_vtu=mesh_test.export_vtu("filename.vtu")
