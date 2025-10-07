@@ -13,3 +13,6 @@ mesh.msh
 generated_mesh.msh
 
 
+**/.DS_Store
+core/torch_env/
+docker/
