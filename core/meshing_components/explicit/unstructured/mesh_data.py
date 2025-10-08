@@ -368,40 +368,48 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
     print('No tags found')
     return nodes, cells_n
 
-WellData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='well', color='aqua', identifier='mesh::WellData')]
-SourcesData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData')]
+WellData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData', controlled='Table|x3')]
+SourcesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData', controlled='Table|3|X|Y|Z')]
 
-CenterData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData')]
-AxesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='axes', color='aqua', identifier='mesh::AxesData')]
-RadiData = typing.Annotated[List[float], AnnotatedScriptType(name='radi', color='aqua', identifier='mesh::RadiData')]
+CenterData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData', controlled='Table|3|X|Y|Z')]
+AxesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='axes', color='aqua', identifier='mesh::AxesData', controlled='Table|3|X|Y|Z')]
+RadiData = typing.Annotated[List[float], AnnotatedScriptType(name='radi', color='aqua', identifier='mesh::RadiData', controlled='Table|1|Radius')]
 
 PlanesData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='planes', color='aqua', identifier='mesh::PlanesData')]
 RadiiData = typing.Annotated[List[float], AnnotatedScriptType(name='radii', color='aqua', identifier='mesh::RadiiData')]
 ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 
 
+
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
-                 title='Creates Unstructured Mesh',  # The title shown in the GUI
-                 color='#800000',  # the color of the components
+                 title='Create Unstructured Mesh',  # The title shown in the GUI
+                 color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
-                 group='Mesh',
+                 group='Meshing',
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
+def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited amount of inputs
+    geomodel_result: GeomodelResults,
+    tolerance: float = 50,
+    mesh_size: float = 30,
+    curve_mesh_size: float = 5,
+    DISTANCE_THRESHOLD: float = 50,
+    PROJECTION_THRESHOLD: float = 60,
+    EXTRUSION_FACTOR: float = 100,
+    z_threshold: float = 10,
+    buffer_dist: float = 0,
+    smooth: float = 1e-5 ) -> MeshResults:
+  return create_unstructured_mesh_data(**locals())
 
 def create_unstructured_mesh_data(
-    data_test: InputData,
     geomodel_result: GeomodelResults,
-    num_wells: int = 0,
     wells: WellData = [],
-    num_sources: int = 0,
     sources: SourcesData = [],
-    num_shafts: int = 0,
     centers: CenterData = [],
     axes: AxesData = [],
     radii: RadiiData = [],
-    num_planes: int = 0,
     extra_planes: PlanesData = [],
     tolerance: float = 50,
     mesh_size: float = 30,
@@ -419,17 +427,13 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        data_test (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
+        input_data (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
         geomodel_result (object): Output object from the geomodel interpolation, e.g. from `universal_cokriging_interpolator`.
-        num_wells (int): Number of wells.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
-        num_sources (int): Number of source points.
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
-        num_shafts (int): Number of mine shafts.
         centers (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z).
         axes (list of tuples): List of direction vectors (dx, dy, dz) for the axes of mine shaft cylinders.
         radii (list of floats): List of radii for the mine shaft cylinders.
-        num_planes (int): Number of extra planes.
         extra_planes (list of tuples): Each tuple contains coordinates of 4 corners (12 values) defining an extra plane.
         tolerance (float): Distance threshold to identify boarder of mesh.
         mesh_size (int): Default mesh size for surface and volume meshing (default is 30).
@@ -447,60 +451,39 @@ def create_unstructured_mesh_data(
 
     # Validate that wells is a list of tuples with at least 6 coordinates and length is a multiple of 3
     if not isinstance(wells, list) or not all(isinstance(w, tuple) and len(w) >= 6 and len(w) % 3 == 0 for w in wells):
-        print("❌ 'wells' must be a list of tuples, each containing 2 or more 3D coordinate points (e.g., 6, 9, 12 values, etc.).")
-        return  # Exit the function early
+      raise Exception("❌ 'wells' must be a list of tuples, each containing 2 or more 3D coordinate points (e.g., 6, 9, 12 values, etc.).")
 
     # Validate that sources is a list of tuples
     if not all(isinstance(s, tuple) and len(s) == 3 for s in sources):
-        print("❌ 'sources' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
-        return  # Exit the function early
-    # Check number of sources matches
-    if num_sources > 0 and len(sources) != num_sources:
-        print(f"❌ Number of source entries ({len(sources)}) does not match 'num_sources' ({num_sources}).")
-        return
-
-
-     # Validate that centers is a list of 3D tuples
+      raise Exception("❌ 'sources' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
+    # Validate that centers is a list of 3D tuples
     if not all(isinstance(center, tuple) and len(center) == 3 for center in centers):
-        print("❌ 'centers' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
-        return
+      raise Exception("❌ 'centers' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
     # If shafts are specified, check the number of centers
-    if num_shafts > 0 and len(centers) != num_shafts:
-        print(f"❌ Number of shaft centers ({len(centers)}) does not match 'num_shafts' ({num_shafts}).")
-        return
     # Validate that axes is a list of tuples
     if not all(isinstance(axis, tuple) and len(axis) == 3 for axis in axes):
-        print("❌ 'axes' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
-        return  # Exit the function early
+      raise Exception("❌ 'axes' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
     # Check number of axes matches num_shafts if specified
-    if num_shafts > 0 and len(axes) != num_shafts:
-        print(f"❌ Number of axes ({len(axes)}) does not match 'num_shafts' ({num_shafts}).")
-        return
+    if len(axes) != len(radii):
+        raise Exception(f"❌ Number of axes ({len(axes)}) does not match 'radii' ({len(radii)}).")
+    if len(axes) != len(centers):
+      raise Exception(f"❌ Number of axes ({len(axes)}) does not match 'center' ({len(center)}).")
     # Validate that radiis is a list of int
     if not isinstance(radii, list) or not all(isinstance(r, int) for r in radii):
-        print("❌ 'radii' must be a list of integers like [10, 20, 30].")
-        return
-    # Check if the number of radii matches num_shafts
-    if num_shafts > 0 and len(radii) != num_shafts:
-        print(f"❌ Number of radii ({len(radii)}) does not match 'num_shafts' ({num_shafts}).")
-        return
+        raise Exception("❌ 'radii' must be a list of integers like [10, 20, 30].")
+    num_shafts = len(radii)
 
     # Validate that sources is a list of tuples
     if not all(isinstance(extra, tuple) and len(extra) == 12 for extra in extra_planes):
-        print("❌ 'extra_planes' must be a list of four sets of 3D coordinate tuples like [(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4), ...].")
-        return  # Exit the function early
-    # Validate that number of extra_planes matches num_planes
-    if num_planes > 0 and len(extra_planes) != num_planes:
-        print(f"❌ Number of extra_planes ({len(extra_planes)}) does not match 'num_planes' ({num_planes}).")
-        return
+        raise Exception("❌ 'extra_planes' must be a list of four sets of 3D coordinate tuples like [(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4), ...].")
+    num_planes = len(extra_planes)
 
 
     gmsh.initialize()  # Initialize GMSH once
-    cleaned_surfaces, ref_surface_indices , grid_litho, wells, extra_planes, mine_shafts, source_points = data_prepration(data_test,
-                                                                                                                geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
-                                                                                                                EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold, num_wells=num_wells, wells=wells,
-                                                                                                                num_sources=num_sources, sources=sources, num_shafts=num_shafts, centers=centers, axes=axes, radii=radii,
-                                                                                                                num_planes=num_planes,extra_planes=extra_planes)
+    cleaned_surfaces, ref_surface_indices , grid_litho, wells, extra_planes, mine_shafts, source_points = data_prepration(geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
+                                                                                                                EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold, wells=wells,
+                                                                                                                sources=sources, centers=centers, axes=axes, radii=radii,
+                                                                                                                extra_planes=extra_planes)
 
     interpolated_s = create_surface_grid(cleaned_surfaces, buffer_dist = buffer_dist, smooth=smooth)
 
@@ -529,6 +512,6 @@ def create_unstructured_mesh_data(
 
 
     # Create and return a MeshData instance
-    return MeshResults(elements=cells,
+    return MeshResults(elements_unstructured=cells,
                        nodes=nodes,
                        )

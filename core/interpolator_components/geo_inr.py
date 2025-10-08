@@ -477,6 +477,7 @@ def geo_inr_interpolator(input_data: InputData,
                                        grid=grid.grid_coordinates,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution,
-                                       mapping_object=input_data.mapping_object)
+                                       mapping_object=input_data.mapping_object,
+                                       faults=input_data.faults)
 
     return results_instance

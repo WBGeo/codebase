@@ -2,9 +2,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-from scipy.interpolate import Rbf
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -133,17 +130,12 @@ plotter.show()
 
 # Generate mesh
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
-    num_wells=1,
     wells=[(20,2,124.5,20,2,100,40,2,100)],
-    num_sources=1,
     sources=[(70,2,80)],
-    num_shafts=1,
     centers=[(0,4,70)],
     axes=[(100,0,0)],
     radii=[3],
-    num_planes=0,
     extra_planes=[],
     tolerance=0.01,
     mesh_size=0.5,

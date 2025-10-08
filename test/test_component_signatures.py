@@ -3,13 +3,12 @@ import sys
 import types
 import typing
 import unittest
-from pathlib import Path
 from typing import Unpack, Any, Optional
 
-import os
 from py_api_wbgeo import nodesapi
-from py_api_wbgeo.apitypes import ComponentDecoratorParams, RegisterScriptBlockParams, APIScriptBlockDefinition, \
-    RegisterVisualizerParams, GeoExecuteAPI, ScriptTypeParams
+from py_api_wbgeo.apitypes import ComponentDecoratorParams, RegisterScriptBlockParams, \
+  APIScriptBlockDefinition, \
+  RegisterVisualizerParams, GeoExecuteAPI, ScriptTypeParams, InspectorParams
 from py_api_wbgeo.nodesapi import AnnotatedScriptType
 
 
@@ -78,10 +77,24 @@ class MockBackendInstance:
         def decorate_func(f):
             from inspect import signature, Signature
             sig = signature(f)
+
+            # visualizers are somewhat special
+            is_visualizer = False
+            f_origin = typing.get_origin(f)
+            if f_origin is typing.Annotated:
+              args = typing.get_args(f)
+              func, *metadata = args
+              sig = signature(func)
+              vis_comp = next((m for m in metadata if isinstance(m, VisualizerComponent)), None)
+              if vis_comp:
+                is_visualizer = True
+
+
             if sig.return_annotation == Signature.empty:
-                raise ValueError(
-                    "@GeoComponent requires a declared return type, e.g. @GeoComponent def myDef() -> str: ..." + str(
-                        sig))
+              if not is_visualizer:
+                  raise ValueError(
+                      "@GeoComponent requires a declared return type, e.g. @GeoComponent def myDef() -> str: ..." + str(
+                          sig))
             elif sig.return_annotation in [str, bool, int, float]:
                 pass
             elif not hasattr(sig.return_annotation, '__metadata__'):
@@ -110,6 +123,8 @@ class MockBackendInstance:
                         if len(u_args) == 2 and u_args[1] == types.NoneType:
                             return get_type_from_param(u_args[0], param)
                     elif t in [str, bool, int, float]:
+                      pass
+                    elif is_visualizer and str(t).endswith('InspectorHelper\'>'):
                         pass
                     else:
                         raise ValueError(
@@ -121,9 +136,34 @@ class MockBackendInstance:
             for param in sig.parameters:
                 t = sig.parameters[param].annotation
                 get_type_from_param(t, param)
-            return f
+            return typing.Annotated[f, ComponentMethod(params["identifier"])]
 
         return decorate_func
+
+    def wbgeo_inspector_decorator(self, **kwargs: Unpack[InspectorParams]):
+      def do_work(f):
+        origin = typing.get_origin(f)
+        if origin is typing.Annotated:
+          args = typing.get_args(f)
+          func, *metadata = args
+          ast = next((m for m in metadata if isinstance(m, ComponentMethod)), None)
+          if ast:
+            raise Exception(
+              "The @wbgeo_inspector must be added as the line BEFORE @wbgeo_component")
+        # annotate the visualization function
+        return typing.Annotated[f, VisualizerComponent()]
+
+      return lambda f_component: do_work(f_component)
+
+
+
+class ComponentMethod():
+  def __init__(self, identifier: str):
+    self.identifier = identifier
+
+
+class VisualizerComponent:
+  pass
 
 
 if __name__ == '__main__':
