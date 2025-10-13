@@ -84,9 +84,15 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
           for s_tag in source_tag:
               gmsh.model.mesh.embed(0, [s_tag], 3, volume_tag)
 
+  # === Show geometry before meshing ===
+  #gmsh.fltk.initialize()  # Start the Gmsh GUI
+  #gmsh.fltk.run()         # Keep GUI open until you close it manually
+  #gmsh.fltk.finalize()    # Close GUI cleanly
+
   # Finally, let's specify a global mesh size and mesh the partitioned model:
   gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
 
+  gmsh.option.setNumber("General.Verbosity", 4)
 
   gmsh.model.mesh.generate(3)
 
@@ -170,53 +176,54 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
 
 
 
-  # === assign lithology to different blocks ===
 
+
+
+
+  # Precompute KD-tree
+  grid_coords = grid_litho.iloc[:, :3].to_numpy()
+  grid_litho_values = grid_litho.iloc[:, 3].to_numpy()
+  tree = cKDTree(grid_coords)
+
+  threshold_ratio = 0.7  # fraction of nodes needed to assign a lithology
   lithology_numbers = []
-  number_random_sample = 800
 
   for block in tetra_blocks:
-      num_nodes_in_block = np.unique(block.data).size
-      if num_nodes_in_block < number_random_sample:
-          number_random_sample = int(num_nodes_in_block)
+    node_ids = np.unique(block.data)
+    node_coords = nodes[node_ids]
 
-      random_nodes = np.random.choice(block.data.flatten(), size=number_random_sample, replace=False)
-      random_nodes_coords = nodes[random_nodes]
+    # Query nearest lithology point for all nodes in block
+    _, nearest_idx = tree.query(node_coords, k=1)
+    node_litho = grid_litho_values[nearest_idx]
 
-      block_lithology_numbers = []
-      for random_coord in random_nodes_coords:
-          distances = np.linalg.norm(grid_litho.iloc[:, :3].to_numpy() - random_coord, axis=1)
-          nearest_idx = np.argmin(distances)
-          lithology_number = grid_litho.iloc[nearest_idx, 3]
-          block_lithology_numbers.append(lithology_number)
+    # Majority vote
+    unique_vals, counts = np.unique(node_litho, return_counts=True)
+    max_count_idx = np.argmax(counts)
 
-      lithology_numbers.append(block_lithology_numbers)
+    if counts[max_count_idx] / len(node_ids) >= threshold_ratio:
+        lithology_numbers.append(int(unique_vals[max_count_idx]))
+    else:
+        # fallback: assign the lithology of the centroid
+        centroid = np.mean(node_coords, axis=0)
+        _, nearest_idx = tree.query(centroid)
+        lithology_numbers.append(int(grid_litho_values[nearest_idx]))
 
-  threshold = int(0.7 * number_random_sample)
-
-  final_litho = []
-  for row in lithology_numbers:
-      unique_values, counts = np.unique(row, return_counts=True)
-      max_count_idx = np.argmax(counts)
-      if counts[max_count_idx] >= threshold:
-          final_litho.append(unique_values[max_count_idx])
-      else:
-          final_litho.append(None)
-
-  # === Group blocks by lithology ===
-
+  # Group blocks by lithology
   litho_to_blocks = defaultdict(list)
-  for block_index, (lith, block) in enumerate(zip(final_litho, tetra_blocks)):
-      litho_to_blocks[lith].append(block_index)
+  for block_index, (lith, block) in enumerate(zip(lithology_numbers, tetra_blocks)):
+    litho_to_blocks[lith].append(block_index)
 
-  # === Merge blocks per lithology ===
-
+  # Merge blocks per lithology
   merged_tetra_blocks = []
   for lith, block_indices in litho_to_blocks.items():
-      merged_nodes = []
-      for idx in block_indices:
-          merged_nodes.extend(tetra_blocks[idx].data)
-      merged_tetra_blocks.append(meshio.CellBlock(cell_type="tetra", data=np.array(merged_nodes)))
+    merged_nodes = np.concatenate([tetra_blocks[idx].data for idx in block_indices])
+    merged_tetra_blocks.append(meshio.CellBlock(cell_type="tetra", data=merged_nodes))
+
+  print("Number of merged lithology blocks:", len(merged_tetra_blocks))
+
+
+
+
 
   # === Add shaft blocks as a separate CellBlock ===
 

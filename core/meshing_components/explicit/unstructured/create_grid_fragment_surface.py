@@ -328,6 +328,7 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
         removeTool=True
     )
     gmsh.model.occ.synchronize()
+    #gmsh.write("model1.brep")  # Saves full geometry
 
     # Filter to get only 3D volumes from ov
     fragmented_volumes = [entity for entity in ov if entity[0] == 3]
@@ -348,7 +349,6 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
         gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
         gmsh.model.mesh.removeDuplicateNodes()
         gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
-
         gmsh.model.mesh.generate(2)
         mesh_file = "mesh.msh"
         gmsh.write(mesh_file)
@@ -713,6 +713,7 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
       well_tags=[]
     if not mine_shafts:
       shaft_tags = []
+
     # Return updated entities
     return ov, ovv, tagsss, well_tags, shaft_tags, shaft_to_child_fragments, source_tag
 

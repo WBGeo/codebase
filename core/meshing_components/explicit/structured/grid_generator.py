@@ -32,15 +32,20 @@ def create_surface_grid(results_instance):
     y_min = min_vertices_surface[:, 1]
     z_min = min_vertices_surface[:, 2]
 
-    # Extend the grid to include the full extent if necessary
-    if max_x not in x_min:
-        x_min = np.concatenate([x_min, [max_x]])
-        y_min = np.concatenate([y_min, [max_y]])
-        z_min = np.concatenate([z_min, [max_z]])
-    if min_x not in x_min:
-        x_min = np.concatenate([x_min, [min_x]])
-        y_min = np.concatenate([y_min, [min_y]])
-        z_min = np.concatenate([z_min, [min_z]])
+    # Ensure the grid fully covers the model extent in both x and y
+    corners = [
+        (min_x, min_y, min_z),
+        (min_x, max_y, min_z),
+        (max_x, min_y, max_z),
+        (max_x, max_y, max_z)
+    ]
+
+    for cx, cy, cz in corners:
+        if not ((x_min == cx).any() and (y_min == cy).any()):
+            x_min = np.concatenate([x_min, [cx]])
+            y_min = np.concatenate([y_min, [cy]])
+            z_min = np.concatenate([z_min, [cz]])
+
 
     # Sort the vertices by x and y to create a grid-like structure
     sorted_indices = np.lexsort((x_min, y_min))  # Sort first by y, then by x

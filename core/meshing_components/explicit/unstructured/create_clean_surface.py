@@ -74,30 +74,24 @@ def correct_extrusion_direction(points, normals, file, intersection_points, near
     """
     Extrude points along the corrected perpendicular direction in fixed number of steps.
 
-    Parameters:
-        points: (n, 3) array of 3D points to adjust the extrusion direction.
-        normals: (n, 3) array of normal vectors for each point.
-        file: file identifier for the nearest points.
-        intersection_points: array of points where intersections occur.
-        nearest_points_dict: dictionary of nearest points for each file.
-        EXTRUSION_FACTOR: Total extrusion length.
-        num_steps: Number of extrusion steps (default 5).
-
-    Returns:
-        extruded_points: (n, num_steps + 1, 3) array of extruded point paths.
+    Works robustly even for nearly horizontal planar surfaces.
     """
 
     intersection_tree = cKDTree(intersection_points)
     near_point_tree = cKDTree(nearest_points_dict[file])
-
     step_size = EXTRUSION_FACTOR / num_steps
     extruded_points = []
 
     for i, point in enumerate(points):
         normal = normals[i]
+        normal = normal / np.linalg.norm(normal)
+
+        # --- Use original formula for most surfaces ---
         perpendicular_vector = np.array([-normal[2], 0, normal[0]])
+
         perpendicular_vector /= np.linalg.norm(perpendicular_vector)
 
+        # --- Decide extrusion direction ---
         test_point = point + EXTRUSION_FACTOR * perpendicular_vector
         d2, _ = intersection_tree.query(test_point)
         d3, _ = near_point_tree.query(test_point)
@@ -105,10 +99,11 @@ def correct_extrusion_direction(points, normals, file, intersection_points, near
         if d3 < d2:
             perpendicular_vector *= -1
 
-        extrusion_path = [point + i * step_size * perpendicular_vector for i in range(num_steps + 1)]
+        extrusion_path = [point + j * step_size * perpendicular_vector for j in range(num_steps + 1)]
         extruded_points.append(extrusion_path)
 
     return np.array(extruded_points)
+
 
 
 
@@ -241,6 +236,43 @@ def plot_cleaned_surfaces(cleaned_surfaces, output_file=None):
     else:
         plt.show()
 
+
+def plot_surface_and_extrusions(surface_points, extruded_points, title="Surface and Extrusions"):
+    """
+    Plot 3D surface points and extruded points.
+
+    Parameters:
+        surface_points: (n,3) array of original surface points
+        extruded_points: (n, m, 3) array of extruded points (m steps per point)
+        title: plot title
+    """
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Original surface points
+    ax.scatter(surface_points[:,0], surface_points[:,1], surface_points[:,2],
+               color='blue', s=20, label='Surface Points')
+
+    # Extruded points
+    n_points = extruded_points.shape[0]
+    m_steps = extruded_points.shape[1]
+
+    for i in range(n_points):
+        # Extrusion path as a line
+        path = extruded_points[i]
+        ax.plot(path[:,0], path[:,1], path[:,2], color='red', linewidth=1)
+        # Optionally, plot the last extruded point as a dot
+        ax.scatter(path[-1,0], path[-1,1], path[-1,2], color='red', s=10)
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title(title)
+    ax.legend()
+    ax.view_init(elev=30, azim=-60)  # adjust view angle
+    plt.show()
+
+
 def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, num_wells=0, wells=[], num_sources=0, sources=[], num_shafts=0, centers=[], axes=[], radii=[], num_planes=0,extra_planes=[]):
 
     """
@@ -354,7 +386,7 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
     # Dictionary to store reference surface - fault surfaces- in cleaned_surfaces
     ref_surface_indices = {}
     # Call the plotting function
-    ### plot_surfaces_excluding_ref(surfaces, result)
+    ## plot_surfaces_excluding_ref(surfaces, result)
 
     # Remove overlapped points and store the surfaces in cleaned_surfaces and their normals in cleaned_normals
     # This step is only done if there is any fault in the model
@@ -594,26 +626,26 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
                 nearest_points_dict[file] = nearest_or_points  # Store points associated with the surface file
 
 
-                ###fig = plt.figure()
-                ###ax = fig.add_subplot(111, projection='3d')
+                ##fig = plt.figure()
+                ##ax = fig.add_subplot(111, projection='3d')
 
                         # Plot current surface points
-                ####ax.scatter(points[:, 0], points[:, 1], points[:, 2], c='gray', s=1, label='Surface Points')
+                ##ax.scatter(points[:, 0], points[:, 1], points[:, 2], c='gray', s=1, label='Surface Points')
 
                         # Plot reference surface points
-                ####ax.scatter(ref_points[:, 0], ref_points[:, 1], ref_points[:, 2], c='yellow', s=2, label='Reference Points')
-                ####ax.scatter(nearest_or_points[:, 0], nearest_or_points[:, 1], nearest_or_points[:, 2], c='green', s=8, label='Reference Points')
-                ####ax.scatter(nearest_ref_points[:, 0], nearest_ref_points[:, 1], nearest_ref_points[:, 2], c='orange', s=8, label='Reference Points')
+                #ax.scatter(ref_points[:, 0], ref_points[:, 1], ref_points[:, 2], c='yellow', s=2, label='Reference Points')
+                #ax.scatter(nearest_or_points[:, 0], nearest_or_points[:, 1], nearest_or_points[:, 2], c='green', s=8, label='Reference Points')
+                #ax.scatter(nearest_ref_points[:, 0], nearest_ref_points[:, 1], nearest_ref_points[:, 2], c='orange', s=8, label='Reference Points')
 
                         # Plot nearest points to reference surface
-                #ax.scatter(nearest_to_ref[:, 0], nearest_to_ref[:, 1], nearest_to_ref[:, 2], c='red', s=5, label='Nearest to Ref')
+                ##ax.scatter(nearest_to_ref[:, 0], nearest_to_ref[:, 1], nearest_to_ref[:, 2], c='red', s=5, label='Nearest to Ref')
 
-                ###ax.set_title(f'Surface {i} vs Ref Surface')
-                ###ax.legend()
-                ###ax.set_xlabel('X')
-                ###ax.set_ylabel('Y')
-                ###ax.set_zlabel('Z')
-                ###plt.show()
+                ##ax.set_title(f'Surface {i} vs Ref Surface')
+                ##ax.legend()
+                ##ax.set_xlabel('X')
+                ##ax.set_ylabel('Y')
+                ##ax.set_zlabel('Z')
+                ##plt.show()
 
                # Check if fault plane is within the surface (meaning the surface cutting the faukt has almost the same z and it is not clustered)
                 x_points = [points_sur[0] for points_sur in points]
@@ -649,7 +681,9 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
 
                       # Extrude intersection points along the direction of perpendicular to their normals, and check the direction
                       extruded_intersection_points = correct_extrusion_direction(nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR)
-
+                      # Plot before appending
+                      #plot_surface_and_extrusions(nearest_or_points, extruded_intersection_points,
+                      #                         title=f"Surface + Extrusions for file {file}")
                       # Add extruded points to the surface
                       extruded_points_all_surfaces = np.array(extruded_points_all_surfaces).reshape(-1, 3)
 
@@ -664,24 +698,24 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
               cleaned_surfaces[i] = (file, updated_points)
 
         # Optionally, visualize all surfaces including extruded points
-        ###plotter = pv.Plotter()
-        ###colors = cc.glasbey[:len(cleaned_surfaces)]  # Get distinct colors
+        #plotter = pv.Plotter()
+        #colors = cc.glasbey[:len(cleaned_surfaces)]  # Get distinct colors
 
         ##### Plot the original surfaces
-        ###for idx, (file, points) in enumerate(cleaned_surfaces):
-        ###  point_cloud = pv.PolyData(points)
-        ###  plotter.add_mesh(point_cloud, color=colors[idx], point_size=5, render_points_as_spheres=True, opacity=0.7)
+        #for idx, (file, points) in enumerate(cleaned_surfaces):
+        #  point_cloud = pv.PolyData(points)
+        #  plotter.add_mesh(point_cloud, color=colors[idx], point_size=5, render_points_as_spheres=True, opacity=0.7)
 
         #### Plot the intersection points (black)
-        ###if (len(intersection_points)) > 0:
-        ###    intersection_points_all = np.vstack(intersection_points)
-        ###    intersection_cloud = pv.PolyData(intersection_points_all)
-        ###    plotter.add_mesh(intersection_cloud, color='black', point_size=5, render_points_as_spheres=True)
+        #if (len(intersection_points)) > 0:
+        #    intersection_points_all = np.vstack(intersection_points)
+        #    intersection_cloud = pv.PolyData(intersection_points_all)
+        #    plotter.add_mesh(intersection_cloud, color='black', point_size=5, render_points_as_spheres=True)
 
 
 
         #### Show the plot
-        ###plotter.show()
+        #plotter.show()
 
 
     else:
