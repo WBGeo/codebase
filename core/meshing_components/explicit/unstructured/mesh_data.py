@@ -174,12 +174,6 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
         print(f"Shaft {shaft_tag} has {len(blocks)} blocks")
 
 
-
-
-
-
-
-
   # Precompute KD-tree
   grid_coords = grid_litho.iloc[:, :3].to_numpy()
   grid_litho_values = grid_litho.iloc[:, 3].to_numpy()
@@ -501,13 +495,28 @@ def create_unstructured_mesh_data(
         print(f"❌ Number of extra_planes ({len(extra_planes)}) does not match 'num_planes' ({num_planes}).")
         return
 
+    mine_shafts = []
+    if num_shafts !=0:
+      for i in range(len(centers)):
+        mine_shafts.append({
+            "center": centers[i],
+            "axis": axes[i],
+            "radius": radii[i]  # each is a tuple like (600, 500, 400)
+        })
+      # Print confirmation
+      for i, shaft in enumerate(mine_shafts, 1):
+        print(f"Mine shaft {i}:")
+        print(f"  center = {shaft['center']}")
+        print(f"  axis   = {shaft['axis']}")
+        print(f"  radius  = {shaft['radius']}")
+
+    else:
+      mine_shafts = []
+
 
     gmsh.initialize()  # Initialize GMSH once
-    cleaned_surfaces, ref_surface_indices , grid_litho, wells, extra_planes, mine_shafts, source_points = data_prepration(data_test,
-                                                                                                                geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
-                                                                                                                EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold, num_wells=num_wells, wells=wells,
-                                                                                                                num_sources=num_sources, sources=sources, num_shafts=num_shafts, centers=centers, axes=axes, radii=radii,
-                                                                                                                num_planes=num_planes,extra_planes=extra_planes)
+    cleaned_surfaces, ref_surface_indices , grid_litho = data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
+                                                                                                                EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold)
 
     interpolated_s = create_surface_grid(cleaned_surfaces, buffer_dist = buffer_dist, smooth=smooth)
 
@@ -531,7 +540,7 @@ def create_unstructured_mesh_data(
 
 
     surfaces=surfaces_orginal.copy()
-    ov,ovv, tagssss, well_tags, shaft_tags,shaft_to_child_fragments,  source_tag = fragment_surfaces(surfaces, bounds, ref_surface_indices,wells, extra_planes, source_points, mine_shafts, mesh_size=mesh_size,curve_mesh_size=curve_mesh_size )
+    ov,ovv, tagssss, well_tags, shaft_tags,shaft_to_child_fragments,  source_tag = fragment_surfaces(surfaces, bounds, ref_surface_indices,wells, extra_planes, sources, mine_shafts, mesh_size=mesh_size,curve_mesh_size=curve_mesh_size )
     nodes, cells = mesh_generator(ov, tagssss, wells, well_tags, source_tag, shaft_tags, shaft_to_child_fragments,  grid_litho, curve_mesh_size=curve_mesh_size )
 
 

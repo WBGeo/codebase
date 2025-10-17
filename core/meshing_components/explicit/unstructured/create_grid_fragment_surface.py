@@ -93,79 +93,112 @@ def import_surfaces(interpolated_s, extent=None, tolerance=50):
     Gets a list of interpolated surface grids and creates B-spline surfaces using GMSH.
 
     Args:
-        interpolated_s (list of np.ndarray): List of surface points (x, y, z) for each surface.
-        extent (tuple): Optional bounding box (x_b_min, x_b_max, y_b_min, y_b_max, z_b_min, z_b_max).
-        tolerance (float): Acceptable deviation from the extent values.
+        interpolated_s (list of np.ndarray):
+            List of surface points (x, y, z) for each surface.
+            Each array must have shape (n, 3), where n is the number of points.
+        extent (tuple):
+            Optional bounding box (x_b_min, x_b_max, y_b_min, y_b_max, z_b_min, z_b_max)
+            defining the expected spatial limits of the surfaces.
+        tolerance (float):
+            Acceptable deviation (in model units) when matching the extent values to surface boundaries.
 
     Returns:
-        surfaces (list): List of GMSH B-spline surface IDs.
-        bounds (tuple): Adjusted bounding box based on overlap and extent constraints.
+        surfaces (list):
+            List of GMSH B-spline surface IDs created from the input point clouds.
+        bounds (tuple):
+            Adjusted bounding box values that best fit all imported surfaces
+            while respecting the tolerance limit.
     """
 
+    # Initialize an empty list to store GMSH surface IDs.
     surfaces = []
 
+    # Initialize lists to store the minimum and maximum x, y, z coordinates of each surface.
     min_x_list, max_x_list = [], []
     min_y_list, max_y_list = [], []
     min_z_list, max_z_list = [], []
 
+    # Iterate through each interpolated surface in the input list
     for surface_points in interpolated_s:
+
+        # Ensure that each element is a NumPy array with 3 columns (x, y, z)
         if not isinstance(surface_points, np.ndarray) or surface_points.shape[1] != 3:
             print("Invalid surface points format")
-            continue
+            continue  # Skip invalid surfaces
 
+        # Compute min and max coordinates for this surface and store them
         min_x_list.append(np.min(surface_points[:, 0]))
         max_x_list.append(np.max(surface_points[:, 0]))
         min_y_list.append(np.min(surface_points[:, 1]))
         max_y_list.append(np.max(surface_points[:, 1]))
         min_z_list.append(np.min(surface_points[:, 2]))
         max_z_list.append(np.max(surface_points[:, 2]))
+
+        # Extract x and y coordinates to identify the grid structure
         x = surface_points[:, 0]
         y = surface_points[:, 1]
 
+        # Unique x and y values define the surface grid resolution
         unique_x = np.unique(x)
         unique_y = np.unique(y)
+        numPointsU = len(unique_x)  # Number of control points in the U direction
+        numPointsV = len(unique_y)  # Number of control points in the V direction
 
-        numPointsU = len(unique_x)
-        numPointsV = len(unique_y)
-
+        # Create a list of GMSH point IDs for this surface
         ps = []
         for i in range(numPointsU):
             for j in range(numPointsV):
                 index = i * numPointsV + j
                 if index < len(surface_points):
                     point = surface_points[index]
+                    # Create a GMSH point for each grid node
                     ps.append(gmsh.model.occ.addPoint(point[0], point[1], point[2]))
 
+        # Check if the expected number of points matches the actual number
         if len(ps) != numPointsU * numPointsV:
-            print(f"Warning: Skipping B-spline surface due to mismatch in control points: {len(ps)} != {numPointsU * numPointsV}")
+            print(f"Warning: Skipping B-spline surface due to mismatch in control points: "
+                  f"{len(ps)} != {numPointsU * numPointsV}")
             continue
 
+        # Create a B-spline surface using the list of GMSH points
         s = gmsh.model.occ.addBSplineSurface(ps, numPointsU=numPointsU)
         surfaces.append(s)
 
+    # Define an internal helper function to adjust bounds to fit within tolerance
     def find_adjusted_bound(bound_list, target_value, mode='max'):
         """
-        Return the closest bound within tolerance, trying the next best if the closest is out of range.
+        Returns the closest bound within tolerance to the target_value.
+        The 'mode' parameter controls whether the function seeks a minimum or maximum bound.
         """
+        # Sort bounds: descending for max mode, ascending for min mode
         sorted_list = sorted(bound_list, reverse=(mode == 'max'))
 
         for val in sorted_list:
+            # Check if the value is within the acceptable tolerance range
             if abs(val - target_value) <= tolerance:
+                # Prevent over-adjusting beyond the target
                 if (mode == 'min' and val > target_value) or (mode == 'max' and val < target_value):
                     return target_value
                 else:
                     return val
 
+        # If no suitable value is found, return the original target
         print(f"Warning: No bounds found within ±{tolerance} of {target_value}")
         return target_value
 
+    # Initialize the bounding box output
     bounds = None
+
+    # Ensure the extent tuple is valid before processing
     extent = tuple(extent)
 
+    # If surfaces were successfully created and extent is provided
     if surfaces and extent:
         print(extent)
+        # Unpack extent into individual boundary coordinates
         x_b_min, x_b_max, y_b_min, y_b_max, z_b_min, z_b_max = extent
 
+        # Compute adjusted bounds using tolerance-based matching
         bounds = (
             find_adjusted_bound(min_x_list, x_b_min, mode='max'),
             find_adjusted_bound(max_x_list, x_b_max, mode='min'),
@@ -175,8 +208,12 @@ def import_surfaces(interpolated_s, extent=None, tolerance=50):
             find_adjusted_bound(max_z_list, z_b_max, mode='min')
         )
 
+    # Confirmation message after successful import
     print('B-spline surfaces have been imported!')
+
+    # Return the list of surface IDs and the final bounding box
     return surfaces, bounds
+
 
 
 

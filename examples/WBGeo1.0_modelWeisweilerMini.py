@@ -2,7 +2,8 @@
 import numpy as np
 import pandas as pd
 import os
-
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
@@ -43,8 +44,8 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test)
-results_test = ordinary_kriging_interpolator(data_test, var_range=11000, anisotropy_scaling_z=0.3)
+results_test = universal_cokriging_interpolator(data_test)
+#results_test = ordinary_kriging_interpolator(data_test, var_range=11000, anisotropy_scaling_z=0.3)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.00013)
 # results_test = geo_inr_interpolator(data_test, beta=5) # TODO: Find reasonable parameters for INR
 # results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
@@ -60,23 +61,23 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 
 # 4: Meshing for Process Simulation
 # TODO: Throws memory error on my machine
-mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
-    geomodel_result=results_test,
-    tolerance=300,
-    mesh_size=50,
-    curve_mesh_size=5,
-    DISTANCE_THRESHOLD = 60,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10,
-    extent=[5623500, 5640000, 32304500, 32305500, -3000, 450]
-)
+#mesh_test = create_unstructured_mesh_data(
+#    data_test= data_test,
+#    geomodel_result=results_test,
+#    tolerance=300,
+#    mesh_size=50,
+#    curve_mesh_size=5,
+#    DISTANCE_THRESHOLD = 60,
+#    PROJECTION_THRESHOLD = 60,
+#    EXTRUSION_FACTOR = 80,
+#    z_threshold = 10,
+#    extent=[5623500, 5640000, 32304500, 32305500, -3000, 450]
+#)
 
 #%%
 
 # 4.5: Plot the meshing result (only 3D at current state)
-plot_mesh_3d(mesh_test, data_test)
+#plot_mesh_3d(mesh_test, data_test)
 
 #%%
 
@@ -95,21 +96,21 @@ mesh_test = create_unstructured_mesh_data(
     num_planes=0,
     extra_planes=[],
     tolerance=300,
-    mesh_size=50,
+    mesh_size=100,
     curve_mesh_size=5,
     DISTANCE_THRESHOLD = 60,
     PROJECTION_THRESHOLD = 60,
     EXTRUSION_FACTOR = 80,
     z_threshold = 10,
-    extent=[5623500, 5640000, 32304500, 32305500, -3000, 450]
+    extent=[5624500, 5639000, 32304500, 32305500, -5800, -2900]
 )
 
 #%%
 
 # Bonus: Export mesh to VTM, Exodus, and VTU formats
-# mesh_test.export_vtm('file.vtm')
-# mesh_ex=mesh_test.export_exodus("filename.exo")
-# mesh_vtu=mesh_test.export_vtu("filename.vtu")
+mesh_test.export_vtm('file.vtm')
+mesh_ex=mesh_test.export_exodus("filename.exo")
+mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 
 
