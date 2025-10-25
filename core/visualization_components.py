@@ -234,7 +234,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
                                                                == current_element].iloc[:,
                                      :3].to_numpy()),
                          render_points_as_spheres=True,
-                         point_size=10,
+                         point_size=25,
                          color=colors[i], label=formations[i])
 
         # Add the orientations if available
@@ -248,7 +248,7 @@ def plot_3d(input_data: InputData, geomodel_results: GeomodelResults = None, sho
             # Create an arrow source and a Glyph object and add to plotter
             arrow = pv.Arrow()
             glyphs = points.glyph(orient='vectors', scale=False, geom=arrow,
-                                  factor=int((input_data.extent[1] - input_data.extent[0]) / 100))
+                                  factor=int((input_data.extent[1] - input_data.extent[0]) / 20))
             plotter.add_mesh(glyphs, color=colors[i])
 
     if geomodel_results is not None and show_results:
@@ -323,6 +323,11 @@ def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData, colors=None, 
         colors = ['#4285f4', '#ea4335', '#fbbc05', '#34a853', '#673ab7',
                   '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
                   '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
+
+        colors = ['#673ab7', '#34a853', '#ea4335', '#fbbc05', '#4285f4',
+                  '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
+                  '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
+
 
     if input_data.faults is not None:
 
