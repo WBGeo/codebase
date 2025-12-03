@@ -5,18 +5,36 @@ decorator-based DSL for component definitions.
 
 The DSL is available as a decorator-based API via pip at
 `pip install py_api_wbgeo`
-and the decorators can be imported using:
+
+The decorators can be imported using:
 
 `````python
 from py_api_wbgeo.nodesapi import *
 `````
 
+Currently, the packages is deployed
+to a private [GitLab registry](https://git.rwth-aachen.de/wbgeo/proof-of-concept-backend/-/packages).
+
+* Create
+  a [personal access token (PAT)](https://git.rwth-aachen.de/-/user_settings/personal_access_tokens)
+  with `read_api` permissions (`read_registry` is not sufficient) on the
+  git.rwth-aachen.de instance
+* Install the package via
+  `pip install py_api_wbgeo --index-url https://gitlab-ci-token:<your_personal_token>@git.rwth-aachen.de/api/v4/projects/102532/packages/pypi/simple`
+
+As an alternative: download the latest package as a wheel-file
+from [GitLab's package registry](https://git.rwth-aachen.de/wbgeo/proof-of-concept-backend/-/packages)
+and install it manually via `pip install py_api_wbgeo...whl`
+
 ### Components
 
-A component is a building clock
+A component is the building block of the workbench.
+They represent functions, turning inputs into one output.
+(In the UI, they are represented by the rounded corner blocks.
+Square corners are used to show the results of a computation.)
 
 ```python
-@wbgeo_component(identifier='py::create_random_number',
+@wbgeo_component(identifier='wbgeo::creation_create_random_number',
                  title='Create Random Number',
                  description='Create a random number', color='#03b1fc')
 def create_random_number(start: int, end: int = 100) -> int:
@@ -30,28 +48,75 @@ The second, `end`, parameter is optional (with a default value of 100).
 The function's signature MUST be explicit, i.e., contain a returned type and
 the type-hints of parameters.
 
- Parameter      | Required   | Description                                                
-----------------|------------|------------------------------------------------------------
- identifier     | required   | A unique identifier. See below for a naming scheme         
- title          | required   | The human-readable title shown to users of the workbench   
- description    | required   | The description shown to users of the workbench on request 
- input_checks   | (optional) | TODO                                                       
- color          | (optional) | The color of the component                                 
- border_color   | (optional) | the border color of the component                          
- group          | (optional) | TODO                                                       
- return_name    | (optional) | The name of the output port, default "result"              
- is_object_type | (optional) | TODO                                                       
+| Parameter      | Required   | Description                                                                                         |
+|----------------|------------|-----------------------------------------------------------------------------------------------------|
+| identifier     | required   | A unique identifier. See below for a naming scheme                                                  |
+| title          | required   | The human-readable title shown to users of the workbench                                            |
+| description    | (optional) | The description shown to users of the workbench on request (if absent, a pydoc must be present)     |
+| input_checks   | (optional) | The pre-checks (see below)                                                                          |
+| color          | (optional) | The color of the component                                                                          |
+| border_color   | (optional) | The border color of the component                                                                   |
+| group          | (optional) | TODO                                                                                                |
+| tags           | (optional) | TODO                                                                                                |
+| return_name    | (optional) | The name of the output port, default "result"                                                       |
+| is_object_type | (optional) | Some components should be presented like the result (e.g. the loading component), defaults to False |
 
 The execution of the component MUST NOT modify/change its inputs,
 i.e. the inputs are immutable.
+
+To be able to uniquely identify each component, you MUST follow the folling naming scheme:
+`identifier="wbgeo::[semantic_group]_[component_name]".`
+For example, `identifier="wbgeo::interpolation_rbf", tags=["Interpolation"]`
 
 **TODO**: identifier rule
 
 #### User-Feedback
 
-**TODO**: STDERR/exceptions
+To provide feedback to a user,
+ any output to the standard error stream results in the job completing with a warning.
+
+````python
+import sys
+print("This results in a warning, consider using a greater threshold value", file=sys.stderr)
+````
+Each warning should include hints to the user how to "fix" the possible problem.
+
+Any thrown error results in the job failing with the exceptions message being used as the reason:
+````python
+raise ValueError("Data within the extent does not contain a good candidate for a magic unicorn. Consider using a different extend")
+````
+Each error should include hints to the user how to "fix" the problem.
+If possible, known constraints (e.g., a parameter must fall within a range,
+faults must not be present in the data, etc.) should also be checked via pre-checks (see below).
+(But pre-checks can be ignored, so they should be checked within the function as well).
 
 #### Pre-checks
+
+Unlike errors during execution,
+ pre-checks indicate incompatibilities before execution.
+
+In case a component that has been executed (and thus, has a value present)
+ is connected as an input to your component,
+all pre-checks are run.
+Pre-checks are functions referenced via the `input_checks` parameter of the components decorator.
+Their parameters must be a matching subset of the inputs of the function.
+
+In case a pre-check raises an exception, users will be warned about the problematic connection.
+
+````python
+def pre_check_my_interpolator(data: MyDataType):
+    raise ValueError("Faults are not supported with the example interpolator. Consider using a different interpolator")
+
+@wbgeo_component(input_checks=[pre_check_my_interpolator], ...)
+def my_example_interpolator(data: MyDataType, treshold: int) -> MyResultType:
+   # run the pre-checks first (at least those, that are really required)
+   pre_check_my_interpolator(data)
+   # do execution
+   return MyResultType(...)
+````
+
+(Note: Only those pre-checks are run whose inputs have already been computed/are present.
+This requires the invocation of the checks during the execution again.)
 
 > ! the following
 
@@ -69,6 +134,7 @@ In the following table, the existing
 | `List[?]`   | A list of values, without an input representation in the UI                                             
 
 TODO: file input ("upload")
+
 
 #### Annotating existing types
 
@@ -89,10 +155,29 @@ TOOD: identifier
 
 The `AnnotatedScriptType` accepts the following parameters:
 
-| parameter  | required | description |
-|------------|----------|-------------|
-| identifier | required | todo        |
-| todo       | todo     | todo        |
+| parameter  | required   | description                                   |
+|------------|------------|-----------------------------------------------|
+| identifier | required   | todo                                          |
+| name       | required   | The human-readable name of this type          |
+| color      | (optional) | The color of this type                        |
+| controlled | (optional) | If present, a value can be entered via the UI |
+
+
+The UI additionally supports special input controls via the `controlled` parameter.
+By default, a parameters default value is used.
+
+| Controlled=        | Description                             |
+|--------------------|-----------------------------------------|
+| text               | A generic text input                    |
+| number             | A numeric text input                    |
+| boolean            | A boolean input (                       |
+| password           | A generic text input with masked inputs |
+| Table\|C1\|...\|Cn | NYI                                     |
+| file               | NYI                                     |
+
+To add support for additional input types, 
+ they have to be added to the UI (feel free to ask Alex for this).
+
 
 #### Defining more complex types
 
@@ -100,7 +185,7 @@ For more complex types,
 
 ````python
 @wbgeo_type(name='Input data for a geological model', color='orange',
-            identifier='MyComplexDataType')
+            identifier='wbgeo::my_complex_data_type')
 @dataclass
 class MyComplexDataType:
    name: str
@@ -120,12 +205,21 @@ Their textual output (`print(str)`), matplotlib rendering,
 as well as pyvista plotter output is rendered on the UI.
 Unlike normal components,
 inspection components do not specify a return type.
+(By default, they also receive the `__visualizer` tag,
+ hiding them from the default list of components.)
+
+Note regarding the identifier:
+ The semantic group of inspectors MUST BE `inspect`,
+   followed by the identifier of the type,
+   optionally followed by a suffix denoting the specific visualization used.
+Examples can be `wbgeo::inspect_my_complex_data_type` or 
+`wbgeo::inspect_my_complex_data_type_2d`.
 
 They can use an optional `_inspector` helper,
 which allows them to trace the computation's intermediate results.
 
 `````python
-@wbgeo_component(identifier='py::__visualize_complex',
+@wbgeo_component(identifier='wbgeo::inspect_my_complex_data_type',
                  title='Visualize Example',
                  description='...')
 @wbgeo_inspector()
