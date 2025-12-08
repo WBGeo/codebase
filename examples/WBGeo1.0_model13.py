@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 import os
-
+from scipy.interpolate import Rbf
 from core.object_components import InputData
 from core.interpolator_components.rbf_interpolation import rbf_interpolator
 from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
@@ -44,8 +44,8 @@ plot_3d(data_test)
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-# results_test = universal_cokriging_interpolator(data_test)
-results_test = ordinary_kriging_interpolator(data_test, var_range=1500)
+results_test = universal_cokriging_interpolator(data_test)
+# results_test = ordinary_kriging_interpolator(data_test, var_range=1500)
 # results_test = rbf_interpolator(data_test, kernel='multiquadric', epsilon=0.0001)
 # results_test = geo_inr_interpolator(data_test, beta=1)
 # results_test = loop_structural_interpolator(data_test, interpolator_type="PLI")
@@ -79,7 +79,7 @@ mesh_test = create_unstructured_mesh_data(
     PROJECTION_THRESHOLD = 60,
     EXTRUSION_FACTOR = 80,
     z_threshold = 10,
-    extent=[],
+    extent=[20, 980, 20, 480, 20, 980],
     buffer_dist=20,
     smooth =2
 )

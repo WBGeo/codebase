@@ -1,19 +1,50 @@
-
-# echo "glpat-S8CVCE2QtMPsVgXdu89J" | docker login registry.git.rwth-aachen.de -u any --password-stdin
-# docker login registry.git.rwth-aachen.de
-#  any username, glpat-S8CVCE2QtMPsVgXdu89J pwd
-
 services:
-  # launch the backend on port 4242
-  backend:
-    image: registry.git.rwth-aachen.de/wbgeo/proof-of-concept-backend:backend
-    ports:
-      - "4242:4242"
-    volumes:
-     - ".:/usr/src/app/codebase"
-  # launch the frontend on port 8080
   frontend:
-    image: registry.git.rwth-aachen.de/wbgeo/proof-of-concept-backend:frontend
+    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/frontend:latest
+    pull_policy: always
     ports:
       - "8080:80"
-  # visit http://localhost:8080
+    depends_on:
+      - backend
+    environment:
+      UMLP_DEPLOYED_DOMAIN: ":80"
+  backend:
+    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/backend:latest
+    pull_policy: always
+    environment:
+      S3_HOST: "minio:9000"
+    depends_on:
+      - minio
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-02-28T09-55-16Z
+    command: server /data --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
+    ports:
+      - "127.0.0.1:9001:9001"
+      - "127.0.0.1:9002:9000"
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      MINIO_ROOT_USER: wbgeoM1n10admin
+      MINIO_ROOT_PASSWORD: g@bJ!&NS8K^!
+    volumes:
+      - "./docker/storage:/data:rw"
+
+  py_runner:
+    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/pyrunner:latest
+    restart: on-failure
+    pull_policy: always
+    depends_on:
+      - minio
+      - backend
+    environment:
+      LIQUIDEARTH_TOKEN: "" # TODO place your token here to use it by default
+      MINIO_HOST: "minio:9000"
+      BACKEND_HOST: "backend:8081"
+#    volumes:
+#      - "./pyrunner/codebase:/usr/src/app/codebase/" # for local development, change the `./pyrunner/codebase` to link to your local "codebase" directory

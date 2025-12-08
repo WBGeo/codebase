@@ -12,3 +12,6 @@ file*
 .env
 *.iml
 .idea/
+**/.DS_Store
+core/torch_env/
+docker/

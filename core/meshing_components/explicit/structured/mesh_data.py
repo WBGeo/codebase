@@ -43,9 +43,6 @@ def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_dat
     """
 
 
-    # Extract extent values
-    min_x, max_x, min_y, max_y, min_z, max_z = geomodel_result.extent
-
     # Create interpolated surfaces dictionary
     interpolated_surfaces, n_gx, n_gy = create_surface_grid(geomodel_result)
 
@@ -57,6 +54,9 @@ def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_dat
     # Store points in array
     output_array = store_points_in_array(sorted_surfaces)
     output_array = np.array(output_array[0])
+
+    # Extract extent values
+    min_x, max_x, min_y, max_y, min_z, max_z = geomodel_result.extent
 
     # Create bottom and top surfaces
     bottom_top_surfaces = create_surfaces_with_grids_for_bottom_and_top(
@@ -78,11 +78,11 @@ def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_dat
     elements, nodes = create_hexahedral_elements_with_nodes(adjusted_array, n_gx, n_gy)
     # Since in implicit mesh the numbering is reversed, here I also reverse them
     # Find unique values in the last column
-    unique_values = np.unique(elements[:, -1])
+    #unique_values = np.unique(elements[:, -1])
     # Create a mapping: max value → 0, min value → max, etc.
-    mapping = {val: i for i, val in enumerate(unique_values[::-1])}
+    #mapping = {val: i for i, val in enumerate(unique_values[::-1])}
     # Apply the mapping to the last column
-    elements[:, -1] = np.vectorize(mapping.get)(elements[:, -1])
+    #elements[:, -1] = np.vectorize(mapping.get)(elements[:, -1])
 
     # Create and return a MeshData instance
     return MeshResults(elements_structured=elements,

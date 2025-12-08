@@ -64,7 +64,7 @@ mesh_test = create_unstructured_mesh_data(
     geomodel_result=results_test,
     wells=[(100,100,100,100,100,500), (500,500,500,500,500,900)],
     sources=[(900,300,900), (400,600,700)],
-    centers=[(200,500,800)],
+    centers=[(200,500,100)],
     axes=[(1000,0,0)],
     radii=[20],
     extra_planes=[(0,0,400,1000,0,400,1000,1000,400,0,1000,400)],
@@ -96,7 +96,7 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 #%%
 
 # Bonus: liquid earth
-load_dotenv(cwd + "/.env") # load .env file
-le_link = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
-print(le_link)
+# load_dotenv(cwd + "/.env") # load .env file
+# le_link = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
+# print(le_link)
 

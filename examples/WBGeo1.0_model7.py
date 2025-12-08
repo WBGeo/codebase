@@ -93,13 +93,19 @@ plotter.show()
 # TODO: This throws an error
 mesh_test = create_unstructured_mesh_data(
     geomodel_result=results_test,
+    wells=[(100,100,980,100,100,600)],
+    sources=[(300,100,900)],
+    centers=[(200,200,110)],
+    axes=[(2000,0,0)],
+    radii=[50],
+    extra_planes=[],
     tolerance=50,
     mesh_size=20,
-    curve_mesh_size=2,
-    DISTANCE_THRESHOLD = 80,
+    curve_mesh_size=3,
+    DISTANCE_THRESHOLD = 50,
     PROJECTION_THRESHOLD = 80,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10
+    EXTRUSION_FACTOR = 100,
+    z_threshold = 10,
 )
 
 #%%
@@ -111,22 +117,7 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 
 # Bonus: Mesh with wells and sources
 # TODO: This throws an error
-mesh_test = create_unstructured_mesh_data(
-    geomodel_result=results_test,
-    wells=[(100,100,980,100,100,600)],
-    sources=[(300,100,900)],
-    centers=[(100,100,100)],
-    axes=[(2000,0,0)],
-    radii=[30],
-    extra_planes=[],
-    tolerance=50,
-    mesh_size=20,
-    curve_mesh_size=10,
-    DISTANCE_THRESHOLD = 50,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 120,
-    z_threshold = 10
-)
+
 
 #%%
 
