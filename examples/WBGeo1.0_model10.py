@@ -96,7 +96,7 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 #%%
 
 # Bonus: liquid earth
-load_dotenv(cwd + "/.env") # load .env file
-le_link = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
-print(le_link)
+# load_dotenv(cwd + "/.env") # load .env file
+# le_link = push_geosolution_to_le(geosolution=results_test, space_name='WBGeo: Demo')
+# print(le_link)
 
