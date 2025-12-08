@@ -258,3 +258,24 @@ async def _visualize_complex(i: MyComplexDataType, _inspector: InspectorHelper):
    plt.plot(xpoints, ypoints)
    plt.show()
 `````
+
+
+## Running the examples locally
+
+You can either use Intellij with its python console to run the examples,
+or modify your `PYTHONPATH` environment variable:
+
+````bash
+# linux
+cd codebase
+export PYTHONPATH="$PWD:$PYTHONPATH"
+python examples/WBGeo123.py
+````
+
+````powershell
+# powershell
+cd codebase
+$env:PYTHONPATH = "$PWD;" + $env:PYTHONPATH
+python examples/WBGeo123.py
+````
+
