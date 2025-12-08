@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import colorcet as cc
+
+from core.object_components import GeomodelResults
 from core.utility import surface_mesh_gradients
 from sklearn.cluster import HDBSCAN
 from scipy.spatial import cKDTree, KDTree
@@ -269,22 +271,19 @@ def plot_surfaces_with_extrusions(cleaned_surfaces, extruded_points, intersectio
 
 
 
-def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10):
+def data_prepration(geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10):
 
     """
     Prepares geological surface data by cleaning overlapping points, identifying faults,
     clustering remaining surfaces, and computing extrusion based on proximity to reference (fault) surfaces.
 
     Args:
-        data_test (InputData): Object containing model metadata, surface points, orientations, fault flags,
-                               and the extent/resolution of the model.
         geomodel_result (list of np.ndarray): List of interpolated geological surfaces,
                                               each with shape (N, 3) representing (x, y, z) points.
         DISTANCE_THRESHOLD (int, optional): Distance used to filter overlapping points between surfaces. Default is 50.
         PROJECTION_THRESHOLD (int, optional): Distance threshold for projecting surface points to reference surfaces. Default is 60.
         EXTRUSION_FACTOR (int, optional): Scale factor for extruding surface points along normals. Default is 100.
         z_threshold (int, optional): Vertical threshold to identify surfaces at similar levels across faults. Default is 10.
-        num_wells (int, optional): Number of wells in the model.
     Returns:
         cleaned_surfaces (list of tuples): Each tuple is (surface ID, cleaned surface points),representing the processed and de-overlapped surfaces.
         ref_surface_indices (list): List of surface indices (or IDs) identifying the reference fault surfaces within the `cleaned_surfaces` list.
@@ -292,14 +291,15 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
     """
 
     # Fault information
-    faults= data_test.faults
+    faults= geomodel_result.faults
     # Mapping rocks in different layers
-    mapping=data_test.mapping_object
+    mapping=geomodel_result.mapping_object
     # Ensure all values are tuples
+    # todo: Why do we do this here instead of define it in the interface?
+    # x: [("a", "b")], ... was a possible result with the old code
     maping = {
-            k: v if isinstance(v, tuple) else (v,)
-            for k, v in mapping.items()
-        }
+      k: v if isinstance(v, tuple) else ( tuple(v) if isinstance(v, list) else (v, ) ) for k, v in mapping.items()
+    }
     # Getting fault information for each layer and sublayers
     fault_dict = {}
     for fault_status, key in zip(faults, maping):

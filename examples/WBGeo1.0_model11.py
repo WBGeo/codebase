@@ -67,6 +67,7 @@ plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
 #%%
 
 # Bonus: Export mesh to VTM, Exodus, and VTU formats
+## (commented out to avoid file creation while running the example)
 # mesh_test.export_vtm('file.vtm')
 # mesh_ex=mesh_test.export_exodus("filename.exo")
 # mesh_vtu=mesh_test.export_vtu("filename.vtu")

@@ -18,7 +18,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component
                  )
 def ordinary_kriging_interpolator(input_data: InputData,
                                   var_model: str = "gaussian",
-                                  var_sil0: float = 1,
+                                  var_sill: float = 1,
                                   var_range: float = 500,  # need to set a more reasonable default
                                   var_nugget: float = 0,
                                   anisotropy_scaling_z: float = 0.3,  # need to set a more reasonable default
@@ -159,6 +159,7 @@ def ordinary_kriging_interpolator(input_data: InputData,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution,
                                        mapping_object=input_data.mapping_object,
-                                       scalar_fields=scalar_fields)
+                                       scalar_fields=scalar_fields,
+                                       faults=input_data.faults)
 
     return results_instance

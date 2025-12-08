@@ -2,9 +2,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
-from scipy.interpolate import Rbf
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 
 from core.interpolator_components.interpolators_per_group import general
@@ -104,17 +101,12 @@ plt.show()
 
 # Geberate mesh
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
-    num_wells=1,
     wells=[(100,100,980,100,100,600)],
-    num_sources=1,
     sources=[(300,100,900)],
-    num_shafts=1,
     centers=[(100,100,100)],
     axes=[(2000,0,0)],
     radii=[30],
-    num_planes=0,
     extra_planes=[],
     tolerance=50,
     mesh_size=20,
@@ -125,8 +117,8 @@ mesh_test = create_unstructured_mesh_data(
     z_threshold = 10
 )
 
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
+## (commented out to avoid file creation while running the example)
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
 

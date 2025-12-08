@@ -1,6 +1,16 @@
 {
   "mapping": {
-    "Strat_Series1": ["rock4", "rock3"],
-    "Strat_Series2": ["rock2", "rock1"]
-  }
+    "Strat_Series1": [
+      "rock4",
+      "rock3"
+    ],
+    "Strat_Series2": [
+      "rock2",
+      "rock1"
+    ]
+  },
+  "faults": [
+    false,
+    false
+  ]
 }

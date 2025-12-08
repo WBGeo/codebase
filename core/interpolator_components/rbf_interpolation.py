@@ -158,6 +158,7 @@ def rbf_interpolator(input_data: InputData,
                                        extent=input_data.extent,
                                        resolution=input_data.resolution,
                                        mapping_object=input_data.mapping_object,
-                                       scalar_fields=scalar_fields)
+                                       scalar_fields=scalar_fields,
+                                       faults=input_data.faults)
 
     return results_instance

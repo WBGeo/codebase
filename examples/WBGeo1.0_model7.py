@@ -2,9 +2,7 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
 from scipy.interpolate import Rbf
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.object_components import InputData
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
@@ -93,29 +91,13 @@ plotter.show()
 
 # 4: Meshing for Process Simulation
 # TODO: This throws an error
-#mesh_test = create_unstructured_mesh_data(
-#    data_test= data_test,
-#    geomodel_result=results_test,
-#    tolerance=50,
-#    mesh_size=20,
-#    curve_mesh_size=2,
-#    DISTANCE_THRESHOLD = 80,
-#    PROJECTION_THRESHOLD = 80,
-#    EXTRUSION_FACTOR = 80,
-#    z_threshold = 10
-#)
 mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
     geomodel_result=results_test,
-    num_wells=1,
     wells=[(100,100,980,100,100,600)],
-    num_sources=1,
     sources=[(300,100,900)],
-    num_shafts=1,
     centers=[(200,200,110)],
     axes=[(2000,0,0)],
     radii=[50],
-    num_planes=0,
     extra_planes=[],
     tolerance=50,
     mesh_size=20,
@@ -140,8 +122,9 @@ plot_mesh_3d(mesh_test, data_test, style="surface")
 #%%
 
 # Bonus: Export mesh to VTM, Exodus, and VTU formats
-mesh_test.export_vtm('file.vtm')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
+## (commented out to avoid file creation while running the example)
+# mesh_test.export_vtm('file.vtm')
+# mesh_ex=mesh_test.export_exodus("filename.exo")
+# mesh_vtu=mesh_test.export_vtu("filename.vtu")
 
 
