@@ -379,12 +379,19 @@ class StructuralGroup(BaseModel):
 class StructuralFrame(BaseModel):
     """
     A structural frame that contains multiple structural groups and associated data.
+    Attributes:
+        structural_groups: Ordered list of StructuralGroup objects.
+        _grid: RegularGrid for spatial context.
+        _surface_points: DataFrame with surface points for all elements.
+        _orientations: Optional DataFrame with orientation data for all elements.
+        _lith_block: Optional 3D NumPy array representing resulting lithology block.
     """
     structural_groups: List[StructuralGroup] = Field(default_factory=list)
 
     _grid: Optional[RegularGrid] = PrivateAttr(default=None)
     _surface_points: Optional[pd.DataFrame] = PrivateAttr(default=None)
     _orientations: Optional[pd.DataFrame] = PrivateAttr(default=None)
+    _lith_block: Optional[np.ndarray] = PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -401,6 +408,10 @@ class StructuralFrame(BaseModel):
     @property
     def orientations(self) -> Optional[pd.DataFrame]:
         return self._orientations
+
+    @property
+    def lith_block(self) -> Optional[np.ndarray]:
+        return self._lith_block
 
     # Getters
     def get_surface_points_for_element(self, element_name: str) -> pd.DataFrame:
@@ -422,6 +433,9 @@ class StructuralFrame(BaseModel):
         group = self[group_name]
         element_names = [e.name for e in group.structural_elements]
         return self._orientations[self._orientations["formation"].isin(element_names)]
+
+    def get_LithBlock(self) -> Optional[np.ndarray]:
+        return self._lith_block
 
     def __getitem__(self, group_name: str) -> StructuralGroup:
         for group in self.structural_groups:

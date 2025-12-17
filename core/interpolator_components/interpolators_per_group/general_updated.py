@@ -499,7 +499,7 @@ def combined_interpolator_with_domains(
     # --- 3) final lithology block combining domains ---
     if verbose:
         print("③ Building final lithology block ...")
-    lith_block = compute_lithology_block_with_domains(frame, fault_frame)  # type: ignore[arg-type]
+    frame._lith_block = compute_lithology_block_with_domains(frame, fault_frame)  # type: ignore[arg-type]
 
     # --- 4) per-domain meshes (optional) ---
     if extract_meshes:
@@ -514,8 +514,6 @@ def combined_interpolator_with_domains(
 
     if verbose:
         print("✅ Pipeline complete.")
-    return lith_block
-
 
 # -----------------------------------------------------------------------------
 # Builders / helpers

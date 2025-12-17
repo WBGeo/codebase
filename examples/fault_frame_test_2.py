@@ -163,14 +163,14 @@ frame.detailed_report()
 #%%
 
 # TODO: Works after transposing in function
-frame["Top"].set_interpolation_method("Universal Co-Kriging")
-frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+#frame["Top"].set_interpolation_method("Universal Co-Kriging")
+#frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
 # TODO: Kind of works, needs high range
-# frame["Top"].set_interpolation_method("Ordinary Kriging")
-# frame["Bot"].set_interpolation_method("Ordinary Kriging")
-# frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
-# frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+frame["Top"].set_interpolation_method("Ordinary Kriging")
+frame["Bot"].set_interpolation_method("Ordinary Kriging")
+frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
 
 # TODO: Works after transposing in function
 # frame["Top"].set_interpolation_method("Radial Basis Function")
@@ -204,6 +204,8 @@ frame.detailed_report()
 # - check if there is enough data for each element in each domain and set a reasonable default what happens if not
 # - (so I have the group masks and the domain masks but naming is weird and maybe I need a combined one per group within domain?)
 # - Unify grids for both frames
+# - Storing Update - I think only one mesh per element is sufficient, if we can store separate fault block meshes as a single mesh,
+#   maybe then also only one combined scalar field is necessary, this would really improve the whole storage madness
 
 # TODO: Additional nice to haves
 # - Think about a nice structure for the user to understand this full mess
@@ -219,12 +221,16 @@ frame.detailed_report()
 # - see what I need to change so that GFZ can still use it as before
 
 
-lith = general_updated.combined_interpolator_with_domains(
+general_updated.combined_interpolator_with_domains(
     frame,
     fault_frame=fault_frame,                     # or None for single-domain
     extract_meshes=True,
     verbose=True,
 )
+
+#%%
+
+frame.get_LithBlock()
 
 #%%
 
@@ -254,11 +260,12 @@ def plot_scalar_field_section(scalar_field, grid, axis='y', index=0):
 #%%
 
 # Plot a slice of the lithology model
-plot_scalar_field_section(lith, frame.grid, index=0)
+plot_scalar_field_section(frame.get_LithBlock(), frame.grid, index=0)
+
 
 #%%
 
-# Masks fro groups for age relationships
+# Masks from groups for age relationships
 plot_scalar_field_section(frame.structural_groups[1].masks_by_domain()[0], frame.grid, index=25)
 
 #%%
