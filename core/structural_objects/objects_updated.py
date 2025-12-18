@@ -139,8 +139,8 @@ class StructuralElement(BaseModel):
     # _scalar_value: Optional[float] = PrivateAttr(default=None)
     _id: Optional[int] = PrivateAttr(default=None)
     _color: Optional[str] = PrivateAttr(default=None)
-    # _vertices: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
-    # _edges: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
+    _vertices: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
+    _edges: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
 
     _scalar_values_by_domain: Dict[int, float] = PrivateAttr(default_factory=dict)
     _meshes_by_domain: Dict[int, Dict[str, Tuple[np.ndarray, np.ndarray]]] = PrivateAttr(default_factory=dict)
@@ -149,9 +149,9 @@ class StructuralElement(BaseModel):
         arbitrary_types_allowed = True
 
     # Read-only properties
-    # @property
-    # def scalar_value(self) -> Optional[float]:
-    #     return self._scalar_value
+    @property
+    def scalar_value(self) -> Optional[float]:
+        return self._scalar_value
 
     @property
     def id(self) -> Optional[int]:
@@ -161,17 +161,17 @@ class StructuralElement(BaseModel):
     def color(self) -> Optional[str]:
         return self._color
 
-    # @property
-    # def vertices(self) -> Optional[np.ndarray]:
-    #     return self._vertices
-    #
-    # @property
-    # def edges(self) -> Optional[np.ndarray]:
-    #     return self._edges
+    @property
+    def vertices(self) -> Optional[dict]:
+        return self._vertices
+
+    @property
+    def edges(self) -> Optional[dict]:
+        return self._edges
 
     # Controlled setters
-    # def set_scalar_value(self, value: float):
-    #     self._scalar_value = value
+    def set_scalar_value(self, value: float):
+        self._scalar_value = value
 
     def set_id(self, element_id: int):
         self._id = element_id
@@ -179,32 +179,32 @@ class StructuralElement(BaseModel):
     def set_color(self, hex_color: str):
         self._color = hex_color
 
-    # def set_mesh(self, mesh_type: str, vertices: np.ndarray, edges: np.ndarray):
-    #     """
-    #     Set the vertices and edges for a specific mesh type (e.g., 'masked', 'unmasked', 'combined').
-    #
-    #     Raises:
-    #         ValueError if mesh_type is not one of the allowed types or already exists.
-    #     """
-    #     if mesh_type not in {"masked", "unmasked", "combined"}:
-    #         raise ValueError(f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined.")
-    #     # if mesh_type in self._vertices or mesh_type in self._edges:
-    #     #     raise ValueError(f"Mesh type '{mesh_type}' already set for element '{self.name}'.")
-    #
-    #     self._vertices[mesh_type] = vertices
-    #     self._edges[mesh_type] = edges
-    #
-    # def get_mesh(self, mesh_type: str) -> tuple[np.ndarray, np.ndarray]:
-    #     """
-    #     Retrieve the vertices and edges for the given mesh type.
-    #
-    #     Raises:
-    #         KeyError if the mesh type does not exist.
-    #     """
-    #     try:
-    #         return self._vertices[mesh_type], self._edges[mesh_type]
-    #     except KeyError:
-    #         raise KeyError(f"Mesh '{mesh_type}' not found in element '{self.name}'.")
+    def set_mesh(self, mesh_type: str, vertices: np.ndarray, edges: np.ndarray):
+        """
+        Set the vertices and edges for a specific mesh type (e.g., 'masked', 'unmasked', 'combined').
+
+        Raises:
+            ValueError if mesh_type is not one of the allowed types or already exists.
+        """
+        if mesh_type not in {"masked", "unmasked", "combined"}:
+            raise ValueError(f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined.")
+        # if mesh_type in self._vertices or mesh_type in self._edges:
+        #     raise ValueError(f"Mesh type '{mesh_type}' already set for element '{self.name}'.")
+
+        self._vertices[mesh_type] = vertices
+        self._edges[mesh_type] = edges
+
+    def get_mesh(self, mesh_type: str) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Retrieve the vertices and edges for the given mesh type.
+
+        Raises:
+            KeyError if the mesh type does not exist.
+        """
+        try:
+            return self._vertices[mesh_type], self._edges[mesh_type]
+        except KeyError:
+            raise KeyError(f"Mesh '{mesh_type}' not found in element '{self.name}'.")
 
     # -------- Domain-aware scalar values --------
     def set_scalar_value_for_domain(self, domain_id: int, value: float) -> None:

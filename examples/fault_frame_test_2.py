@@ -163,8 +163,8 @@ frame.detailed_report()
 #%%
 
 # TODO: Works after transposing in function
-#frame["Top"].set_interpolation_method("Universal Co-Kriging")
-#frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+# frame["Top"].set_interpolation_method("Universal Co-Kriging")
+# frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
 # TODO: Kind of works, needs high range
 frame["Top"].set_interpolation_method("Ordinary Kriging")
@@ -234,7 +234,7 @@ frame.structural_groups[0].scalar_field.dtype
 
 #%%
 
-frame.structural_groups[1].structural_elements[1].scalar_values_by_domain()
+frame.structural_groups[0].structural_elements[0].scalar_values_by_domain()
 
 #%%
 
@@ -308,7 +308,7 @@ from core.visualization_components_new_new import plot_structural_slice_with_fau
 
 #%%
 
-plot_structural_slice_with_faults(frame=frame, fault_frame=fault_frame, lith_block=lith, axis='y', index=0)
+plot_structural_slice_with_faults(frame=frame, fault_frame=fault_frame, lith_block=frame.get_LithBlock(), axis='y', index=0)
 
 #%%
 
@@ -318,11 +318,17 @@ from core.visualization_components_new_new import visualize_structural_frame_wit
 
 visualize_structural_frame_with_faults(frame=frame, fault_frame=fault_frame)
 
-
 #%%
 
-fault_frame.detailed_report()
+frame["Top"].structural_elements[1].vertices["unmasked"].shape
 
 #%%
+import pyvista as pv
+plotter = pv.Plotter()
 
-frame.detailed_report()
+for i in range(len(frame.structural_groups)):
+    for j in range(len(frame.structural_groups[i].structural_elements)):
+        plotter.add_mesh(pv.PolyData(frame.structural_groups[i].structural_elements[j].vertices["combined"],
+                     np.insert(frame.structural_groups[i].structural_elements[j].edges["combined"], 0, 3, axis=1).ravel()),
+                     color='#4285f4')
+plotter.show()
