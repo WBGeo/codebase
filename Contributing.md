@@ -14,8 +14,9 @@ TOOD: Description on the idea/design-vision of the workbench (accessibility)
 For each component (added):
    * Follow the naming guide for the identifier
    * Use pydocs explaining your component and its inputs
-   * Add a unit test of the execution (TODO: example)
+   * Add a unit test of the execution 
       * use a small input to keep it fast
+      * See the [test_rbf_interpolation.py](test/interpolator_components/test_rbf_interpolation.py) unit test for an example of this
    * Consider invalid inputs/limitations and define pre-checks for them
      * Add unit tests for each pre-check
        * Each pre-check MUST be tested

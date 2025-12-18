@@ -14,9 +14,9 @@ from py_api_wbgeo.nodesapi import AnnotatedScriptType
 
 # Test if all components are properly defined using decorators
 # i.e.: all parameters are annotated
-class TestInputData(unittest.TestCase):
+class TestComponentSignatures(unittest.TestCase):
     @classmethod
-    def setup_class(cls):
+    def setUpClass(cls):
         from pathlib import Path
         components_folder = Path("core").resolve()
         codebase_folder = Path(".").resolve()
@@ -29,7 +29,7 @@ class TestInputData(unittest.TestCase):
                 del sys.modules[py_file]
 
     @classmethod
-    def teardown_class(cls):
+    def tearDownClass(cls):
         # and unload/reset the decorated modules
         nodesapi.set_instance(None)
         for py_file in cls.py_files:
