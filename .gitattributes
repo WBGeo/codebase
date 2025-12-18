@@ -1,1 +1,4 @@
 *.txt text eol=lf
+test/interpolator_components/model2_cubic.pkl filter=lfs diff=lfs merge=lfs -text
+test/interpolator_components/model2_linear.pkl filter=lfs diff=lfs merge=lfs -text
+test/loading_components/model2_input_data.pkl filter=lfs diff=lfs merge=lfs -text
