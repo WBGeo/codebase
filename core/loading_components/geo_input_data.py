@@ -36,12 +36,16 @@ def geo_input_data_fix(name: str = 'Model 12',
     import pathlib
 
     datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
-    print(datadir)
-    print(os.path.join(datadir, 'examples/data/', orientations_file))
-    print(os.path.join(datadir, 'examples/data/'))
 
-    extent = np.array([int(i.strip()) for i in extent_str.split(",")])
-    resolution = np.array([int(i.strip()) for i in resolution_str.split(",")])
+    try:
+        extent = np.array([int(i.strip()) for i in extent_str.split(",")])
+    except ValueError as e:
+        raise ValueError('Illegal format for extent_str: ', e)
+    try:
+        resolution = np.array([int(i.strip()) for i in resolution_str.split(",")])
+    except ValueError as e:
+        raise ValueError('Illegal format for resolution_str: ', e)
+
     surface_points = pd.read_csv(os.path.join(datadir, 'examples/data/', surface_points_file))
     orientations = None
     if orientations_file != 'None':
