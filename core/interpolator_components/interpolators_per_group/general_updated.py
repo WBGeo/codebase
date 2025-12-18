@@ -162,6 +162,11 @@ def run_interpolation_with_fault_domains(
             else:
                 scalar_field = scalar_field_sub
 
+            # TODO: This is where I need to combine domain scalar fields and store only one per group
+            # set scalar field with scalar fields by domain masks
+            group._scalar_field = np.where(domain_map == domain_id, scalar_field, group._scalar_field)
+
+            # TODO: This can be removed if I manage the previuos step
             # Store per-domain scalar field on the group
             group.set_scalar_field_for_domain(domain_id, scalar_field)
 
@@ -328,13 +333,24 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
     shape = tuple(frame.grid.resolution.astype(int))
     final_lith = np.zeros(shape, dtype=int)
 
-    # Assign stable global IDs if not already set: oldest -> youngest
+    final_scalar = np.zeros(shape, dtype=float)
+
+    # Assign stable global IDs and scalar values if not already set: oldest -> youngest
     current_id = 1
+    current_scalar = 0.0
+    buffer = 100.0
+
     for group in reversed(frame.structural_groups):
         for element in reversed(group.structural_elements):
             if element.id is None:
                 element.set_id(current_id)
                 current_id += 1
+                # TODO: Just for testing, would need to create a storage option for this again
+                test_scalar = current_scalar
+                current_scalar += 1.0
+        # TODO: Check if this leads to sensible results
+        # Buffer to have distinction between scalar values of different groups
+        current_scalar += buffer
 
     domain_ids = np.unique(fault_frame.domain_map)
 
@@ -342,6 +358,8 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
     for d in domain_ids:
         dommask = fault_frame.domain_map == d
         domain_lith = np.zeros(shape, dtype=int)
+
+        domain_scalar = np.zeros(shape, dtype=float)
 
         # Process groups from oldest -> youngest so younger overwrites older
         for group in reversed(frame.structural_groups):
@@ -352,6 +370,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
                 continue
 
             group_block = np.zeros(shape, dtype=int)
+            scalar_block = np.zeros(shape, dtype=float)
 
             # Fill elements in natural (oldest->youngest) order; use "== 0" so younger has priority
             for elem in group.structural_elements:
@@ -360,16 +379,41 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
                     continue
                 write_mask = (sf >= sval) & (group_block == 0)
                 group_block[write_mask] = elem.id
+                scalar_block[write_mask] = sf[write_mask]
 
             # Apply age mask then domain mask
             group_block = np.where(gm, group_block, 0)
             group_block = np.where(dommask, group_block, 0)
 
+            scalar_block = np.where(gm, scalar_block, 0.0)
+            scalar_block = np.where(dommask, scalar_block, 0.0)
+
             # Younger groups overwrite older
             domain_lith = np.where(group_block > 0, group_block, domain_lith)
+            domain_scalar = np.where(group_block > 0.0, scalar_block, domain_scalar)
 
         # Write this domain into final (domain masks are disjoint)
         final_lith[dommask] = domain_lith[dommask]
+
+        final_scalar[dommask] = domain_scalar[dommask]
+
+        # add oldest scalar field values where zeros remain
+        if np.any(final_scalar == 0):
+            oldest_group = frame.structural_groups[-1]
+            oldest_sf = oldest_group.get_scalar_field_for_domain(d)
+            if oldest_sf is not None:
+                final_scalar = np.where(final_scalar == 0, oldest_sf, final_scalar)
+
+        # plot slice of final_scalar for debugging
+        # import matplotlib.pyplot as plt
+        # extent = frame.grid.extent[:4]
+        # plt.imshow(final_scalar[:,final_scalar.shape[0] // 2, :], cmap='viridis', extent=extent, origin="lower")
+        # # add contour lines
+        # # plt.contour(final_scalar[:,final_scalar.shape[0] // 2, :], colors='black',
+        # #             extent=extent, origin="lower", levels=[1,2,3,4])
+        # plt.colorbar()
+        # plt.title(f"Final Scalar Values Slice at Z={final_scalar.shape[0] // 2}")
+        # plt.show()
 
     return final_lith
 
@@ -742,12 +786,11 @@ def build_structural_frame(
         elements = [StructuralElement(name=name) for name in element_names]
         group = StructuralGroup(
             name=group_name,
-            interpolation_method=None,  # placeholder—kept as-is
-            scalar_field=np.array([]),
             structural_elements=elements,
         )
         group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
+        group._scalar_field = np.zeros(resolution, dtype=float) # set default empty array to build sf on
 
     # Generate colors AFTER groups exist
     color_map = generate_grouped_colors_per_element(group_objects)

@@ -261,7 +261,7 @@ class StructuralGroup(BaseModel):
     name: str
     structural_elements: List['StructuralElement'] = Field(default_factory=list)
     _interpolation_method: Optional['InterpolationMethod'] = PrivateAttr(default=None)
-    # _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
+    _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
     # _mask: Optional[np.ndarray] = PrivateAttr(default=None)
     _interpolation_params: Optional[InterpolationParameterSet] = PrivateAttr(default=None)
 
@@ -278,16 +278,16 @@ class StructuralGroup(BaseModel):
                 return elem
         raise KeyError(f"Structural element '{element_name}' not found in group '{self.name}'.")
 
-    # @property
-    # def scalar_field(self) -> Optional[np.ndarray]:
-    #     return self._scalar_field
+    @property
+    def scalar_field(self) -> Optional[np.ndarray]:
+        return self._scalar_field
 
     # @property
     # def mask(self) -> Optional[np.ndarray]:
     #     return self._mask
 
-    # def set_scalar_field(self, field: np.ndarray):
-    #     self._scalar_field = field
+    def set_scalar_field(self, field: np.ndarray):
+        self._scalar_field = field
 
     # def set_mask(self, mask_array: np.ndarray):
     #     self._mask = mask_array

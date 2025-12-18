@@ -230,7 +230,26 @@ general_updated.combined_interpolator_with_domains(
 
 #%%
 
-frame.get_LithBlock()
+frame.structural_groups[0].scalar_field.dtype
+
+#%%
+
+frame.structural_groups[1].structural_elements[1].scalar_values_by_domain()
+
+#%%
+
+# plot slice of final_scalar for debugging
+import matplotlib.pyplot as plt
+extent = frame.grid.extent[:4]
+plt.imshow(frame.structural_groups[1].scalar_field[:, 25, :], cmap='viridis', extent=extent, origin="lower")
+plt.colorbar()
+plt.contour(frame.structural_groups[1].scalar_field[:, 25, :], colors='black',
+                   extent=extent, origin="lower", levels=[1,2])
+plt.show()
+
+#%%
+
+frame.structural_groups[1].structural_elements[1].id
 
 #%%
 
