@@ -163,14 +163,14 @@ frame.detailed_report()
 #%%
 
 # TODO: Works after transposing in function
-# frame["Top"].set_interpolation_method("Universal Co-Kriging")
-# frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+frame["Top"].set_interpolation_method("Universal Co-Kriging")
+frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
 # TODO: Kind of works, needs high range
-frame["Top"].set_interpolation_method("Ordinary Kriging")
-frame["Bot"].set_interpolation_method("Ordinary Kriging")
-frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
-frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+# frame["Top"].set_interpolation_method("Ordinary Kriging")
+# frame["Bot"].set_interpolation_method("Ordinary Kriging")
+# frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+# frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
 
 # TODO: Works after transposing in function
 # frame["Top"].set_interpolation_method("Radial Basis Function")
@@ -230,14 +230,6 @@ general_updated.combined_interpolator_with_domains(
 
 #%%
 
-frame.structural_groups[0].scalar_field.dtype
-
-#%%
-
-frame.structural_groups[0].structural_elements[0].scalar_values_by_domain()
-
-#%%
-
 # plot slice of final_scalar for debugging
 import matplotlib.pyplot as plt
 extent = frame.grid.extent[:4]
@@ -246,10 +238,6 @@ plt.colorbar()
 plt.contour(frame.structural_groups[1].scalar_field[:, 25, :], colors='black',
                    extent=extent, origin="lower", levels=[1,2])
 plt.show()
-
-#%%
-
-frame.structural_groups[1].structural_elements[1].id
 
 #%%
 
@@ -316,19 +304,7 @@ from core.visualization_components_new_new import visualize_structural_frame_wit
 
 #%%
 
-visualize_structural_frame_with_faults(frame=frame, fault_frame=fault_frame)
+visualize_structural_frame_with_faults(frame=frame, fault_frame=fault_frame, mesh_type="masked")
 
 #%%
 
-frame["Top"].structural_elements[1].vertices["unmasked"].shape
-
-#%%
-import pyvista as pv
-plotter = pv.Plotter()
-
-for i in range(len(frame.structural_groups)):
-    for j in range(len(frame.structural_groups[i].structural_elements)):
-        plotter.add_mesh(pv.PolyData(frame.structural_groups[i].structural_elements[j].vertices["combined"],
-                     np.insert(frame.structural_groups[i].structural_elements[j].edges["combined"], 0, 3, axis=1).ravel()),
-                     color='#4285f4')
-plotter.show()

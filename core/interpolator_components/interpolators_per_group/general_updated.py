@@ -166,7 +166,7 @@ def run_interpolation_with_fault_domains(
             # set scalar field with scalar fields by domain masks
             group._scalar_field = np.where(domain_map == domain_id, scalar_field, group._scalar_field)
 
-            # TODO: This can be removed if I manage the previuos step
+            # TODO: This can be removed if I manage the previous step
             # Store per-domain scalar field on the group
             group.set_scalar_field_for_domain(domain_id, scalar_field)
 
@@ -178,6 +178,10 @@ def run_interpolation_with_fault_domains(
                         f"'{elem.name}' in group '{group.name}'."
                     )
                 elem.set_scalar_value_for_domain(domain_id, float(scalar_values[elem.name]))
+
+                # TODO: This sets sv for element over all domains with last sv, might not be stable with UCK
+                elem.set_scalar_value(float(scalar_values[elem.name]))
+
 
 
 # def run_interpolation_with_fault_domains(
@@ -409,19 +413,20 @@ def extract_all_meshes_per_domain(
     """
     domain_ids = np.unique(fault_frame.domain_map)
 
-    # TODO: This needs rework to get three different meshes
-
     # 1) MASKED meshes that end at unconformities and domain boundaries
 
+    # TODO: This needs rework to remove domain specific storage system, works for now
     for d in domain_ids:
         dommask = fault_frame.domain_map == d
 
         for i, group in enumerate(frame.structural_groups):
             sf = group.get_scalar_field_for_domain(d)
+            # sf = group.scalar_field # TODO: This does not work because the mask is insufficient
             if sf is None:
                 continue
 
             # Age-mask logic mirroring the original function
+            # TODO: Check if this makes sense with units unaffected by faults later
             if i == 0:
                 erosion_mask = np.ones_like(sf, dtype=bool)
             else:
@@ -431,7 +436,7 @@ def extract_all_meshes_per_domain(
             mc_mask = erosion_mask & dommask
 
             for elem in group.structural_elements:
-                sval = elem.get_scalar_value_for_domain(d)
+                sval = elem.scalar_value
                 if sval is None:
                     continue
 
@@ -446,6 +451,47 @@ def extract_all_meshes_per_domain(
                 # Store per-domain masked mesh
                 elem.set_mesh_for_domain(d, "masked", verts, faces)
 
+    def combine_meshes(vertices_list, edges_list):
+        """
+        vertices_list: list of (ni, 3) arrays
+        edges_list:    list of (ki, 3) arrays (indices into vertices)
+
+        returns:
+            combined_vertices: (N, 3)
+            combined_edges:    (K, 3)
+        """
+        combined_vertices = []
+        combined_edges = []
+
+        vertex_offset = 0
+
+        for V, E in zip(vertices_list, edges_list):
+            combined_vertices.append(V)
+
+            # Shift edge indices by current vertex offset
+            combined_edges.append(E + vertex_offset)
+
+            vertex_offset += V.shape[0]
+
+        combined_vertices = np.vstack(combined_vertices)
+        combined_edges = np.vstack(combined_edges)
+
+        return combined_vertices, combined_edges
+
+    for group in frame.structural_groups:
+        for elem in group.structural_elements:
+
+            list_of_edges = []
+            list_of_vertices = []
+
+            for d in domain_ids:
+                list_of_vertices.append(elem.get_mesh_for_domain(d, "masked")[0])
+                list_of_edges.append(elem.get_mesh_for_domain(d, "masked")[1])
+
+            combined_vertices, combined_edges = combine_meshes(list_of_vertices, list_of_edges)
+
+            elem.set_mesh("masked", combined_vertices, combined_edges)
+
     # 2) UNMASKED meshes that go through unconformities and domain boundaries
 
     for i, group in enumerate(frame.structural_groups):
@@ -454,7 +500,7 @@ def extract_all_meshes_per_domain(
             continue
 
         for elem in group.structural_elements:
-            sval = elem.get_scalar_value_for_domain(d)
+            sval = elem.scalar_value
             if sval is None:
                 continue
 

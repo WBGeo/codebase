@@ -14,7 +14,7 @@ def visualize_structural_frame_with_faults(
     frame,
     fault_frame=None,
     *,
-    mesh_kind="masked",              # "masked" | "unmasked" | "combined" (if present)
+    mesh_type="masked",              # "masked" | "unmasked" | "combined" (if present)
     show_surface_meshes=True,
     show_points=True,
     show_orientations=True,
@@ -42,30 +42,16 @@ def visualize_structural_frame_with_faults(
 
             # meshes (per domain)
             if show_surface_meshes:
-                for domain_id in frame.structural_groups[0].masks_by_domain().keys():
-                    meshes_d = getattr(elem, "meshes_for_domain", None)
-                    if callable(meshes_d):
-                        dct = elem.meshes_for_domain(domain_id)  # expected dict or {}
-                    else:
-                        dct = {}
+                # check if mesh_type is one of the allowed types
+                if mesh_type not in ["masked", "unmasked", "combined"]:
+                    raise ValueError("mesh_type must be 'masked', 'unmasked' or 'combined'.")
 
-                    if mesh_kind in dct:
-                        V, F = dct[mesh_kind]
-                    else:
-                        # try any available
-                        V, F = (None, None)
-                        for k in ("masked", "combined", "unmasked"):
-                            if k in dct:
-                                V, F = dct[k]
-                                break
-
-                    if V is not None and F is not None and len(V) > 0 and len(F) > 0:
-                        faces_flat = _faces_to_vtk(np.asarray(F))
-                        try:
-                            mesh = pv.PolyData(np.asarray(V), faces_flat)
-                        except Exception:
-                            mesh = pv.PolyData(np.asarray(V), faces_flat.astype(np.int64, copy=False))
-                        plotter.add_mesh(mesh, color=elem.color, opacity=1.0, label=f"{group.name} | {elem.name}")
+                # Add the surface meshes
+                for elem in group.structural_elements:
+                    plotter.add_mesh(
+                        pv.PolyData(elem._vertices[mesh_type],
+                                    np.insert(elem._edges[mesh_type], 0, 3,axis=1).ravel()),
+                                    color=elem.color, opacity=1.0, label=f"{group.name} | {elem.name}")
 
             # surface points
             if show_points and hasattr(frame, "get_surface_points_for_element"):
