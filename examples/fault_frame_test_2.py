@@ -108,6 +108,17 @@ fault_frame.generate_fault_domains()
 # Plot the fault meshes using pyvista
 visualize_fault_frame(fault_frame)
 
+#%%
+
+# plot slice of domain map
+import matplotlib.pyplot as plt
+plt.imshow(fault_frame.domain_map[:, 25, :], origin='lower', cmap='tab20')
+plt.title('Fault Domain Map Slice at Y=25')
+plt.xlabel('X Index')
+plt.ylabel('Z Index')
+plt.colorbar(label='Domain ID')
+plt.show()
+
 
 #%%
 
@@ -227,17 +238,6 @@ general_updated.combined_interpolator_with_domains(
     extract_meshes=True,
     verbose=True,
 )
-
-#%%
-
-# plot slice of final_scalar for debugging
-import matplotlib.pyplot as plt
-extent = frame.grid.extent[:4]
-plt.imshow(frame.structural_groups[1].scalar_field[:, 25, :], cmap='viridis', extent=extent, origin="lower")
-plt.colorbar()
-plt.contour(frame.structural_groups[1].scalar_field[:, 25, :], colors='black',
-                   extent=extent, origin="lower", levels=[1,2])
-plt.show()
 
 #%%
 

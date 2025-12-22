@@ -94,11 +94,13 @@ def run_interpolation_with_fault_domains(
 
     # Tag inputs with domain ids
     sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
+    print(sp_in_domain)
     ori_in_domain = (
         assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
         if frame.orientations is not None
         else None
     )
+    print(ori_in_domain)
 
     for domain_id in domain_ids:
         # Filter input for this domain
@@ -437,6 +439,7 @@ def extract_all_meshes_per_domain(
 
             for elem in group.structural_elements:
                 sval = elem.scalar_value
+                print(elem.name, sval)
                 if sval is None:
                     continue
 
@@ -826,6 +829,12 @@ def build_structural_frame(
             missing = required_orientation_cols - set(orientations.columns)
             raise ValueError(f"Orientations missing required columns: {missing}")
 
+    # Turn every value in mapping_object into a tuple to ensure consistency for loops and itertools
+    for k, v in mapping_object.items():
+        if not isinstance(v, tuple):
+            mapping_object[k] = (v,)
+
+    # Collect all unique element names
     all_element_names = list(itertools.chain.from_iterable(mapping_object.values()))
     unique_elements = list(dict.fromkeys(all_element_names))  # preserve order
 
@@ -885,7 +894,7 @@ def assign_domain_ids_to_points(
     grid : RegularGrid
         The model grid providing ``xyz_to_indices``.
     domain_map : np.ndarray
-        3D array with domain IDs, shaped ``[Z, Y, X]``.
+        3D array with domain IDs, shaped ``[X, Y, Z]``.
     df : pd.DataFrame
         DataFrame with columns ``'X', 'Y', 'Z'``.
 
@@ -895,6 +904,32 @@ def assign_domain_ids_to_points(
         Copy of the input DataFrame with a new integer column ``'domain_id'``.
         If the input is empty, the same DataFrame is returned with an empty column of dtype int.
     """
+
+    # if df.empty:
+    #     out = df.copy()
+    #     out["domain_id"] = pd.Series(dtype=int)
+    #     return out
+    #
+    # coords = df[["X", "Y", "Z"]].values
+    # indices = grid.xyz_to_indices(coords)  # [X, Y, Z]
+    #
+    # # Clamp indices to bounds
+    # for dim in range(3):
+    #     indices[:, dim] = np.clip(
+    #         indices[:, dim], 0, domain_map.shape[dim] - 1
+    #     )
+    #
+    # # Direct indexing: [X, Y, Z]
+    # domain_ids = domain_map[
+    #     indices[:, 0],
+    #     indices[:, 1],
+    #     indices[:, 2],
+    # ]
+    #
+    # out = df.copy()
+    # out["domain_id"] = domain_ids
+    # return out
+
     if df.empty:
         df["domain_id"] = pd.Series(dtype=int)
         return df

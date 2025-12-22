@@ -971,7 +971,13 @@ class FaultFrame(BaseModel):
             raise ValueError("Fault surface points must be set.")
 
         # Initialize single-domain model
-        domain_map = np.zeros(self._grid.resolution, dtype=int)
+        # domain_map = np.zeros(self._grid.resolution, dtype=int)
+        # TODO: Just a test
+        domain_map = np.zeros((self._grid.resolution[2],  # Z
+                               self._grid.resolution[1],  # Y
+                               self._grid.resolution[0]),  # X
+                              dtype=int)
+
         domain_id_counter = 1
 
         temp_ids = []  # Track temporary domain IDs before remapping
@@ -997,6 +1003,12 @@ class FaultFrame(BaseModel):
                 raise ValueError(f"❌ Interpolator did not set domain_mask for fault '{name}'.")
 
             fault_mask = fault.get_domain_mask()
+
+            # TODO: This helps for when resolution does not amtch but breaks everything else
+            if fault_mask.shape != domain_map.shape:
+                # assume fault mask is (z, y, x) and grid is (x, y, z)
+                fault_mask = fault_mask.transpose(2, 1, 0)
+
             new_domain_map = domain_map.copy()
 
             # For each existing domain, split it if affected by this fault
@@ -1011,12 +1023,6 @@ class FaultFrame(BaseModel):
                     domain_id_counter += 1
 
             domain_map = new_domain_map
-
-        # Remap domain IDs to consecutive values starting from 0
-        unique_ids = np.unique(domain_map)
-        remap = {old: new for new, old in enumerate(unique_ids)}
-        remapped_map = np.vectorize(remap.get)(domain_map)
-        self._domain_map = remapped_map
 
         # Remap domain IDs to consecutive values starting from 0
         unique_ids = np.unique(domain_map)

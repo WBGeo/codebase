@@ -54,7 +54,7 @@ p.show(screenshot='input_data.png')
 # Component 2 --> Component 3: Interpolation to geomodel result
 # results_test = universal_cokriging_interpolator(data_test) # TODO: Missing basement when generating unstructured mesh
 # results_test = ordinary_kriging_interpolator(data_test, var_range=500)
-results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
+results_test = rbf_interpolator(data_test, kernel='linear', epsilon=1)
 # results_test = geo_inr_interpolator(data_test)
 # results_test = loop_structural_interpolator(data_test, interpolator_type="FDI")
 
@@ -64,10 +64,10 @@ results_test = rbf_interpolator(data_test, kernel='cubic', epsilon=1)
 plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True, direction="y")
 
 #%%
-p = plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked", show_plotter=False)
-p.image_scale = 2
+plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True, surface_type="masked")
+
 # p.screenshot('structural_model.png')
-p.show(screenshot='structural_model.png')
+#p.show(screenshot='structural_model.png')
 
 
 #%%
