@@ -5,7 +5,8 @@ import os
 from core.object_components import InputData, GeomodelResults
 from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d, plot_mesh_3d
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
+  load_wells_from_csv
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from dotenv import load_dotenv
 from core.liquidEarth.le_push_data import push_geosolution_to_le
@@ -60,9 +61,14 @@ inspect_gradients_wf(results_test)
 
 #%%
 
+# load (100,100,100,100,100,500), (500,500,500,500,500,900) from the wells file
+wells = load_wells_from_csv(cwd + "/examples/data/model_10_wells.csv")
+
+#%%
+
 mesh_test = create_unstructured_mesh_data(
     geomodel_result=results_test,
-    wells=[(100,100,100,100,100,500), (500,500,500,500,500,900)],
+    wells=wells,
     sources=[(900,300,900), (400,600,700)],
     centers=[(200,500,100)],
     axes=[(1000,0,0)],
