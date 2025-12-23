@@ -6,7 +6,7 @@ import numpy as np
 from collections import defaultdict
 from scipy.spatial import cKDTree
 
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Mapping
 from core.object_components import InputData, GeomodelResults
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
@@ -381,6 +381,34 @@ RadiiData = typing.Annotated[List[float], AnnotatedScriptType(name='radii', colo
 ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 
 
+# the file must end with "wells.csv", e.g., "example_wells.csv", etc.
+WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
+
+@wbgeo_component(description='Loads a well from a wells.CSV file',
+                 title='Load Well',  # The title shown in the GUI
+                 color='#cc9999',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Meshing',
+                 identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
+                 return_name='Wells',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
+def load_wells_from_csv(well_file: WellCSVDataType) -> WellData:
+  # format of the csv is: id, x,y,z\n
+  named_well_data: Mapping[str, List[Tuple[float]]] = {}
+  # load csv file
+  with open(well_file, 'r') as f:
+    for line in f.readlines():
+      if line.startswith('#'): continue
+      well_id, well_x, well_y, well_z = [s.strip() for s in line.split(",")]
+      if well_id not in named_well_data:
+        named_well_data[well_id] = []
+      named_well_data[well_id].append([float(well_x), float(well_y), float(well_z)])
+  # ensure that we have at least 2 points per well
+  if any(True for well in named_well_data.values() if len(well) < 2):
+    incorrect_wells = [well_id for well_id, well_data in named_well_data.items() if len(well_data) < 2]
+    raise ValueError(f"Some well(s) {incorrect_wells} are missing their second point")
+  # format right now is {key: [(x,y,z)]} -> map it to [x1, y1, z1, ..., xi, yi, zi] for each well
+  return [ [coordinate for well_group in well_data for coordinate in well_group] for well_data in named_well_data.values()]
 
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
@@ -393,6 +421,7 @@ ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', co
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited amount of inputs
     geomodel_result: GeomodelResults,
+    wells: WellData,
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,
