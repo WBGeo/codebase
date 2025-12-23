@@ -405,10 +405,12 @@ def load_wells_from_csv(well_file: WellCSVDataType) -> WellData:
       named_well_data[well_id].append([float(well_x), float(well_y), float(well_z)])
   # ensure that we have at least 2 points per well
   if any(True for well in named_well_data.values() if len(well) < 2):
-    incorrect_wells = [well_id for well_id, well_data in named_well_data.items() if len(well_data) < 2]
+    incorrect_wells = [well_id for well_id, well_data in named_well_data.items() if
+                       len(well_data) < 2]
     raise ValueError(f"Some well(s) {incorrect_wells} are missing their second point")
   # format right now is {key: [(x,y,z)]} -> map it to [x1, y1, z1, ..., xi, yi, zi] for each well
-  return [ [coordinate for well_group in well_data for coordinate in well_group] for well_data in named_well_data.values()]
+  return [tuple([coordinate for well_group in well_data for coordinate in well_group]) for well_data
+          in named_well_data.values()]
 
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',

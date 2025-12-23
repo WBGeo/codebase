@@ -13,8 +13,8 @@ class LoadWellsTestCase(unittest.TestCase):
   def test_correct(self):
     ret = load_wells_from_csv(data_dir + 'model_10_wells.csv')
     self.assertEqual(2, len(ret), "Length did not match")
-    self.assertEqual([100.0, 100.0, 100.0, 100.0, 100.0, 500.0], ret[0])
-    self.assertEqual([500.0, 500.0, 500.0, 500.0, 500.0, 900.0], ret[1])
+    self.assertEqual((100.0, 100.0, 100.0, 100.0, 100.0, 500.0), ret[0])
+    self.assertEqual((500.0, 500.0, 500.0, 500.0, 500.0, 900.0), ret[1])
 
   def test_not_a_vertice(self):
     # one well is missing a second point -> no vertice could be created
