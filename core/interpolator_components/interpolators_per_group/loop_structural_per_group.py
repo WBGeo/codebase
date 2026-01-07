@@ -16,17 +16,6 @@ def interpolate_group_loop_structural(
     Returns:
         scalar_field : np.ndarray shaped to tuple(grid.resolution)
         scalar_values_by_element : Dict[str, float] (element_name -> scalar value)
-
-    Notes
-    -----
-    - We follow your convention: assign strictly increasing scalar values with
-      **oldest = 1, youngest = n**.
-    - The values are injected into LoopStructural via a 'val' column.
-    - LoopStructural’s `evaluate_feature_value` typically returns a flat array;
-      we reshape to `grid.resolution` and (to match your previous code) apply `.T`.
-      If your other pure interpolators return without transpose, feel free to
-      drop the `.T` here for consistency across methods in your pipeline.
-    - This function does **not** mutate `group`.
     """
     # --- validation ---
     if group_surface_points_df is None or group_surface_points_df.empty:
