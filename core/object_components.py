@@ -167,7 +167,7 @@ class MeshResults:
             self.elements_obj = Elements(element_array=self.get_union_elems(), node_array=self.nodes)
 
 
-    def export_vtu(self, filename: str):
+    def export_vtu(self, filename: typing.Union[str|collections.abc.Buffer]):
         """
         Export the mesh data to a VTU file.
         Args:
