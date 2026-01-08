@@ -62,7 +62,7 @@ def run_interpolation_with_fault_domains(
     frame: StructuralFrame,
     fault_frame: FaultFrame,
     *,
-    crop_to_domain: bool = True,
+    crop_to_domain: bool = False,
 ) -> None:
     """Interpolate each structural group independently inside each fault domain.
 
@@ -94,13 +94,11 @@ def run_interpolation_with_fault_domains(
 
     # Tag inputs with domain ids
     sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
-    print(sp_in_domain)
     ori_in_domain = (
         assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
         if frame.orientations is not None
         else None
     )
-    print(ori_in_domain)
 
     for domain_id in domain_ids:
         # Filter input for this domain
@@ -152,25 +150,33 @@ def run_interpolation_with_fault_domains(
             )
 
             # Write sub-grid result back into a full-size scalar field if cropped
+            # TODO: Figure out what exactly happens here and how the rotation is here
+            # TODO: This seems to also throw an error with irregular grid
             if crop_to_domain and bbox is not None:
                 full_shape = tuple(frame.grid.resolution.astype(int))
+                print(full_shape)
                 scalar_field_full = np.empty(full_shape, dtype=scalar_field_sub.dtype)
                 scalar_field_full.fill(np.nan)
 
                 kz0, kz1, ky0, ky1, kx0, kx1 = bbox
+                print(bbox)
                 # Note: arrays are in [Z, Y, X] order
                 scalar_field_full[kz0:kz1 + 1, ky0:ky1 + 1, kx0:kx1 + 1] = scalar_field_sub
                 scalar_field = scalar_field_full
             else:
                 scalar_field = scalar_field_sub
 
-            # TODO: This is where I need to combine domain scalar fields and store only one per group
-            # set scalar field with scalar fields by domain masks
-            group._scalar_field = np.where(domain_map == domain_id, scalar_field, group._scalar_field)
+            # Combine domain scalar fields and store only single one per group using domain masks
+            # note that group._scalar_field is transposed to fit [Z,Y,X]
+            group._scalar_field = np.where(domain_map == domain_id, scalar_field, group._scalar_field.T)
 
-            # TODO: This can be removed if I manage the previous step
+            # TODO: This is currently still required for masked meshing, remove when updated
             # Store per-domain scalar field on the group
             group.set_scalar_field_for_domain(domain_id, scalar_field)
+
+            # TODO: Transpose back to [X,Y,Z] for final storage
+            group._scalar_field = group._scalar_field.T
+
 
             # Store per-domain scalar values on elements
             for elem in group.structural_elements:
@@ -183,6 +189,11 @@ def run_interpolation_with_fault_domains(
 
                 # TODO: This sets sv for element over all domains with last sv, might not be stable with UCK
                 elem.set_scalar_value(float(scalar_values[elem.name]))
+
+    # TODO: This is just part of HOT FIX
+    # for group in frame.structural_groups:
+    #     group._scalar_field = group._scalar_field.T
+
 
 
 
@@ -338,6 +349,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
     """
     shape = tuple(frame.grid.resolution.astype(int))
     final_lith = np.zeros(shape, dtype=int)
+    final_lith = final_lith.T
 
     final_scalar = np.zeros(shape, dtype=float)
 
@@ -355,17 +367,22 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
     # Process domains independently
     for d in domain_ids:
         dommask = fault_frame.domain_map == d
+        #dommask = dommask.T # TODO: HOT FIX
         domain_lith = np.zeros(shape, dtype=int)
+        domain_lith = domain_lith.T
 
         # Process groups from oldest -> youngest so younger overwrites older
         for group in reversed(frame.structural_groups):
             sf = group.get_scalar_field_for_domain(d)
+            #sf = sf.T # TODO: HOT FIX
             gm = group.get_mask_for_domain(d)
+            #gm = gm.T # TODO: HOT FIX
             if sf is None or gm is None:
                 # No data in this domain for this group => skip
                 continue
 
             group_block = np.zeros(shape, dtype=int)
+            group_block = group_block.T  # TODO: HOT FIX
 
             # Fill elements in natural (oldest->youngest) order; use "== 0" so younger has priority
             for elem in group.structural_elements:
@@ -373,7 +390,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
                 if sval is None:
                     continue
                 write_mask = (sf >= sval) & (group_block == 0)
-                group_block[write_mask] = elem.id
+                group_block[write_mask] = elem.id #
 
             # Apply age mask then domain mask
             group_block = np.where(gm, group_block, 0)
@@ -384,7 +401,6 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
 
         # Write this domain into final (domain masks are disjoint)
         final_lith[dommask] = domain_lith[dommask]
-
 
     return final_lith
 
@@ -423,6 +439,7 @@ def extract_all_meshes_per_domain(
 
         for i, group in enumerate(frame.structural_groups):
             sf = group.get_scalar_field_for_domain(d)
+
             # sf = group.scalar_field # TODO: This does not work because the mask is insufficient
             if sf is None:
                 continue
@@ -439,7 +456,7 @@ def extract_all_meshes_per_domain(
 
             for elem in group.structural_elements:
                 sval = elem.scalar_value
-                print(elem.name, sval)
+                print(elem.name, sval) # TODO: For Gempy this is not consistent among domains I guess
                 if sval is None:
                     continue
 
@@ -508,7 +525,7 @@ def extract_all_meshes_per_domain(
                 continue
 
             verts, faces = marching_cubes_per_element(
-                sf.T,  # keep transposition exactly as before
+                sf,  # keep transposition exactly as before
                 sval,
                 grid_spacing,
                 extent,
@@ -861,7 +878,7 @@ def build_structural_frame(
         )
         group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
-        group._scalar_field = np.zeros(resolution, dtype=float) # set default empty array to build sf on
+        group._scalar_field = np.zeros(resolution, dtype=float) # set default empty array to build sf on #
 
     # Generate colors AFTER groups exist
     color_map = generate_grouped_colors_per_element(group_objects)

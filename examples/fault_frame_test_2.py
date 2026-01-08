@@ -81,7 +81,7 @@ fault_orientations_df = pd.concat([ori_a, ori_b, ori_c], ignore_index=True)
 
 grid = RegularGrid(
     extent=(0, 1000, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(50, 50, 50)  # Example resolution
+    resolution=(25, 50, 50)  # Example resolution
 )
 
 fault_names = ["FaultC", "FaultA", "FaultB"]  # FaultB is younger than FaultA
@@ -107,17 +107,6 @@ fault_frame.generate_fault_domains()
 
 # Plot the fault meshes using pyvista
 visualize_fault_frame(fault_frame)
-
-#%%
-
-# plot slice of domain map
-import matplotlib.pyplot as plt
-plt.imshow(fault_frame.domain_map[:, 25, :], origin='lower', cmap='tab20')
-plt.title('Fault Domain Map Slice at Y=25')
-plt.xlabel('X Index')
-plt.ylabel('Z Index')
-plt.colorbar(label='Domain ID')
-plt.show()
 
 
 #%%
@@ -165,7 +154,7 @@ structural_orientations_df = pd.DataFrame(orientation_data, columns=["X", "Y", "
 # Create a StructuralFrame
 frame = general_updated.build_structural_frame({"Top": ('UnitD', 'UnitC'), "Bot": ('UnitB', 'UnitA')},
                                        np.array([0, 1000, 0, 1000, 0, 1000]),
-                                       np.array([50, 50, 50]),
+                                       np.array([25, 50, 50]),
                                        structural_surface_points_df,
                                        structural_orientations_df)
 frame.detailed_report()
@@ -201,6 +190,7 @@ frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 #%%
 
 frame.detailed_report()
+
 
 #%%
 
