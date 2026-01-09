@@ -108,4 +108,129 @@ def interpolate_group_universal_cokriging(
     raw_scalar_field = geo_model.solutions.raw_arrays.scalar_field_matrix[0]
     scalar_field = np.asarray(raw_scalar_field, dtype=float).reshape(tuple(grid.resolution)).T
 
-    return scalar_field, scalar_values_by_element
+    # ---- rescale scalar field so that element isosurfaces map exactly to 1, 2, ..., n ----
+
+    # This affine transform does not really work if n < 3, as it distorts the spacing.
+    # rescaled_scalar_field, rescaled_scalar_values_by_element = affine_rescale_scalar_field(
+    #     scalar_field=scalar_field,
+    #     scalar_values_by_element=scalar_values_by_element,
+    # )
+
+    # TODO: Check if this works for n>3 correctly
+    rescaled_scalar_field, rescaled_scalar_values_by_element = rescale_scalar_field_safe(
+        scalar_field=scalar_field,
+        scalar_values_by_element=scalar_values_by_element,
+    )
+
+    return rescaled_scalar_field, rescaled_scalar_values_by_element
+
+
+def affine_rescale_scalar_field(
+    scalar_field: np.ndarray,
+    scalar_values_by_element: dict,
+):
+    """
+    Affine rescaling of a scalar field so that element isosurfaces
+    map exactly to 1, 2, ..., n WITHOUT clipping the field.
+    """
+
+    # Sort elements by scalar value
+    items_sorted = sorted(
+        scalar_values_by_element.items(),
+        key=lambda x: x[1]
+    )
+
+    old_vals = np.array([v for _, v in items_sorted], dtype=float)
+    n = len(old_vals)
+    new_vals = np.arange(1, n + 1, dtype=float)
+
+    if n < 2:
+        raise ValueError("Need at least two elements for affine rescaling")
+
+    # Use first and last element as anchors
+    s1, s2 = old_vals[0], old_vals[-1]
+    t1, t2 = new_vals[0], new_vals[-1]
+
+    a = (t2 - t1) / (s2 - s1)
+    b = t1 - a * s1
+
+    # Apply globally
+    scalar_field_rescaled = a * scalar_field + b
+
+    # New scalar values per element
+    scalar_values_rescaled = {
+        name: float(a * val + b)
+        for name, val in scalar_values_by_element.items()
+    }
+
+    return scalar_field_rescaled, scalar_values_rescaled
+
+def rescale_scalar_field_safe(
+    scalar_field: np.ndarray,
+    scalar_values_by_element: dict,
+):
+    """
+    Rescale scalar field so that element isosurfaces map to 1..n.
+    Handles n=1, n=2, n>=3 correctly.
+    """
+
+    items = sorted(
+        scalar_values_by_element.items(),
+        key=lambda x: x[1]
+    )
+
+    old_vals = np.array([v for _, v in items], dtype=float)
+    n = len(old_vals)
+
+    if n == 0:
+        raise ValueError("No elements to rescale")
+
+    # ------------------
+    # n = 1 → pure shift
+    # ------------------
+    if n == 1:
+        s0 = old_vals[0]
+        shift = 1.0 - s0
+        S_new = scalar_field + shift
+
+        scalar_values_rescaled = {
+            items[0][0]: 1.0
+        }
+
+        return S_new, scalar_values_rescaled
+
+    # ------------------
+    # n >= 2 → piecewise affine
+    # ------------------
+    new_vals = np.arange(1, n + 1, dtype=float)
+
+    slopes = np.diff(new_vals) / np.diff(old_vals)
+    slope_lo = slopes[0]
+    slope_hi = slopes[-1]
+
+    S = scalar_field
+    S_new = np.empty_like(S, dtype=float)
+
+    # Below first surface
+    mask = S <= old_vals[0]
+    S_new[mask] = new_vals[0] + slope_lo * (S[mask] - old_vals[0])
+
+    # Between surfaces
+    for i in range(n - 1):
+        lo, hi = old_vals[i], old_vals[i + 1]
+        mask = (S > lo) & (S <= hi)
+        S_new[mask] = new_vals[i] + slopes[i] * (S[mask] - lo)
+
+    # Above last surface
+    mask = S > old_vals[-1]
+    S_new[mask] = new_vals[-1] + slope_hi * (S[mask] - old_vals[-1])
+
+    scalar_values_rescaled = {
+        name: float(val)
+        for name, val in zip(
+            [k for k, _ in items],
+            new_vals
+        )
+    }
+
+    return S_new, scalar_values_rescaled
