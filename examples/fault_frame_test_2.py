@@ -149,6 +149,7 @@ for elem in elements:
 structural_surface_points_df = pd.DataFrame(surface_data, columns=["X", "Y", "Z", "formation"])
 structural_orientations_df = pd.DataFrame(orientation_data, columns=["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"])
 
+
 #%%
 
 # Create a StructuralFrame

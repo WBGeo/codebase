@@ -62,7 +62,7 @@ def run_interpolation_with_fault_domains(
     frame: StructuralFrame,
     fault_frame: FaultFrame,
     *,
-    crop_to_domain: bool = False,
+    crop_to_domain: bool = True,
 ) -> None:
     """Interpolate each structural group independently inside each fault domain.
 
@@ -150,18 +150,18 @@ def run_interpolation_with_fault_domains(
             )
 
             # Write sub-grid result back into a full-size scalar field if cropped
-            # TODO: Figure out what exactly happens here and how the rotation is here
-            # TODO: This seems to also throw an error with irregular grid
             if crop_to_domain and bbox is not None:
-                full_shape = tuple(frame.grid.resolution.astype(int))
-                print(full_shape)
-                scalar_field_full = np.empty(full_shape, dtype=scalar_field_sub.dtype)
-                scalar_field_full.fill(np.nan)
+                full_shape = tuple(frame.grid.resolution[::-1])  # (Z,Y,X)
+                scalar_field_full = np.full(full_shape, np.nan, dtype=scalar_field_sub.dtype)
 
                 kz0, kz1, ky0, ky1, kx0, kx1 = bbox
-                print(bbox)
-                # Note: arrays are in [Z, Y, X] order
-                scalar_field_full[kz0:kz1 + 1, ky0:ky1 + 1, kx0:kx1 + 1] = scalar_field_sub
+
+                scalar_field_full[
+                kz0:kz1 + 1,
+                ky0:ky1 + 1,
+                kx0:kx1 + 1
+                ] = scalar_field_sub
+
                 scalar_field = scalar_field_full
             else:
                 scalar_field = scalar_field_sub
@@ -174,10 +174,10 @@ def run_interpolation_with_fault_domains(
             # Store per-domain scalar field on the group
             group.set_scalar_field_for_domain(domain_id, scalar_field)
 
-            # TODO: Transpose back to [X,Y,Z] for final storage
+            # Transpose back to [X,Y,Z] for final storage
             group._scalar_field = group._scalar_field.T
 
-
+            # TODO: Verify if this is still needed an remove
             # Store per-domain scalar values on elements
             for elem in group.structural_elements:
                 if elem.name not in scalar_values:
@@ -187,100 +187,8 @@ def run_interpolation_with_fault_domains(
                     )
                 elem.set_scalar_value_for_domain(domain_id, float(scalar_values[elem.name]))
 
-                # TODO: This sets sv for element over all domains with last sv, might not be stable with UCK
+                # Set scalar value on element (overwrites previous, but consistent over domains)
                 elem.set_scalar_value(float(scalar_values[elem.name]))
-
-    # TODO: This is just part of HOT FIX
-    # for group in frame.structural_groups:
-    #     group._scalar_field = group._scalar_field.T
-
-
-
-
-# def run_interpolation_with_fault_domains(
-#     frame: StructuralFrame,
-#     fault_frame: FaultFrame,
-# ) -> None:
-#     """Interpolate each structural group independently inside each fault domain.
-#
-#     Results are stored in per-domain slots on the groups/elements via
-#     - ``group.set_scalar_field_for_domain(domain_id, field)``
-#     - ``element.set_scalar_value_for_domain(domain_id, value)``
-#
-#     Assumes each dispatch function returns a tuple:
-#     ``(scalar_field: np.ndarray, scalar_values_by_element: Dict[str, float])``.
-#     The input groups are not mutated besides the explicit setters above.
-#
-#     Parameters
-#     ----------
-#     frame : StructuralFrame
-#         Structural frame containing groups, elements, grid and input data.
-#     fault_frame : FaultFrame
-#         Fault frame providing a 3D ``domain_map`` with domain identifiers.
-#     """
-#     domain_map = fault_frame.domain_map
-#     domain_ids = np.unique(domain_map)
-#
-#     # Tag inputs with domain ids
-#     sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
-#     ori_in_domain = (
-#         assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
-#         if frame.orientations is not None
-#         else None
-#     )
-#
-#     for domain_id in domain_ids:
-#         # Filter input for this domain
-#         sp_filtered_all = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
-#         ori_filtered_all = (
-#             ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
-#             if ori_in_domain is not None
-#             else None
-#         )
-#
-#         # Interpolate group-by-group
-#         for group in frame.structural_groups:
-#             # Formations in this group
-#             group_formations = [e.name for e in group.structural_elements]
-#
-#             # Filter to this group’s formations
-#             sp_filtered = sp_filtered_all[sp_filtered_all["formation"].isin(group_formations)]
-#             ori_filtered: Optional[pd.DataFrame] = None
-#             if ori_filtered_all is not None:
-#                 ori_filtered = ori_filtered_all[ori_filtered_all["formation"].isin(group_formations)]
-#
-#             # Sanity: at least 2 points per element (kept as-is)
-#             for elem in group.structural_elements:
-#                 n_pts = (sp_filtered["formation"] == elem.name).sum()
-#                 if n_pts < 2:
-#                     raise ValueError(
-#                         f"❌ Not enough surface points for '{elem.name}' in domain {domain_id} (have {n_pts})"
-#                     )
-#
-#             # Pick interpolator
-#             method = group.interpolation_method
-#             if method not in interpolate_dispatch:
-#                 raise ValueError(f"Unsupported interpolation method: {method}")
-#
-#             # ---- CALL: must return scalar_field + dict of element scalar values ----
-#             scalar_field, scalar_values = interpolate_dispatch[method](
-#                 group=group,
-#                 grid=frame.grid,
-#                 group_surface_points_df=sp_filtered,
-#                 group_orientations_points_df=ori_filtered,
-#             )
-#
-#             # Store per-domain scalar field on the group
-#             group.set_scalar_field_for_domain(domain_id, scalar_field)
-#
-#             # Store per-domain scalar values on elements
-#             for elem in group.structural_elements:
-#                 if elem.name not in scalar_values:
-#                     raise ValueError(
-#                         "Interpolator did not return a scalar value for element "
-#                         f"'{elem.name}' in group '{group.name}'."
-#                     )
-#                 elem.set_scalar_value_for_domain(domain_id, float(scalar_values[elem.name]))
 
 
 # --- 2) Age masks per domain --------------------------------------------------
@@ -367,22 +275,19 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
     # Process domains independently
     for d in domain_ids:
         dommask = fault_frame.domain_map == d
-        #dommask = dommask.T # TODO: HOT FIX
         domain_lith = np.zeros(shape, dtype=int)
         domain_lith = domain_lith.T
 
         # Process groups from oldest -> youngest so younger overwrites older
         for group in reversed(frame.structural_groups):
             sf = group.get_scalar_field_for_domain(d)
-            #sf = sf.T # TODO: HOT FIX
             gm = group.get_mask_for_domain(d)
-            #gm = gm.T # TODO: HOT FIX
             if sf is None or gm is None:
                 # No data in this domain for this group => skip
                 continue
 
             group_block = np.zeros(shape, dtype=int)
-            group_block = group_block.T  # TODO: HOT FIX
+            group_block = group_block.T
 
             # Fill elements in natural (oldest->youngest) order; use "== 0" so younger has priority
             for elem in group.structural_elements:
@@ -438,9 +343,9 @@ def extract_all_meshes_per_domain(
         dommask = fault_frame.domain_map == d
 
         for i, group in enumerate(frame.structural_groups):
-            sf = group.get_scalar_field_for_domain(d)
+            # sf = group.get_scalar_field_for_domain(d)
+            sf = group.scalar_field.T # Check if this works as combined scalar field
 
-            # sf = group.scalar_field # TODO: This does not work because the mask is insufficient
             if sf is None:
                 continue
 
@@ -456,7 +361,6 @@ def extract_all_meshes_per_domain(
 
             for elem in group.structural_elements:
                 sval = elem.scalar_value
-                print(elem.name, sval) # TODO: For Gempy this is not consistent among domains I guess
                 if sval is None:
                     continue
 
@@ -679,43 +583,75 @@ def compute_domain_bbox_indices(domain_map: np.ndarray, domain_id: int):
     return int(kz0), int(kz1), int(ky0), int(ky1), int(kx0), int(kx1)
 
 
-def build_subgrid_from_bbox(grid: RegularGrid, bbox: tuple) -> RegularGrid:
-    """Create a ``RegularGrid`` that spans an index-aligned bbox of the parent grid.
+# def build_subgrid_from_bbox(grid: RegularGrid, bbox: tuple) -> RegularGrid:
+#     """Create a ``RegularGrid`` that spans an index-aligned bbox of the parent grid.
+#
+#
+#     The parent grid uses spacing ``grid.spacing`` and has total ``resolution``. The returned
+#     subgrid shares the same spacing; its extent is computed from the parent's extent and the
+#     inclusive index bounds ``bbox`` (in [Z, Y, X] order).
+#
+#
+#     Notes
+#     -----
+#     - This function **does not** modify the parent grid.
+#     - It assumes ``grid.extent`` is ordered as ``[xmin, xmax, ymin, ymax, zmin, zmax]`` and
+#     spacing is ``[dx, dy, dz]``. If your ``RegularGrid`` uses a different convention, adjust
+#     the extent calculation accordingly (the interpolation results written back still preserve
+#     the original storage layout).
+#     """
+#     kz0, kz1, ky0, ky1, kx0, kx1 = bbox
+#
+#
+#     dx, dy, dz = grid.spacing
+#     xmin, xmax, ymin, ymax, zmin, zmax = grid.extent
+#
+#
+#     # Convert inclusive index bounds to physical extents (upper bound is exclusive in space)
+#     sub_xmin = xmin + kx0 * dx
+#     sub_xmax = xmin + (kx1 + 1) * dx
+#     sub_ymin = ymin + ky0 * dy
+#     sub_ymax = ymin + (ky1 + 1) * dy
+#     sub_zmin = zmin + kz0 * dz
+#     sub_zmax = zmin + (kz1 + 1) * dz
+#
+#
+#     sub_extent = np.array([sub_xmin, sub_xmax, sub_ymin, sub_ymax, sub_zmin, sub_zmax], dtype=float)
+#     sub_resolution = np.array([kx1 - kx0 + 1, ky1 - ky0 + 1, kz1 - kz0 + 1], dtype=int)
+#
+#     return RegularGrid(extent=sub_extent, resolution=sub_resolution)
 
-
-    The parent grid uses spacing ``grid.spacing`` and has total ``resolution``. The returned
-    subgrid shares the same spacing; its extent is computed from the parent's extent and the
-    inclusive index bounds ``bbox`` (in [Z, Y, X] order).
-
-
-    Notes
-    -----
-    - This function **does not** modify the parent grid.
-    - It assumes ``grid.extent`` is ordered as ``[xmin, xmax, ymin, ymax, zmin, zmax]`` and
-    spacing is ``[dx, dy, dz]``. If your ``RegularGrid`` uses a different convention, adjust
-    the extent calculation accordingly (the interpolation results written back still preserve
-    the original storage layout).
+def build_subgrid_from_bbox(grid, bbox):
+    """
+    bbox: (kz0, kz1, ky0, ky1, kx0, kx1) in [Z,Y,X] index space
+    Returns a RegularGrid in [X,Y,Z] space
     """
     kz0, kz1, ky0, ky1, kx0, kx1 = bbox
 
+    # Original grid info
+    dx, dy, dz = grid.spacing  # spacing in X,Y,Z
+    x0, x1, y0, y1, z0, z1 = grid.extent
 
-    dx, dy, dz = grid.spacing
-    xmin, xmax, ymin, ymax, zmin, zmax = grid.extent
+    # Convert index bbox → physical extents (IMPORTANT)
+    sub_extent = (
+        x0 + kx0 * dx,
+        x0 + (kx1 + 1) * dx,
+        y0 + ky0 * dy,
+        y0 + (ky1 + 1) * dy,
+        z0 + kz0 * dz,
+        z0 + (kz1 + 1) * dz,
+    )
 
+    sub_resolution = (
+        kx1 - kx0 + 1,
+        ky1 - ky0 + 1,
+        kz1 - kz0 + 1,
+    )
 
-    # Convert inclusive index bounds to physical extents (upper bound is exclusive in space)
-    sub_xmin = xmin + kx0 * dx
-    sub_xmax = xmin + (kx1 + 1) * dx
-    sub_ymin = ymin + ky0 * dy
-    sub_ymax = ymin + (ky1 + 1) * dy
-    sub_zmin = zmin + kz0 * dz
-    sub_zmax = zmin + (kz1 + 1) * dz
-
-
-    sub_extent = np.array([sub_xmin, sub_xmax, sub_ymin, sub_ymax, sub_zmin, sub_zmax], dtype=float)
-    sub_resolution = np.array([kx1 - kx0 + 1, ky1 - ky0 + 1, kz1 - kz0 + 1], dtype=int)
-
-    return RegularGrid(extent=sub_extent, resolution=sub_resolution)
+    return RegularGrid(
+        extent=sub_extent,
+        resolution=sub_resolution,
+    )
 
 
 def build_fault_frame(

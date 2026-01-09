@@ -22,10 +22,6 @@ df2 = pd.read_csv(cwd + "/examples/data/model7_orientations_df.csv")
 fault_orientations_df = df2[df2["formation"] == "fault"]
 structural_orientations_df = df2[df2["formation"] != "fault"]
 
-structural_orientations_df.dtypes
-
-#%%
-
 new_row = structural_orientations_df.iloc[-1].copy()
 new_row["X"] = 2000
 structural_orientations_df.loc[len(structural_orientations_df)] = new_row
@@ -34,14 +30,27 @@ new_row = structural_orientations_df.iloc[0].copy()
 new_row["X"] = 2300
 structural_orientations_df.loc[len(structural_orientations_df)] = new_row
 
-structural_orientations_df
+# Add another element on top
+# Select rows where formation == "rock3" and make a copy
+rock3_copy = structural_surface_points_df[
+    structural_surface_points_df["formation"] == "rock3"
+].copy()
 
+# Modify the copied rows
+rock3_copy["formation"] = "rock4"
+rock3_copy["Z"] = rock3_copy["Z"] + 50
+
+# Append to the original dataframe
+structural_surface_points_df = pd.concat(
+    [structural_surface_points_df, rock3_copy],
+    ignore_index=True
+)
 
 #%%
 
 grid = RegularGrid(
     extent=(0, 2500, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(125, 50, 50)  # Example resolution
+    resolution=(62, 50, 25)  # Example resolution
 )
 
 fault_frame = general_updated.build_fault_frame(
@@ -52,9 +61,6 @@ fault_frame = general_updated.build_fault_frame(
     grid=grid
 )
 
-
-
-#%%
 fault_frame.detailed_report()
 
 #%%
@@ -67,23 +73,13 @@ fault_frame.generate_fault_domains()
 # Plot the fault meshes using pyvista
 visualize_fault_frame(fault_frame)
 
-#%%
-
-# plot slice of domain map
-import matplotlib.pyplot as plt
-plt.imshow(fault_frame.domain_map[:, 25, :], origin='lower', cmap='tab20')
-plt.title('Fault Domain Map Slice at Y=25')
-plt.xlabel('X Index')
-plt.ylabel('Z Index')
-plt.show()
-
 
 #%%
 
 # Create a StructuralFrame
-frame = general_updated.build_structural_frame({"Top": ('rock3'), "Bot": ('rock2', 'rock1')},
+frame = general_updated.build_structural_frame({"Top": ('rock4', 'rock3'), "Bot": ('rock2', 'rock1')},
                                                np.array([0, 2500, 0, 1000, 0, 1000]),
-                                               np.array([125, 50, 50]),
+                                               np.array([62, 50, 25]),
                                                structural_surface_points_df,
                                                structural_orientations_df)
 frame.detailed_report()
@@ -99,7 +95,7 @@ frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 # frame["Top"].set_interpolation_method("Ordinary Kriging")
 # frame["Bot"].set_interpolation_method("Ordinary Kriging")
 # frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
-# frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+# frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=1, variogram_model="spherical")
 
 # RBF
 # frame["Top"].set_interpolation_method("Radial Basis Function")
@@ -122,12 +118,6 @@ frame.detailed_report()
 
 #%%
 
-# TODO: Problem A: Missing data for top layer on both sides of fault block -
-#  Solution: Add more data points
-# TODO: Problem B: Need two units in top group for OK and RBF to work well
-#  Solution: Add another element on top
-# TODO: Problem C: For Gempy the saclar values are nor consistent among domains
-
 general_updated.combined_interpolator_with_domains(
     frame,
     fault_frame=fault_frame,  # or None for single-domain
@@ -135,37 +125,23 @@ general_updated.combined_interpolator_with_domains(
     verbose=True,
 )
 
-
-
 #%%
 
 from core.visualization_components_new_new import plot_structural_slice_with_faults
-# TODO: Something wrong with input data here (arrows)
 plot_structural_slice_with_faults(frame=frame,
                                   fault_frame=fault_frame,
                                   lith_block=frame.get_LithBlock(),
                                   axis='y',
-                                  show_input_data=False,
+                                  show_input_data=True,
                                   index=0)
 
 #%%
 
 from core.visualization_components_new_new import visualize_structural_frame_with_faults
-# TODO: Something wrong with input data here (arrows)
 visualize_structural_frame_with_faults(frame=frame,
                                        fault_frame=fault_frame,
                                        mesh_type="masked",
-                                       show_orientations=False)
+                                       show_orientations=True)
 
-#%%
-
-frame.structural_groups[1].scalar_field
-
-# plot slice of scalar field
-import matplotlib.pyplot as plt
-plt.imshow(frame.structural_groups[1].scalar_field[:, 25, :].T, origin='lower', cmap='viridis')
-plt.title('Scalar Field Slice at Y=25 for Group Bot')
-plt.xlabel('X Index')
-plt.ylabel('Z Index')
-plt.colorbar(label='Scalar Value')
-plt.show()
+# TODO: If crop to domain is FALSE - meshes "end" at fault surface but compute over full grid
+# TODO: If crop to domain is TRUE - meshes go over fault surface but compute over smaller sub grid
