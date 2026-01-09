@@ -42,16 +42,11 @@ def visualize_structural_frame_with_faults(
 
             # meshes (per domain)
             if show_surface_meshes:
-                # check if mesh_type is one of the allowed types
-                if mesh_type not in ["masked", "unmasked", "combined"]:
-                    raise ValueError("mesh_type must be 'masked', 'unmasked' or 'combined'.")
-
-                # Add the surface meshes
-                for elem in group.structural_elements:
+                for mesh_elem in group.structural_elements:  # <--- renamed variable
                     plotter.add_mesh(
-                        pv.PolyData(elem._vertices[mesh_type],
-                                    np.insert(elem._edges[mesh_type], 0, 3,axis=1).ravel()),
-                                    color=elem.color, opacity=1.0, label=f"{group.name} | {elem.name}")
+                        pv.PolyData(mesh_elem._vertices[mesh_type],
+                                    np.insert(mesh_elem._edges[mesh_type], 0, 3, axis=1).ravel()),
+                        color=mesh_elem.color, opacity=1.0, label=f"{group.name} | {mesh_elem.name}")
 
             # surface points
             if show_points and hasattr(frame, "get_surface_points_for_element"):
@@ -61,7 +56,8 @@ def visualize_structural_frame_with_faults(
                     plotter.add_points(cloud, color=elem.color, point_size=8, render_points_as_spheres=True)
 
             # orientations
-            if show_orientations and getattr(frame, "orientations", None) is not None and hasattr(frame, "get_orientations_for_element"):
+            if show_orientations and getattr(frame, "orientations", None) is not None and hasattr(frame,
+                                                                                                  "get_orientations_for_element"):
                 df_ori = frame.get_orientations_for_element(elem.name)
                 if df_ori is not None and not df_ori.empty:
                     start = df_ori[["X", "Y", "Z"]].values
@@ -70,6 +66,41 @@ def visualize_structural_frame_with_faults(
                     for i in range(len(start)):
                         arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
                         plotter.add_mesh(arrow, color=elem.color)
+
+        # for elem in group.structural_elements:
+        #     # legend entry
+        #     group_entries.append((f"• {elem.name}", elem.color))
+        #
+        #     # meshes (per domain)
+        #     if show_surface_meshes:
+        #         # check if mesh_type is one of the allowed types
+        #         if mesh_type not in ["masked", "unmasked", "combined"]:
+        #             raise ValueError("mesh_type must be 'masked', 'unmasked' or 'combined'.")
+        #
+        #         # Add the surface meshes
+        #         for elem in group.structural_elements:
+        #             plotter.add_mesh(
+        #                 pv.PolyData(elem._vertices[mesh_type],
+        #                             np.insert(elem._edges[mesh_type], 0, 3,axis=1).ravel()),
+        #                             color=elem.color, opacity=1.0, label=f"{group.name} | {elem.name}")
+        #
+        #     # surface points
+        #     if show_points and hasattr(frame, "get_surface_points_for_element"):
+        #         df_points = frame.get_surface_points_for_element(elem.name)
+        #         if df_points is not None and not df_points.empty:
+        #             cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values)
+        #             plotter.add_points(cloud, color=elem.color, point_size=8, render_points_as_spheres=True)
+        #
+        #     # orientations
+        #     if show_orientations and getattr(frame, "orientations", None) is not None and hasattr(frame, "get_orientations_for_element"):
+        #         df_ori = frame.get_orientations_for_element(elem.name)
+        #         if df_ori is not None and not df_ori.empty:
+        #             start = df_ori[["X", "Y", "Z"]].values
+        #             direction = df_ori[["G_x", "G_y", "G_z"]].values
+        #             scale = 50.0
+        #             for i in range(len(start)):
+        #                 arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
+        #                 plotter.add_mesh(arrow, color=elem.color)
 
         legend_entries.append((group.name, group_entries))
 
