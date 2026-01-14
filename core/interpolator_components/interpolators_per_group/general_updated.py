@@ -172,7 +172,7 @@ def run_interpolation_with_fault_domains(
 
             # TODO: This is currently still required for masked meshing, remove when updated
             # Store per-domain scalar field on the group
-            group.set_scalar_field_for_domain(domain_id, scalar_field)
+            # group.set_scalar_field_for_domain(domain_id, scalar_field)
 
             # Transpose back to [X,Y,Z] for final storage
             group._scalar_field = group._scalar_field.T
@@ -185,7 +185,7 @@ def run_interpolation_with_fault_domains(
                         "Interpolator did not return a scalar value for element "
                         f"'{elem.name}' in group '{group.name}'."
                     )
-                elem.set_scalar_value_for_domain(domain_id, float(scalar_values[elem.name]))
+                # elem.set_scalar_value_for_domain(domain_id, float(scalar_values[elem.name]))
 
                 # Set scalar value on element (overwrites previous, but consistent over domains)
                 elem.set_scalar_value(float(scalar_values[elem.name]))
@@ -215,7 +215,8 @@ def set_scalar_masks_per_domain(frame: StructuralFrame, fault_frame: FaultFrame)
 
     for d in domain_ids:
         for i, group in enumerate(groups):
-            sf = group.get_scalar_field_for_domain(d)
+            # sf = group.get_scalar_field_for_domain(d)
+            sf = group.get_scalar_field()
             if sf is None:
                 raise ValueError(f"Domain {d}: Group '{group.name}' has no scalar field set.")
 
@@ -226,14 +227,16 @@ def set_scalar_masks_per_domain(frame: StructuralFrame, fault_frame: FaultFrame)
                 if not group.structural_elements:
                     raise ValueError(f"Domain {d}: Group '{group.name}' has no structural elements.")
                 oldest = group.structural_elements[-1]
-                sval = oldest.get_scalar_value_for_domain(d)
+                sval = oldest.get_scalar_value()
                 if sval is None:
                     raise ValueError(
                         f"Domain {d}: Oldest element '{oldest.name}' in group '{group.name}' has no scalar value."
                     )
                 mask = sf >= sval
 
-            group.set_mask_for_domain(d, mask)
+            # TODO: Check if this is sufficient and streamline
+            # group.set_mask_for_domain(d, mask)
+            group.set_mask(mask)
 
 
 # --- 3) Combine all domains to final lithology block --------------------------
@@ -280,8 +283,9 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
 
         # Process groups from oldest -> youngest so younger overwrites older
         for group in reversed(frame.structural_groups):
-            sf = group.get_scalar_field_for_domain(d)
-            gm = group.get_mask_for_domain(d)
+            # sf = group.get_scalar_field_for_domain(d)
+            sf = group.get_scalar_field().T
+            gm = group.get_mask().T
             if sf is None or gm is None:
                 # No data in this domain for this group => skip
                 continue
@@ -291,7 +295,8 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
 
             # Fill elements in natural (oldest->youngest) order; use "== 0" so younger has priority
             for elem in group.structural_elements:
-                sval = elem.get_scalar_value_for_domain(d)
+                # sval = elem.get_scalar_value_for_domain(d)
+                sval = elem.get_scalar_value()
                 if sval is None:
                     continue
                 write_mask = (sf >= sval) & (group_block == 0)
@@ -338,25 +343,30 @@ def extract_all_meshes_per_domain(
 
     # 1) MASKED meshes that end at unconformities and domain boundaries
 
-    # TODO: This needs rework to remove domain specific storage system, works for now
+    # Temporary storage: { (elem, domain_id) : (verts, faces) }
+    temp_domain_meshes = {}
+
     for d in domain_ids:
+        # Create domain mask from domain map
         dommask = fault_frame.domain_map == d
 
         for i, group in enumerate(frame.structural_groups):
-            # sf = group.get_scalar_field_for_domain(d)
-            sf = group.scalar_field.T # Check if this works as combined scalar field
+            # Retrieve scalar field per group
+            sf = group.scalar_field.T
 
             if sf is None:
                 continue
 
             # Age-mask logic mirroring the original function
-            # TODO: Check if this makes sense with units unaffected by faults later
             if i == 0:
+                # Youngest group: no truncation
                 erosion_mask = np.ones_like(sf, dtype=bool)
             else:
-                prev_mask = frame.structural_groups[i - 1].get_mask_for_domain(d)
+                # Older groups: truncate at previous group's age mask
+                prev_mask = frame.structural_groups[i - 1].get_mask().T
                 erosion_mask = ~prev_mask if prev_mask is not None else np.ones_like(sf, dtype=bool)
 
+            # Combined mask, erosion and domain
             mc_mask = erosion_mask & dommask
 
             for elem in group.structural_elements:
@@ -372,8 +382,8 @@ def extract_all_meshes_per_domain(
                     mask=mc_mask.T,  # keep transposition exactly as before
                 )
 
-                # Store per-domain masked mesh
-                elem.set_mesh_for_domain(d, "masked", verts, faces)
+                # Store per-domain masked mesh (TEMPORARY)
+                temp_domain_meshes[(elem.name, d)] = (verts, faces)
 
     def combine_meshes(vertices_list, edges_list):
         """
@@ -402,6 +412,7 @@ def extract_all_meshes_per_domain(
 
         return combined_vertices, combined_edges
 
+    # Combine domain meshes for improved storage
     for group in frame.structural_groups:
         for elem in group.structural_elements:
 
@@ -409,11 +420,13 @@ def extract_all_meshes_per_domain(
             list_of_vertices = []
 
             for d in domain_ids:
-                list_of_vertices.append(elem.get_mesh_for_domain(d, "masked")[0])
-                list_of_edges.append(elem.get_mesh_for_domain(d, "masked")[1])
+                verts, faces = temp_domain_meshes[(elem.name, d)]
+                list_of_vertices.append(verts)
+                list_of_edges.append(faces)
 
             combined_vertices, combined_edges = combine_meshes(list_of_vertices, list_of_edges)
 
+            # Store combined mesh
             elem.set_mesh("masked", combined_vertices, combined_edges)
 
     # 2) UNMASKED meshes that go through unconformities and domain boundaries

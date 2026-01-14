@@ -105,22 +105,11 @@ class UniversalCoKrigingParams(BaseModel):
     pass
 
 
-class GeoMLParams(BaseModel):
-    """
-    Placeholder class for GeoML interpolation parameters.
-
-    Currently, GeoML does not require any parameters,
-    but this class is in place to support future configuration needs.
-    """
-    pass
-
-
 InterpolationParameterSet = Union[OrdinaryKrigingParams,
 RBFParams,
 GeoINRParams,
 LoopStructuralParams,
-UniversalCoKrigingParams,
-GeoMLParams]
+UniversalCoKrigingParams]
 
 
 class StructuralElement(BaseModel):
@@ -136,14 +125,11 @@ class StructuralElement(BaseModel):
         edges: Dictionary of surface mesh edges arrays keyed by mesh type ('masked', 'unmasked', 'combined').
     """
     name: str
-    # _scalar_value: Optional[float] = PrivateAttr(default=None)
+    _scalar_value: Optional[float] = PrivateAttr(default=None)
     _id: Optional[int] = PrivateAttr(default=None)
     _color: Optional[str] = PrivateAttr(default=None)
     _vertices: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
     _edges: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
-
-    _scalar_values_by_domain: Dict[int, float] = PrivateAttr(default_factory=dict)
-    _meshes_by_domain: Dict[int, Dict[str, Tuple[np.ndarray, np.ndarray]]] = PrivateAttr(default_factory=dict)
 
     class Config:
         arbitrary_types_allowed = True
@@ -172,6 +158,9 @@ class StructuralElement(BaseModel):
     # Controlled setters
     def set_scalar_value(self, value: float):
         self._scalar_value = value
+
+    def get_scalar_value(self) -> Optional[float]:
+        return self._scalar_value
 
     def set_id(self, element_id: int):
         self._id = element_id
@@ -206,46 +195,6 @@ class StructuralElement(BaseModel):
         except KeyError:
             raise KeyError(f"Mesh '{mesh_type}' not found in element '{self.name}'.")
 
-    # -------- Domain-aware scalar values --------
-    def set_scalar_value_for_domain(self, domain_id: int, value: float) -> None:
-        self._scalar_values_by_domain[domain_id] = float(value)
-
-    def get_scalar_value_for_domain(self, domain_id: int) -> float:
-        try:
-            return self._scalar_values_by_domain[domain_id]
-        except KeyError:
-            raise KeyError(f"Element '{self.name}': no scalar value stored for domain {domain_id}.")
-
-    def scalar_values_by_domain(self) -> Dict[int, float]:
-        return dict(self._scalar_values_by_domain)
-
-    # -------- Domain-aware meshes --------
-    def set_mesh_for_domain(self, domain_id: int, mesh_type: str, vertices: np.ndarray, faces: np.ndarray) -> None:
-        if mesh_type not in {"masked", "unmasked", "combined"}:
-            raise ValueError("mesh_type must be one of {'masked','unmasked','combined'}.")
-        store = self._meshes_by_domain.setdefault(domain_id, {})
-        if mesh_type in store:
-            raise ValueError(f"Mesh '{mesh_type}' for domain {domain_id} already set on '{self.name}'.")
-        store[mesh_type] = (vertices, faces)
-
-    def get_mesh_for_domain(self, domain_id: int, mesh_type: str) -> Tuple[np.ndarray, np.ndarray]:
-        try:
-            return self._meshes_by_domain[domain_id][mesh_type]
-        except KeyError:
-            raise KeyError(
-                f"Element '{self.name}': mesh '{mesh_type}' not found for domain {domain_id}."
-            )
-
-    def meshes_for_domain(self, domain_id: int) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
-        try:
-            return dict(self._meshes_by_domain[domain_id])
-        except KeyError:
-            raise KeyError(f"Element '{self.name}': no meshes stored for domain {domain_id}.")
-
-    def domains_with_meshes(self) -> Tuple[int, ...]:
-        return tuple(sorted(self._meshes_by_domain.keys()))
-
-
 class StructuralGroup(BaseModel):
     """
     A structural group that contains multiple structural elements and associated data.
@@ -262,12 +211,8 @@ class StructuralGroup(BaseModel):
     structural_elements: List['StructuralElement'] = Field(default_factory=list)
     _interpolation_method: Optional['InterpolationMethod'] = PrivateAttr(default=None)
     _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
-    # _mask: Optional[np.ndarray] = PrivateAttr(default=None)
     _interpolation_params: Optional[InterpolationParameterSet] = PrivateAttr(default=None)
-
-    # NEW: domain-aware stores
-    _scalar_fields_by_domain: Dict[int, np.ndarray] = PrivateAttr(default_factory=dict)
-    _masks_by_domain: Dict[int, np.ndarray] = PrivateAttr(default_factory=dict)
+    _mask: Optional[np.ndarray] = PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -282,15 +227,21 @@ class StructuralGroup(BaseModel):
     def scalar_field(self) -> Optional[np.ndarray]:
         return self._scalar_field
 
-    # @property
-    # def mask(self) -> Optional[np.ndarray]:
-    #     return self._mask
-
     def set_scalar_field(self, field: np.ndarray):
         self._scalar_field = field
 
-    # def set_mask(self, mask_array: np.ndarray):
-    #     self._mask = mask_array
+    def get_scalar_field(self) -> Optional[np.ndarray]:
+        return self._scalar_field
+
+    @property
+    def mask(self) -> Optional[np.ndarray]:
+        return self._mask
+
+    def set_mask(self, mask: np.ndarray):
+        self._mask = mask
+
+    def get_mask(self) -> Optional[np.ndarray]:
+        return self._mask
 
     @property
     def interpolation_method(self) -> Optional['InterpolationMethod']:
@@ -344,37 +295,6 @@ class StructuralGroup(BaseModel):
                     f"'{key}' is not a valid parameter for {type(self._interpolation_params).__name__}."
                 )
             setattr(self._interpolation_params, key, value)
-
-    # -------- Domain-aware API --------
-    def set_scalar_field_for_domain(self, domain_id: int, field: np.ndarray) -> None:
-        self._scalar_fields_by_domain[domain_id] = field
-
-    def get_scalar_field_for_domain(self, domain_id: int) -> np.ndarray:
-        try:
-            return self._scalar_fields_by_domain[domain_id]
-        except KeyError:
-            raise KeyError(f"Group '{self.name}': no scalar field stored for domain {domain_id}.")
-
-    def scalar_fields_by_domain(self) -> Dict[int, np.ndarray]:
-        """Read-only view (shallow copy) if you want all at once."""
-        return dict(self._scalar_fields_by_domain)
-
-    def set_mask_for_domain(self, domain_id: int, mask: np.ndarray) -> None:
-        self._masks_by_domain[domain_id] = mask
-
-    def get_mask_for_domain(self, domain_id: int) -> np.ndarray:
-        try:
-            return self._masks_by_domain[domain_id]
-        except KeyError:
-            raise KeyError(f"Group '{self.name}': no mask stored for domain {domain_id}.")
-
-    def masks_by_domain(self) -> Dict[int, np.ndarray]:
-        return dict(self._masks_by_domain)
-
-    def domains_with_results(self) -> Tuple[int, ...]:
-        """Domains where both scalar field and mask exist."""
-        return tuple(sorted(set(self._scalar_fields_by_domain) & set(self._masks_by_domain)))
-
 
 class StructuralFrame(BaseModel):
     """
@@ -1004,7 +924,7 @@ class FaultFrame(BaseModel):
 
             fault_mask = fault.get_domain_mask()
 
-            # TODO: This helps for when resolution does not amtch but breaks everything else
+            # Security to ensure matching resolution
             if fault_mask.shape != domain_map.shape:
                 # assume fault mask is (z, y, x) and grid is (x, y, z)
                 fault_mask = fault_mask.transpose(2, 1, 0)

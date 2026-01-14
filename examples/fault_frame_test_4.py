@@ -50,7 +50,7 @@ structural_surface_points_df = pd.concat(
 
 grid = RegularGrid(
     extent=(0, 2500, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(62, 50, 25)  # Example resolution
+    resolution=(62, 25, 50)  # Example resolution
 )
 
 fault_frame = general_updated.build_fault_frame(
@@ -79,7 +79,7 @@ visualize_fault_frame(fault_frame)
 # Create a StructuralFrame
 frame = general_updated.build_structural_frame({"Top": ('rock4', 'rock3'), "Bot": ('rock2', 'rock1')},
                                                np.array([0, 2500, 0, 1000, 0, 1000]),
-                                               np.array([62, 50, 25]),
+                                               np.array([62, 25, 50]),
                                                structural_surface_points_df,
                                                structural_orientations_df)
 frame.detailed_report()
@@ -88,14 +88,14 @@ frame.detailed_report()
 #%%
 
 # UCK
-frame["Top"].set_interpolation_method("Universal Co-Kriging")
-frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+# frame["Top"].set_interpolation_method("Universal Co-Kriging")
+# frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
 # OK
-# frame["Top"].set_interpolation_method("Ordinary Kriging")
-# frame["Bot"].set_interpolation_method("Ordinary Kriging")
-# frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
-# frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=1, variogram_model="spherical")
+frame["Top"].set_interpolation_method("Ordinary Kriging")
+frame["Bot"].set_interpolation_method("Ordinary Kriging")
+frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=1, variogram_model="spherical")
 
 # RBF
 # frame["Top"].set_interpolation_method("Radial Basis Function")
@@ -144,4 +144,15 @@ visualize_structural_frame_with_faults(frame=frame,
                                        show_orientations=True)
 
 # TODO: If crop to domain is FALSE - meshes "end" at fault surface but compute over full grid
-# TODO: If crop to domain is TRUE - meshes go over fault surface but compute over smaller sub grid
+# TODO: If crop to domain is TRUE - meshes go over fault surface but compute over smaller sub grid,
+    # but this also requires to store domain specific stuff
+
+
+#%%
+
+# plot slice of this mask
+import matplotlib.pyplot as plt
+plt.imshow(frame.structural_groups[0].get_mask()[:, 10, :].T, origin='lower')
+plt.title("Mask for Domain 0 at slice Z=25")
+plt.colorbar()
+plt.show()

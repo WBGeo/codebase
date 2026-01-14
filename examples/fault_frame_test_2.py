@@ -284,18 +284,18 @@ plot_scalar_field_section(frame.structural_groups[1].scalar_fields_by_domain()[1
 #%%
 
 from core.visualization_components_new_new import plot_structural_slice_with_faults
-
-#%%
-
 plot_structural_slice_with_faults(frame=frame, fault_frame=fault_frame, lith_block=frame.get_LithBlock(), axis='y', index=0)
 
 #%%
 
 from core.visualization_components_new_new import visualize_structural_frame_with_faults
-
-#%%
-
 visualize_structural_frame_with_faults(frame=frame, fault_frame=fault_frame, mesh_type="masked")
 
 #%%
 
+# plot slice of this mask
+import matplotlib.pyplot as plt
+plt.imshow(frame.structural_groups[1].get_mask()[:, 10, :].T, origin='lower')
+plt.title("Mask for Domain 0 at slice Z=25")
+plt.colorbar()
+plt.show()
