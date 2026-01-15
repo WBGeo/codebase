@@ -1,4 +1,6 @@
 import collections
+import io
+import os
 
 import pydantic
 import pyvista
@@ -167,7 +169,7 @@ class MeshResults:
             self.elements_obj = Elements(element_array=self.get_union_elems(), node_array=self.nodes)
 
 
-    def export_vtu(self, filename: typing.Union[str|collections.abc.Buffer]):
+    def export_vtu(self, filename: typing.Union[str|os.PathLike]):
         """
         Export the mesh data to a VTU file.
         Args:
@@ -182,7 +184,7 @@ class MeshResults:
         mesh.write(filename, file_format="vtu")
         print(f"VTU file '{filename}' created successfully!")
 
-    def export_exodus(self, filename: str):
+    def export_exodus(self, filename: typing.Union[str, os.PathLike]):
         """
         Export the mesh data to an Exodus file.
         Args:
