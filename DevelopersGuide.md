@@ -42,11 +42,15 @@ def create_random_number(start: int, end: int = 100) -> int:
 ```
 
 In this example, the function `create_random_number` is declared as a component.
-This id done via the `@wbgeo_component` decorator.
+This is done via the `@wbgeo_component` decorator.
 Both of its parameters are declared as inputs.
 The second, `end`, parameter is optional (with a default value of 100).
 The function's signature MUST be explicit, i.e., contain a returned type and
 the type-hints of parameters.
+
+![createRandomNumber.png](docs/img/createRandomNumber.png)
+
+The picture shows the visualization of this component.
 
 | Parameter      | Required   | Description                                                                                         |
 |----------------|------------|-----------------------------------------------------------------------------------------------------|
@@ -64,11 +68,19 @@ the type-hints of parameters.
 The execution of the component MUST NOT modify/change its inputs,
 i.e. the inputs are immutable.
 
-To be able to uniquely identify each component, you MUST follow the folling naming scheme:
+To be able to uniquely identify each component, you MUST follow the following naming scheme:
 `identifier="wbgeo::[semantic_group]_[component_name]".`
 For example, `identifier="wbgeo::interpolation_rbf", tags=["Interpolation"]`
 
-**TODO**: identifier rule
+The `is_object_type` parameter can be used to display the component like a result,
+ which is just loaded.
+Like in the following example, the number 42 is loaded:
+
+![load42.png](docs/img/load42.png)
+
+Similarly, when using non-`controlled` inputs, the input ports are always rendered:
+
+![create2List.png](docs/img/create2List.png)
 
 #### User-Feedback
 
@@ -258,6 +270,57 @@ async def _visualize_complex(i: MyComplexDataType, _inspector: InspectorHelper):
    plt.plot(xpoints, ypoints)
    plt.show()
 `````
+
+### Import / Export components
+While each computation's result is stored by the workbench, 
+some workflows require interaction outside the workbench.
+
+By using the `nodesapi.BasicallyABufferedFile` type as an input or as the resulting type,
+ users can upload/import files to a workflow or download an export of data.
+
+The following component exports data to a `io.BytesIO` buffer,
+ when is then downloadable by a user:
+
+```python
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+@wbgeo_component(title='Export MyListOfNumbers',
+                 description='Export MyListOfNumbers to file',
+                 group='Export',
+                 identifier='py::export_MyListOfNumbers_to_file',
+                 )
+def export_to_file(mln: MyListOfNumbers) -> BasicallyABufferedFile:
+  buf = io.BytesIO() # create new (buffered in memory) file
+  # write to the buffer
+  buf.write('My text...'.encode('utf-8'))
+  # we can specify a name for the downloaded file
+  buf.filename = 'numbers.csv'
+  # as long as we return a BytesIO (buffered file)
+  return buf
+```
+
+The component is visible on the left side of the following picture.
+
+![importExport.png](docs/img/importExport.png)
+
+An example of an import is shown to the right and below:
+Here the import is 
+
+
+```python
+@wbgeo_component(description='Import MyListOfNumbers from F',
+                 title='Import MyListOfNumbers from F',  # The title shown in the GUI
+                 group='Import',
+                 identifier='py::import_MyListOfNumbers',
+                 return_name='mln'
+                 )
+def import_mesh_results_to_vtu(file: BasicallyABufferedFile) -> MyListOfNumbers:
+  s = file.readlines()
+  print("Loading file", file.filename)
+  ret = [int(i.decode('utf-8')) for i in s[1:]]
+  if len(ret) != int(s[0].decode('utf-8')):
+    raise ValueError('Expected length did not match')
+  return ret
+```
 
 
 ## Running the examples locally
