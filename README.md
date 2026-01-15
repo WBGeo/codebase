@@ -2,6 +2,9 @@
 
 First repository in WBgeo to organize the codebase.
 
+See [InstallationGuide.md](InstallationGuide.md) for how to install 
+ the workbench.
+
 ## Structure
 
 - `core/`: Components
