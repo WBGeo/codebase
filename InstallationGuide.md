@@ -36,6 +36,9 @@ Download the [docker-compose.yml](docker-compose.yml) file to your machine to a 
 
 This file tells docker how to orchestrate the containers required to run the workbench editor.
 
+(In case you have already checked out the repository: 
+You can use the docker-compose.yml directory in your git project instead)
+
 ### Step 4: Start the workbench editor
 Switch to a CLI (e.g. cmd) and change into the directory of the downloaded file.
 (If you are unsure where your file is:
@@ -64,4 +67,20 @@ Then continue with step 4 to start the interface again
 
 
 ## How to use a local codebase
-_(under development)_
+In your _docker-compose.yml_ file: Go to the `services.py_runner.volumes` key
+and uncomment/add the following lines:
+
+```yaml
+services:
+   py_runner:
+      # ...
+      volumes:
+         - "./path/to/my/codebase/:/usr/src/app/codebase/"
+```
+
+Change the `./path/to/my/codebase/` path to point to codebase directory.
+
+(Special case: If you are using the docker-compose.yml from the codebase's directory,
+ uncomment option A instead.)
+
+Now the container will start with your local codebase.

@@ -34,7 +34,7 @@ services:
       MINIO_ROOT_PASSWORD: g@bJ!&NS8K^!
     volumes:
       - "./docker/storage:/data:rw"
-
+  
   py_runner:
     image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/pyrunner:latest
     restart: on-failure
@@ -47,4 +47,9 @@ services:
       MINIO_HOST: "minio:9000"
       BACKEND_HOST: "backend:8081"
 #    volumes:
-#      - "./pyrunner/codebase:/usr/src/app/codebase/" # for local development, change the `./pyrunner/codebase` to link to your local "codebase" directory
+      # for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
+      # if this file is located at the root of the "codebase" project, the defaults work
+#      - "./core/:/usr/src/app/codebase/core/"
+#      - "./examples/:/usr/src/app/codebase/examples/"
+      # option 2 - if the codebase is in a different folder, you can also use this format
+#      - "./path/to/my/codebase/:/usr/src/app/codebase/"
