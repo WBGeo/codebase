@@ -423,7 +423,7 @@ def load_wells_from_csv(well_file: WellCSVDataType) -> WellData:
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited amount of inputs
     geomodel_result: GeomodelResults,
-    wells: WellData,
+    wells: WellData = [],
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,

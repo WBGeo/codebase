@@ -38,6 +38,12 @@ Square corners are used to show the results of a computation.)
                  title='Create Random Number',
                  description='Create a random number', color='#03b1fc')
 def create_random_number(start: int, end: int = 100) -> int:
+   """
+   Create a new random number within bounds
+   :param start: int the lower bound
+   :param end: int the upper bound (defaults to 100)
+   :return: random number within the given bounds
+   """
    return random.randint(start, end)
 ```
 
