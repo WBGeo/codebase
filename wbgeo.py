@@ -2,16 +2,10 @@ from typing import Optional
 
 from py_api_wbgeo import apitypes
 
-from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data_str
 from core.object_components import InputData, GeomodelResults
-from core.loading_components.geo_input_data import geo_input_data_fix
-from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
-from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
-from core.interpolator_components.rbf_interpolation import rbf_interpolator
-# from core.interpolator_components.geo_inr import geo_inr_interpolator # removed until updated
-# from core.interpolator_components.loopstructural_old import loop_structural_interpolator # removed until updated
-from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+
+# from core.structuralmodeling_components.geo_inr import geo_inr_interpolator # removed until updated
+# from core.structuralmodeling_components.loopstructural_old import loop_structural_interpolator # removed until updated
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -73,8 +67,6 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 
 
 # Register the various components
-
-from py_api_wbgeo import nodesapi
 
 
 # The following is to be replaced with the @wbgeo_type and @wbgeo_component annotations

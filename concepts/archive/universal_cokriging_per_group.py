@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import gempy as gp
-from core.structural_objects.objects import StructuralGroup
+from concepts.archive.objects import StructuralGroup
 
 
 def interpolate_group_universal_cokriging(

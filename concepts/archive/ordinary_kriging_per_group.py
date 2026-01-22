@@ -1,9 +1,8 @@
 
 import pandas as pd
-from typing import Optional
 from pykrige.ok3d import OrdinaryKriging3D
-from core.structural_objects.objects import StructuralGroup
-from core.structural_objects.objects import OrdinaryKrigingParams
+from concepts.archive.objects import StructuralGroup
+from concepts.archive.objects import OrdinaryKrigingParams
 
 def interpolate_group_ordinary_kriging(
         group: StructuralGroup,

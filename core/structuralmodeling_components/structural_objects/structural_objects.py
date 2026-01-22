@@ -1,12 +1,14 @@
 import numpy as np
 import pandas as pd
 
-from typing import Dict, Tuple, Optional, List, Union
+from typing import Dict, Optional, List, Union
 from pydantic import BaseModel, Field, PrivateAttr
 from enum import Enum
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.utility.surface_mesh_extraction import marching_cubes_new
 import gempy as gp
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap, BoundaryNorm
 
 
 #%%
@@ -445,6 +447,152 @@ class StructuralFrame(BaseModel):
             else:
                 print(f"  └─ Per-element orientations: N/A\n")
 
+    def plot_scalar_field_section(
+            self,
+            group_nr=0,
+            axis='y',
+            index=0,
+            plot_elements=True
+    ):
+        """
+        Plot a section of a scalar field along a specified axis at a given index.
+        Optionally overlay contour lines for structural elements.
+        """
+
+        # --- Pre checks ---
+        group = self.structural_groups[group_nr]
+
+        if group.scalar_field is None:
+            raise ValueError(
+                f"Structural group at index {group_nr} has no scalar field computed."
+            )
+
+        # --- Extract slice and extent ---
+        if axis == 'y':
+            data_slice = group.scalar_field[:, index, :].T
+            extent = self._grid.extent[:4]
+            xlabel, ylabel = 'X', 'Z'
+        elif axis == 'x':
+            data_slice = group.scalar_field[index, :, :].T
+            extent = self._grid.extent[[0, 2, 4, 1]]
+            xlabel, ylabel = 'Y', 'Z'
+        elif axis == 'z':
+            data_slice = group.scalar_field[:, :, index].T
+            extent = self._grid.extent[[0, 2, 1, 3]]
+            xlabel, ylabel = 'X', 'Y'
+        else:
+            raise ValueError("Axis must be 'x', 'y', or 'z'.")
+
+        fig, ax = plt.subplots()
+
+        # --- Scalar field ---
+        im = ax.imshow(
+            data_slice,
+            extent=extent,
+            origin='lower',
+            cmap='viridis'
+        )
+        plt.colorbar(im, ax=ax, label='Scalar Value')
+
+        # --- Element isolines ---
+        if plot_elements:
+            handles = []
+
+            for elem in group.structural_elements:
+                cs = ax.contour(
+                    data_slice,
+                    levels=[elem.scalar_value],
+                    colors=[elem.color],
+                    linewidths=1.5,
+                    extent=extent,
+                    origin='lower'
+                )
+
+                # Create legend handle only once per element
+                handles.append(
+                    plt.Line2D(
+                        [0], [0],
+                        color=elem.color,
+                        lw=1.5,
+                        label=elem.name
+                    )
+                )
+
+            if handles:
+                ax.legend(handles=handles, title="Structural Elements", loc="lower left")
+
+        # --- Labels and title ---
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(
+            f"Scalar Field Section along {axis.upper()} at Index {index}\n"
+            f"Group '{group.name}'"
+        )
+
+        plt.show()
+
+    def plot_age_mask_section(
+            self,
+            group_nr=0,
+            axis='y',
+            index=0
+    ):
+        """
+        Plot a section of an age mask (boolean field) along a specified axis
+        at a given index.
+        """
+
+        # --- Pre checks ---
+        group = self.structural_groups[group_nr]
+
+        if getattr(group, "_mask", None) is None:
+            raise ValueError(
+                f"Structural group at index {group_nr} has no age mask computed."
+            )
+
+        # --- Extract slice and extent ---
+        if axis == 'y':
+            mask_slice = group.get_mask()[:, index, :].T
+            extent = self._grid.extent[:4]
+            xlabel, ylabel = 'X', 'Z'
+        elif axis == 'x':
+            mask_slice = group.get_mask()[index, :, :].T
+            extent = self._grid.extent[[0, 2, 4, 1]]
+            xlabel, ylabel = 'Y', 'Z'
+        elif axis == 'z':
+            mask_slice = group.get_mask()[:, :, index].T
+            extent = self._grid.extent[[0, 2, 1, 3]]
+            xlabel, ylabel = 'X', 'Y'
+        else:
+            raise ValueError("Axis must be 'x', 'y', or 'z'.")
+
+        fig, ax = plt.subplots()
+
+        # --- Plot boolean mask ---
+        im = ax.imshow(
+            mask_slice.astype(float),
+            extent=extent,
+            origin='lower',
+            cmap='gray',
+            vmin=0,
+            vmax=1
+        )
+
+        # Optional colorbar for clarity
+        cbar = plt.colorbar(im, ax=ax, ticks=[0, 1])
+        cbar.ax.set_yticklabels(['False', 'True'])
+        cbar.set_label('Age Mask')
+
+        # --- Labels and title ---
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(
+            f"Age Mask Section along {axis.upper()} at Index {index}\n"
+            f"Group '{group.name}'"
+        )
+
+        plt.show()
+
 
 class FaultElement(BaseModel):
     """
@@ -463,18 +611,15 @@ class FaultElement(BaseModel):
     _name: str = PrivateAttr()
     _scalar_value: Optional[float] = PrivateAttr(default=None)
     _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
-    _affects_groups: Optional[List[str]] = PrivateAttr(default=None)
     _color: str = PrivateAttr(default="#AAAAAA")  # Default color in hex format
     _vertices: np.ndarray = PrivateAttr(default_factory=None)
     _edges: np.ndarray = PrivateAttr(default_factory=None)
     _mask: Optional[np.ndarray] = PrivateAttr(default=None)
 
-    def __init__(self, name: str, scalar_value: Optional[float] = None,
-                 affects_groups: Optional[List[str]] = None):
+    def __init__(self, name: str, scalar_value: Optional[float] = None):
         super().__init__()
         self._name = name
         self._scalar_value = scalar_value
-        self._affects_groups = affects_groups
 
     def __repr__(self):
         return f"FaultElement(name='{self.name}')"
@@ -558,14 +703,6 @@ class FaultElement(BaseModel):
             """
         return ~self.get_domain_mask()
 
-    @property
-    def affects_groups(self) -> Optional[List[str]]:
-        return self._affects_groups
-
-    def set_affects_groups(self, groups: List[str]):
-        """Specify which structural groups are offset by this fault."""
-        self._affects_groups = groups
-
 
 class FaultFrame(BaseModel):
     """
@@ -580,7 +717,6 @@ class FaultFrame(BaseModel):
         domain_map (Optional[np.ndarray]): Map of fault domains for scalar field interpolation.
     """
     _fault_elements: List[FaultElement] = PrivateAttr()
-    _fault_relations: np.ndarray = PrivateAttr()
     _grid: Optional[RegularGrid] = PrivateAttr(default=None)
     _fault_surface_points_df: Optional[pd.DataFrame] = PrivateAttr(default=None)
     _fault_orientations_df: Optional[pd.DataFrame] = PrivateAttr(default=None)
@@ -590,17 +726,10 @@ class FaultFrame(BaseModel):
     def __init__(self, fault_elements: List[FaultElement], fault_relations: Optional[np.ndarray] = None):
         super().__init__()
         self._fault_elements = fault_elements
-        self._fault_relations = (
-            fault_relations if fault_relations is not None else self._generate_default_relations()
-        )
 
     @property
     def fault_elements(self) -> List[FaultElement]:
         return self._fault_elements
-
-    @property
-    def fault_relations(self) -> np.ndarray:
-        return self._fault_relations
 
     @property
     def grid(self) -> RegularGrid:
@@ -623,15 +752,6 @@ class FaultFrame(BaseModel):
         """Boolean masks for each final domain ID."""
         return self._domain_masks
 
-    def _generate_default_relations(self) -> np.ndarray:
-        """By default, younger faults affect all older ones."""
-        n = len(self._fault_elements)
-        relations = np.zeros((n, n), dtype=bool)
-        for younger in range(n):
-            for older in range(younger):
-                relations[younger, older] = True
-        return relations
-
     def get_element_by_name(self, name: str) -> Optional[FaultElement]:
         """Retrieve a fault element by its name."""
         return next((f for f in self._fault_elements if f.name == name), None)
@@ -640,10 +760,6 @@ class FaultFrame(BaseModel):
         """Append a fault and update the relations matrix accordingly."""
         self._fault_elements.append(fault)
         self._fault_relations = self._generate_default_relations()
-
-    def set_fault_relation(self, younger_idx: int, older_idx: int, value: bool):
-        """Manually modify a fault-fault relation."""
-        self._fault_relations[younger_idx, older_idx] = value
 
     def set_surface_points_df(self, df: pd.DataFrame):
         self._fault_surface_points_df = df
@@ -677,16 +793,6 @@ class FaultFrame(BaseModel):
         if not isinstance(grid, RegularGrid):
             raise ValueError("Grid must be an instance of RegularGrid.")
         self._grid = grid
-
-    def describe_relations(self) -> List[str]:
-        """Return a readable list of which faults offset which others."""
-        descriptions = []
-        names = [f.name for f in self._fault_elements]
-        for y in range(len(names)):
-            for o in range(len(names)):
-                if self._fault_relations[y, o]:
-                    descriptions.append(f"{names[y]} offsets {names[o]}")
-        return descriptions
 
     def detailed_report(self):
         print("🧱 Fault Frame — Detailed Report")
@@ -726,6 +832,111 @@ class FaultFrame(BaseModel):
             print(f"  │   ├─ Surface points: {sp_count}")
             print(f"  │   └─ Orientations: {ori_count}")
         print("")
+
+    def plot_fault_domain_section(
+            self,
+            axis='y',
+            index=0,
+            plot_faults=True
+    ):
+        """
+        Plot a section of the fault domain map along a specified axis at a given index.
+        Optionally overlay isolines for fault elements.
+        """
+
+        # --- Pre checks ---
+        if self._domain_map is None:
+            raise ValueError("FaultFrame has no domain_map computed.")
+
+        if self._grid is None:
+            raise ValueError("FaultFrame has no grid associated.")
+
+        if plot_faults:
+            for fault in self._fault_elements:
+                if fault._scalar_field is None or fault._scalar_value is None:
+                    raise ValueError(
+                        f"Fault '{fault.name}' has no scalar field or scalar value computed."
+                    )
+
+        # --- Extract slice and extent ---
+        if axis == 'y':
+            domain_slice = self._domain_map[:, index, :]
+            extent = self._grid.extent[:4]
+            xlabel, ylabel = 'X', 'Z'
+        elif axis == 'x':
+            domain_slice = self._domain_map[index, :, :]
+            extent = self._grid.extent[[0, 2, 4, 1]]
+            xlabel, ylabel = 'Y', 'Z'
+        elif axis == 'z':
+            domain_slice = self._domain_map[:, :, index]
+            extent = self._grid.extent[[0, 2, 1, 3]]
+            xlabel, ylabel = 'X', 'Y'
+        else:
+            raise ValueError("Axis must be 'x', 'y', or 'z'.")
+
+        fig, ax = plt.subplots()
+
+        # --- Plot domain map ---
+        # --- Discrete colormap for fault domains ---
+        domain_values = np.unique(domain_slice)
+        domain_values = domain_values[~np.isnan(domain_values)]  # safety
+
+        n_domains = len(domain_values)
+
+        base_cmap = plt.get_cmap("Set3")
+        colors = base_cmap(np.linspace(0, 1, n_domains))
+
+        cmap = ListedColormap(colors)
+        bounds = np.append(domain_values, domain_values[-1] + 1)
+        norm = BoundaryNorm(bounds, cmap.N)
+
+        im = ax.imshow(
+            domain_slice,
+            extent=extent,
+            origin='lower',
+            cmap=cmap,
+            norm=norm
+        )
+
+        cbar = plt.colorbar(im, ax=ax, ticks=domain_values)
+        cbar.set_label("Fault Domain")
+
+        # --- Fault isolines ---
+        if plot_faults:
+            handles = []
+
+            for fault in self._fault_elements:
+                ax.contour(
+                    fault._scalar_field[:, index, :] if axis == 'y' else
+                    fault._scalar_field[index, :, :] if axis == 'x' else
+                    fault._scalar_field[:, :, index],
+                    levels=[fault._scalar_value],
+                    colors=[fault.color],
+                    linewidths=1.5,
+                    extent=extent,
+                    origin='lower'
+                )
+
+                handles.append(
+                    plt.Line2D(
+                        [0], [0],
+                        color=fault.color,
+                        lw=1.5,
+                        label=fault.name
+                    )
+                )
+
+            if handles:
+                ax.legend(handles=handles, title="Faults", loc="lower left")
+
+        # --- Labels and title ---
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(
+            f"Fault Domain Section along {axis.upper()} at Index {index}"
+        )
+
+        plt.show()
 
     def check_fault_crosscuts_via_isovalue_bands(
             self,
@@ -880,7 +1091,7 @@ class FaultFrame(BaseModel):
         # Domain mask convention (positive side = True)
         element.set_domain_mask(element.scalar_field > element.scalar_value)
 
-    def generate_fault_domains(self) -> None:
+    def compute_fault_domains(self) -> None:
         """
         Interpolates all faults and generates a domain map across the model grid.
         Relies on fault.domain_mask being set by the interpolator_func.

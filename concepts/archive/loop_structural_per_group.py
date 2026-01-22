@@ -1,8 +1,7 @@
 
 import pandas as pd
 import numpy as np
-from pykrige.ok3d import OrdinaryKriging3D
-from core.structural_objects.objects import StructuralGroup
+from concepts.archive.objects import StructuralGroup
 from LoopStructural import GeologicalModel
 
 def interpolate_group_loop_structural(

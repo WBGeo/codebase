@@ -1,7 +1,6 @@
-import numpy as np
 from core.object_components import InputData, GeomodelResults
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from py_api_wbgeo.nodesapi import wbgeo_component
 
@@ -12,10 +11,7 @@ warnings.filterwarnings("ignore")
 import torch
 import torch.nn as nn
 import numpy as np
-import pandas as pd
 import pyvista as pv
-import pyvistaqt as pvqt
-import pandas as pd
 import time
 import torch.autograd as autograd
 

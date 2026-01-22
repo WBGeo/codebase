@@ -1,18 +1,18 @@
 import pytest
 import pandas as pd
 import numpy as np
-from core.structural_objects.objects import StructuralGroup, StructuralElement, InterpolationMethod
-from core.grids.grid_classes import RegularGrid
+from concepts.archive.objects import StructuralGroup, StructuralElement, InterpolationMethod
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.interpolator_components.interpolators_per_group.ordinary_kriging_per_group import \
+from core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group import \
     interpolate_group_ordinary_kriging
-from core.interpolator_components.interpolators_per_group.radial_basis_function_per_group import \
+from core.structuralmodeling_components.interpolators_per_group.radial_basis_function_per_group import \
     interpolate_group_radial_basis_function
-from core.interpolator_components.interpolators_per_group.universal_cokriging_per_group import \
+from core.structuralmodeling_components.interpolators_per_group.universal_cokriging_per_group import \
     interpolate_group_universal_cokriging
-from core.interpolator_components.interpolators_per_group.loop_structural_per_group import \
+from core.structuralmodeling_components.interpolators_per_group.loop_structural_per_group import \
     interpolate_group_loop_structural
-from core.interpolator_components.interpolators_per_group.geoinr_per_group import interpolate_group_geo_inr
+from core.structuralmodeling_components.interpolators_per_group.geoinr_per_group import interpolate_group_geo_inr
 
 PLOT = True  # Set to True to enable plotting during tests
 

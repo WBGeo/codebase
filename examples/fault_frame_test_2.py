@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
-from core.grids.grid_classes import RegularGrid
-from core.visualization_components_new import visualize_fault_frame
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.interpolator_components.interpolators_per_group import general_updated
+from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
+                                           plot_fault_frame_3D)
+from core.structuralmodeling_components import general
 
 #%%
 
@@ -87,7 +87,7 @@ grid = RegularGrid(
 fault_names = ["FaultC", "FaultA", "FaultB"]  # FaultB is younger than FaultA
 fault_colors = ["#A9A9A9", "#A9A9A9", "#A9A9A9"]
 
-fault_frame = general_updated.build_fault_frame(
+fault_frame = general.build_fault_frame(
     fault_surface_points_df=fault_surface_points_df,
     fault_orientations_df=fault_orientations_df,
     fault_names=fault_names,
@@ -97,17 +97,15 @@ fault_frame = general_updated.build_fault_frame(
 
 #%%
 fault_frame.detailed_report()
-
-#%%
-
-# Compute result for fault frame
-fault_frame.generate_fault_domains()
+fault_frame.compute_fault_domains()
 
 #%%
 
 # Plot the fault meshes using pyvista
-visualize_fault_frame(fault_frame)
+plot_fault_frame_3D(fault_frame)
 
+#%%
+fault_frame.plot_fault_domain_section(axis='y', index=25)
 
 #%%
 
@@ -149,13 +147,11 @@ for elem in elements:
 structural_surface_points_df = pd.DataFrame(surface_data, columns=["X", "Y", "Z", "formation"])
 structural_orientations_df = pd.DataFrame(orientation_data, columns=["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"])
 
-
 #%%
 
 # Create a StructuralFrame
-frame = general_updated.build_structural_frame({"Top": ('UnitD', 'UnitC'), "Bot": ('UnitB', 'UnitA')},
-                                       np.array([0, 1000, 0, 1000, 0, 1000]),
-                                       np.array([25, 50, 50]),
+frame = general.build_structural_frame({"Top": ('UnitD', 'UnitC'), "Bot": ('UnitB', 'UnitA')},
+                                       grid,
                                        structural_surface_points_df,
                                        structural_orientations_df)
 frame.detailed_report()
@@ -223,7 +219,7 @@ frame.detailed_report()
 # - see what I need to change so that GFZ can still use it as before
 
 
-general_updated.combined_interpolator_with_domains(
+general.compute_structural_model(
     frame,
     fault_frame=fault_frame,                     # or None for single-domain
     extract_meshes=True,
@@ -232,70 +228,28 @@ general_updated.combined_interpolator_with_domains(
 
 #%%
 
-def plot_scalar_field_section(scalar_field, grid, axis='y', index=0):
-    """
-    Plot a section of a scalar field along a specified axis at a given index.
-    """
-    if axis == 'y':
-        data_slice = scalar_field[:, index, :]
-        extent = grid.extent[:4]
-    elif axis == 'x':
-        data_slice = scalar_field[index, :, :]
-        extent = grid.extent[[0, 2, 4, 1]]
-    elif axis == 'z':
-        data_slice = scalar_field[:, :, index]
-        extent = grid.extent[[0, 2, 1, 3]]
-    else:
-        raise ValueError("Axis must be 'x', 'y', or 'z'.")
-
-    plt.imshow(data_slice, extent=extent, origin='lower', cmap='viridis')
-    plt.colorbar(label='Scalar Value')
-    plt.xlabel('X')
-    plt.ylabel('Z')
-    plt.title(f"Scalar Field Section along {axis.upper()} at Index {index}")
-    plt.show()
+plot_structural_model_2D(frame=frame,
+                        fault_frame=fault_frame,
+                        axis='y',
+                        show_input_data=True,
+                        index=0)
 
 #%%
 
-# Plot a slice of the lithology model
-plot_scalar_field_section(frame.get_LithBlock(), frame.grid, index=0)
-
-
-#%%
-
-# Masks from groups for age relationships
-plot_scalar_field_section(frame.structural_groups[1].masks_by_domain()[0], frame.grid, index=25)
+plot_structural_model_3D(frame=frame,
+                        fault_frame=fault_frame,
+                        mesh_type="masked",
+                        show_orientations=True)
 
 #%%
 
-# Same as before but with getter function
-plot_scalar_field_section(frame.structural_groups[0].get_mask_for_domain(0), frame.grid, index=25)
+frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
 
 #%%
 
-# Masks for fault domains
-plot_scalar_field_section(fault_frame.domain_masks[1], frame.grid, index=25)
-
-# %%
-
-plot_scalar_field_section(frame.structural_groups[1].scalar_fields_by_domain()[1], frame.grid, index=25)
+frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 
-#%%
 
-from core.visualization_components_new_new import plot_structural_slice_with_faults
-plot_structural_slice_with_faults(frame=frame, fault_frame=fault_frame, lith_block=frame.get_LithBlock(), axis='y', index=0)
 
-#%%
 
-from core.visualization_components_new_new import visualize_structural_frame_with_faults
-visualize_structural_frame_with_faults(frame=frame, fault_frame=fault_frame, mesh_type="masked")
-
-#%%
-
-# plot slice of this mask
-import matplotlib.pyplot as plt
-plt.imshow(frame.structural_groups[1].get_mask()[:, 10, :].T, origin='lower')
-plt.title("Mask for Domain 0 at slice Z=25")
-plt.colorbar()
-plt.show()

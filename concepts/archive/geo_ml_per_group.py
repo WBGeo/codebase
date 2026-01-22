@@ -1,13 +1,11 @@
 
 import pandas as pd
-from typing import Optional
 from pykrige.ok3d import OrdinaryKriging3D
-from core.structural_objects.objects import StructuralGroup
+from concepts.archive.objects import StructuralGroup
 
 import geoml
 
 import geoml.kernels as kr
-import geoml.transform as tr
 import geoml.latent as gl
 # import geoml.likelihood as lk
 

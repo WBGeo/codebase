@@ -3,9 +3,9 @@ import pandas as pd
 import os
 import pytest
 
-from core.interpolator_components.interpolators_per_group import general
-from core.structural_objects.objects import StructuralFrame, StructuralGroup, StructuralElement
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.interpolators_per_group import general
+from concepts.archive.objects import StructuralFrame, StructuralGroup, StructuralElement
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 cwd = os.getcwd()
 

@@ -15,36 +15,35 @@ from matplotlib.colors import to_hex
 import itertools
 import colorsys
 
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 
-from core.structural_objects.objects_updated import (
+from core.structuralmodeling_components.structural_objects.structural_objects import (
     StructuralFrame,
     StructuralGroup,
     StructuralElement,
-    InterpolationMethod,
 )
-from core.structural_objects.objects_updated import FaultFrame, FaultElement
+from core.structuralmodeling_components.structural_objects.structural_objects import FaultFrame, FaultElement
 
 from typing import Dict, Optional, Tuple
 
-from core.interpolator_components.interpolators_per_group.ordinary_kriging_per_group import (
+from core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group import (
     interpolate_group_ordinary_kriging,
 )
-from core.interpolator_components.interpolators_per_group.radial_basis_function_per_group import (
+from core.structuralmodeling_components.interpolators_per_group.radial_basis_function_per_group import (
     interpolate_group_radial_basis_function,
 )
-from core.interpolator_components.interpolators_per_group.universal_cokriging_per_group import (
+from core.structuralmodeling_components.interpolators_per_group.universal_cokriging_per_group import (
     interpolate_group_universal_cokriging,
 )
-from core.interpolator_components.interpolators_per_group.geoinr_per_group import (
+from core.structuralmodeling_components.interpolators_per_group.geoinr_per_group import (
     interpolate_group_geo_inr,
 )
-from core.interpolator_components.interpolators_per_group.loop_structural_per_group import (
+from core.structuralmodeling_components.interpolators_per_group.loop_structural_per_group import (
     interpolate_group_loop_structural,
 )
 
-from core.structural_objects.objects_updated import InterpolationMethod
+from core.structuralmodeling_components.structural_objects.structural_objects import InterpolationMethod
 
 
 # -----------------------------------------------------------------------------
@@ -112,7 +111,9 @@ def run_interpolation_with_fault_domains(
         # Determine computation grid (full grid or cropped sub-grid)
         use_grid = frame.grid
         bbox = None
-        if crop_to_domain:
+
+        # check if crop_to_domain is true and single domain only
+        if crop_to_domain and np.unique(domain_map).size > 1:
             bbox = compute_domain_bbox_indices(domain_map, domain_id)  # (kz0,kz1, ky0,ky1, kx0,kx1)
             if bbox is not None:
                 use_grid = build_subgrid_from_bbox(frame.grid, bbox)
@@ -150,7 +151,7 @@ def run_interpolation_with_fault_domains(
             )
 
             # Write sub-grid result back into a full-size scalar field if cropped
-            if crop_to_domain and bbox is not None:
+            if crop_to_domain and bbox is not None and np.unique(domain_map).size > 1:
                 full_shape = tuple(frame.grid.resolution[::-1])  # (Z,Y,X)
                 scalar_field_full = np.full(full_shape, np.nan, dtype=scalar_field_sub.dtype)
 
@@ -168,24 +169,18 @@ def run_interpolation_with_fault_domains(
 
             # Combine domain scalar fields and store only single one per group using domain masks
             # note that group._scalar_field is transposed to fit [Z,Y,X]
-            group._scalar_field = np.where(domain_map == domain_id, scalar_field, group._scalar_field.T)
-
-            # TODO: This is currently still required for masked meshing, remove when updated
-            # Store per-domain scalar field on the group
-            # group.set_scalar_field_for_domain(domain_id, scalar_field)
+            group._scalar_field = np.where(domain_map == domain_id, scalar_field, group.get_scalar_field().T)
 
             # Transpose back to [X,Y,Z] for final storage
-            group._scalar_field = group._scalar_field.T
+            group._scalar_field = group.get_scalar_field().T
 
-            # TODO: Verify if this is still needed an remove
-            # Store per-domain scalar values on elements
+            # Store scalar values on elements
             for elem in group.structural_elements:
                 if elem.name not in scalar_values:
                     raise ValueError(
                         "Interpolator did not return a scalar value for element "
                         f"'{elem.name}' in group '{group.name}'."
                     )
-                # elem.set_scalar_value_for_domain(domain_id, float(scalar_values[elem.name]))
 
                 # Set scalar value on element (overwrites previous, but consistent over domains)
                 elem.set_scalar_value(float(scalar_values[elem.name]))
@@ -234,8 +229,6 @@ def set_scalar_masks_per_domain(frame: StructuralFrame, fault_frame: FaultFrame)
                     )
                 mask = sf >= sval
 
-            # TODO: Check if this is sufficient and streamline
-            # group.set_mask_for_domain(d, mask)
             group.set_mask(mask)
 
 
@@ -258,7 +251,8 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
     np.ndarray
         Final lithology volume (integer IDs) with shape ``frame.grid.resolution``.
     """
-    shape = tuple(frame.grid.resolution.astype(int))
+    shape = tuple(map(int, frame.grid.resolution))
+
     final_lith = np.zeros(shape, dtype=int)
     final_lith = final_lith.T
 
@@ -481,7 +475,7 @@ def extract_all_meshes_per_domain(
 # Pipeline driver
 # -----------------------------------------------------------------------------
 
-def combined_interpolator_with_domains(
+def compute_structural_model(
     frame: StructuralFrame,
     fault_frame: Optional[FaultFrame] = None,
     *,
@@ -517,7 +511,7 @@ def combined_interpolator_with_domains(
     # --- prepare domain map (supports "no faults" case) ---
     if fault_frame is None:
         # synthetic single domain
-        dom_map = np.zeros(tuple(frame.grid.resolution.astype(int)), dtype=int)
+        dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=int).T
 
         class _TmpFF:  # simple shim with a "domain_map" attribute
             domain_map = dom_map
@@ -583,56 +577,16 @@ def compute_domain_bbox_indices(domain_map: np.ndarray, domain_id: int):
     if not np.any(mask):
         return None
 
-
     # Find ranges along each axis
     z_any = mask.any(axis=(1, 2))
     y_any = mask.any(axis=(0, 2))
     x_any = mask.any(axis=(0, 1))
-
 
     kz0, kz1 = np.where(z_any)[0][[0, -1]]
     ky0, ky1 = np.where(y_any)[0][[0, -1]]
     kx0, kx1 = np.where(x_any)[0][[0, -1]]
     return int(kz0), int(kz1), int(ky0), int(ky1), int(kx0), int(kx1)
 
-
-# def build_subgrid_from_bbox(grid: RegularGrid, bbox: tuple) -> RegularGrid:
-#     """Create a ``RegularGrid`` that spans an index-aligned bbox of the parent grid.
-#
-#
-#     The parent grid uses spacing ``grid.spacing`` and has total ``resolution``. The returned
-#     subgrid shares the same spacing; its extent is computed from the parent's extent and the
-#     inclusive index bounds ``bbox`` (in [Z, Y, X] order).
-#
-#
-#     Notes
-#     -----
-#     - This function **does not** modify the parent grid.
-#     - It assumes ``grid.extent`` is ordered as ``[xmin, xmax, ymin, ymax, zmin, zmax]`` and
-#     spacing is ``[dx, dy, dz]``. If your ``RegularGrid`` uses a different convention, adjust
-#     the extent calculation accordingly (the interpolation results written back still preserve
-#     the original storage layout).
-#     """
-#     kz0, kz1, ky0, ky1, kx0, kx1 = bbox
-#
-#
-#     dx, dy, dz = grid.spacing
-#     xmin, xmax, ymin, ymax, zmin, zmax = grid.extent
-#
-#
-#     # Convert inclusive index bounds to physical extents (upper bound is exclusive in space)
-#     sub_xmin = xmin + kx0 * dx
-#     sub_xmax = xmin + (kx1 + 1) * dx
-#     sub_ymin = ymin + ky0 * dy
-#     sub_ymax = ymin + (ky1 + 1) * dy
-#     sub_zmin = zmin + kz0 * dz
-#     sub_zmax = zmin + (kz1 + 1) * dz
-#
-#
-#     sub_extent = np.array([sub_xmin, sub_xmax, sub_ymin, sub_ymax, sub_zmin, sub_zmax], dtype=float)
-#     sub_resolution = np.array([kx1 - kx0 + 1, ky1 - ky0 + 1, kz1 - kz0 + 1], dtype=int)
-#
-#     return RegularGrid(extent=sub_extent, resolution=sub_resolution)
 
 def build_subgrid_from_bbox(grid, bbox):
     """
@@ -750,8 +704,7 @@ def generate_grouped_colors_per_element(groups: list, base_colormap: str = "Acce
 
 def build_structural_frame(
     mapping_object: Dict[str, Tuple[str, ...]],
-    extent: np.ndarray,
-    resolution: np.ndarray,
+    grid: RegularGrid,
     surface_points: pd.DataFrame,
     orientations: Optional[pd.DataFrame] = None,
     default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING,
@@ -762,10 +715,8 @@ def build_structural_frame(
     ----------
     mapping_object : dict[str, tuple[str, ...]]
         Mapping of group name -> tuple of element names in *youngest to oldest* order.
-    extent : np.ndarray
-        Grid extent passed to :class:`RegularGrid`.
-    resolution : np.ndarray
-        Grid resolution passed to :class:`RegularGrid`.
+    grid : RegularGrid
+        Model grid.
     surface_points : pd.DataFrame
         Surface points with columns ``['X', 'Y', 'Z', 'formation']``.
     orientations : pd.DataFrame, optional
@@ -827,7 +778,7 @@ def build_structural_frame(
         )
         group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
-        group._scalar_field = np.zeros(resolution, dtype=float) # set default empty array to build sf on #
+        group._scalar_field = np.zeros(grid.resolution, dtype=float) # set default empty array to build sf on #
 
     # Generate colors AFTER groups exist
     color_map = generate_grouped_colors_per_element(group_objects)
@@ -840,7 +791,7 @@ def build_structural_frame(
             element_objects[elem.name] = elem
 
     # Create regular grid
-    grid = RegularGrid(extent=extent, resolution=resolution)
+    # grid = RegularGrid(extent=extent, resolution=resolution)
 
     frame = StructuralFrame(structural_groups=group_objects)
     frame._grid = grid
@@ -870,31 +821,6 @@ def assign_domain_ids_to_points(
         Copy of the input DataFrame with a new integer column ``'domain_id'``.
         If the input is empty, the same DataFrame is returned with an empty column of dtype int.
     """
-
-    # if df.empty:
-    #     out = df.copy()
-    #     out["domain_id"] = pd.Series(dtype=int)
-    #     return out
-    #
-    # coords = df[["X", "Y", "Z"]].values
-    # indices = grid.xyz_to_indices(coords)  # [X, Y, Z]
-    #
-    # # Clamp indices to bounds
-    # for dim in range(3):
-    #     indices[:, dim] = np.clip(
-    #         indices[:, dim], 0, domain_map.shape[dim] - 1
-    #     )
-    #
-    # # Direct indexing: [X, Y, Z]
-    # domain_ids = domain_map[
-    #     indices[:, 0],
-    #     indices[:, 1],
-    #     indices[:, 2],
-    # ]
-    #
-    # out = df.copy()
-    # out["domain_id"] = domain_ids
-    # return out
 
     if df.empty:
         df["domain_id"] = pd.Series(dtype=int)

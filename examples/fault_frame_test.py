@@ -2,14 +2,14 @@ from typing import List, Optional
 from pydantic import BaseModel, PrivateAttr
 import numpy as np
 import pandas as pd
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 import gempy as gp
 
 from core.utility.surface_mesh_extraction import marching_cubes_new, marching_cubes_per_element
 
 from core.visualization_components_new import visualize_fault_frame
 
-from core.structural_objects.objects import StructuralFrame, StructuralGroup, StructuralElement
+from concepts.archive.objects import StructuralFrame
 
 
 #%%
@@ -745,7 +745,7 @@ structural_orientations_df = pd.DataFrame(orientation_data, columns=["X", "Y", "
 
 #%%
 
-from core.interpolator_components.interpolators_per_group import general
+from core.structuralmodeling_components.interpolators_per_group import general
 from core.visualization_components_new import visualize_structural_frame, plot_structural_slice
 
 #%%
@@ -782,13 +782,8 @@ import numpy as np
 import pandas as pd
 from copy import deepcopy
 
-from core.interpolator_components.interpolators_per_group.universal_cokriging_per_group import \
+from core.structuralmodeling_components.interpolators_per_group.universal_cokriging_per_group import \
     interpolate_group_universal_cokriging
-from core.interpolator_components.interpolators_per_group.ordinary_kriging_per_group import \
-    interpolate_group_ordinary_kriging
-
-from core.interpolator_components.interpolators_per_group.general import set_scalar_masks, compute_lithology_block
-
 
 #%%
 #
@@ -1150,10 +1145,7 @@ meshes_per_domain[0]["UnitD"]
 
 #%%
 
-import pyvista as pv
 import numpy as np
-from matplotlib import cm
-from matplotlib.colors import Normalize
 
 
 def plot_3d_geology_model(

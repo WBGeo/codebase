@@ -3,6 +3,9 @@ import numpy as np
 
 # Create a Grid class to handle grid creation and attributes
 class RegularGrid:
+    """
+    A class to represent a regular 3D grid.
+    """
     def __init__(self, extent, resolution):
         self.extent = extent
         self.resolution = resolution

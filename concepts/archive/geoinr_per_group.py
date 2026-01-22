@@ -1,6 +1,3 @@
-
-from core.structural_objects.objects import StructuralGroup
-
 import warnings
 
 import torch

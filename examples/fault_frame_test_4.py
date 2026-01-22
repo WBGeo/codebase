@@ -1,11 +1,12 @@
-import numpy as np
 import pandas as pd
 import os
 
-from core.grids.grid_classes import RegularGrid
-from core.visualization_components_new import visualize_fault_frame
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.interpolator_components.interpolators_per_group import general_updated
+from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
+                                           plot_fault_frame_3D)
+
+from core.structuralmodeling_components import general
 
 #%%
 
@@ -53,36 +54,40 @@ grid = RegularGrid(
     resolution=(62, 25, 50)  # Example resolution
 )
 
-fault_frame = general_updated.build_fault_frame(
+fault_frame = general.build_fault_frame(
     fault_surface_points_df=fault_surface_points_df,
     fault_orientations_df=fault_orientations_df,
     fault_names=["fault"],
     colors=["#A9A9A9"],
     grid=grid
 )
+#%%
 
 fault_frame.detailed_report()
+fault_frame.compute_fault_domains()
 
 #%%
 
-# Compute result for fault frame
-fault_frame.generate_fault_domains()
+fault_frame.plot_fault_domain_section(axis='y', index=12)
 
 #%%
 
 # Plot the fault meshes using pyvista
-visualize_fault_frame(fault_frame)
+plot_fault_frame_3D(fault_frame)
 
 
 #%%
 
 # Create a StructuralFrame
-frame = general_updated.build_structural_frame({"Top": ('rock4', 'rock3'), "Bot": ('rock2', 'rock1')},
-                                               np.array([0, 2500, 0, 1000, 0, 1000]),
-                                               np.array([62, 25, 50]),
+frame = general.build_structural_frame({"Top": ('rock4', 'rock3'), "Bot": ('rock2', 'rock1')},
+                                               grid,
                                                structural_surface_points_df,
                                                structural_orientations_df)
 frame.detailed_report()
+
+#%%
+
+plot_structural_model_3D(frame=frame, fault_frame=fault_frame, show_surface_meshes=False)
 
 
 #%%
@@ -118,7 +123,7 @@ frame.detailed_report()
 
 #%%
 
-general_updated.combined_interpolator_with_domains(
+general.compute_structural_model(
     frame,
     fault_frame=fault_frame,  # or None for single-domain
     extract_meshes=True,
@@ -127,32 +132,28 @@ general_updated.combined_interpolator_with_domains(
 
 #%%
 
-from core.visualization_components_new_new import plot_structural_slice_with_faults
-plot_structural_slice_with_faults(frame=frame,
-                                  fault_frame=fault_frame,
-                                  lith_block=frame.get_LithBlock(),
-                                  axis='y',
-                                  show_input_data=True,
-                                  index=0)
+plot_structural_model_2D(frame=frame,
+                        fault_frame=fault_frame,
+                        axis='y',
+                        show_input_data=True,
+                        index=0)
 
 #%%
 
-from core.visualization_components_new_new import visualize_structural_frame_with_faults
-visualize_structural_frame_with_faults(frame=frame,
-                                       fault_frame=fault_frame,
-                                       mesh_type="masked",
-                                       show_orientations=True)
-
-# TODO: If crop to domain is FALSE - meshes "end" at fault surface but compute over full grid
-# TODO: If crop to domain is TRUE - meshes go over fault surface but compute over smaller sub grid,
-    # but this also requires to store domain specific stuff
-
+plot_structural_model_3D(frame=frame,
+                        fault_frame=fault_frame,
+                        mesh_type="masked",
+                        show_orientations=True)
 
 #%%
 
-# plot slice of this mask
-import matplotlib.pyplot as plt
-plt.imshow(frame.structural_groups[0].get_mask()[:, 10, :].T, origin='lower')
-plt.title("Mask for Domain 0 at slice Z=25")
-plt.colorbar()
-plt.show()
+frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+
+#%%
+
+frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
+
+
+
+
+

@@ -2,7 +2,7 @@ import numpy as np
 from core.object_components import InputData, GeomodelResults
 from pykrige.ok3d import OrdinaryKriging3D
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from py_api_wbgeo.nodesapi import wbgeo_component
 

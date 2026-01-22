@@ -5,7 +5,7 @@ import os
 
 from core.object_components import InputData
 
-from core.interpolator_components.interpolators_per_group import general
+from core.structuralmodeling_components.interpolators_per_group import general
 
 from core.visualization_components_new import visualize_structural_frame, plot_structural_slice
 
@@ -37,13 +37,6 @@ frame = general.build_structural_frame(data_test.mapping_object,
                                         data_test.surface_points,
                                         data_test.orientations)
 
-#%%
-
-print(frame.structural_groups[0].structural_elements[0].scalar_value)
-
-
-
-
 
 
 #%%
@@ -71,7 +64,15 @@ frame.detailed_report()
 
 #%%
 
-frame, block = general.combined_interpolator(frame)
+from core.structuralmodeling_components.interpolators_per_group import general_updated
+
+general_updated.compute_structural_model(
+    frame,
+    fault_frame=None,  # or None for single-domain
+    extract_meshes=True,
+    verbose=True,
+)
+
 
 
 #%%

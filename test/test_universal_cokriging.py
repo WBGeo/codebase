@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
+from concepts.archive.universal_cokriging import universal_cokriging_interpolator
 from core.object_components import InputData, GeomodelResults
 
 data_dir = os.path.dirname(__file__) + "/../examples/data/"

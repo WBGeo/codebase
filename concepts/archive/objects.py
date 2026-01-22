@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
 
-from typing import Dict, Tuple, Optional, List, Union
+from typing import Dict, Optional, List, Union
 from pydantic import BaseModel, Field, PrivateAttr
 from enum import Enum
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 
 #%%

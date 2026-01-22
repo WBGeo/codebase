@@ -1,9 +1,8 @@
 
 import pandas as pd
 import numpy as np
-from typing import Optional
 from scipy.interpolate import RBFInterpolator
-from core.structural_objects.objects import StructuralGroup, StructuralElement, StructuralFrame
+from concepts.archive.objects import StructuralGroup
 
 
 #%%

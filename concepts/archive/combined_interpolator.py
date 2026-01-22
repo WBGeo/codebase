@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from core.object_components import InputData, GeomodelResults
-from core.grids.grid_classes import RegularGrid
+from core.object_components import InputData
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes_new
 import os
 

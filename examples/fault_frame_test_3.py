@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import os
 
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.visualization_components_new import visualize_fault_frame
 
-from core.interpolator_components.interpolators_per_group import general_updated
+from core.structuralmodeling_components.interpolators_per_group import general_updated
 
 #%%
 
@@ -60,7 +60,7 @@ fault_frame.detailed_report()
 #%%
 
 # Compute result for fault frame
-fault_frame.generate_fault_domains()
+fault_frame.compute_fault_domains()
 
 #%%
 
@@ -128,7 +128,7 @@ frame.detailed_report()
 #  Solution: Add another element on top
 # TODO: Problem C: For Gempy the saclar values are nor consistent among domains
 
-general_updated.combined_interpolator_with_domains(
+general_updated.compute_structural_model(
     frame,
     fault_frame=fault_frame,  # or None for single-domain
     extract_meshes=True,
@@ -139,7 +139,7 @@ general_updated.combined_interpolator_with_domains(
 
 #%%
 
-from core.visualization_components_new_new import plot_structural_slice_with_faults
+from core.visualization_components import plot_structural_slice_with_faults
 # TODO: Something wrong with input data here (arrows)
 plot_structural_slice_with_faults(frame=frame,
                                   fault_frame=fault_frame,
@@ -150,7 +150,7 @@ plot_structural_slice_with_faults(frame=frame,
 
 #%%
 
-from core.visualization_components_new_new import visualize_structural_frame_with_faults
+from core.visualization_components import visualize_structural_frame_with_faults
 # TODO: Something wrong with input data here (arrows)
 visualize_structural_frame_with_faults(frame=frame,
                                        fault_frame=fault_frame,

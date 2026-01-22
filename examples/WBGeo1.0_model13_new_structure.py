@@ -5,7 +5,7 @@ import os
 
 from core.object_components import InputData
 
-from core.interpolator_components.interpolators_per_group import general
+from core.structuralmodeling_components.interpolators_per_group import general
 from core.visualization_components_new import visualize_structural_frame, plot_structural_slice
 
 

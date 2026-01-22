@@ -1,6 +1,6 @@
 
 import numpy as np
-from core.structural_objects.objects import StructuralGroup, IDWParams
+from concepts.archive.objects import StructuralGroup, IDWParams
 from scipy.spatial import cKDTree
 import pandas as pd
 

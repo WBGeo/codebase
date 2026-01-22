@@ -3,7 +3,7 @@ from core.object_components import InputData, GeomodelResults
 from LoopStructural import GeologicalModel
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 import pandas as pd
-from core.grids.grid_classes import RegularGrid
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from py_api_wbgeo.nodesapi import wbgeo_component
 
