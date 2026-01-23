@@ -6,10 +6,10 @@ from core.object_components import GeomodelResults
 
 def create_mesh_moose(geomodel_results: GeomodelResults, name: str) -> pv.DataSet:
     """
-    Create a mesh for MOOSE based on the input data.
+    Create a mesh for MOOSE based on the input input_data.
 
     Args:
-        geomodel_results (GeomodelResults): The input data for the geological model.
+        geomodel_results (GeomodelResults): The input input_data for the geological model.
 
     Returns:
         comp_meshes (pyvista.core.composite.MultiBlock): The set of meshes precomputed by MOOSE
@@ -21,10 +21,10 @@ def create_mesh_moose(geomodel_results: GeomodelResults, name: str) -> pv.DataSe
 
     # load exodus file relative to this .py file
     datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
-    path_to_file=os.path.join(datadir, f'examples/data/precomputed_meshes_temp/moose_mesh_input_{name}_in.e')
+    path_to_file=os.path.join(datadir, f'examples/input_data/precomputed_meshes_temp/moose_mesh_input_{name}_in.e')
     # cwd = os.getcwd()
-    # path_to_file = cwd + "/examples/data/precomputed_meshes_temp/moose_mesh_input_Model_7_UCK_in.e"
-    # path_to_file = cwd + f"/examples/data/precomputed_meshes_temp/moose_mesh_input_{name}_in.e"
+    # path_to_file = cwd + "/examples/input_data/precomputed_meshes_temp/moose_mesh_input_Model_7_UCK_in.e"
+    # path_to_file = cwd + f"/examples/input_data/precomputed_meshes_temp/moose_mesh_input_{name}_in.e"
     comp_meshes = pv.read_exodus(path_to_file)
 
     return comp_meshes

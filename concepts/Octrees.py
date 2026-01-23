@@ -8,7 +8,7 @@ import numpy as np
 #%%
 
 data_path = 'https://raw.githubusercontent.com/cgre-aachen/gempy_data/master/'
-path_to_data = data_path + "/data/input_data/jan_models/"
+path_to_data = data_path + "/input_data/input_data/jan_models/"
 # Create a GeoModel instance
 geo_model = gp.create_geomodel(
     project_name='fold',

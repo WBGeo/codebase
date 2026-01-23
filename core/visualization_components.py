@@ -2,7 +2,7 @@ import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from core.object_components import InputData, GeomodelResults, MeshResults
+from core.object_components import InputData_StructuralElements, GeomodelResults, MeshResults
 import warnings
 
 def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
@@ -189,7 +189,7 @@ def plot_structural_model_2D(
             CSf = ax.contour(x_coords, y_coords, f_slice.T, levels=[f_sv], colors=[fcol], linewidths=1.5, linestyles="-")
             ax.clabel(CSf, fmt={f_sv: f"Fault: {fault.name}"}, fontsize=7)
 
-    # ---- input data (optional) ----
+    # ---- input input_data (optional) ----
     if show_input_data:
         for group in frame.structural_groups:
             for elem in group.structural_elements:
@@ -312,14 +312,14 @@ def plot_fault_frame_3D(
 
 
 #TODO: Adapt mesh plotting to new Structure
-def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData, colors=None, style="surface",
+def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData_StructuralElements, colors=None, style="surface",
                  show_plotter=True) -> pv.Plotter:
     """
     Plot the mesh for process simulation in 3D.
 
     Args:
         mesh_results (MeshResults): The mesh to plot.
-        input_data (InputData): The input data for the structural geological model.
+        input_data (InputData_StructuralElements): The input input_data for the structural geological model.
         colors (Optional(list)): List of colors to use for the different formations
         style (str): The style of the mesh to plot.
     """

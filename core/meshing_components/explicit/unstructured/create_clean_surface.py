@@ -221,7 +221,7 @@ def plot_surface_with_normals(points, normals, title="Surface Normals"):
 def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, num_wells=0, wells=[], num_sources=0, sources=[], num_shafts=0, centers=[], axes=[], radii=[], num_planes=0,extra_planes=[]):
 
     """
-    Prepares geological surface data by cleaning overlapping points, identifying faults,
+    Prepares geological surface input_data by cleaning overlapping points, identifying faults,
     clustering remaining surfaces, and computing extrusion based on proximity to reference (fault) surfaces.
 
     Args:
@@ -300,9 +300,9 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
 
         # Import geological grid, containing coordinates of grids
         grid_file=geomodel_result.grid
-        # Import lithological data related to each grid points
+        # Import lithological input_data related to each grid points
         lith_block_file=geomodel_result.lith_block
-        # Merge grids and their lithological data
+        # Merge grids and their lithological input_data
 
         grid_litho = pd.concat([pd.DataFrame(grid_file), pd.DataFrame(lith_block_file)], axis=1)
 
@@ -315,7 +315,7 @@ def data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = 50, PROJECT
 
         # Import geological grid, containing coordinates of grids
         grid_file=geomodel_result.grid
-        # Import lithological data related to each grid points
+        # Import lithological input_data related to each grid points
         lith_block_file=geomodel_result.lith_block
         # Convert to DataFrame
         grid_df = pd.DataFrame(grid_file, columns=["x", "y", "z"])

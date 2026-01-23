@@ -67,7 +67,7 @@ def generate_horizontal_fault_data(z_pos: float, name: str, x_range=(100, 900), 
 
 #%%
 
-# Generate fault data
+# Generate fault input_data
 sp_a, ori_a = generate_vertical_fault_data(x_pos=250, name="FaultA")
 sp_b, ori_b = generate_vertical_fault_data(x_pos=750, name="FaultB")
 sp_c, ori_c = generate_vertical_fault_data(x_pos=500, name="FaultC")
@@ -190,34 +190,6 @@ frame.detailed_report()
 
 
 #%%
-
-# TODO: List of still missing things
-# TODO: Things that still make this example break
-# - DONE! Need to change the interpolator functions so they return the scalar field and the scalar values so that I can set them afterwards per domain
-
-# TODO: Important next steps
-# - DONE! What happens if no faults exist (e.g no fault frame given) - seems to somehow just work, single domain, little tricky with parameters
-# - Add a thing to the fault frame, that defines which groups a fault affects.
-# - make a proper masking that accounts for this so we can have faults that are older than groups. Best case these groups would then be calculated in one go
-# - check if there is enough data for each element in each domain and set a reasonable default what happens if not
-# - (so I have the group masks and the domain masks but naming is weird and maybe I need a combined one per group within domain?)
-# - Unify grids for both frames
-# - Storing Update - I think only one mesh per element is sufficient, if we can store separate fault block meshes as a single mesh,
-#   maybe then also only one combined scalar field is necessary, this would really improve the whole storage madness
-
-# TODO: Additional nice to haves
-# - Think about a nice structure for the user to understand this full mess
-# - update all the plotting functions
-# - go through the whole code for cleaning and consistent structure
-# - also to make all setter and getter functions as consistent as possible
-# - mesh types are not actually that different at the moment - no combined scalar filed so no combined mesh possible
-# - for combined scalar field I would need consistent scalar values across domains, which atm is only true for interpolators where I actively set this
-# - DONE! Make computation efficient - only compute over subgrids per domain? - at least low level this works now, can be turned off if it sucks
-# - all the tests
-
-# TODO: Cross functionality
-# - see what I need to change so that GFZ can still use it as before
-
 
 general.compute_structural_model(
     frame,

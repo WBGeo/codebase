@@ -1,5 +1,5 @@
 import numpy as np
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, GeomodelResults
 from scipy.interpolate import RBFInterpolator
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -10,22 +10,22 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 #%%
 @wbgeo_component(identifier='rbf_interpolator',  # unique identifier
                  title='Radial Basis Function interpolator',  # human readable (Default) title
-                 description='Compute a model based on input data using RBF interpolation',
+                 description='Compute a model based on input input_data using RBF interpolation',
                  color='#f4a259',
                  border_color='#000000',
                  group='Interpolation',
                  return_name='results',  # name of the returned port
                  )
-def rbf_interpolator(input_data: InputData,
+def rbf_interpolator(input_data: InputData_StructuralElements,
                      kernel: str = 'linear',
                      smoothing: float = 0,
                      neighbors=None,
                      epsilon=1) -> GeomodelResults:
     """
-    Compute a model based on input data using RBF interpolation
+    Compute a model based on input input_data using RBF interpolation
 
     Args:
-        input_data (InputData): The input data for the structural geological model.
+        input_data (InputData_StructuralElements): The input input_data for the structural geological model.
         kernel (str): The kernel to use for the RBF interpolation. Default is 'linear'.
         smoothing (float): The smoothing parameter for the RBF interpolation. Default is 0.
         neighbors (int or None): The number of neighbors to use for the RBF interpolation. Default is None,
@@ -36,7 +36,7 @@ def rbf_interpolator(input_data: InputData,
         resultsGeomodelResults: The results of the geological model.
 
     """
-    # Test validity of input data for this interpolation
+    # Test validity of input input_data for this interpolation
     # Check for faults
     if input_data.faults is not None and any(input_data.faults):
         raise ValueError("Interpolator can not handle faults in the current state")
@@ -52,7 +52,7 @@ def rbf_interpolator(input_data: InputData,
     unique_elements = sorted(set(element for elements in input_data.mapping_object.values() for element in elements))
     replacements = {element: i + 1 for i, element in enumerate(unique_elements)}
 
-    # Separate data based on structural groups
+    # Separate input_data based on structural groups
     results = []
     scalar_fields = []
     for key, value in input_data.mapping_object.items():

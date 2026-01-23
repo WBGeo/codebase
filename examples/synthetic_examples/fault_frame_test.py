@@ -404,7 +404,7 @@ class FaultFrame(BaseModel):
         for i, fault in enumerate(reversed(self._fault_elements)):  # Youngest first
             name = fault.name
 
-            # Extract surface point/orientation data for this fault
+            # Extract surface point/orientation input_data for this fault
             points = self.get_surface_points_for_element(name)
             orientations = self.get_orientations_for_element(name)
 
@@ -529,7 +529,7 @@ def build_fault_frame(
         colors: list = None
 ) -> FaultFrame:
     """
-    Build a FaultFrame from ordered fault names, surface data, and a grid.
+    Build a FaultFrame from ordered fault names, surface input_data, and a grid.
 
     Args:
         fault_surface_points_df (pd.DataFrame): ['X', 'Y', 'Z', 'formation'].
@@ -625,7 +625,7 @@ def interpolate_group_universal_cokriging_for_faults(
 
 #%%
 
-# Generate fault data
+# Generate fault input_data
 sp_a, ori_a = generate_vertical_fault_data(x_pos=250, name="FaultA")
 sp_b, ori_b = generate_vertical_fault_data(x_pos=750, name="FaultB")
 sp_c, ori_c = generate_vertical_fault_data(x_pos=500, name="FaultC")
@@ -880,7 +880,7 @@ masks_per_domain = dict()  # {domain_id: {group_name: lith_mask}}
 for domain_id in domain_ids:
     print(f"🔎 Processing domain {domain_id}")
 
-    # Filter input data for this domain
+    # Filter input input_data for this domain
     sp_filtered = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
     ori_filtered = ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
 
@@ -1222,7 +1222,7 @@ plot_3d_geology_model(meshes_per_domain, fault_frame, frame, show_faults=True)
 
 # Warnings ad stops
 # if faults are cross-cutting each other
-# Check for data in each fault domain/group (what happens if no data for group in domain)
+# Check for input_data in each fault domain/group (what happens if no input_data for group in domain)
 
 # Logical additions
 # age relations between faults and groups (fault eroded etc), how to model that?

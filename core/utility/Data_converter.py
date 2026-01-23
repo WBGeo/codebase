@@ -6,13 +6,13 @@ import os
 
 #%%
 
-# Some data imports specifically for this example
+# Some input_data imports specifically for this example
 
-# # Define the path to data
+# # Define the path to input_data
 # data_path = 'https://raw.githubusercontent.com/cgre-aachen/gempy_data/master/'
-# path_to_data = data_path + "/data/input_data/jan_models/"
+# path_to_data = data_path + "/input_data/input_data/jan_models/"
 #
-# # Load the data as pandas df
+# # Load the input_data as pandas df
 # orientations_df = pd.read_csv(path_to_data + "model2_orientations.csv")
 # surface_points_df = pd.read_csv(path_to_data + "model2_surface_points.csv")
 
@@ -21,8 +21,8 @@ cwd = os.getcwd()
 # orientations_df = pd.read_csv(path_to_data + "model2_orientations.csv")
 # surface_points_df = pd.read_csv(path_to_data + "model2_surface_points.csv")
 
-orientations_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_orientations.csv")
-surface_points_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points.csv")
+orientations_df = pd.read_csv(cwd + "/examples/input_data/modelWeisweilerMini_orientations.csv")
+surface_points_df = pd.read_csv(cwd + "/examples/input_data/modelWeisweilerMini_surface_points.csv")
 
 # transform orientations to pole vector format (seems more intuitive)
 azimuth_rad = np.radians(orientations_df.azimuth.to_numpy())
@@ -37,14 +37,14 @@ orientations_df.rename(columns={'X': 'X', 'Y': 'Y', 'Z': 'Z',
                                 'azimuth': 'G_x', 'dip': 'G_y', 'polarity': 'G_z', 'formation': 'formation'},
                        inplace=True)
 
-orientations_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv", index=False)
+orientations_df.to_csv(cwd + "/examples/input_data/modelWeisweilerMini_orientations_df.csv", index=False)
 
-surface_points_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv", index=False)
+surface_points_df.to_csv(cwd + "/examples/input_data/modelWeisweilerMini_surface_points_df.csv", index=False)
 
 #%%
 
-# surface_points_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points_df.csv")
-orientations_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv")
+# surface_points_df = pd.read_csv(cwd + "/examples/input_data/modelWeisweilerMini_surface_points_df.csv")
+orientations_df = pd.read_csv(cwd + "/examples/input_data/modelWeisweilerMini_orientations_df.csv")
 orientations_df
 
 #%%
@@ -55,13 +55,13 @@ orientations_df[['G_y', 'G_x']] = orientations_df[['G_x', 'G_y']]
 
 #%%
 
-# surface_points_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_surface_points_df2.csv", index=False)
-orientations_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv", index=False)
+# surface_points_df.to_csv(cwd + "/examples/input_data/modelWeisweilerMini_surface_points_df2.csv", index=False)
+orientations_df.to_csv(cwd + "/examples/input_data/modelWeisweilerMini_orientations_df.csv", index=False)
 
 #%%
 
 # Load the DataFrame from a CSV file
-orientations_df = pd.read_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv")
+orientations_df = pd.read_csv(cwd + "/examples/input_data/modelWeisweilerMini_orientations_df.csv")
 
 # Define the new order of columns
 new_column_order = ['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z', 'formation']  # Replace with your column names
@@ -73,6 +73,6 @@ orientations_df
 #%%
 
 # Save the reordered DataFrame to a new CSV file
-orientations_df.to_csv(cwd + "/examples/data/modelWeisweilerMini_orientations_df.csv", index=False)
+orientations_df.to_csv(cwd + "/examples/input_data/modelWeisweilerMini_orientations_df.csv", index=False)
 
 

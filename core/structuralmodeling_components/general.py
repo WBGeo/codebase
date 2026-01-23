@@ -79,7 +79,7 @@ def run_interpolation_with_fault_domains(
     Parameters
     ----------
     frame : StructuralFrame
-        Structural frame containing groups, elements, grid and input data.
+        Structural frame containing groups, elements, grid and input input_data.
     fault_frame : FaultFrame
         Fault frame providing a 3D ``domain_map`` with domain identifiers.
     crop_to_domain : bool, default True
@@ -281,7 +281,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: Fa
             sf = group.get_scalar_field().T
             gm = group.get_mask().T
             if sf is None or gm is None:
-                # No data in this domain for this group => skip
+                # No input_data in this domain for this group => skip
                 continue
 
             group_block = np.zeros(shape, dtype=int)
@@ -494,7 +494,7 @@ def compute_structural_model(
     Parameters
     ----------
     frame : StructuralFrame
-        Structural frame containing grid, groups, elements, and input data.
+        Structural frame containing grid, groups, elements, and input input_data.
     fault_frame : Optional[FaultFrame]
         If ``None``, a synthetic single domain (all zeros) is used.
     extract_meshes : bool, default True
@@ -628,7 +628,7 @@ def build_fault_frame(
     grid: RegularGrid,
     colors: list = None,
 ) -> FaultFrame:
-    """Build a :class:`FaultFrame` from ordered fault names, surface data, and a grid.
+    """Build a :class:`FaultFrame` from ordered fault names, surface input_data, and a grid.
 
     Parameters
     ----------
@@ -646,7 +646,7 @@ def build_fault_frame(
     Returns
     -------
     FaultFrame
-        A fully configured fault frame with elements, colors, input data, and grid.
+        A fully configured fault frame with elements, colors, input input_data, and grid.
     """
     if colors is None:
         colors = ["#555555"] * len(fault_names)
@@ -709,7 +709,7 @@ def build_structural_frame(
     orientations: Optional[pd.DataFrame] = None,
     default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING,
 ) -> StructuralFrame:
-    """Construct a :class:`StructuralFrame` from mapping, grid info, and data.
+    """Construct a :class:`StructuralFrame` from mapping, grid info, and input_data.
 
     Parameters
     ----------

@@ -1,5 +1,5 @@
 import numpy as np
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, GeomodelResults
 from LoopStructural import GeologicalModel
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 import pandas as pd
@@ -10,18 +10,18 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 
 @wbgeo_component(identifier='loop_interpolator',  # unique identifier
                  title='Loop Structural interpolator',  # human readable (Default) title
-                 description='Compute a model based on input data using FDI/PLI interpolation',
+                 description='Compute a model based on input input_data using FDI/PLI interpolation',
                  color='#f4a259',
                  border_color='#000000',
                  group='Interpolation',
                  return_name='results',  # name of the returned port
                  )
-def loop_structural_interpolator(input_data: InputData, interpolator_type="FDI"):
+def loop_structural_interpolator(input_data: InputData_StructuralElements, interpolator_type="FDI"):
     """
-    Compute a model based on input data using loop structural.
+    Compute a model based on input input_data using loop structural.
 
     Args:
-        input_data (InputData): The input data for the geological model.
+        input_data (InputData_StructuralElements): The input input_data for the geological model.
         interpolator_type (str): The type of interpolator to use. Defaults to "FDI".
 
     Returns:

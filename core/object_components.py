@@ -14,7 +14,6 @@ from typing import Optional, Union, List
 from pydantic_numpy.typing import NpNDArrayInt64, NpNDArrayFp64
 from py_api_wbgeo.nodesapi import wbgeo_type
 
-
 from core.meshing_components.mesh_format.Exodus.Exo_format import ExosInputs
 from core.meshing_components.mesh_format.VTU.VTU_format import VTUInputs
 from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
@@ -23,49 +22,40 @@ from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
 
 
-
 # Pydantic adapter for panda DataFrame
 def df_serializer(df: pd.DataFrame) -> list[dict]:
-  return df.to_dict(orient="records")
+    return df.to_dict(orient="records")
 
 
 def df_validator(value) -> pd.DataFrame:
-  if isinstance(value, pd.DataFrame):
-    return value
-  elif isinstance(value, list):
-    return pd.DataFrame(value)
-  raise TypeError("Expected a pandas DataFrame or a list of dictionaries.")
+    if isinstance(value, pd.DataFrame):
+        return value
+    elif isinstance(value, list):
+        return pd.DataFrame(value)
+    raise TypeError("Expected a pandas DataFrame or a list of dictionaries.")
 
 
 PandasDataFrame = typing.Annotated[
     pd.DataFrame, PlainSerializer(df_serializer), BeforeValidator(df_validator)]
 
-
-@wbgeo_type(name='Input data for a geological model', color='orange', identifier='InputData')
+@wbgeo_type(name='Input input_data for the rock elements of a structural geological model',
+            color='orange',
+            identifier='InputData_StructuralElements')
 @dataclass(config={"arbitrary_types_allowed": True})
-class InputData:
+class InputData_StructuralElements:
     """
-    A class to represent the input data for a geological model.
+    A class to represent the input input_data for a geological model.
 
         Attributes:
             name (str): The name of the model.
-            extent (np.ndarray): The extent of the model.
-            resolution (np.ndarray): The resolution of the model.
             mapping_object (dict): Mapping of structural groups to structural elements.
             surface_points (pd.DataFrame): DataFrame containing surface points.
             orientations (Optional[pd.DataFrame]): DataFrame containing orientations.
-            mapping_object (dict): Mapping of structural groups to structural elements.
-            faults (Optional[List[bool]]): List of groups that are faults.
-            fault_relations (Optional[np.ndarray]): Array of fault relations.
     """
     name: str
-    extent: NpNDArrayInt64
-    resolution: NpNDArrayInt64
     mapping_object: Dict
     surface_points: PandasDataFrame
     orientations: Optional[PandasDataFrame] = None
-    faults: Optional[List[bool]] = None
-    fault_relations: Optional[NpNDArrayInt64] = None
 
     def __post_init__(self):
         # reorder surface_points DataFrame by formation column for colormaps
@@ -77,7 +67,25 @@ class InputData:
         self.surface_points['formation'] = self.surface_points['formation'].astype(str)
 
 
-@wbgeo_type(name='Result os structural geological model', color='blue', identifier='GeomodelResults')
+@wbgeo_type(name='Input input_data for the fault elements of a structural geological model',
+            color='orange',
+            identifier='InputData_FaultElements')
+@dataclass(config={"arbitrary_types_allowed": True})
+class InputData_FaultElements:
+    """
+    A class to represent the input input_data for a geological model.
+
+        Attributes:
+            name (str): The name of the model.
+            fault_surface_points (pd.DataFrame): DataFrame containing surface points.
+            fault_orientations (pd.DataFrame): DataFrame containing orientations.
+    """
+    name: str
+    fault_surface_points: PandasDataFrame
+    fault_orientations: PandasDataFrame  # Might be optional in future when not only UCK is used here
+
+
+@wbgeo_type(name='Result of a structural geological model', color='blue', identifier='GeomodelResults')
 @dataclass(config={"arbitrary_types_allowed": True})
 class GeomodelResults:
     """
@@ -94,6 +102,7 @@ class GeomodelResults:
             mapping_object (dict): Mapping of structural groups to structural elements.
             scalar_fields (Optional[List[np.ndarray]]): List of scalar fields.
     """
+    # TODO: Refactor to new structure, but not sure whats the best way here
     name: str
     lith_block: NpNDArrayInt64
     surface_meshes_vertices: List[List[NpNDArrayFp64]]
@@ -113,7 +122,6 @@ class MeshResults:
     mesh: Optional[pyvista.MultiBlock] = None
 
     def __post_init__(self):
-
         self.vtm_in = VTMInputs(nodes_array=self.nodes, elements_array=self.elements)
         print('[INFO] VTMInputs initialized successfully.')
 
@@ -124,10 +132,9 @@ class MeshResults:
             self.nodes_obj = Nodes(node_array=self.nodes)
             self.elements_obj = Elements(element_array=self.elements, node_array=self.nodes)
 
-
     def export_vtu(self, filename: str):
         """
-        Export the mesh data to a VTU file.
+        Export the mesh input_data to a VTU file.
         Args:
             filename (str): The name of the VTU file to export.
         """
@@ -142,7 +149,7 @@ class MeshResults:
 
     def export_exodus(self, filename: str):
         """
-        Export the mesh data to an Exodus file.
+        Export the mesh input_data to an Exodus file.
         Args:
             filename (str): The name of the Exodus file to export.
         """
@@ -156,7 +163,7 @@ class MeshResults:
 
     def export_vtm(self, filename: str):
         """
-        Export the mesh data to a VTM file.
+        Export the mesh input_data to a VTM file.
         Args:
             filename (str): The name of the VTM file to export.
         """

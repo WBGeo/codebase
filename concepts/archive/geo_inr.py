@@ -1,4 +1,4 @@
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, GeomodelResults
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
@@ -98,8 +98,8 @@ class ConcatMLP(nn.Module):
 
 def normalize(data, bounds):
     """
-    Normalize the data to [-1, 1]
-    data: the data to be normalized
+    Normalize the input_data to [-1, 1]
+    input_data: the input_data to be normalized
     bounds: the extent of the model domain
     """
     data = data.astype(np.float32)
@@ -129,7 +129,7 @@ def loss_intf(y_pred, y_true):
 # loss function for the orientation points
 def loss_grad(train_x, y_pred, y_true, n_orien):
     """
-    train_x: the input data, includes the interface points and orientation points, the orientaion points are at the end of the input data
+    train_x: the input input_data, includes the interface points and orientation points, the orientaion points are at the end of the input input_data
              train_x = [interface points, orientation points]
     y_pred: the predicted orientation
     y_true: the true orientation
@@ -159,7 +159,7 @@ def loss_intf(y_pred, y_true):
 # loss function for the orientation points
 def loss_grad(train_x, y_pred, y_true, n_orien):
     """
-    train_x: the input data, includes the interface points and orientation points, the orientaion points are at the end of the input data
+    train_x: the input input_data, includes the interface points and orientation points, the orientaion points are at the end of the input input_data
              train_x = [interface points, orientation points]
     y_pred: the predicted orientation
     y_true: the true orientation
@@ -204,9 +204,9 @@ def stratigraphic_ConcatMLP(interface_data, orientation_data, meshgrid_data, ext
     """
     Notes: 1. this function is used to model the stratigraphic surfaces, fault feature encoding for this purpose
            2. use 'autograd' to calculate the orientation gradient
-    interface_data: the data comes from the feature encoding results, the list is [label, x, y, z, fault1, fault2, ...],
+    interface_data: the input_data comes from the feature encoding results, the list is [label, x, y, z, fault1, fault2, ...],
                     label value in range [-1, 1], fault1, fault2 are the fault feature encoding results
-    orientation_data: the data comes from the feature encoding results, the list is [x, y, z, dx, dy, dz, fault1, fault2, ...],
+    orientation_data: the input_data comes from the feature encoding results, the list is [x, y, z, dx, dy, dz, fault1, fault2, ...],
     meshgrid_data: the meshgrid points for predicting the domain, the format is [x, y, z, fault1, fault2, ...]
     extent: the extent of the model
     resolution: the resolution of the model
@@ -222,12 +222,12 @@ def stratigraphic_ConcatMLP(interface_data, orientation_data, meshgrid_data, ext
     delta_orie: the delta value for calculating the orientation gradient, set as 1 means the gradient is calculated by the difference of 1 cell
     alpha: the weight of the orientation loss, default is 0.1
     """
-    # read the data
+    # read the input_data
     train_data_x = interface_data[:, 1:].astype("float")
     train_data_y = interface_data[:, 0].astype("float")
     train_orie_x = orientation_data[:, 0:3].astype("float")
     train_orie_y = orientation_data[:, 3:6].astype("float")
-    # normalize the data
+    # normalize the input_data
     normalized_train_data_x = normalize(train_data_x, extent)
     normalized_train_orie_x = normalize(train_orie_x, extent)
     normalized_meshgrid_data = normalize(meshgrid_data, extent)
@@ -305,20 +305,20 @@ def stratigraphic_ConcatMLP(interface_data, orientation_data, meshgrid_data, ext
 
 @wbgeo_component(identifier='geoinr_interpolator',  # unique identifier
                  title='GeoINR interpolator',  # human readable (Default) title
-                 description='Compute a model based on input data using GeoINR interpolation',
+                 description='Compute a model based on input input_data using GeoINR interpolation',
                  color='#f4a259',
                  border_color='#000000',
                  group='Interpolation',
                  return_name='results',  # name of the returned port
                  )
-def geo_inr_interpolator(input_data: InputData,
+def geo_inr_interpolator(input_data: InputData_StructuralElements,
                          beta: int = 10
-                        ) -> GeomodelResults:
+                         ) -> GeomodelResults:
     """
-    Compute a model based on input data using geoINR interpolation
+    Compute a model based on input input_data using geoINR interpolation
 
     Args:
-        input_data (InputData): The input data for the geological model.
+        input_data (InputData_StructuralElements): The input input_data for the geological model.
         beta (int): Beta parameter for the Softplus activation function.
 
     Returns:
@@ -337,7 +337,7 @@ def geo_inr_interpolator(input_data: InputData,
     replacements_inr = {key: value for key, value in zip(replacements.keys(), np.linspace(-1, 1, len(replacements)))}
     surface_points['label'] = surface_points['formation'].replace(replacements_inr)
 
-    # Separate data based on structural groups
+    # Separate input_data based on structural groups
     results = []
     scalar_fields = []
     scalar_values = []

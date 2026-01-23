@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from core.object_components import InputData
+from core.object_components import InputData_StructuralElements
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes_new
 import os
@@ -111,7 +111,7 @@ class StructuralElement(BaseModel):
 
 class StructuralGroup(BaseModel):
     """
-    A structural group that contains multiple structural elements and associated data.
+    A structural group that contains multiple structural elements and associated input_data.
 
     Attributes:
         name: Name of the structural group.
@@ -193,7 +193,7 @@ class StructuralFrame(BaseModel):
         if self.orientations is not None:
             print(f"• Total orientations: {len(self.orientations)} entries")
         else:
-            print("• Orientation data: None")
+            print("• Orientation input_data: None")
 
         print("\n🧱 Structural Groups:\n")
 
@@ -560,9 +560,9 @@ mapping_object = {
     "Strat_Series2": ("rock2", "rock1"),
 }
 
-surface_points = pd.read_csv("examples/data/model12_surface_points_df.csv")
+surface_points = pd.read_csv("examples/input_data/model12_surface_points_df.csv")
 
-# orientations = pd.read_csv("examples/data/model12_orientations_df.csv")
+# orientations = pd.read_csv("examples/input_data/model12_orientations_df.csv")
 
 frame = build_structural_frame(mapping_object, surface_points) #, orientations)
 frame.pretty_print()
@@ -584,10 +584,10 @@ frame.pretty_print()
 
 def combined_interpolator(input_data):
     """
-    Compute a model based on input data using a combination of Ordinary Kriging and RBF interpolation.
+    Compute a model based on input input_data using a combination of Ordinary Kriging and RBF interpolation.
 
     Args:
-        input_data (InputData): The input data for the geological model.
+        input_data (InputData_StructuralElements): The input input_data for the geological model.
 
     Returns:
         results (GeomodelResults): The results of the geological model.
@@ -608,7 +608,7 @@ def combined_interpolator(input_data):
 
     print("grid done")
 
-    # 2. Build the structural frame from input data
+    # 2. Build the structural frame from input input_data
     frame = build_structural_frame(input_data.mapping_object, input_data.surface_points, input_data.orientations)
 
     print("frame done")
@@ -676,17 +676,17 @@ def combined_interpolator(input_data):
 #%%
 
 
-data_test = InputData(name='Model_12',
-                      extent=np.array([0, 2000, 0, 1000, 0, 1000]),
-                      resolution=np.array([100, 50, 50]),
-                      surface_points=pd.read_csv(
-                          cwd + "/examples/data/model12_surface_points_df.csv"),
-                      orientations=pd.read_csv(
-                          cwd + "/examples/data/model12_orientations_df.csv"),
-                      mapping_object={
+data_test = InputData_StructuralElements(name='Model_12',
+                                         extent=np.array([0, 2000, 0, 1000, 0, 1000]),
+                                         resolution=np.array([100, 50, 50]),
+                                         surface_points=pd.read_csv(
+                          cwd + "/examples/input_data/model12_surface_points_df.csv"),
+                                         orientations=pd.read_csv(
+                          cwd + "/examples/input_data/model12_orientations_df.csv"),
+                                         mapping_object={
                           "Strat_Series1": ('rock4', 'rock3'),
                           "Strat_Series2": ('rock2', 'rock1')},
-                      )
+                                         )
 
 #%%
 

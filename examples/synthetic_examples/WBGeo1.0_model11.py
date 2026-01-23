@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 
-from core.object_components import InputData
+from core.object_components import InputData_StructuralElements
 from concepts.archive.universal_cokriging import universal_cokriging_interpolator
 from core.visualization_components import plot_2d, plot_3d
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -14,24 +14,24 @@ cwd = os.getcwd()
 #%%
 # WORKFLOW Model 11: 2 faults, 1 stratigraphic series
 
-# Component 1: Input data
-data_test = InputData(name='Model 11',
-                      extent=np.array([0, 2000, 0, 1000, 0, 1000]),
-                      resolution=np.array([80, 40, 40]),
-                      mapping_object={
+# Component 1: Input input_data
+data_test = InputData_StructuralElements(name='Model 11',
+                                         extent=np.array([0, 2000, 0, 1000, 0, 1000]),
+                                         resolution=np.array([80, 40, 40]),
+                                         mapping_object={
                           "Fault_Series2": ('fault2'),
                           "Fault_Series1": ('fault1'),
                           "Strat_Series1": ('rock4', 'rock3', 'rock2', 'rock1')},
-                      surface_points=pd.read_csv(
-                          cwd + "/examples/data/model11_surface_points_df.csv"),
-                      orientations=pd.read_csv(
-                          cwd + "/examples/data/model11_orientations_df.csv"),
-                      faults=[True, True, False]
-                      )
+                                         surface_points=pd.read_csv(
+                          cwd + "/examples/input_data/model11_surface_points_df.csv"),
+                                         orientations=pd.read_csv(
+                          cwd + "/examples/input_data/model11_orientations_df.csv"),
+                                         faults=[True, True, False]
+                                         )
 
 #%%
 
-# 1.5: Plot the input data (2D and 3D possible) - Should be an option of the input data component
+# 1.5: Plot the input input_data (2D and 3D possible) - Should be an option of the input input_data component
 plot_2d(data_test)
 plot_3d(data_test)
 

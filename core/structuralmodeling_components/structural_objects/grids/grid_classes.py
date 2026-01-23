@@ -1,24 +1,45 @@
 import numpy as np
+from py_api_wbgeo.nodesapi import wbgeo_type
+from pydantic.dataclasses import dataclass
+from typing import Tuple
 
 
 # Create a Grid class to handle grid creation and attributes
+@wbgeo_type(name='Grid for discretization of a structural geological model',
+            color='orange',
+            identifier='RegularGrid')
+@dataclass(config={"arbitrary_types_allowed": True})
 class RegularGrid:
-    """
-    A class to represent a regular 3D grid.
-    """
-    def __init__(self, extent, resolution):
-        self.extent = extent
-        self.resolution = resolution
-        dx = (extent[1] - extent[0]) / resolution[0]
-        dy = (extent[3] - extent[2]) / resolution[1]
-        dz = (extent[5] - extent[4]) / resolution[2]
+    extent: Tuple[float, float, float, float, float, float]
+    resolution: Tuple[int, int, int]
+
+    def __post_init__(self):
+        dx = (self.extent[1] - self.extent[0]) / self.resolution[0]
+        dy = (self.extent[3] - self.extent[2]) / self.resolution[1]
+        dz = (self.extent[5] - self.extent[4]) / self.resolution[2]
         self.spacing = (dx, dy, dz)
-        self.gridx = np.linspace(extent[0] + dx / 2, extent[1] - dx / 2, resolution[0])
-        self.gridy = np.linspace(extent[2] + dy / 2, extent[3] - dy / 2, resolution[1])
-        self.gridz = np.linspace(extent[4] + dz / 2, extent[5] - dz, resolution[2])
+
+        self.gridx = np.linspace(
+            self.extent[0] + dx / 2,
+            self.extent[1] - dx / 2,
+            self.resolution[0],
+        )
+        self.gridy = np.linspace(
+            self.extent[2] + dy / 2,
+            self.extent[3] - dy / 2,
+            self.resolution[1],
+        )
+        self.gridz = np.linspace(
+            self.extent[4] + dz / 2,
+            self.extent[5] - dz / 2,
+            self.resolution[2],
+        )
+
         coords = self.gridx, self.gridy, self.gridz
         self.g = np.meshgrid(*coords, indexing="ij")
-        self.grid_coordinates = np.vstack(tuple(map(np.ravel, self.g))).T.astype("float64")
+        self.grid_coordinates = np.vstack(
+            tuple(map(np.ravel, self.g))
+        ).T.astype("float64")
 
     def xyz_to_indices(self, coords: np.ndarray) -> np.ndarray:
         """

@@ -1,6 +1,6 @@
 import numpy as np
 import gempy as gp
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, GeomodelResults
 from skimage import measure
 from core.utility.conversions import element_list_from_dict
 from core.utility.model_cleaning import remove_outliers_3d
@@ -10,27 +10,27 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 
 @wbgeo_component(identifier='uck_interpolator',  # unique identifier
                  title='Universal Co-Kriging interpolator',  # human readable (Default) title
-                 description='Compute a model based on input data using UCK interpolation',
+                 description='Compute a model based on input input_data using UCK interpolation',
                  color='#f4a259',
                  border_color='#000000',
                  group='Interpolation',
                  return_name='results',  # name of the returned port
                  )
-def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
+def universal_cokriging_interpolator(input_data: InputData_StructuralElements, ) -> GeomodelResults:
     """
-    Compute a model based on input data using universal co-kriging interpolation (gempy)
+    Compute a model based on input input_data using universal co-kriging interpolation (gempy)
 
     Args:
-        input_data (InputData): The input data for the geological model.
+        input_data (InputData_StructuralElements): The input input_data for the geological model.
 
     Returns:
         GeomodelResults: The results of the geological model.
 
     """
-    # Test validity of input data for this interpolation
+    # Test validity of input input_data for this interpolation
     # Check for orientations
     if input_data.orientations is None:
-        raise ValueError("Interpolator requires orientations in the input data")
+        raise ValueError("Interpolator requires orientations in the input input_data")
 
     # Create a structural frame
     # Note: These objects have to be created separately, otherwise ID mapping does not match
@@ -79,7 +79,7 @@ def universal_cokriging_interpolator(input_data: InputData,) -> GeomodelResults:
     if input_data.fault_relations is not None and input_data.faults is not None:
         model_instance.structural_frame.fault_relations = input_data.fault_relations
     elif input_data.fault_relations is not None and input_data.faults is None:
-        print("Fault relations defined but no faults defined in input data.")
+        print("Fault relations defined but no faults defined in input input_data.")
     elif input_data.fault_relations is None and input_data.faults is not None:
         # Default behavior, young affects everything below
         relations = np.zeros((len(model_instance.structural_frame.structural_groups),

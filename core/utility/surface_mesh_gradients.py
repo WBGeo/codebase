@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, GeomodelResults
 from core.utility.conversions import normalize_vectors
 
 

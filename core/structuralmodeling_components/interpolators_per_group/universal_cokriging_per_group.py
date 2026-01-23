@@ -50,7 +50,7 @@ def interpolate_group_universal_cokriging(
             f"Orientations for group '{group.name}' contain formations not in the group: {sorted(unknown_ori)}"
         )
 
-    # ---- build GemPy data tables ----
+    # ---- build GemPy input_data tables ----
     surface_data = gp.data.surface_points.SurfacePointsTable.from_arrays(
         x=group_surface_points_df["X"].to_numpy(),
         y=group_surface_points_df["Y"].to_numpy(),

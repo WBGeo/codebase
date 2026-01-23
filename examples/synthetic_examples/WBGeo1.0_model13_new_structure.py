@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 
-from core.object_components import InputData
+from core.object_components import InputData_StructuralElements
 
 from core.structuralmodeling_components.interpolators_per_group import general
 from core.visualization_components_new import visualize_structural_frame, plot_structural_slice
@@ -15,19 +15,19 @@ cwd = os.getcwd()
 
 #%%
 # WORKFLOW Model 12: 1 unconformity, 2 stratigraphic series
-# Component 1: Input data
-data_test = InputData(name='Model_13',
-                      extent=np.array([0, 1000, 0, 500, 0, 1000]),
-                      resolution=np.array([50, 50, 50]),
-                      surface_points=pd.read_csv(
-                          cwd + "/examples/data/model13_surface_points_df.csv"),
-                      orientations=pd.read_csv(
-                          cwd+"/examples/data/model13_orientations_df.csv"),
-                      mapping_object={
+# Component 1: Input input_data
+data_test = InputData_StructuralElements(name='Model_13',
+                                         extent=np.array([0, 1000, 0, 500, 0, 1000]),
+                                         resolution=np.array([50, 50, 50]),
+                                         surface_points=pd.read_csv(
+                          cwd + "/examples/input_data/model13_surface_points_df.csv"),
+                                         orientations=pd.read_csv(
+                          cwd+"/examples/input_data/model13_orientations_df.csv"),
+                                         mapping_object={
                           "Shallow_Strat": ('shallow_rock3', 'shallow_rock2', 'shallow_rock1'),
                           "Medium_Strat": ('medium_rock3', 'medium_rock2', 'medium_rock1'),
                           "Deep_Strat": ('deep_rock4', 'deep_rock3', 'deep_rock2', 'deep_rock1')},
-                      )
+                                         )
 
 #%%
 

@@ -6,7 +6,7 @@ from core.structuralmodeling_components.structural_objects.grids.grid_classes im
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
                                            plot_fault_frame_3D)
 
-from core.structuralmodeling_components import general
+from core.structuralmodeling_components import general, general_faults
 
 #%%
 
@@ -15,11 +15,11 @@ cwd = os.getcwd()
 #%%
 
 # load the csv
-df1 = pd.read_csv(cwd + "/examples/data/model7_surface_points_df.csv")
+df1 = pd.read_csv(cwd + "/examples/input_data/model7_surface_points_df.csv")
 fault_surface_points_df = df1[df1["formation"] == "fault"]
 structural_surface_points_df = df1[df1["formation"] != "fault"]
 
-df2 = pd.read_csv(cwd + "/examples/data/model7_orientations_df.csv")
+df2 = pd.read_csv(cwd + "/examples/input_data/model7_orientations_df.csv")
 fault_orientations_df = df2[df2["formation"] == "fault"]
 structural_orientations_df = df2[df2["formation"] != "fault"]
 
@@ -54,6 +54,12 @@ grid = RegularGrid(
     resolution=(62, 25, 50)  # Example resolution
 )
 
+#%%
+
+grid.extent
+
+#%%
+
 fault_frame = general.build_fault_frame(
     fault_surface_points_df=fault_surface_points_df,
     fault_orientations_df=fault_orientations_df,
@@ -61,10 +67,11 @@ fault_frame = general.build_fault_frame(
     colors=["#A9A9A9"],
     grid=grid
 )
+
 #%%
 
 fault_frame.detailed_report()
-fault_frame.compute_fault_domains()
+general_faults.compute_fault_domains(fault_frame)
 
 #%%
 

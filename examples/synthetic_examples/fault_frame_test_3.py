@@ -14,11 +14,11 @@ cwd = os.getcwd()
 #%%
 
 # load the csv
-df1 = pd.read_csv(cwd + "/examples/data/model7_surface_points_df.csv")
+df1 = pd.read_csv(cwd + "/examples/input_data/model7_surface_points_df.csv")
 fault_surface_points_df = df1[df1["formation"] == "fault"]
 structural_surface_points_df = df1[df1["formation"] != "fault"]
 
-df2 = pd.read_csv(cwd + "/examples/data/model7_orientations_df.csv")
+df2 = pd.read_csv(cwd + "/examples/input_data/model7_orientations_df.csv")
 fault_orientations_df = df2[df2["formation"] == "fault"]
 structural_orientations_df = df2[df2["formation"] != "fault"]
 
@@ -122,8 +122,8 @@ frame.detailed_report()
 
 #%%
 
-# TODO: Problem A: Missing data for top layer on both sides of fault block -
-#  Solution: Add more data points
+# TODO: Problem A: Missing input_data for top layer on both sides of fault block -
+#  Solution: Add more input_data points
 # TODO: Problem B: Need two units in top group for OK and RBF to work well
 #  Solution: Add another element on top
 # TODO: Problem C: For Gempy the saclar values are nor consistent among domains
@@ -140,7 +140,7 @@ general_updated.compute_structural_model(
 #%%
 
 from core.visualization_components import plot_structural_slice_with_faults
-# TODO: Something wrong with input data here (arrows)
+# TODO: Something wrong with input input_data here (arrows)
 plot_structural_slice_with_faults(frame=frame,
                                   fault_frame=fault_frame,
                                   lith_block=frame.get_LithBlock(),
@@ -151,7 +151,7 @@ plot_structural_slice_with_faults(frame=frame,
 #%%
 
 from core.visualization_components import visualize_structural_frame_with_faults
-# TODO: Something wrong with input data here (arrows)
+# TODO: Something wrong with input input_data here (arrows)
 visualize_structural_frame_with_faults(frame=frame,
                                        fault_frame=fault_frame,
                                        mesh_type="masked",

@@ -43,7 +43,7 @@ def interpolate_group_geoml(
     # create a new column in the DataFrame for scalar values
     group_surface_points_df['scalar_value'] = group_surface_points_df['formation'].map(formation_to_scalar).astype(float)
 
-    # How to actually get the input data in the right format
+    # How to actually get the input input_data in the right format
     input_data = geoml.data.PointData(group_surface_points_df, ["X", "Y", "Z"])
 
     input_data.add_continuous_variable("scalar_value",
@@ -65,7 +65,7 @@ def interpolate_group_geoml(
             variables=["scalar_value"],
             likelihoods=geoml.likelihood.CategoricalGaussianIndicator(
                 n_components=len(group.structural_elements), # Number of elements in the group (len(group.structural_elements))
-                sharpness=5  # to boost accuracy in training data
+                sharpness=5  # to boost accuracy in training input_data
             ),
             latent_network=net_output,
             options=geoml.models.GPOptions(jitter=1e-6))

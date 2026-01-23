@@ -49,7 +49,7 @@ class RBFParams(BaseModel):
         kernel: The radial basis function kernel to use. Common options include 'linear', 'cubic', 'thin_plate', etc.
         smoothing: Smoothing parameter. Larger values allow more smoothing of the interpolation surface.
         epsilon: Shape parameter for kernels like multiquadric or inverse multiquadric.
-        neighbors: Optional number of nearest neighbors to use. If None, all data points are considered.
+        neighbors: Optional number of nearest neighbors to use. If None, all input_data points are considered.
     """
 
     kernel: str = Field("linear",
@@ -222,7 +222,7 @@ class StructuralElement(BaseModel):
 
 class StructuralGroup(BaseModel):
     """
-    A structural group that contains multiple structural elements and associated data.
+    A structural group that contains multiple structural elements and associated input_data.
 
     Attributes:
         name: Name of the structural group.
@@ -322,7 +322,7 @@ class StructuralGroup(BaseModel):
 
 class StructuralFrame(BaseModel):
     """
-    A structural frame that contains multiple structural groups and associated data.
+    A structural frame that contains multiple structural groups and associated input_data.
     """
     structural_groups: List[StructuralGroup] = Field(default_factory=list)
 
@@ -400,7 +400,7 @@ class StructuralFrame(BaseModel):
         if self.orientations is not None:
             print(f"• Total orientations: {len(self.orientations)} entries\n")
         else:
-            print("• Orientation data: None\n")
+            print("• Orientation input_data: None\n")
 
         for group in self.structural_groups:
             print(f"▶ {group.name}")

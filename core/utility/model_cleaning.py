@@ -13,7 +13,7 @@ def remove_outliers_3d(rock_array):
     Returns:
         ndarray: Cleaned rock layer array.
     """
-    cleaned_array = rock_array.copy()  # Copy to avoid modifying the original data
+    cleaned_array = rock_array.copy()  # Copy to avoid modifying the original input_data
     unique_values = np.unique(rock_array)  # Get unique rock unit values
 
     # Define 6-connectivity for 3D neighbor detection (no diagonal neighbors)

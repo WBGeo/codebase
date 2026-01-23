@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 
-from core.object_components import InputData
+from core.object_components import InputData_StructuralElements
 
 from core.structuralmodeling_components.interpolators_per_group import general
 
@@ -16,18 +16,18 @@ cwd = os.getcwd()
 
 #%%
 # WORKFLOW Model 12: 1 unconformity, 2 stratigraphic series
-# Component 1: Input data
-data_test = InputData(name='Model_12',
-                      extent=np.array([0, 2000, 0, 1000, 0, 1000]),
-                      resolution=np.array([100, 50, 50]),
-                      surface_points=pd.read_csv(
-                          cwd + "/examples/data/model12_surface_points_df.csv"),
-                      orientations=pd.read_csv(
-                          cwd + "/examples/data/model12_orientations_df.csv"),
-                      mapping_object={
+# Component 1: Input input_data
+data_test = InputData_StructuralElements(name='Model_12',
+                                         extent=np.array([0, 2000, 0, 1000, 0, 1000]),
+                                         resolution=np.array([100, 50, 50]),
+                                         surface_points=pd.read_csv(
+                          cwd + "/examples/input_data/model12_surface_points_df.csv"),
+                                         orientations=pd.read_csv(
+                          cwd + "/examples/input_data/model12_orientations_df.csv"),
+                                         mapping_object={
                           "Strat_Series1": ('rock4', 'rock3'),
                           "Strat_Series2": ('rock2', 'rock1')},
-                      )
+                                         )
 
 #%%
 

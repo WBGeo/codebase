@@ -18,7 +18,7 @@ def create_structured_mesh_data(geomodel_result, refinement_data, z_threshold=0.
     Generates a geological mesh and returns a MeshData object.
 
     Args:
-        results_test (object): Object containing data to create the grid.
+        results_test (object): Object containing input_data to create the grid.
         refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
         tolerance (float): Distance tolerance for Z-value adjustment.

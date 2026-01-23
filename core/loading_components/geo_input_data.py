@@ -1,4 +1,4 @@
-from core.object_components import InputData
+from core.object_components import InputData_StructuralElements
 import numpy as np
 import pandas as pd
 
@@ -20,7 +20,7 @@ JSONFileDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  border_color='#000000',  # and its border color
                  group='Inputs',
                  identifier='geo_input_data_fix',  # a unique identifier
-                 return_name='data',  # the name for the returned-port
+                 return_name='input_data',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def geo_input_data_fix(name: str,
                        extent_str: str = '0, 2000, 0, 1000, 0, 1000',
@@ -29,30 +29,30 @@ def geo_input_data_fix(name: str,
                        orientations_file: CSVFileDataType = 'model12_surface_points_df.csv',
                        mapping_file: JSONFileDataType = 'model_12_mapping.json',
                        with_faults : bool = False
-                       ) -> InputData:
+                       ) -> InputData_StructuralElements:
     # TODO: Provide a proper input type which does not require strings
     import os
     import pathlib
 
     datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
     print(datadir)
-    print(os.path.join(datadir, 'examples/data/', orientations_file))
-    print(os.path.join(datadir, 'examples/data/'))
+    print(os.path.join(datadir, 'examples/input_data/', orientations_file))
+    print(os.path.join(datadir, 'examples/input_data/'))
 
     extent = np.array([int(i.strip()) for i in extent_str.split(",")])
     resolution = np.array([int(i.strip()) for i in resolution_str.split(",")])
-    surface_points = pd.read_csv(os.path.join(datadir, 'examples/data/', surface_points_file))
+    surface_points = pd.read_csv(os.path.join(datadir, 'examples/input_data/', surface_points_file))
     orientations = None
     if orientations_file != 'None':
-        orientations = pd.read_csv(os.path.join(datadir, 'examples/data/', orientations_file))
+        orientations = pd.read_csv(os.path.join(datadir, 'examples/input_data/', orientations_file))
 
     mapping_object = {}
     if mapping_file != 'None':
-        with open (os.path.join(datadir, 'examples/data/', mapping_file), 'r') as f:
+        with open (os.path.join(datadir, 'examples/input_data/', mapping_file), 'r') as f:
             import json
             mapping_object = json.load(f)
 
-    return InputData(
+    return InputData_StructuralElements(
         name=name,
         extent=extent,
         resolution=resolution,

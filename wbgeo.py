@@ -2,7 +2,7 @@ from typing import Optional
 
 from py_api_wbgeo import apitypes
 
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, GeomodelResults
 
 # from core.structuralmodeling_components.geo_inr import geo_inr_interpolator # removed until updated
 # from core.structuralmodeling_components.loopstructural_old import loop_structural_interpolator # removed until updated
@@ -42,8 +42,8 @@ PMType: apitypes.ScriptType = {"id": "PMTypePlaceHolder",
                                "real_type": BoolDataType,
                                "name": "ProcessSimResult", "color": 'blue'}
 
-InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData,
-                                      "name": 'Input data for a geological model', "color": 'orange'}
+InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData_StructuralElements,
+                                      "name": 'Input input_data for a geological model', "color": 'orange'}
 
 GeomodelResultsType: apitypes.ScriptType = {"id": "GeomodelResults", "real_type": GeomodelResults, "name": 'Geo Result',
                                             "color": '#f4a259'}
@@ -52,14 +52,14 @@ GeomodelResultsType: apitypes.ScriptType = {"id": "GeomodelResults", "real_type"
 #
 # Define some pre-conditions (guards)
 # Return None if they match, otherwise return a human readable error text
-def does_not_have_faults(input: InputData) -> Optional[str]:
+def does_not_have_faults(input: InputData_StructuralElements) -> Optional[str]:
     if input.faults is not None:
         # raising an error (or returning a string) gives the information about fails
         return "Faults are not supported"
     return None
 
 
-def does_have_orientations(input: InputData) -> Optional[str]:
+def does_have_orientations(input: InputData_StructuralElements) -> Optional[str]:
     if input.orientations is None:
         # raising an error (or returning a string) gives the information about fails
         return "Orientations are required"
@@ -112,7 +112,7 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 #                                group='Inputs',
 #                                # the method which actually performs the calculation
 #                                outputs=[{  # the output ports
-#                                    'param': 'data', 'type': InputDataType,
+#                                    'param': 'input_data', 'type': InputDataType,
 #                                }])
 
 # nodesapi.register_script_block(identifier='loop_structural_interpolator',  # unique identifier
@@ -125,7 +125,7 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 #                                    },
 #                                ],
 #                                execute=nodesapi.create_geo_execute(loop_structural_interpolator),
-#                                description='Compute a model based on input data using LoopStructural interpolation',
+#                                description='Compute a model based on input input_data using LoopStructural interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -149,7 +149,7 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 #                                    }
 #                                ],
 #                                execute=nodesapi.create_geo_execute(geo_inr_interpolator),
-#                                description='Compute a model based on input data using GeoINR interpolation',
+#                                description='Compute a model based on input input_data using GeoINR interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -188,7 +188,7 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 #                                    }
 #                                ],
 #                                execute=nodesapi.create_geo_execute(rbf_interpolator),
-#                                description='Compute a model based on input data using RBF interpolation',
+#                                description='Compute a model based on input input_data using RBF interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -239,7 +239,7 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 #
 #                                ],
 #                                execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
-#                                description='Compute a model based on input data using kriging interpolation',
+#                                description='Compute a model based on input input_data using kriging interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -257,7 +257,7 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 #                                        'data_requirements': [does_have_orientations]
 #                                    }],
 #                                execute=nodesapi.create_geo_execute(universal_cokriging_interpolator),
-#                                description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
+#                                description='Compute a model based on input input_data using universal co-kriging interpolation (gempy)',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',

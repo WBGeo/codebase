@@ -1,5 +1,5 @@
 import numpy as np
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, GeomodelResults
 from pykrige.ok3d import OrdinaryKriging3D
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -9,24 +9,24 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 
 @wbgeo_component(identifier='ok_interpolator',  # unique identifier
                  title='Ordinary Kriging interpolator',  # human readable (Default) title
-                 description='Compute a model based on input data using OK interpolation',
+                 description='Compute a model based on input input_data using OK interpolation',
                  color='#f4a259',
                  border_color='#000000',
                  group='Interpolation',
                  return_name='results',  # name of the returned port
                  )
-def ordinary_kriging_interpolator(input_data: InputData,
+def ordinary_kriging_interpolator(input_data: InputData_StructuralElements,
                                   var_model="gaussian",
                                   var_sill=1,
-                                  var_range=500, # need to set a more reasonable default
+                                  var_range=500,  # need to set a more reasonable default
                                   var_nugget=0,
-                                  anisotropy_scaling_z=0.3, # need to set a more reasonable default
+                                  anisotropy_scaling_z=0.3,  # need to set a more reasonable default
                                   neighbors=None) -> GeomodelResults:
     """
-    Compute a model based on input data using kriging interpolation
+    Compute a model based on input input_data using kriging interpolation
 
     Args:
-        input_data (InputData): The input data for the geological model.
+        input_data (InputData_StructuralElements): The input input_data for the geological model.
         var_model (str): The variogram model to use. Default is 'gaussian'.
         var_sill (float): The sill of the variogram. Default is 1.
         var_range (float): The range of the variogram. Default is 500.
@@ -38,7 +38,7 @@ def ordinary_kriging_interpolator(input_data: InputData,
         resultsGeomodelResults: The results of the geological model.
 
     """
-    # Test validity of input data for this interpolation
+    # Test validity of input input_data for this interpolation
     # Check for faults
     if input_data.faults is not None and any(input_data.faults):
         raise ValueError("Interpolator can not handle faults in the current state")
@@ -54,7 +54,7 @@ def ordinary_kriging_interpolator(input_data: InputData,
     unique_elements = sorted(set(element for elements in input_data.mapping_object.values() for element in elements))
     replacements = {element: i + 1 for i, element in enumerate(unique_elements)}
 
-    # Separate data based on structural groups
+    # Separate input_data based on structural groups
     results = []
     scalar_fields = []
     for key, value in input_data.mapping_object.items():

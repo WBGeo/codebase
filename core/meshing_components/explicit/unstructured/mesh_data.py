@@ -341,7 +341,7 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
             if len(line_points) > 0:  # skip empty
                 new_cells.append(meshio.CellBlock(cell_type="line", data=np.vstack(line_points)))
 
-          #new_cells.append(meshio.CellBlock(cell_type="line", data=points_by_well))
+          #new_cells.append(meshio.CellBlock(cell_type="line", input_data=points_by_well))
 
 
   if source_tag:
@@ -374,7 +374,7 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        data_test (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
+        data_test (InputData): Input input_data object containing surface points, orientations, mapping, faults, and extent.
         geomodel_result (object): Output object from the geomodel interpolation, e.g. from `universal_cokriging_interpolator`.
         num_wells (int): Number of wells.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
