@@ -23,15 +23,15 @@ class TestUniversalCokriging(unittest.TestCase):
                                                      resolution=np.array([20, 20, 20]),
                                                      mapping_object={"Strat_Series": ('rock2', 'rock1')},
                                                      surface_points=pd.read_csv(
-                                      data_dir + "model2_surface_points_df.csv"),
+                                      data_dir + "model1_surface_points_df.csv"),
                                                      orientations=pd.read_csv(
-                                      data_dir + "model2_orientations_df.csv"),
+                                      data_dir + "model1_orientations_df.csv"),
                                                      )
 
     def test_data_folder_existing(self):
         # if these asserts fail, every other test will also likely fail -> just helps us to narrow failures down
         self.assertTrue(os.path.exists(data_dir), "input_data directory missing")
-        self.assertTrue(os.path.exists(data_dir + "model2_surface_points_df.csv"), "csv file missing")
+        self.assertTrue(os.path.exists(data_dir + "model1_surface_points_df.csv"), "csv file missing")
 
     def test_run_kriging_regression(self):
         results_test = universal_cokriging_interpolator(self.data_test)

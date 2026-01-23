@@ -15,11 +15,11 @@ cwd = os.getcwd()
 #%%
 
 # load the csv
-df1 = pd.read_csv(cwd + "/examples/input_data/model7_surface_points_df.csv")
+df1 = pd.read_csv(cwd + "/examples/input_data/model2_surface_points_df.csv")
 fault_surface_points_df = df1[df1["formation"] == "fault"]
 structural_surface_points_df = df1[df1["formation"] != "fault"]
 
-df2 = pd.read_csv(cwd + "/examples/input_data/model7_orientations_df.csv")
+df2 = pd.read_csv(cwd + "/examples/input_data/model2_orientations_df.csv")
 fault_orientations_df = df2[df2["formation"] == "fault"]
 structural_orientations_df = df2[df2["formation"] != "fault"]
 
