@@ -19,7 +19,7 @@ cwd = os.getcwd()
 
 grid = RegularGrid(
     extent=(0, 2500, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(125, 25, 25)  # Example resolution
+    resolution=(125, 50, 50)  # Example resolution
 )
 
 #%%
@@ -81,20 +81,31 @@ plot_fault_frame_3D(fault_frame)
 
 #%%
 
+# Set interpolation methods for each stratigraphic series
+
+# UCK
 # frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
 # frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
-# TODO: This should throw an error because only one element in top group
-# Set interpolation methods for each stratigraphic series
-frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
-frame["Strat_Series2"].set_interpolation_method("Ordinary Kriging")
+# OK TODO: Find good parameters
+# frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
+# frame["Strat_Series2"].set_interpolation_method("Ordinary Kriging")
+# # Set interpolation parameters if needed
+# frame["Strat_Series1"].configure_interpolation_params(range=500, variogram_model="gaussian", anisotropy_scaling_z=0.1)
+# frame["Strat_Series2"].configure_interpolation_params(range=500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
 
+# RBF TODO: Find good parameters
+frame["Strat_Series1"].set_interpolation_method("Radial Basis Function")
+frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
 # Set interpolation parameters if needed
-frame["Strat_Series1"].configure_interpolation_params(range=5000, variogram_model="spherical")
-frame["Strat_Series2"].configure_interpolation_params(range=5000, variogram_model="spherical")
+frame["Strat_Series1"].configure_interpolation_params(kernel="linear", epsilon=1)
+frame["Strat_Series2"].configure_interpolation_params(kernel="linear", epsilon=1)
 
+# GeoINR
 # frame["Strat_Series1"].set_interpolation_method("GeoINR")
 # frame["Strat_Series2"].set_interpolation_method("GeoINR")
+
+frame.detailed_report()
 
 #%%
 
