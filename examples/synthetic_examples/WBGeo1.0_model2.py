@@ -44,7 +44,6 @@ frame.detailed_report()
 
 #%%
 
-# TODO: Plotting 2D needs correct extent, even with weird resolution
 # Plot the input input_data (2D and 3D possible)
 plot_structural_model_2D(frame, axis='y', show_result=True)
 plot_structural_model_3D(frame, show_surface_meshes=False)

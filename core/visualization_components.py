@@ -54,7 +54,7 @@ def plot_structural_model_3D(
             if show_points and hasattr(frame, "get_surface_points_for_element"):
                 df_points = frame.get_surface_points_for_element(elem.name)
                 if df_points is not None and not df_points.empty:
-                    cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values)
+                    cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values.astype(np.float32))
                     plotter.add_points(cloud, color=elem.color, point_size=8, render_points_as_spheres=True)
 
             # orientations
