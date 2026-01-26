@@ -7,6 +7,7 @@ import gempy as gp
 
 from typing import Optional
 
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structuralmodeling_components.structural_objects.structural_objects import FaultFrame, FaultElement
 
 from core.utility.surface_mesh_extraction import marching_cubes_new
@@ -253,3 +254,50 @@ def compute_fault_domains(
 
     # 🔎 After all faults are processed
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
+
+
+def build_fault_frame(
+    fault_surface_points_df: pd.DataFrame,
+    fault_orientations_df: pd.DataFrame,
+    fault_names: list,  # youngest to oldest
+    grid: RegularGrid,
+    colors: list = None,
+) -> FaultFrame:
+    """Build a :class:`FaultFrame` from ordered fault names, surface input_data, and a grid.
+
+    Parameters
+    ----------
+    fault_surface_points_df : pd.DataFrame
+        Columns: ``['X', 'Y', 'Z', 'formation']``.
+    fault_orientations_df : pd.DataFrame
+        Columns: ``['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z', 'formation']``.
+    fault_names : list
+        Fault names ordered from youngest to oldest (input convention).
+    grid : RegularGrid
+        Model grid.
+    colors : list, optional
+        Hex colors for faults in the same order as ``fault_names``. Defaults to dark grey.
+
+    Returns
+    -------
+    FaultFrame
+        A fully configured fault frame with elements, colors, input input_data, and grid.
+    """
+    if colors is None:
+        colors = ["#555555"] * len(fault_names)
+    if len(colors) != len(fault_names):
+        raise ValueError("Length of colors must match fault_names")
+
+    fault_elements = []
+    # Internally we build oldest -> youngest, preserving the original behavior
+    for name, color in reversed(list(zip(fault_names, colors))):
+        fault = FaultElement(name=name)
+        fault.set_color(color)
+        fault_elements.append(fault)
+
+    fault_frame = FaultFrame(fault_elements=fault_elements)
+    fault_frame.set_surface_points_df(fault_surface_points_df)
+    fault_frame.set_orientations_df(fault_orientations_df)
+    fault_frame.set_grid(grid)
+
+    return fault_frame

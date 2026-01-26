@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 
+import core.structuralmodeling_components.general_faults
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.visualization_components_new import visualize_fault_frame
 
@@ -44,7 +45,7 @@ grid = RegularGrid(
     resolution=(125, 50, 50)  # Example resolution
 )
 
-fault_frame = general_updated.build_fault_frame(
+fault_frame = core.structuralmodeling_components.general_faults.build_fault_frame(
     fault_surface_points_df=fault_surface_points_df,
     fault_orientations_df=fault_orientations_df,
     fault_names=["fault"],

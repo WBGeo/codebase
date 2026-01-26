@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+import core.structuralmodeling_components.general_faults
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
@@ -87,7 +88,7 @@ grid = RegularGrid(
 fault_names = ["FaultC", "FaultA", "FaultB"]  # FaultB is younger than FaultA
 fault_colors = ["#A9A9A9", "#A9A9A9", "#A9A9A9"]
 
-fault_frame = general.build_fault_frame(
+fault_frame = core.structuralmodeling_components.general_faults.build_fault_frame(
     fault_surface_points_df=fault_surface_points_df,
     fault_orientations_df=fault_orientations_df,
     fault_names=fault_names,
