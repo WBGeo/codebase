@@ -127,11 +127,13 @@ def plot_structural_model_2D(
     frame,
     *,
     fault_frame=None,
-    axis='z',
+    axis='y',
     index=0,
+    show_result=True,
     show_fault_contours=True,
     show_input_data=True,
 ):
+
     """
     2D slice of model with:
       - lithology block slice (if provided)
@@ -139,6 +141,8 @@ def plot_structural_model_2D(
       - fault contours from fault scalar fields at their scalar_value
       - legend matching your style (group bold + element lines)
     """
+    warnings.simplefilter("always", UserWarning)
+
     assert axis in ('x', 'y', 'z'), "Axis must be 'x', 'y', or 'z'."
 
     dim = {'z': 0, 'y': 1, 'x': 2}[axis]
@@ -147,35 +151,63 @@ def plot_structural_model_2D(
     y = frame.grid.gridy
     z = frame.grid.gridz
 
+    #  Compute spacing for imshow extent
+    dx = (x[-1] - x[0]) / (len(x) - 1)
+    dy = (y[-1] - y[0]) / (len(y) - 1)
+    dz = (z[-1] - z[0]) / (len(z) - 1)
+
     if axis == 'x':
-        extent = (y[0], y[-1], z[0], z[-1])
+        extent = (
+            y[0] - dy / 2, y[-1] + dy / 2,
+            z[0] - dz / 2, z[-1] + dz / 2
+        )
         x_coords, y_coords = np.meshgrid(y, z, indexing='ij')
     elif axis == 'y':
-        extent = (x[0], x[-1], z[0], z[-1])
+        extent = (
+            x[0] - dx / 2, x[-1] + dx / 2,
+            z[0] - dz / 2, z[-1] + dz / 2
+        )
         x_coords, y_coords = np.meshgrid(x, z, indexing='ij')
     else:  # 'z'
-        extent = (x[0], x[-1], y[0], y[-1])
+        extent = (
+            x[0] - dx / 2, x[-1] + dx / 2,
+            y[0] - dy / 2, y[-1] + dy / 2
+        )
         x_coords, y_coords = np.meshgrid(x, y, indexing='ij')
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # ---- lithology (optional) ----
-    id_to_color = {0: "#cccccc"}  # grey base
-    id_to_label = {0: "Basement"}
-    if frame.lith_block is not None:
-        slice_lith = np.take(frame.lith_block, index, axis=dim)
+    if show_result:
+        has_result = (
+                frame.lith_block is not None
+                and np.size(frame.lith_block) > 0
+        )
+        print(f"has_result: {has_result}")
+        if has_result is False:
+            print("hello")
+            warnings.warn(
+                "show_result=True but no lithology block found. "
+                "Plotting input data only.",
+                UserWarning
+            )
+        else:
+            id_to_color = {0: "#cccccc"}  # grey base
+            id_to_label = {0: "Basement"}
+            if frame.lith_block is not None:
+                slice_lith = np.take(frame.lith_block, index, axis=dim)
 
-        for group in frame.structural_groups:
-            for elem in group.structural_elements:
-                if getattr(elem, "id", None):
-                    id_to_color[elem.id] = elem.color
-                    id_to_label[elem.id] = f"{group.name} | {elem.name}"
+                for group in frame.structural_groups:
+                    for elem in group.structural_elements:
+                        if getattr(elem, "id", None):
+                            id_to_color[elem.id] = elem.color
+                            id_to_label[elem.id] = f"{group.name} | {elem.name}"
 
-        sorted_ids = sorted(id_to_color)
-        colors = [id_to_color[i] for i in sorted_ids]
-        cmap = ListedColormap(colors)
-        norm = BoundaryNorm(sorted_ids + [sorted_ids[-1] + 1], len(colors))
-        ax.imshow(slice_lith, origin='lower', cmap=cmap, norm=norm, extent=extent, alpha=1)
+                sorted_ids = sorted(id_to_color)
+                colors = [id_to_color[i] for i in sorted_ids]
+                cmap = ListedColormap(colors)
+                norm = BoundaryNorm(sorted_ids + [sorted_ids[-1] + 1], len(colors))
+                ax.imshow(slice_lith, origin='lower', cmap=cmap, norm=norm, extent=extent, alpha=1)
 
     # ---- faults as contours from their scalar fields ----
     if show_fault_contours and fault_frame is not None:
@@ -239,6 +271,8 @@ def plot_structural_model_2D(
     ax.set_ylabel(axis_labels[axis][1])
     ax.set_title(f"{axis.upper()} Slice @ index {index}")
     ax.set_aspect("equal")
+    ax.set_xlim(extent[0], extent[1])
+    ax.set_ylim(extent[2], extent[3])
 
     plt.tight_layout()
     plt.show()

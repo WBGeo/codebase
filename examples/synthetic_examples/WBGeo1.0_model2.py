@@ -24,7 +24,6 @@ grid = RegularGrid(
 
 #%%
 
-# TODO: Add orientations in all fault domains
 # Component 1: input input_data
 data_elements = InputData_StructuralElements(name='Model 2',
                                              mapping_object={
@@ -45,10 +44,11 @@ frame.detailed_report()
 
 #%%
 
-# TODO: Plotting 2D needs correct extent
+# TODO: Plotting 2D needs correct extent, even with weird resolution
 # Plot the input input_data (2D and 3D possible)
-plot_structural_model_2D(frame, axis='y')
+plot_structural_model_2D(frame, axis='y', show_result=True)
 plot_structural_model_3D(frame, show_surface_meshes=False)
+
 
 #%%
 
@@ -86,13 +86,13 @@ frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
 frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
 # TODO: This should throw an error because only one element in top group
-# Set interpolation methods for each stratigraphic series
+# # Set interpolation methods for each stratigraphic series
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
 # frame["Strat_Series2"].set_interpolation_method("Ordinary Kriging")
-
-# Set interpolation parameters if needed
-# frame["Strat_Series1"].configure_interpolation_params(range=500)
-# frame["Strat_Series2"].configure_interpolation_params(range=500)
+#
+# # Set interpolation parameters if needed
+# frame["Strat_Series1"].configure_interpolation_params(range=5000, variogram_model="spherical")
+# frame["Strat_Series2"].configure_interpolation_params(range=5000, variogram_model="spherical")
 
 # frame["Strat_Series1"].set_interpolation_method("GeoINR")
 # frame["Strat_Series2"].set_interpolation_method("GeoINR")
@@ -123,7 +123,7 @@ plot_structural_model_3D(frame=frame,
                          show_orientations=True)
 
 #%%
-
+# TODO: Update to new structure
 # Calculate gradients at the surface mesh vertices
 from core.utility import surface_mesh_gradients
 
