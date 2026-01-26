@@ -27,7 +27,7 @@ grid = RegularGrid(
 # Component 1: input input_data
 data_elements = InputData_StructuralElements(name='Model 2',
                                              mapping_object={
-                                                 "Strat_Series1": ('rock3'),
+                                                 "Strat_Series1": ('rock4', 'rock3'),
                                                  "Strat_Series2": ('rock2', 'rock1')},
                                              surface_points=pd.read_csv(
                                                  cwd + "/examples/input_data/model2_surface_points_df.csv"),
@@ -45,7 +45,7 @@ frame.detailed_report()
 #%%
 
 # Plot the input input_data (2D and 3D possible)
-plot_structural_model_2D(frame, axis='y', show_result=True)
+plot_structural_model_2D(frame, axis='y', show_result=False)
 plot_structural_model_3D(frame, show_surface_meshes=False)
 
 
