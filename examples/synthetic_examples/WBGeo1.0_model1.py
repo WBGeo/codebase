@@ -26,8 +26,8 @@ grid = RegularGrid(
 # WORKFLOW Model 1: no faults, no unconformities, 2 stratigraphic series
 
 # Component 1: input input_data
-data_elements = InputData_StructuralElements(name='Model 1',
-                                             mapping_object={"Strat_Series": ('rock2', 'rock1')},
+data_elements = InputData_StructuralElements(name='Model_1',
+                                             mapping_object={"Strat_Series1": ('rock2', 'rock1')},
                                              surface_points=pd.read_csv(
                                                  cwd + "/examples/input_data/model1_surface_points_df.csv"),
                                              orientations=pd.read_csv(
@@ -50,10 +50,10 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 #%%
 
 # Set interpolation methods for each stratigraphic series
-frame["Strat_Series"].set_interpolation_method("Ordinary Kriging")
+frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
 
 # Set interpolation parameters if needed
-frame["Strat_Series"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.5, variogram_model="spherical")
+frame["Strat_Series1"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.5, variogram_model="spherical")
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(

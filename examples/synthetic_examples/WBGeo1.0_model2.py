@@ -2,6 +2,7 @@
 import pandas as pd
 import os
 
+import core.structuralmodeling_components.general_faults
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -17,6 +18,7 @@ cwd = os.getcwd()
 
 #%%
 
+# Create grid
 grid = RegularGrid(
     extent=(0, 2500, 0, 1000, 0, 1000),  # Example grid extent
     resolution=(125, 50, 50)  # Example resolution
@@ -24,11 +26,11 @@ grid = RegularGrid(
 
 #%%
 
-# Component 1: input input_data
-data_elements = InputData_StructuralElements(name='Model 2',
+# Input data for elements
+data_elements = InputData_StructuralElements(name='Model_2',
                                              mapping_object={
-                                                 "Strat_Series1": ('rock4', 'rock3'),
-                                                 "Strat_Series2": ('rock2', 'rock1')},
+                                                 "Strat_Series2": ('rock4', 'rock3'),
+                                                 "Strat_Series1": ('rock2', 'rock1')},
                                              surface_points=pd.read_csv(
                                                  cwd + "/examples/input_data/model2_surface_points_df.csv"),
                                              orientations=pd.read_csv(
@@ -51,15 +53,15 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 
 #%%
 
-# TODO: This works without separating the csv into faults and non-faults, but maybe it is better to do so
+# Input data for faults
 data_faults = InputData_FaultElements(name='Faults_Model_2',
                                       fault_surface_points=pd.read_csv(
                                           cwd + "/examples/input_data/model2_surface_points_df.csv"),
                                       fault_orientations=pd.read_csv(
                                           cwd + "/examples/input_data/model2_orientations_df.csv"))
 
-# TODO: maybe the build_fault_frame function should be a method of the general_faults module
-fault_frame = general.build_fault_frame(
+# Create FaultFrame
+fault_frame = core.structuralmodeling_components.general_faults.build_fault_frame(
     fault_surface_points_df=data_faults.fault_surface_points,
     fault_orientations_df=data_faults.fault_orientations,
     fault_names=["fault"],
@@ -71,10 +73,12 @@ fault_frame.detailed_report()
 
 #%%
 
+# Compute fault domains
 general_faults.compute_fault_domains(fault_frame)
 
 #%%
 
+# Plot fault frame sections and 3D
 fault_frame.plot_fault_domain_section(axis='y', index=12)
 plot_fault_frame_3D(fault_frame)
 
