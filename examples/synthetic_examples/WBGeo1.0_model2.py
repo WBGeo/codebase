@@ -83,9 +83,11 @@ plot_fault_frame_3D(fault_frame)
 
 # Set interpolation methods for each stratigraphic series
 
+# TODO: Somehow feels not optimal around for everything apart UCK
+
 # UCK
-# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
-# frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
+frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
+frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
 # OK TODO: Find good parameters
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
@@ -95,15 +97,19 @@ plot_fault_frame_3D(fault_frame)
 # frame["Strat_Series2"].configure_interpolation_params(range=500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
 
 # RBF TODO: Find good parameters
-frame["Strat_Series1"].set_interpolation_method("Radial Basis Function")
-frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
-# Set interpolation parameters if needed
-frame["Strat_Series1"].configure_interpolation_params(kernel="linear", epsilon=1)
-frame["Strat_Series2"].configure_interpolation_params(kernel="linear", epsilon=1)
+# frame["Strat_Series1"].set_interpolation_method("Radial Basis Function")
+# frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
+# # Set interpolation parameters if needed
+# frame["Strat_Series1"].configure_interpolation_params(kernel="linear", epsilon=1)
+# frame["Strat_Series2"].configure_interpolation_params(kernel="linear", epsilon=1)
 
 # GeoINR
 # frame["Strat_Series1"].set_interpolation_method("GeoINR")
 # frame["Strat_Series2"].set_interpolation_method("GeoINR")
+
+# Loop
+# frame["Strat_Series1"].set_interpolation_method("Loop Structural")
+# frame["Strat_Series2"].set_interpolation_method("Loop Structural")
 
 frame.detailed_report()
 

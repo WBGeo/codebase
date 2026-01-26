@@ -481,7 +481,7 @@ def compute_structural_model(
     *,
     extract_meshes: bool = True,
     verbose: bool = True,
-) -> np.ndarray:
+):
     """Run the full pipeline with (optional) fault domains.
 
     Steps
