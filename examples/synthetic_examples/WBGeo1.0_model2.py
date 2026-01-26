@@ -81,17 +81,17 @@ plot_fault_frame_3D(fault_frame)
 
 #%%
 
-frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
-frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
+# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
+# frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
 # TODO: This should throw an error because only one element in top group
-# # Set interpolation methods for each stratigraphic series
-# frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
-# frame["Strat_Series2"].set_interpolation_method("Ordinary Kriging")
-#
-# # Set interpolation parameters if needed
-# frame["Strat_Series1"].configure_interpolation_params(range=5000, variogram_model="spherical")
-# frame["Strat_Series2"].configure_interpolation_params(range=5000, variogram_model="spherical")
+# Set interpolation methods for each stratigraphic series
+frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
+frame["Strat_Series2"].set_interpolation_method("Ordinary Kriging")
+
+# Set interpolation parameters if needed
+frame["Strat_Series1"].configure_interpolation_params(range=5000, variogram_model="spherical")
+frame["Strat_Series2"].configure_interpolation_params(range=5000, variogram_model="spherical")
 
 # frame["Strat_Series1"].set_interpolation_method("GeoINR")
 # frame["Strat_Series2"].set_interpolation_method("GeoINR")

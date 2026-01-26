@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Optional
 from scipy.interpolate import RBFInterpolator
+import warnings
 
 def interpolate_group_radial_basis_function(
     *,
@@ -23,8 +24,17 @@ def interpolate_group_radial_basis_function(
         - Uses params from group.get_interpolation_params() (your RBFParams)
         - Does NOT mutate `group`
     """
+    # Check if any surface points are provided
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
+
+    # Check if orientations are provided and war that they will not be used
+    if group_orientations_points_df is not None and not group_orientations_points_df.empty:
+        warnings.warn(f"Orientations provided for group '{group.name}' will not be used in RBF interpolation", UserWarning)
+
+    # Check if there are at least two distinct elements in the group
+    if len(group.structural_elements) < 2:
+        raise ValueError(f"Group '{group.name}' must contain at least two structural elements for RBF interpolation")
 
     for col in ("X", "Y", "Z", "formation"):
         if col not in group_surface_points_df.columns:
