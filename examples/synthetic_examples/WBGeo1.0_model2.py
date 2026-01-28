@@ -143,6 +143,14 @@ plot_structural_model_3D(frame=frame,
                          show_orientations=True)
 
 #%%
+
+frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+
+#%%
+
+frame.plot_age_mask_section(group_nr=1, axis='y', index=12)
+
+#%%
 # TODO: Update to new structure
 # Calculate gradients at the surface mesh vertices
 from core.utility import surface_mesh_gradients

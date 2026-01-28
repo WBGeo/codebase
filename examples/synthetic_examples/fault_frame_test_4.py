@@ -57,10 +57,6 @@ grid = RegularGrid(
 
 #%%
 
-grid.extent
-
-#%%
-
 fault_frame = core.structuralmodeling_components.general_faults.build_fault_frame(
     fault_surface_points_df=fault_surface_points_df,
     fault_orientations_df=fault_orientations_df,
@@ -101,14 +97,14 @@ plot_structural_model_3D(frame=frame, fault_frame=fault_frame, show_surface_mesh
 #%%
 
 # UCK
-# frame["Top"].set_interpolation_method("Universal Co-Kriging")
-# frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+frame["Top"].set_interpolation_method("Universal Co-Kriging")
+frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
 # OK
-frame["Top"].set_interpolation_method("Ordinary Kriging")
-frame["Bot"].set_interpolation_method("Ordinary Kriging")
-frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
-frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=1, variogram_model="spherical")
+# frame["Top"].set_interpolation_method("Ordinary Kriging")
+# frame["Bot"].set_interpolation_method("Ordinary Kriging")
+# frame["Top"].configure_interpolation_params(range=5000, anisotropy_scaling_z=0.1)
+# frame["Bot"].configure_interpolation_params(range=5000, anisotropy_scaling_z=1, variogram_model="spherical")
 
 # RBF
 # frame["Top"].set_interpolation_method("Radial Basis Function")
