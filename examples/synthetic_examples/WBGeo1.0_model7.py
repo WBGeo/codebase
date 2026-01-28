@@ -64,7 +64,7 @@ data_faults = InputData_FaultElements(name='Faults_Model_7',
 fault_frame = general_faults.build_fault_frame(
     fault_surface_points_df=data_faults.fault_surface_points,
     fault_orientations_df=data_faults.fault_orientations,
-    fault_names=["FaultA", "faultB", "FaultC"],
+    fault_names=["FaultA", "FaultB", "FaultC"],
     colors=["#A9A9A9", "#696969", "#808080"],
     grid=grid
 )
@@ -126,7 +126,7 @@ general.compute_structural_model(
 #%%
 
 plot_structural_model_2D(frame=frame,
-                         fault_frame=None,
+                         fault_frame=fault_frame,
                          axis='y',
                          show_input_data=True,
                          index=0)
@@ -134,7 +134,7 @@ plot_structural_model_2D(frame=frame,
 #%%
 
 plot_structural_model_3D(frame=frame,
-                         fault_frame=None,
+                         fault_frame=fault_frame,
                          mesh_type="masked",
                          show_orientations=True)
 
