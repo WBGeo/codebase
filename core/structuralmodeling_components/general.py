@@ -129,12 +129,24 @@ def run_interpolation_with_fault_domains(
             if ori_filtered_all is not None:
                 ori_filtered = ori_filtered_all[ori_filtered_all["formation"].isin(group_formations)]
 
+                # Check if orientations are available for this group in this domain
+                if ori_filtered.empty:
+                    raise ValueError(
+                        f"❌ No orientation points for group '{group.name}' in domain {domain_id}."
+                    )
+
             # Sanity: at least 2 points per element (kept as-is)
             for elem in group.structural_elements:
                 n_pts = (sp_filtered["formation"] == elem.name).sum()
                 if n_pts < 2:
                     raise ValueError(
                         f"❌ Not enough surface points for '{elem.name}' in domain {domain_id} (have {n_pts})"
+                    )
+
+                # Check if element is actually present in data for this domain
+                if n_pts == 0:
+                    raise ValueError(
+                        f"❌ No surface points for '{elem.name}' in domain {domain_id}."
                     )
 
             # Pick interpolator
