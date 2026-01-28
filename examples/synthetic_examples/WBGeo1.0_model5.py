@@ -55,8 +55,8 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 # Set interpolation methods for each stratigraphic series
 
 # UCK
-# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
-# frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
+frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
+frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
 # OK
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
