@@ -25,8 +25,8 @@ JSONFileDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
 def geo_input_data_fix(name: str,
                        extent_str: str = '0, 2000, 0, 1000, 0, 1000',
                        resolution_str: str = '40, 20, 20',
-                       surface_points_file: CSVFileDataType = 'model12_surface_points_df.csv',
-                       orientations_file: CSVFileDataType = 'model12_surface_points_df.csv',
+                       surface_points_file: CSVFileDataType = 'model5_surface_points_df.csv',
+                       orientations_file: CSVFileDataType = 'model5_surface_points_df.csv',
                        mapping_file: JSONFileDataType = 'model_12_mapping.json',
                        with_faults : bool = False
                        ) -> InputData_StructuralElements:

@@ -67,9 +67,21 @@ general.compute_structural_model(
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
 plot_structural_model_2D(frame, axis='y')
+
+#%%
+
 plot_structural_model_3D(frame, show_surface_meshes=True)
 
 #%%
+
+# Optional plotting
+# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+# frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
+
+
+#%%
+
+# TODO: Adapt to new results structure
 
 # 4: Meshing for Process Simulation
 # mesh_test = create_structured_mesh_data(

@@ -142,60 +142,16 @@ plot_structural_model_3D(frame=frame,
                          mesh_type="masked",
                          show_orientations=True)
 
+#%%
 
-
-
-# Importing necessary libraries
-import numpy as np
-import pandas as pd
-import os
-
-from core.object_components import InputData_StructuralElements
-from concepts.archive.universal_cokriging import universal_cokriging_interpolator
-from core.visualization_components import plot_2d, plot_3d
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+# Optional plotting
+# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+# frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 #%%
 
-cwd = os.getcwd()
+# TODO: Adjust gradient calculation for new structure
 
-#%%
-# WORKFLOW Model 10: 2 faults, 1 unconformity, 2 stratigraphic series
-
-# Component 1: Input input_data
-data_test = InputData_StructuralElements(name='Model 10',
-                                         extent=np.array([0, 1000, 0, 1000, 0, 1000]),
-                                         resolution=np.array([125, 50, 50]),
-                                         mapping_object={
-                          "Fault_Series2": ('fault2'),
-                          "Strat_Series2": ('rock3'),
-                          "Fault_Series1": ('fault1'),
-                          "Strat_Series1": ('rock2', 'rock1')},
-                                         surface_points=pd.read_csv(
-                          cwd + "/examples/input_data/model3_surface_points_df.csv"),
-                                         orientations=pd.read_csv(
-                          cwd + "/examples/input_data/model3_orientations_df.csv"),
-                                         faults=[True, False, True, False]
-                                         )
-
-#%%
-
-# 1.5: Plot the input input_data (2D and 3D possible) - Should be an option of the input input_data component
-plot_2d(data_test)
-plot_3d(data_test)
-
-#%%
-
-# Component 2 --> Component 3: Interpolation to geomodel result
-results_test = universal_cokriging_interpolator(data_test)
-
-#%%
-
-# 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
-plot_2d(input_data=data_test, geomodel_results=results_test, show_results=True)
-plot_3d(input_data=data_test, geomodel_results=results_test, show_results=True)
-
-#%%
 
 # Calculate gradients at the surface mesh vertices
 from core.utility import surface_mesh_gradients

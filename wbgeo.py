@@ -90,11 +90,11 @@ def does_have_orientations(input: InputData_StructuralElements) -> Optional[str]
 #                                    }, {
 #                                        'param': 'surface_points_file',
 #                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-#                                        'default': 'model12_surface_points_df.csv',  # a default value
+#                                        'default': 'model5_surface_points_df.csv',  # a default value
 #                                    }, {
 #                                        'param': 'orientations_file',
 #                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-#                                        'default': 'model12_orientations_df.csv',  # a default value
+#                                        'default': 'model5_orientations_df.csv',  # a default value
 #                                    }, {
 #                                        'param': 'mapping_file',
 #                                        'type': JSONFileDataType,  # the ports type (as in ScriptType)

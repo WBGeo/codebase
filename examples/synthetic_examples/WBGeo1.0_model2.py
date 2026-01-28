@@ -144,11 +144,9 @@ plot_structural_model_3D(frame=frame,
 
 #%%
 
-frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
-
-#%%
-
-frame.plot_age_mask_section(group_nr=1, axis='y', index=12)
+# Optional plotting
+# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+# frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 #%%
 # TODO: Update to new structure
