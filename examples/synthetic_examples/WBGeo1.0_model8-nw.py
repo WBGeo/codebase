@@ -1,0 +1,135 @@
+# Importing necessary libraries
+import pandas as pd
+import os
+
+import core.structuralmodeling_components.general_faults
+from core.object_components import InputData_StructuralElements, InputData_FaultElements
+
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
+
+from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
+                                           plot_fault_frame_3D)
+
+from core.structuralmodeling_components import general, general_faults
+
+#%%
+
+cwd = os.getcwd()
+
+#%%
+
+# TODO: This model needs integration of unconformities
+
+# Create grid
+grid = RegularGrid(
+    extent=(0, 2000, 0, 1000, 0, 1000),  # Example grid extent
+    resolution=(50, 25, 25)  # Example resolution
+)
+
+#%%
+
+# Input data for elements
+data_elements = InputData_StructuralElements(name='Model_8',
+                                             mapping_object={
+                                                "Top": ('rock6', 'rock5'),
+                                                "Mid": ('rock4', 'rock3'),
+                                                "Bot": ('rock2', 'rock1'),
+                                                },
+                                             surface_points=pd.read_csv(
+                                                 cwd + "/examples/input_data/model8_surface_points_df.csv"),
+                                             orientations=pd.read_csv(
+                                                 cwd + "/examples/input_data/model8_orientations_df.csv")
+                                             )
+
+# Create a StructuralFrame
+frame = general.build_structural_frame(data_elements.mapping_object,
+                                       grid,
+                                       data_elements.surface_points,
+                                       data_elements.orientations)
+frame.detailed_report()
+
+#%%
+
+# Plot the input input_data (2D and 3D possible)
+plot_structural_model_2D(frame, axis='y', show_result=False)
+plot_structural_model_3D(frame, show_surface_meshes=False)
+
+#%%
+
+# Input data for faults
+data_faults = InputData_FaultElements(name='Faults_Model_8',
+                                      fault_surface_points=pd.read_csv(
+                                          cwd + "/examples/input_data/model8_surface_points_df.csv"),
+                                      fault_orientations=pd.read_csv(
+                                          cwd + "/examples/input_data/model8_orientations_df.csv"))
+
+# Create FaultFrame
+fault_frame = general_faults.build_fault_frame(
+    fault_surface_points_df=data_faults.fault_surface_points,
+    fault_orientations_df=data_faults.fault_orientations,
+    fault_names=["fault1", "fault2"],
+    colors=["#A9A9A9", "#696969"],
+    grid=grid
+)
+
+fault_frame.detailed_report()
+
+#%%
+
+fault_frame.detailed_report()
+
+#%%
+
+# Compute fault domains
+general_faults.compute_fault_domains(fault_frame)
+
+#%%
+
+# Plot fault domains (2D and 3D possible)
+fault_frame.plot_fault_domain_section(axis='y', index=12)
+plot_fault_frame_3D(fault_frame)
+
+
+#%%
+
+# Set interpolation methods for each stratigraphic series
+
+# UCK
+frame["Top"].set_interpolation_method("Universal Co-Kriging")
+frame["Mid"].set_interpolation_method("Universal Co-Kriging")
+frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+
+frame.detailed_report()
+
+#%%
+
+# Component 2 --> Component 3: Interpolation to geomodel result
+general.compute_structural_model(
+    frame,
+    fault_frame=fault_frame,  # or None for single-domain
+    extract_meshes=True,
+    verbose=True,
+)
+
+#%%
+
+plot_structural_model_2D(frame=frame,
+                         fault_frame=None,
+                         axis='y',
+                         show_input_data=True,
+                         index=0)
+
+#%%
+
+plot_structural_model_3D(frame=frame,
+                         fault_frame=None,
+                         mesh_type="masked",
+                         show_orientations=True)
+
+#%%
+
+# Optional plotting
+# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+# frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
+
+
