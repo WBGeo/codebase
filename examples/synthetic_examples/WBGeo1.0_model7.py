@@ -118,7 +118,7 @@ frame.detailed_report()
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(
     frame,
-    fault_frame=None,  # or None for single-domain
+    fault_frame=fault_frame,  # or None for single-domain
     extract_meshes=True,
     verbose=True,
 )
