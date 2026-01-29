@@ -80,11 +80,14 @@ def interpolate_group_ordinary_kriging(
         anisotropy_scaling_z=params.anisotropy_scaling_z,
     )
 
+    backend = "loop" if params.neighbors is not None else "vectorized"
+
     scalar_field, _ = ok3d.execute(
         "grid",
         grid.gridx,
         grid.gridy,
         grid.gridz,
+        backend=backend,
         n_closest_points=params.neighbors
     )
 

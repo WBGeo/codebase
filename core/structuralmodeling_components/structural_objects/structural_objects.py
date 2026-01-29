@@ -21,6 +21,12 @@ class InterpolationMethod(str, Enum):
     LOOP_STRUCTURAL = "Loop Structural"
 
 
+class InterpolationContext(BaseModel):
+    data_scale: tuple[float, float, float]
+    n_points: int
+    mean_nn_distance: float
+
+
 class OrdinaryKrigingParams(BaseModel):
     """
     Configuration parameters for Ordinary Kriging interpolation.
@@ -43,6 +49,32 @@ class OrdinaryKrigingParams(BaseModel):
                                      description="Number of nearest neighbors to use in kriging. If None, uses all points.")
 
 
+def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
+    L = max(ctx.data_scale)
+
+    range_ = np.clip(
+        20 * ctx.mean_nn_distance,
+        0.1 * L,
+        0.8 * L,
+    )
+
+    sx, sy, sz = ctx.data_scale
+    anisotropy_z = np.clip(
+        sz / max(sx, sy),
+        0.05,
+        1.0
+    )
+
+    return OrdinaryKrigingParams(
+        variogram_model="exponential",
+        range=range_,
+        sill=1.0,
+        nugget=0.05,
+        anisotropy_scaling_z=anisotropy_z,
+        neighbors=None,  # None cause moving window does not allow vectorized in PyKrige
+    )
+
+
 class RBFParams(BaseModel):
     """
     Parameters for Radial Basis Function (RBF) interpolation.
@@ -54,14 +86,37 @@ class RBFParams(BaseModel):
         neighbors: Optional number of nearest neighbors to use. If None, all input_data points are considered.
     """
 
-    kernel: str = Field("linear",
+    kernel: str = Field("thin_plate_spline",
                         description="Radial basis function kernel. Common options: 'linear', 'cubic', 'thin_plate'.")
-    smoothing: int = Field(0,
-                           description="Smoothing parameter for RBF. Higher values increase smoothing (0 = exact fit).")
-    epsilon: int = Field(1,
-                         description="Shape parameter for certain kernels like multiquadric or inverse multiquadric.")
+    smoothing: float = Field(0,
+                             description="Smoothing parameter for RBF. Higher values increase smoothing (0 = exact fit).")
+    epsilon: Optional[float] = Field(None,
+                                     description="Shape parameter for certain kernels like multiquadric or inverse multiquadric.")
     neighbors: Optional[int] = Field(None,
                                      description="Number of nearest neighbors to use. If None, all points are used.")
+
+
+def default_rbf_params(ctx: InterpolationContext) -> RBFParams:
+    # Characteristic length scale
+    L = max(ctx.data_scale)
+
+    kernel = "thin_plate_spline"
+
+    epsilon = None
+    if kernel in {"multiquadric", "inverse_multiquadric", "gaussian"}:
+        epsilon = ctx.mean_nn_distance
+
+    # Neighbors scale with problem size
+    neighbors = None
+    if ctx.n_points > 5000:
+        neighbors = min(500, int(5 * ctx.n_points ** (2 / 3)))
+
+    return RBFParams(
+        kernel="thin_plate_spline",
+        smoothing=0.05,  # categorical scalar field → smooth by default
+        epsilon=epsilon,
+        neighbors=neighbors
+    )
 
 
 class GeoINRParams(BaseModel):
@@ -197,6 +252,7 @@ class StructuralElement(BaseModel):
         except KeyError:
             raise KeyError(f"Mesh '{mesh_type}' not found in element '{self.name}'.")
 
+
 class StructuralGroup(BaseModel):
     """
     A structural group that contains multiple structural elements and associated input_data.
@@ -208,6 +264,7 @@ class StructuralGroup(BaseModel):
         scalar_field: Computed scalar field (1D or multi-D array), set after interpolation.
         mask: Optional mask for the scalar field (1D or multi-D array), set after interpolation.
         interpolation_params: Optional parameters for the interpolation method.
+        context: Optional context for interpolation default parameters (e.g., grid extent, number of points).
     """
     name: str
     structural_elements: List['StructuralElement'] = Field(default_factory=list)
@@ -215,6 +272,7 @@ class StructuralGroup(BaseModel):
     _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
     _interpolation_params: Optional[InterpolationParameterSet] = PrivateAttr(default=None)
     _mask: Optional[np.ndarray] = PrivateAttr(default=None)
+    _context: Optional[InterpolationContext] = PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -264,21 +322,31 @@ class StructuralGroup(BaseModel):
                 f"Interpolation method must be a string or InterpolationMethod enum, got {type(method)}"
             )
 
-        self._interpolation_method = method
+        if self._context is None:
+            raise RuntimeError(
+                "Interpolation context not initialized. "
+                "Call update_interpolation_context() first."
+            )
 
-        # Set default parameters when method is set
-        if method == InterpolationMethod.ORDINARY_KRIGING:
-            self._interpolation_params = OrdinaryKrigingParams()
-        elif method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
-            self._interpolation_params = RBFParams()
-        elif method == InterpolationMethod.UNIVERSAL_COKRIGING:
-            self._interpolation_params = UniversalCoKrigingParams()
-        elif method == InterpolationMethod.GEOINR:
-            self._interpolation_params = GeoINRParams()
-        elif method == InterpolationMethod.LOOP_STRUCTURAL:
-            self._interpolation_params = LoopStructuralParams()
-        else:
-            self._interpolation_params = None  # fallback
+        self._interpolation_method = method
+        self._interpolation_params = self._default_params_for_method(
+            method,
+            self._context
+        )
+
+        # # Set default parameters when method is set
+        # if method == InterpolationMethod.ORDINARY_KRIGING:
+        #     self._interpolation_params = OrdinaryKrigingParams()
+        # elif method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
+        #     self._interpolation_params = RBFParams()
+        # elif method == InterpolationMethod.UNIVERSAL_COKRIGING:
+        #     self._interpolation_params = UniversalCoKrigingParams()
+        # elif method == InterpolationMethod.GEOINR:
+        #     self._interpolation_params = GeoINRParams()
+        # elif method == InterpolationMethod.LOOP_STRUCTURAL:
+        #     self._interpolation_params = LoopStructuralParams()
+        # else:
+        #     self._interpolation_params = None  # fallback
 
     def set_interpolation_params(self, params: InterpolationParameterSet):
         self._interpolation_params = params
@@ -297,6 +365,59 @@ class StructuralGroup(BaseModel):
                     f"'{key}' is not a valid parameter for {type(self._interpolation_params).__name__}."
                 )
             setattr(self._interpolation_params, key, value)
+
+    def _default_params_for_method(
+            self,
+            method: InterpolationMethod,
+            ctx: InterpolationContext
+    ):
+        if method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
+            return default_rbf_params(ctx)
+
+        if method == InterpolationMethod.ORDINARY_KRIGING:
+            return default_ok_params(ctx)
+
+        if method == InterpolationMethod.UNIVERSAL_COKRIGING:
+            return UniversalCoKrigingParams()
+
+        if method == InterpolationMethod.GEOINR:
+            return GeoINRParams()
+
+        if method == InterpolationMethod.LOOP_STRUCTURAL:
+            return LoopStructuralParams()
+
+        return None
+
+    def set_interpolation_context(self, ctx: InterpolationContext):
+        self._context = ctx
+
+    def update_interpolation_context(self, points: np.ndarray):
+        """
+        Build or update the interpolation context from explicit group point data.
+        """
+        if points.shape[0] < 2:
+            raise ValueError("Not enough points to build interpolation context.")
+
+        p10 = np.percentile(points, 10, axis=0)
+        p90 = np.percentile(points, 90, axis=0)
+
+        data_scale = (
+            float(p90[0] - p10[0]),
+            float(p90[1] - p10[1]),
+            float(p90[2] - p10[2]),
+        )
+
+        from scipy.spatial import cKDTree
+        tree = cKDTree(points)
+        dists, _ = tree.query(points, k=2)
+        mean_nn_distance = float(np.median(dists[:, 1]))
+
+        self._context = InterpolationContext(
+            data_scale=data_scale,
+            n_points=points.shape[0],
+            mean_nn_distance=mean_nn_distance,
+        )
+
 
 class StructuralFrame(BaseModel):
     """

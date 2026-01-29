@@ -90,8 +90,8 @@ plot_fault_frame_3D(fault_frame)
 # TODO: Somehow feels not optimal around for everything apart UCK
 
 # UCK
-frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
-frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
+# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
+# frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
 # OK TODO: Find good parameters
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
@@ -126,6 +126,11 @@ general.compute_structural_model(
     extract_meshes=True,
     verbose=True,
 )
+
+#%%
+
+frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+frame.structural_groups[0].structural_elements[1].scalar_value
 
 #%%
 

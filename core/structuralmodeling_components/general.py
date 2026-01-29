@@ -741,6 +741,13 @@ def build_structural_frame(
             name=group_name,
             structural_elements=elements,
         )
+
+        # Initialize interpolation context
+        group_surface_points = surface_points[
+            surface_points["formation"].isin(element_names)
+        ][["X", "Y", "Z"]].to_numpy()
+        group.update_interpolation_context(points=group_surface_points)
+
         group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
         group._scalar_field = np.zeros(grid.resolution, dtype=float) # set default empty array to build sf on #
