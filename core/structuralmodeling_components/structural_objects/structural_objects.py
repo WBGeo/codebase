@@ -36,6 +36,8 @@ class OrdinaryKrigingParams(BaseModel):
         range: The range of the variogram model, typically the distance at which spatial correlation becomes negligible.
         sill: The sill value (plateau) of the variogram model, representing the maximum semi-variance.
         nugget: The nugget effect, representing microscale variation or measurement error.
+        anisotropy_scaling_x: Scaling factor for the x-axis in 3D kriging, used to account for horizontal anisotropy.
+        anisotropy_scaling_y: Scaling factor for the y-axis in 3D kriging, used to account for horizontal anisotropy.
         anisotropy_scaling_z: Scaling factor for the z-axis in 3D kriging, used to account for vertical anisotropy.
         neighbors: Optional; the number of nearest neighbors to use in kriging. If None, all points are used.
     """
@@ -44,36 +46,60 @@ class OrdinaryKrigingParams(BaseModel):
     range: float = Field(500.0, description="Range of the variogram (distance at which correlation tapers off).")
     sill: float = Field(1.0, description="Sill of the variogram (max variance level).")
     nugget: float = Field(0.0, description="Nugget effect (variance at zero distance).")
+    anisotropy_scaling_x: float = Field(1.0, description="Scaling factor for the y-axis in 3D kriging.")
+    anisotropy_scaling_y: float = Field(1.0, description="Scaling factor for the y-axis in 3D kriging.")
     anisotropy_scaling_z: float = Field(1.0, description="Scaling factor for the z-axis in 3D kriging.")
     neighbors: Optional[int] = Field(None,
                                      description="Number of nearest neighbors to use in kriging. If None, uses all points.")
 
 
 def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
-    L = max(ctx.data_scale)
-
-    range_ = np.clip(
-        20 * ctx.mean_nn_distance,
-        0.1 * L,
-        0.8 * L,
-    )
 
     sx, sy, sz = ctx.data_scale
-    anisotropy_z = np.clip(
-        sz / max(sx, sy),
-        0.05,
-        1.0
+    npts = ctx.n_points
+    nn_dist = ctx.mean_nn_distance
+
+    # Variogram
+    variogram_model = "exponential"
+
+    # Range
+    range_ = np.clip(
+        20 * nn_dist,
+        0.1 * max(sx, sy, sz),
+        0.8 * max(sx, sy, sz),
     )
+
+    sill = 1.0
+    nugget = 0.0
+
+    # Anisotropy scaling per axis (scale relative to largest dimension)
+    max_scale = max(sx, sy, sz)
+    anisotropy_scaling_x = np.clip(sx / max_scale, 0.05, 1.0)
+    anisotropy_scaling_y = np.clip(sy / max_scale, 0.05, 1.0)
+    anisotropy_scaling_z = np.clip(sz / max_scale, 0.05, 1.0)
+
+    # Rotation angles (degrees)
+    # Default 0 → no rotation, but could be adapted if you detect tilted layers
+    anisotropy_angle_x = 0.0
+    anisotropy_angle_y = 0.0
+    anisotropy_angle_z = 0.0
+
+    # Neighbors (moving window)
+    if npts < 20:
+        neighbors = None  # global kriging
+    else:
+        neighbors = min(200, max(30, npts // 10))
 
     return OrdinaryKrigingParams(
-        variogram_model="exponential",
+        variogram_model=variogram_model,
         range=range_,
-        sill=1.0,
-        nugget=0.05,
-        anisotropy_scaling_z=anisotropy_z,
-        neighbors=None,  # None cause moving window does not allow vectorized in PyKrige
+        sill=sill,
+        nugget=nugget,
+        anisotropy_scaling_x=anisotropy_scaling_x,
+        anisotropy_scaling_y=anisotropy_scaling_y,
+        anisotropy_scaling_z=anisotropy_scaling_z,
+        neighbors=neighbors,
     )
-
 
 class RBFParams(BaseModel):
     """

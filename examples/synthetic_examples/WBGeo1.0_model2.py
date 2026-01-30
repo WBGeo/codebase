@@ -129,7 +129,7 @@ general.compute_structural_model(
 
 #%%
 
-frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 frame.structural_groups[0].structural_elements[1].scalar_value
 
 #%%

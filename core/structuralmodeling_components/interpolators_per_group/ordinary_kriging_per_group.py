@@ -77,6 +77,7 @@ def interpolate_group_ordinary_kriging(
         vals,
         variogram_model=params.variogram_model,
         variogram_parameters=[params.sill, params.range, params.nugget],
+        anisotropy_scaling_y=params.anisotropy_scaling_y,
         anisotropy_scaling_z=params.anisotropy_scaling_z,
     )
 
