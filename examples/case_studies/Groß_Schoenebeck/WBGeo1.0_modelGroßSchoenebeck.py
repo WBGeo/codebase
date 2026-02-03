@@ -123,12 +123,20 @@ data_faults = InputData_FaultElements(name='Faults_GSB',
 fault_frame = general_faults.build_fault_frame(
     fault_surface_points_df=data_faults.fault_surface_points,
     fault_orientations_df=data_faults.fault_orientations,
-    fault_names=['29', 'F21n', 'F27', 'F28', 'F29', 'F9'],
-    colors=["#A9A9A9"]*6,
+    fault_names=["water"], #, "seismic_plane"],
+    colors=["#A9A9A9"],
     grid=grid
 )
 
 fault_frame.detailed_report()
+
+#%%
+
+plot_fault_frame_3D(fault_frame)
+
+#%%
+
+fault_frame.fault_surface_points_df
 
 #%%
 

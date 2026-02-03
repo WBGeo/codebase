@@ -15,8 +15,15 @@ cwd = os.getcwd()
 df = pd.read_csv("C:/Users/vonha/Desktop/schoenebeck_surface_points.csv")
 df.describe()
 
-df_faults = pd.read_csv("C:/Users/vonha/Desktop/schoenebeck_faults_surface_points.csv")
-df_faults.describe()
+df_faults_1 = pd.read_csv("C:/Users/vonha/Desktop/water.csv")
+df_faults_2 = pd.read_csv("C:/Users/vonha/Desktop/seismic_plane.csv")
+
+# Combine fault data and add formation column with name of input file
+df_faults_1['formation'] = 'water'
+df_faults_2['formation'] = 'seismic_plane'
+df_faults = pd.concat([df_faults_1, df_faults_2], ignore_index=True)
+
+df_faults.head()
 
 #%%
 
@@ -96,22 +103,7 @@ def spatial_downsample_by_formation(
 
     return pd.concat(out, ignore_index=True)
 
-def compute_surface_orientations(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    Compute surface normals via Delaunay triangulation per formation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Must contain columns ['X', 'Y', 'Z', 'formation']
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: x, y, z, gx, gy, gz, formation
-    """
+def compute_surface_orientations(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
 
     for formation, g in df.groupby("formation"):
@@ -119,43 +111,41 @@ def compute_surface_orientations(
             continue
 
         pts = g[["X", "Y", "Z"]].to_numpy()
+        center = pts.mean(axis=0)
 
-        # Triangulate in XY
         tri = Delaunay(pts[:, :2])
 
         for simplex in tri.simplices:
             p0, p1, p2 = pts[simplex]
 
-            # Triangle edges
             v1 = p1 - p0
             v2 = p2 - p0
 
-            # Normal
             n = np.cross(v1, v2)
             norm = np.linalg.norm(n)
             if norm == 0:
                 continue
 
-            n = n / norm
+            n /= norm
 
-            # Enforce upward-pointing normals
-            if n[2] < 0:
-                n = -n
-
-            # Triangle centroid
             c = (p0 + p1 + p2) / 3
+
+            # Enforce consistent side
+            if np.dot(n, c - center) < 0:
+                n = -n
 
             rows.append({
                 "X": c[0],
                 "Y": c[1],
                 "Z": c[2],
-                "G_x": n[0],
-                "G_y": n[1],
-                "G_z": n[2],
+                "G_x": np.round(n[0],2),
+                "G_y": np.round(n[1],2),
+                "G_z": np.round(n[2],2),
                 "formation": formation,
             })
 
     return pd.DataFrame(rows)
+
 
 def spatially_downsample_orientations(
     df: pd.DataFrame,
