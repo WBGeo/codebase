@@ -161,25 +161,12 @@ def spatially_downsample_orientations(
     df: pd.DataFrame,
     n_target: int = 25,
     n_bins: int = 6,
+    margin_frac: float = 0.1,   # NEW: fraction of extent to exclude per side
     random_state: int | None = None,
 ) -> pd.DataFrame:
     """
-    Spatially downsample orientation vectors per formation.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Columns: x, y, z, gx, gy, gz, formation
-    n_target : int
-        Desired number of orientations per formation
-    n_bins : int
-        XY bin count per axis
-    random_state : int | None
-        Seed for reproducibility
-
-    Returns
-    -------
-    pd.DataFrame
+    Spatially downsample orientation vectors per formation,
+    excluding a margin around the spatial extent.
     """
     rng = np.random.default_rng(random_state)
     out = []
@@ -189,8 +176,29 @@ def spatially_downsample_orientations(
             out.append(g)
             continue
 
-        x_bins = np.linspace(g["X"].min(), g["Y"].max(), n_bins + 1)
-        y_bins = np.linspace(g["X"].min(), g["Y"].max(), n_bins + 1)
+        # --- compute interior bounds ---
+        x_min, x_max = g["X"].min(), g["X"].max()
+        y_min, y_max = g["Y"].min(), g["Y"].max()
+
+        x_margin = margin_frac * (x_max - x_min)
+        y_margin = margin_frac * (y_max - y_min)
+
+        interior = g[
+            (g["X"] >= x_min + x_margin) &
+            (g["X"] <= x_max - x_margin) &
+            (g["Y"] >= y_min + y_margin) &
+            (g["Y"] <= y_max - y_margin)
+        ]
+
+        # If margin removes too much data, fall back
+        if len(interior) < n_target:
+            interior = g
+
+        g = interior
+
+        # --- binning ---
+        x_bins = np.linspace(g["X"].min(), g["X"].max(), n_bins + 1)
+        y_bins = np.linspace(g["Y"].min(), g["Y"].max(), n_bins + 1)
 
         xi = np.digitize(g["X"], x_bins) - 1
         yi = np.digitize(g["Y"], y_bins) - 1
@@ -199,7 +207,6 @@ def spatially_downsample_orientations(
         g["_bin"] = list(zip(xi, yi))
 
         bin_groups = g.groupby("_bin")
-
         per_bin = max(1, n_target // len(bin_groups))
 
         samples = []
@@ -211,13 +218,13 @@ def spatially_downsample_orientations(
 
         sampled = pd.concat(samples)
 
-        # Final adjustment
+        # --- final adjustment ---
         if len(sampled) > n_target:
             sampled = sampled.sample(n_target, random_state=random_state)
         elif len(sampled) < n_target:
             remaining = g.drop(sampled.index)
             needed = n_target - len(sampled)
-            if needed > 0:
+            if needed > 0 and len(remaining) > 0:
                 sampled = pd.concat([
                     sampled,
                     remaining.sample(min(needed, len(remaining)), random_state=random_state)
@@ -226,6 +233,7 @@ def spatially_downsample_orientations(
         out.append(sampled.drop(columns="_bin"))
 
     return pd.concat(out, ignore_index=True)
+
 
 #%%
 

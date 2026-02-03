@@ -35,7 +35,7 @@ grid = RegularGrid(
     extent=(surface_points["X"].min(), surface_points["X"].max(),
             surface_points["Y"].min(), surface_points["Y"].max(),
             surface_points["Z"].min(), surface_points["Z"].max()+100),
-    resolution=(75, 75, 75)
+    resolution=(50, 50, 50)
 )
 
 #%%
