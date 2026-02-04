@@ -261,7 +261,6 @@ def build_fault_frame(
     fault_orientations_df: pd.DataFrame,
     fault_names: list,  # youngest to oldest
     grid: RegularGrid,
-    colors: list = None,
 ) -> FaultFrame:
     """Build a :class:`FaultFrame` from ordered fault names, surface input_data, and a grid.
 
@@ -275,21 +274,17 @@ def build_fault_frame(
         Fault names ordered from youngest to oldest (input convention).
     grid : RegularGrid
         Model grid.
-    colors : list, optional
-        Hex colors for faults in the same order as ``fault_names``. Defaults to dark grey.
 
     Returns
     -------
     FaultFrame
         A fully configured fault frame with elements, colors, input input_data, and grid.
     """
-    if colors is None:
-        colors = ["#555555"] * len(fault_names)
-    if len(colors) != len(fault_names):
-        raise ValueError("Length of colors must match fault_names")
+    # Assign default gray colors if none provided
+    colors = ["#555555"] * len(fault_names)
 
     fault_elements = []
-    # Internally we build oldest -> youngest, preserving the original behavior
+
     for name, color in reversed(list(zip(fault_names, colors))):
         fault = FaultElement(name=name)
         fault.set_color(color)

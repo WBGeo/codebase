@@ -61,15 +61,16 @@ data_faults = InputData_FaultElements(name='Faults_Model_2',
                                           cwd + "/examples/input_data/model2_orientations_df.csv"))
 
 # Create FaultFrame
-fault_frame = core.structuralmodeling_components.general_faults.build_fault_frame(
+fault_frame = general_faults.build_fault_frame(
     fault_surface_points_df=data_faults.fault_surface_points,
     fault_orientations_df=data_faults.fault_orientations,
     fault_names=["fault"],
-    colors=["#A9A9A9"],
     grid=grid
 )
 
 fault_frame.detailed_report()
+
+#%%
 
 #%%
 
@@ -103,9 +104,7 @@ plot_fault_frame_3D(fault_frame)
 # RBF TODO: Find good parameters
 frame["Strat_Series1"].set_interpolation_method("Radial Basis Function")
 frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
-# # Set interpolation parameters if needed
-# frame["Strat_Series1"].configure_interpolation_params(kernel="linear", epsilon=1)
-# frame["Strat_Series2"].configure_interpolation_params(kernel="linear", epsilon=1)
+
 
 # GeoINR
 # frame["Strat_Series1"].set_interpolation_method("GeoINR")
