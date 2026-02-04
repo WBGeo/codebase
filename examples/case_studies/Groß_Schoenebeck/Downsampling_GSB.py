@@ -111,7 +111,15 @@ def compute_surface_orientations(df: pd.DataFrame) -> pd.DataFrame:
             continue
 
         pts = g[["X", "Y", "Z"]].to_numpy()
-        center = pts.mean(axis=0)
+
+        # --- dominant normal via PCA ---
+        coords = pts - pts.mean(axis=0)
+        _, _, vh = np.linalg.svd(coords, full_matrices=False)
+        dominant_normal = vh[-1]
+
+        # Optional global sign convention
+        if dominant_normal[2] < 0:
+            dominant_normal = -dominant_normal
 
         tri = Delaunay(pts[:, :2])
 
@@ -128,23 +136,24 @@ def compute_surface_orientations(df: pd.DataFrame) -> pd.DataFrame:
 
             n /= norm
 
-            c = (p0 + p1 + p2) / 3
-
-            # Enforce consistent side
-            if np.dot(n, c - center) < 0:
+            # Enforce consistency
+            if np.dot(n, dominant_normal) < 0:
                 n = -n
+
+            c = (p0 + p1 + p2) / 3
 
             rows.append({
                 "X": c[0],
                 "Y": c[1],
                 "Z": c[2],
-                "G_x": np.round(n[0],2),
-                "G_y": np.round(n[1],2),
-                "G_z": np.round(n[2],2),
+                "G_x": n[0],
+                "G_y": n[1],
+                "G_z": n[2],
                 "formation": formation,
             })
 
     return pd.DataFrame(rows)
+
 
 
 def spatially_downsample_orientations(

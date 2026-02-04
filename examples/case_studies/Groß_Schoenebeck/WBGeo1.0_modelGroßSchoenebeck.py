@@ -85,7 +85,7 @@ plot_structural_model_3D(frame=frame, show_surface_meshes=False)
 # RBF
 # frame["Main"].set_interpolation_method("Radial Basis Function")
 
-
+# This is what Mauro suggested
 frame["01"].set_interpolation_method("Universal Co-Kriging")
 frame["02"].set_interpolation_method("Universal Co-Kriging")
 frame["03"].set_interpolation_method("Universal Co-Kriging")
@@ -93,6 +93,7 @@ frame["04"].set_interpolation_method("Universal Co-Kriging")
 frame["05"].set_interpolation_method("Universal Co-Kriging")
 frame["06"].set_interpolation_method("Universal Co-Kriging")
 frame["07"].set_interpolation_method("Universal Co-Kriging")
+
 #%%
 
 general.compute_structural_model(
@@ -120,10 +121,19 @@ data_faults = InputData_FaultElements(name='Faults_GSB',
                                       fault_orientations=orientations_faults)
 
 # Create FaultFrame
+# fault_frame = general_faults.build_fault_frame(
+#     fault_surface_points_df=data_faults.fault_surface_points,
+#     fault_orientations_df=data_faults.fault_orientations,
+#     fault_names=["seismic_plane"],
+#     colors=["#A9A9A9"],
+#     grid=grid
+# )
+
+# Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
     fault_surface_points_df=data_faults.fault_surface_points,
     fault_orientations_df=data_faults.fault_orientations,
-    fault_names=["water"], #, "seismic_plane"],
+    fault_names=["water"],
     colors=["#A9A9A9"],
     grid=grid
 )
