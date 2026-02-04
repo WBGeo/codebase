@@ -70,12 +70,15 @@ fault_frame = general_faults.build_fault_frame(
 
 fault_frame.detailed_report()
 
-#%%
 
 #%%
 
 # Compute fault domains
 general_faults.compute_fault_domains(fault_frame)
+
+#%%
+
+fault_frame.fault_elements[0].get_separated_domains()
 
 #%%
 

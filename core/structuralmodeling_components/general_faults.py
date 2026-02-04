@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import gempy as gp
 
-from typing import Optional
+from typing import Optional, Tuple, FrozenSet
 
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structuralmodeling_components.structural_objects.structural_objects import FaultFrame, FaultElement
@@ -224,10 +224,15 @@ def compute_fault_domains(
             overlap = current_mask & fault_mask
 
             if np.any(overlap):
+                new_id = 9999 + domain_id_counter
+
                 # Assign a temporary large ID
-                new_domain_map[overlap] = 9999 + domain_id_counter
+                new_domain_map[overlap] = new_id
                 temp_ids.append(9999 + domain_id_counter)
                 domain_id_counter += 1
+
+                # 🔑 THIS IS THE ONLY NEW LINE THAT MATTERS
+                # fault.set_separated_domains((existing_id, new_id))
 
         domain_map = new_domain_map
 
@@ -236,6 +241,22 @@ def compute_fault_domains(
     remap = {old: new for new, old in enumerate(unique_ids)}
     remapped_map = np.vectorize(remap.get)(domain_map)
     fault_frame._domain_map = remapped_map
+
+    for fault in fault_frame._fault_elements:
+        mask = fault.get_domain_mask()
+        if mask.shape != remapped_map.shape:
+            mask = mask.transpose(2, 1, 0)
+
+        left_ids = set(np.unique(remapped_map[mask]))
+        right_ids = set(np.unique(remapped_map[~mask]))
+
+        if not left_ids or not right_ids:
+            raise RuntimeError(
+                f"Fault '{fault.name}' does not create a valid split."
+            )
+
+        # 🔑 THIS is the correct invariant
+        fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
 
     #  Store per-domain masks
     fault_frame._domain_masks = {}
