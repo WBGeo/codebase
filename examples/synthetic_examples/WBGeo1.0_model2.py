@@ -94,8 +94,6 @@ plot_fault_frame_3D(fault_frame)
 
 # Set interpolation methods for each stratigraphic series
 
-# TODO: Somehow feels not optimal around for everything apart UCK
-
 # UCK
 # frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
 # frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")

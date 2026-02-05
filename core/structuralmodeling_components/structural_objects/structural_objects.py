@@ -538,13 +538,17 @@ class StructuralFrame(BaseModel):
         if self._fault_activity is None:
             return None
 
-        return {
-            fault: {
-                "group_index": idx,
-                "group_name": self.structural_groups[idx].name,
+        out = {}
+        for fault, oldest_idx in self._fault_activity.items():
+            # Youngest affected group = the youngest group within 0..oldest_idx
+            youngest_idx = 0 if oldest_idx >= 0 else None
+
+            out[fault] = {
+                "youngest_group_index": youngest_idx,
+                "youngest_group_name": self.structural_groups[youngest_idx].name,
             }
-            for fault, idx in self._fault_activity.items()
-        }
+
+        return out
 
     def set_fault_activity_by_index(self, fault_name: str, max_group_idx: int) -> None:
         if self._fault_frame is None or self._fault_activity is None:
