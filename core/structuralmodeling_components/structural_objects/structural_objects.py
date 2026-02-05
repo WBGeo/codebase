@@ -519,13 +519,8 @@ class StructuralFrame(BaseModel):
 
         self._fault_frame = fault_frame
 
-        # 🔑 DEFAULT: all faults affect all groups
-        max_group_idx = len(self.structural_groups) - 1
-
-        self._fault_activity = {
-            fault.name: max_group_idx
-            for fault in fault_frame.fault_elements
-        }
+        # Initialize fault activity to default (all groups affected)
+        self._fault_activity = {fault.name: 0 for fault in fault_frame.fault_elements}
 
     @property
     def fault_activity(self) -> Optional[dict[str, int]]:
@@ -538,19 +533,15 @@ class StructuralFrame(BaseModel):
         if self._fault_activity is None:
             return None
 
-        out = {}
-        for fault, oldest_idx in self._fault_activity.items():
-            # Youngest affected group = the youngest group within 0..oldest_idx
-            youngest_idx = 0 if oldest_idx >= 0 else None
-
-            out[fault] = {
-                "youngest_group_index": youngest_idx,
-                "youngest_group_name": self.structural_groups[youngest_idx].name,
+        return {
+            fault: {
+                "youngest_group_index": idx,
+                "youngest_group_name": self.structural_groups[idx].name,
             }
+            for fault, idx in self._fault_activity.items()
+        }
 
-        return out
-
-    def set_fault_activity_by_index(self, fault_name: str, max_group_idx: int) -> None:
+    def set_fault_activity_by_index(self, fault_name: str, youngest_group_idx: int) -> None:
         if self._fault_frame is None or self._fault_activity is None:
             raise RuntimeError(
                 "Cannot set fault activity without a FaultFrame attached."
@@ -559,15 +550,12 @@ class StructuralFrame(BaseModel):
         if fault_name not in self._fault_activity:
             raise KeyError(f"Fault '{fault_name}' not found in fault frame.")
 
-        if not isinstance(max_group_idx, int):
-            raise TypeError("max_group_idx must be an integer.")
-
-        if max_group_idx < 0 or max_group_idx >= len(self.structural_groups):
+        if youngest_group_idx < 0 or youngest_group_idx >= len(self.structural_groups):
             raise ValueError(
                 f"max_group_idx must be in range [0, {len(self.structural_groups) - 1}]."
             )
 
-        self._fault_activity[fault_name] = max_group_idx
+        self._fault_activity[fault_name] = youngest_group_idx
 
     def set_fault_activity_by_group(self, fault_name: str, group_name: str) -> None:
         for idx, group in enumerate(self.structural_groups):

@@ -273,6 +273,9 @@ def compute_fault_domains(
         fault.set_vertices(vertices[0])
         fault.set_edges(edges[0])
 
+    # for fault in fault_frame.fault_elements:
+    #     set_separated_domains_from_local_band(fault_frame, fault, voxels=1.0, use_gradient=True)
+
     # 🔎 After all faults are processed
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
 
@@ -317,3 +320,42 @@ def build_fault_frame(
     fault_frame.set_grid(grid)
 
     return fault_frame
+
+def set_separated_domains_from_local_band(
+    fault_frame: FaultFrame,
+    fault: FaultElement,
+    *,
+    voxels: float = 1.0,
+    use_gradient: bool = True,
+) -> None:
+    """Populate fault.separated_domains by sampling domain labels locally around the fault surface."""
+    domain_map = fault_frame.domain_map  # XYZ
+    sf = fault.scalar_field              # XYZ
+    sv = float(fault.scalar_value)
+
+    spacing = fault_frame.grid.spacing
+    thickness_world = float(voxels) * float(np.min(spacing))
+
+    if use_gradient:
+        gx, gy, gz = np.gradient(sf, *spacing, edge_order=1)
+        grad_mag = np.sqrt(gx*gx + gy*gy + gz*gz)
+        med = float(np.nanmedian(grad_mag)) if np.isfinite(grad_mag).any() else 1e-12
+        tol_scalar = thickness_world * max(med, 1e-12)
+    else:
+        tol_scalar = thickness_world
+
+    band = np.abs(sf - sv) <= tol_scalar
+
+    # two sides of the fault (use your domain mask convention)
+    pos = band & (sf > sv)
+    neg = band & (sf <= sv)
+
+    left_ids = set(np.unique(domain_map[neg]))
+    right_ids = set(np.unique(domain_map[pos]))
+
+    # remove junk if present
+    left_ids.discard(-1)
+    right_ids.discard(-1)
+
+    # store
+    fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))

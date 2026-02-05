@@ -18,13 +18,41 @@ cwd = os.getcwd()
 
 #%%
 
-# TODO: This model needs integration of unconformities
-
 # Create grid
 grid = RegularGrid(
     extent=(0, 2000, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(50, 25, 25)  # Example resolution
+    resolution=(100, 50, 50)  # Example resolution
 )
+
+#%%
+
+# Input data for faults
+data_faults = InputData_FaultElements(name='Faults_Model_8',
+                                      fault_surface_points=pd.read_csv(
+                                          cwd + "/examples/input_data/model8_surface_points_df.csv"),
+                                      fault_orientations=pd.read_csv(
+                                          cwd + "/examples/input_data/model8_orientations_df.csv"))
+
+# Create FaultFrame
+fault_frame = general_faults.build_fault_frame(
+    fault_surface_points_df=data_faults.fault_surface_points,
+    fault_orientations_df=data_faults.fault_orientations,
+    fault_names=["fault1", "fault2"],
+    grid=grid
+)
+
+fault_frame.detailed_report()
+
+#%%
+
+# Compute fault domains
+general_faults.compute_fault_domains(fault_frame)
+
+#%%
+
+# Plot fault domains (2D and 3D possible)
+fault_frame.plot_fault_domain_section(axis='y', index=12)
+plot_fault_frame_3D(fault_frame)
 
 #%%
 
@@ -45,7 +73,8 @@ data_elements = InputData_StructuralElements(name='Model_8',
 frame = general.build_structural_frame(data_elements.mapping_object,
                                        grid,
                                        data_elements.surface_points,
-                                       data_elements.orientations)
+                                       data_elements.orientations,
+                                       fault_frame=fault_frame)
 frame.detailed_report()
 
 #%%
@@ -56,38 +85,15 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 
 #%%
 
-# Input data for faults
-data_faults = InputData_FaultElements(name='Faults_Model_8',
-                                      fault_surface_points=pd.read_csv(
-                                          cwd + "/examples/input_data/model8_surface_points_df.csv"),
-                                      fault_orientations=pd.read_csv(
-                                          cwd + "/examples/input_data/model8_orientations_df.csv"))
+# set fault activity verbose
+frame.set_fault_activity_by_group(fault_name="fault1", group_name="Mid")
+frame.set_fault_activity_by_group(fault_name="fault2", group_name="Bot")
 
-# Create FaultFrame
-fault_frame = general_faults.build_fault_frame(
-    fault_surface_points_df=data_faults.fault_surface_points,
-    fault_orientations_df=data_faults.fault_orientations,
-    fault_names=["fault1", "fault2"],
-    colors=["#A9A9A9", "#696969"],
-    grid=grid
-)
-
-fault_frame.detailed_report()
+frame.fault_activity_verbose
 
 #%%
 
-fault_frame.detailed_report()
-
-#%%
-
-# Compute fault domains
-general_faults.compute_fault_domains(fault_frame)
-
-#%%
-
-# Plot fault domains (2D and 3D possible)
-fault_frame.plot_fault_domain_section(axis='y', index=12)
-plot_fault_frame_3D(fault_frame)
+fault_frame.fault_elements[0].get_separated_domains()
 
 
 #%%
@@ -95,9 +101,14 @@ plot_fault_frame_3D(fault_frame)
 # Set interpolation methods for each stratigraphic series
 
 # UCK
-frame["Top"].set_interpolation_method("Universal Co-Kriging")
-frame["Mid"].set_interpolation_method("Universal Co-Kriging")
-frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+# frame["Top"].set_interpolation_method("Universal Co-Kriging")
+# frame["Mid"].set_interpolation_method("Universal Co-Kriging")
+# frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+
+# UCK
+frame["Top"].set_interpolation_method("Radial Basis Function")
+frame["Mid"].set_interpolation_method("Radial Basis Function")
+frame["Bot"].set_interpolation_method("Radial Basis Function")
 
 frame.detailed_report()
 
@@ -106,7 +117,6 @@ frame.detailed_report()
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(
     frame,
-    fault_frame=fault_frame,  # or None for single-domain
     extract_meshes=True,
     verbose=True,
 )
@@ -114,15 +124,20 @@ general.compute_structural_model(
 #%%
 
 plot_structural_model_2D(frame=frame,
-                         fault_frame=None,
                          axis='y',
                          show_input_data=True,
-                         index=0)
+                         index=25)
+
+#%%
+
+print(frame.fault_activity_verbose)
+
+print(fault_frame.fault_elements[0].get_separated_domains())
+print(fault_frame.fault_elements[1].get_separated_domains())
 
 #%%
 
 plot_structural_model_3D(frame=frame,
-                         fault_frame=None,
                          mesh_type="masked",
                          show_orientations=True)
 
