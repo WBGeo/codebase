@@ -14,7 +14,6 @@ def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
 
 def plot_structural_model_3D(
     frame,
-    fault_frame=None,
     *,
     mesh_type="masked",              # "masked" | "unmasked" | "combined" (if present)
     show_surface_meshes=True,
@@ -72,13 +71,13 @@ def plot_structural_model_3D(
         legend_entries.append((group.name, group_entries))
 
     # ---------- plot fault meshes ----------
-    if fault_frame is not None:
+    if frame._fault_frame is not None:
         # add a "Faults" header in legend (bold/black achievable only approximately in pyvista legend)
         faults_header = ("Faults", "black")
         # we’ll append “Faults” header at the top with the flatten stage below
         fault_entries = []
 
-        for fault in getattr(fault_frame, "fault_elements", []):
+        for fault in getattr(frame._fault_frame, "fault_elements", []):
             fv = getattr(fault, "vertices", None)
             ff = getattr(fault, "edges", None)
             if fv is None or ff is None or len(fv) == 0 or len(ff) == 0:
@@ -216,7 +215,7 @@ def plot_structural_model_2D(
             f_sv = getattr(fault, "scalar_value", None)
             if f_sf is None or f_sv is None:
                 continue
-            f_slice = np.take(f_sf, index, axis=dim)
+            f_slice = np.take(f_sf, index, axis=dim).T
             fcol = getattr(fault, "color", None) or "black"
             CSf = ax.contour(x_coords, y_coords, f_slice.T, levels=[f_sv], colors=[fcol], linewidths=1.5, linestyles="-")
             ax.clabel(CSf, fmt={f_sv: f"Fault: {fault.name}"}, fontsize=7)

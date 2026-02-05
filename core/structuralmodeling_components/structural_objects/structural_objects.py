@@ -849,8 +849,8 @@ class FaultElement(BaseModel):
     _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
     _color: str = PrivateAttr(default="#AAAAAA")  # Default color in hex format
     _separated_domains: Optional[Tuple[FrozenSet[int], FrozenSet[int]]] = PrivateAttr(default=None)
-    _vertices: np.ndarray = PrivateAttr(default_factory=None)
-    _edges: np.ndarray = PrivateAttr(default_factory=None)
+    _vertices: Optional[np.ndarray] = PrivateAttr(default_factory=None)
+    _edges: Optional[np.ndarray] = PrivateAttr(default_factory=None)
     _mask: Optional[np.ndarray] = PrivateAttr(default=None)
 
     def __init__(self, name: str, scalar_value: Optional[float] = None):
@@ -1156,9 +1156,9 @@ class FaultFrame(BaseModel):
 
             for fault in self._fault_elements:
                 ax.contour(
-                    fault._scalar_field[:, index, :] if axis == 'y' else
-                    fault._scalar_field[index, :, :] if axis == 'x' else
-                    fault._scalar_field[:, :, index],
+                    fault._scalar_field[:, index, :].T if axis == 'y' else
+                    fault._scalar_field[index, :, :].T if axis == 'x' else
+                    fault._scalar_field[:, :, index].T,
                     levels=[fault._scalar_value],
                     colors=[fault.color],
                     linewidths=1.5,

@@ -43,6 +43,7 @@ fault_frame = general_faults.build_fault_frame(
 
 fault_frame.detailed_report()
 
+
 #%%
 
 # Compute fault domains
@@ -72,7 +73,7 @@ frame.detailed_report()
 
 #%%
 
-fault_frame.fault_elements[0].scalar_field.shape
+frame.fault_activity_verbose
 
 
 #%%
@@ -127,14 +128,15 @@ frame.detailed_report()
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(
     frame,
-    extract_meshes=False,
+    extract_meshes=True,
     verbose=True,
 )
+
 
 #%%
 
 frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
-frame.structural_groups[0].structural_elements[1].scalar_value
+frame.structural_groups[1].structural_elements[1].scalar_value
 
 #%%
 
@@ -146,7 +148,6 @@ plot_structural_model_2D(frame=frame,
 #%%
 
 plot_structural_model_3D(frame=frame,
-                         fault_frame=fault_frame,
                          mesh_type="masked",
                          show_orientations=True)
 

@@ -265,7 +265,7 @@ def compute_fault_domains(
 
     # Extrac surfaces meshes for faults
     for i, fault in enumerate(reversed(fault_frame._fault_elements)):
-        vertices, edges = marching_cubes_new(fault.scalar_field.T,
+        vertices, edges = marching_cubes_new(fault.scalar_field,
                                              [fault.scalar_value],
                                              fault_frame._grid.spacing,
                                              fault_frame._grid.extent)

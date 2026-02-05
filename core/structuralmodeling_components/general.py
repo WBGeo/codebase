@@ -93,6 +93,7 @@ def run_interpolation_with_fault_domains(
     )
 
     for group_idx, group in enumerate(frame.structural_groups):
+        print("name", group.name)
         group_formations = [e.name for e in group.structural_elements]
 
         # --- Determine which domains are active for this group ---
@@ -117,6 +118,8 @@ def run_interpolation_with_fault_domains(
                 if domain_ok:
                     active_domain_ids.append(domain_id)
 
+        print("active_domain_ids", active_domain_ids)
+
         # --- Interpolate per active domain ---
         for domain_id in active_domain_ids:
             sp_filtered_all = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
@@ -125,6 +128,8 @@ def run_interpolation_with_fault_domains(
                 if ori_in_domain is not None
                 else None
             )
+
+            print("sp_filtered_all shape", sp_filtered_all.shape)
 
             # Crop grid if requested
             use_grid = frame.grid
@@ -165,6 +170,10 @@ def run_interpolation_with_fault_domains(
                 group_orientations_points_df=ori_filtered,
             )
 
+            scalar_field_sub = scalar_field_sub.transpose(2, 1, 0)
+
+            print(scalar_field_sub.min(), scalar_field_sub.max(), scalar_field_sub.shape)
+
             # Write back to full grid if cropped
             if crop_to_domain and bbox is not None and len(domain_ids) > 1:
                 # 1) Prepare full-size field
@@ -172,8 +181,8 @@ def run_interpolation_with_fault_domains(
                 scalar_field_full = np.full(full_shape, np.nan, dtype=scalar_field_sub.dtype)
 
                 kx0, kx1, ky0, ky1, kz0, kz1 = bbox
-                # Convert interpolator output to XYZ
-                scalar_field_full[kx0:kx1 + 1, ky0:ky1 + 1, kz0:kz1 + 1] = scalar_field_sub.transpose(2, 1, 0)
+
+                scalar_field_full[kx0:kx1 + 1, ky0:ky1 + 1, kz0:kz1 + 1] = scalar_field_sub
 
                 scalar_field = scalar_field_full  # use for combination below
 
@@ -960,7 +969,7 @@ def compute_structural_model(
     ff = frame.fault_frame
     if ff is None:
         # synthetic single domain
-        dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=int).T
+        dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=int)
 
         class _TmpFF:
             domain_map = dom_map
@@ -1010,16 +1019,18 @@ def compute_domain_bbox_indices(domain_map: np.ndarray, domain_id: int):
     if not np.any(mask):
         return None
 
-    # Find ranges along each axis (XYZ)
-    x_any = mask.any(axis=(1, 2))
-    y_any = mask.any(axis=(0, 2))
-    z_any = mask.any(axis=(0, 1))
+    # domain_map shape = (X,Y,Z)
+    # Compute index ranges along each axis
+    x_any = mask.any(axis=(1,2))  # collapse Y,Z → X
+    y_any = mask.any(axis=(0,2))  # collapse X,Z → Y
+    z_any = mask.any(axis=(0,1))  # collapse X,Y → Z
 
     kx0, kx1 = np.where(x_any)[0][[0, -1]]
     ky0, ky1 = np.where(y_any)[0][[0, -1]]
     kz0, kz1 = np.where(z_any)[0][[0, -1]]
 
     return int(kx0), int(kx1), int(ky0), int(ky1), int(kz0), int(kz1)
+
 
 
 
@@ -1198,40 +1209,21 @@ def build_structural_frame(
     return frame
 
 
-def assign_domain_ids_to_points(
-    grid: RegularGrid, domain_map: np.ndarray, df: pd.DataFrame
-) -> pd.DataFrame:
-    """Assign a domain ID to each (X, Y, Z) point from ``domain_map``.
-
-    Parameters
-    ----------
-    grid : RegularGrid
-        The model grid providing ``xyz_to_indices``.
-    domain_map : np.ndarray
-        3D array with domain IDs, shaped ``[X, Y, Z]``.
-    df : pd.DataFrame
-        DataFrame with columns ``'X', 'Y', 'Z'``.
-
-    Returns
-    -------
-    pd.DataFrame
-        Copy of the input DataFrame with a new integer column ``'domain_id'``.
-        If the input is empty, the same DataFrame is returned with an empty column of dtype int.
-    """
-
+def assign_domain_ids_to_points(grid: RegularGrid, domain_map: np.ndarray, df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
-        df["domain_id"] = pd.Series(dtype=int)
-        return df
+        out = df.copy()
+        out["domain_id"] = pd.Series(dtype=int)
+        return out
 
     coords = df[["X", "Y", "Z"]].values
-    indices = grid.xyz_to_indices(coords)  # Shape: [N, 3], order: [X, Y, Z]
+    indices = grid.xyz_to_indices(coords).astype(int)  # [N,3] in [X,Y,Z]
 
-    # Clamp to bounds (note reversed order for domain_map indexing [Z, Y, X])
-    for dim in range(3):
-        indices[:, dim] = np.clip(indices[:, dim], 0, domain_map.shape[2 - dim] - 1)
+    # Clamp to bounds for domain_map [X,Y,Z]
+    indices[:, 0] = np.clip(indices[:, 0], 0, domain_map.shape[0] - 1)
+    indices[:, 1] = np.clip(indices[:, 1], 0, domain_map.shape[1] - 1)
+    indices[:, 2] = np.clip(indices[:, 2], 0, domain_map.shape[2] - 1)
 
-    # Reverse the indexing to [Z, Y, X]
-    domain_ids = domain_map[indices[:, 2], indices[:, 1], indices[:, 0]]
+    domain_ids = domain_map[indices[:, 0], indices[:, 1], indices[:, 2]]
 
     out = df.copy()
     out["domain_id"] = domain_ids
