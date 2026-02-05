@@ -59,39 +59,32 @@ interpolate_dispatch = {
 
 def run_interpolation_with_fault_domains(
     frame: StructuralFrame,
-    fault_frame: FaultFrame,
+    fault_frame: Optional[FaultFrame],
     *,
     crop_to_domain: bool = True,
 ) -> None:
-    """Interpolate each structural group independently inside each fault domain.
+    """Interpolate structural groups inside fault domains, respecting fault activity.
 
-    This version optionally **crops computation to the domain's bounding box** to
-    speed up interpolation while still storing full-grid scalar fields per domain.
-
-    Results are stored in per-domain slots on the groups/elements via
-    - ``group.set_scalar_field_for_domain(domain_id, field)``
-    - ``element.set_scalar_value_for_domain(domain_id, value)``
-
-    Assumes each dispatch function returns a tuple:
-    ``(scalar_field: np.ndarray, scalar_values_by_element: Dict[str, float])``.
-    The input groups are not mutated besides the explicit setters above.
+    Groups not affected by any fault get a single continuous scalar field
+    across all points.
 
     Parameters
     ----------
     frame : StructuralFrame
-        Structural frame containing groups, elements, grid and input input_data.
-    fault_frame : FaultFrame
-        Fault frame providing a 3D ``domain_map`` with domain identifiers.
+        Structural frame containing groups, elements, grid, and input_data.
+    fault_frame : Optional[FaultFrame]
+        Fault frame providing a 3D domain_map with domain identifiers.
     crop_to_domain : bool, default True
-        If ``True``, perform the interpolation on the minimal axis-aligned sub-grid
-        that bounds the domain voxels, then write results back into a full-size
-        scalar field. This preserves storage layout and downstream behavior but
-        reduces compute for small domains.
+        Crop computation to minimal bounding box for speed.
     """
-    domain_map = fault_frame.domain_map
+
+    domain_map = (
+        fault_frame.domain_map if fault_frame is not None else np.zeros(frame.grid.resolution, dtype=int)
+    )
+
     domain_ids = np.unique(domain_map)
 
-    # Tag inputs with domain ids
+    # Assign each point to a domain
     sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
     ori_in_domain = (
         assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
@@ -99,54 +92,64 @@ def run_interpolation_with_fault_domains(
         else None
     )
 
-    for domain_id in domain_ids:
-        # Filter input for this domain
-        sp_filtered_all = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
-        ori_filtered_all = (
-            ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
-            if ori_in_domain is not None
-            else None
-        )
+    for group_idx, group in enumerate(frame.structural_groups):
+        group_formations = [e.name for e in group.structural_elements]
 
-        # Determine computation grid (full grid or cropped sub-grid)
-        use_grid = frame.grid
-        bbox = None
+        # --- Determine which domains are active for this group ---
+        active_domain_ids = []
 
-        # check if crop_to_domain is true and single domain only
-        if crop_to_domain and np.unique(domain_map).size > 1:
-            bbox = compute_domain_bbox_indices(domain_map, domain_id)  # (kz0,kz1, ky0,ky1, kx0,kx1)
-            if bbox is not None:
-                use_grid = build_subgrid_from_bbox(frame.grid, bbox)
+        if fault_frame is None:
+            active_domain_ids = domain_ids
+        else:
+            for domain_id in domain_ids:
+                # Skip domain if no fault affects it for this group
+                domain_ok = False
+                for fault in fault_frame.fault_elements:
+                    max_group_idx = frame._fault_activity[fault.name]
+                    if group_idx > max_group_idx:
+                        continue  # fault not active for this group
+                    if domain_id in fault.separated_domains_flat():
+                        domain_ok = True
+                        break
+                # If no faults affect this group in this domain, still allow interpolation
+                if not domain_ok and all(group_idx > frame._fault_activity[f.name] for f in fault_frame.fault_elements):
+                    domain_ok = True
+                if domain_ok:
+                    active_domain_ids.append(domain_id)
 
-        # Interpolate group-by-group
-        for group in frame.structural_groups:
-            # Formations in this group
-            group_formations = [e.name for e in group.structural_elements]
+        # --- Interpolate per active domain ---
+        for domain_id in active_domain_ids:
+            sp_filtered_all = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
+            ori_filtered_all = (
+                ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
+                if ori_in_domain is not None
+                else None
+            )
 
-            # Filter to this group’s formations
+            # Crop grid if requested
+            use_grid = frame.grid
+            bbox = None
+            if crop_to_domain and len(domain_ids) > 1:
+                bbox = compute_domain_bbox_indices(domain_map, domain_id)
+                if bbox is not None:
+                    use_grid = build_subgrid_from_bbox(frame.grid, bbox)
+
+            # Filter points for this group
             sp_filtered = sp_filtered_all[sp_filtered_all["formation"].isin(group_formations)]
-            ori_filtered: Optional[pd.DataFrame] = None
+            ori_filtered = None
             if ori_filtered_all is not None:
                 ori_filtered = ori_filtered_all[ori_filtered_all["formation"].isin(group_formations)]
 
-                # Check if orientations are available for this group in this domain
-                if ori_filtered.empty:
-                    raise ValueError(
-                        f"❌ No orientation points for group '{group.name}' in domain {domain_id}."
-                    )
+            # Skip domain if no points for this group (possible for young groups above faults)
+            if sp_filtered.empty:
+                continue
 
-            # Sanity: at least 2 points per element (kept as-is)
+            # Check minimum points per element
             for elem in group.structural_elements:
                 n_pts = (sp_filtered["formation"] == elem.name).sum()
                 if n_pts < 2:
                     raise ValueError(
-                        f"❌ Not enough surface points for '{elem.name}' in domain {domain_id} (have {n_pts})"
-                    )
-
-                # Check if element is actually present in data for this domain
-                if n_pts == 0:
-                    raise ValueError(
-                        f"❌ No surface points for '{elem.name}' in domain {domain_id}."
+                        f"❌ Not enough surface points for '{elem.name}' in domain {domain_id}."
                     )
 
             # Pick interpolator
@@ -154,7 +157,7 @@ def run_interpolation_with_fault_domains(
             if method not in interpolate_dispatch:
                 raise ValueError(f"Unsupported interpolation method: {method}")
 
-            # ---- CALL: must return scalar_field + dict of element scalar values ----
+            # ---- CALL: interpolate
             scalar_field_sub, scalar_values = interpolate_dispatch[method](
                 group=group,
                 grid=use_grid,
@@ -162,218 +165,530 @@ def run_interpolation_with_fault_domains(
                 group_orientations_points_df=ori_filtered,
             )
 
-            # Write sub-grid result back into a full-size scalar field if cropped
-            if crop_to_domain and bbox is not None and np.unique(domain_map).size > 1:
-                full_shape = tuple(frame.grid.resolution[::-1])  # (Z,Y,X)
+            # Write back to full grid if cropped
+            if crop_to_domain and bbox is not None and len(domain_ids) > 1:
+                # 1) Prepare full-size field
+                full_shape = tuple(frame.grid.resolution)  # XYZ
                 scalar_field_full = np.full(full_shape, np.nan, dtype=scalar_field_sub.dtype)
 
-                kz0, kz1, ky0, ky1, kx0, kx1 = bbox
+                kx0, kx1, ky0, ky1, kz0, kz1 = bbox
+                # Convert interpolator output to XYZ
+                scalar_field_full[kx0:kx1 + 1, ky0:ky1 + 1, kz0:kz1 + 1] = scalar_field_sub.transpose(2, 1, 0)
 
-                scalar_field_full[
-                kz0:kz1 + 1,
-                ky0:ky1 + 1,
-                kx0:kx1 + 1
-                ] = scalar_field_sub
+                scalar_field = scalar_field_full  # use for combination below
 
-                scalar_field = scalar_field_full
             else:
                 scalar_field = scalar_field_sub
 
-            # Combine domain scalar fields and store only single one per group using domain masks
-            # note that group._scalar_field is transposed to fit [Z,Y,X]
-            group._scalar_field = np.where(domain_map == domain_id, scalar_field, group.get_scalar_field().T)
+            # Combine into group._scalar_field using domain map (also XYZ)
+            group._scalar_field = np.where(domain_map == domain_id, scalar_field, group.get_scalar_field())
 
-            # Transpose back to [X,Y,Z] for final storage
-            group._scalar_field = group.get_scalar_field().T
-
-            # Store scalar values on elements
+            # Store scalar values per element
             for elem in group.structural_elements:
                 if elem.name not in scalar_values:
                     raise ValueError(
-                        "Interpolator did not return a scalar value for element "
-                        f"'{elem.name}' in group '{group.name}'."
+                        f"Interpolator did not return a scalar value for element '{elem.name}' in group '{group.name}'."
                     )
-
-                # Set scalar value on element (overwrites previous, but consistent over domains)
                 elem.set_scalar_value(float(scalar_values[elem.name]))
+
+
+# def run_interpolation_with_fault_domains(
+#     frame: StructuralFrame,
+#     fault_frame: FaultFrame,
+#     *,
+#     crop_to_domain: bool = True,
+# ) -> None:
+#     """Interpolate each structural group independently inside each fault domain.
+#
+#     This version optionally **crops computation to the domain's bounding box** to
+#     speed up interpolation while still storing full-grid scalar fields per domain.
+#
+#     Results are stored in per-domain slots on the groups/elements via
+#     - ``group.set_scalar_field_for_domain(domain_id, field)``
+#     - ``element.set_scalar_value_for_domain(domain_id, value)``
+#
+#     Assumes each dispatch function returns a tuple:
+#     ``(scalar_field: np.ndarray, scalar_values_by_element: Dict[str, float])``.
+#     The input groups are not mutated besides the explicit setters above.
+#
+#     Parameters
+#     ----------
+#     frame : StructuralFrame
+#         Structural frame containing groups, elements, grid and input input_data.
+#     fault_frame : FaultFrame
+#         Fault frame providing a 3D ``domain_map`` with domain identifiers.
+#     crop_to_domain : bool, default True
+#         If ``True``, perform the interpolation on the minimal axis-aligned sub-grid
+#         that bounds the domain voxels, then write results back into a full-size
+#         scalar field. This preserves storage layout and downstream behavior but
+#         reduces compute for small domains.
+#     """
+#     domain_map = fault_frame.domain_map
+#     domain_ids = np.unique(domain_map)
+#
+#     # Tag inputs with domain ids
+#     sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
+#     ori_in_domain = (
+#         assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
+#         if frame.orientations is not None
+#         else None
+#     )
+#
+#     for domain_id in domain_ids:
+#         # Filter input for this domain
+#         sp_filtered_all = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
+#         ori_filtered_all = (
+#             ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
+#             if ori_in_domain is not None
+#             else None
+#         )
+#
+#         # Determine computation grid (full grid or cropped sub-grid)
+#         use_grid = frame.grid
+#         bbox = None
+#
+#         # check if crop_to_domain is true and single domain only
+#         if crop_to_domain and np.unique(domain_map).size > 1:
+#             bbox = compute_domain_bbox_indices(domain_map, domain_id)  # (kz0,kz1, ky0,ky1, kx0,kx1)
+#             if bbox is not None:
+#                 use_grid = build_subgrid_from_bbox(frame.grid, bbox)
+#
+#         # # Interpolate group-by-group
+#         # for group in frame.structural_groups:
+#         #     # Formations in this group
+#         #     group_formations = [e.name for e in group.structural_elements]
+#
+#         # Original loop:
+#         for group in frame.structural_groups:
+#             group_formations = [e.name for e in group.structural_elements]
+#
+#             # --- Determine which domains are actually active for this group ---
+#             active_domain_ids = []
+#
+#             if frame.fault_frame is None:
+#                 # no faults, all domains active
+#                 active_domain_ids = [domain_id]
+#             else:
+#                 for domain_id in domain_ids:
+#                     # Check if any fault that separates this domain is active for this group
+#                     domain_ok = True
+#
+#                     for fault in frame.fault_frame.fault_elements:
+#                         # skip faults that don't affect this group
+#                         max_group_idx = frame._fault_activity[fault.name]
+#                         group_idx = frame.structural_groups.index(group)
+#                         if group_idx > max_group_idx:
+#                             continue  # fault does not affect this group
+#
+#                         # if this domain is part of the fault's separated domains
+#                         if domain_id in fault.separated_domains_flat():  # see below
+#                             domain_ok = True
+#                             break
+#                         else:
+#                             # domain not affected by fault -> keep it unmasked
+#                             domain_ok = False
+#
+#                     if domain_ok:
+#                         active_domain_ids.append(domain_id)
+#
+#             # Now use active_domain_ids instead of all domain_ids
+#
+#             # Filter to this group’s formations
+#             sp_filtered = sp_filtered_all[sp_filtered_all["formation"].isin(group_formations)]
+#             ori_filtered: Optional[pd.DataFrame] = None
+#             if ori_filtered_all is not None:
+#                 ori_filtered = ori_filtered_all[ori_filtered_all["formation"].isin(group_formations)]
+#
+#                 # Check if orientations are available for this group in this domain
+#                 if ori_filtered.empty:
+#                     raise ValueError(
+#                         f"❌ No orientation points for group '{group.name}' in domain {active_domain_ids}."
+#                     )
+#
+#             # Sanity: at least 2 points per element (kept as-is)
+#             for elem in group.structural_elements:
+#                 n_pts = (sp_filtered["formation"] == elem.name).sum()
+#                 if n_pts < 2:
+#                     raise ValueError(
+#                         f"❌ Not enough surface points for '{elem.name}' in domain {active_domain_ids} (have {n_pts})"
+#                     )
+#
+#                 # Check if element is actually present in data for this domain
+#                 if n_pts == 0:
+#                     raise ValueError(
+#                         f"❌ No surface points for '{elem.name}' in domain {active_domain_ids}."
+#                     )
+#
+#             # Pick interpolator
+#             method = group.interpolation_method
+#             if method not in interpolate_dispatch:
+#                 raise ValueError(f"Unsupported interpolation method: {method}")
+#
+#             # ---- CALL: must return scalar_field + dict of element scalar values ----
+#             scalar_field_sub, scalar_values = interpolate_dispatch[method](
+#                 group=group,
+#                 grid=use_grid,
+#                 group_surface_points_df=sp_filtered,
+#                 group_orientations_points_df=ori_filtered,
+#             )
+#
+#             # Write sub-grid result back into a full-size scalar field if cropped
+#             if crop_to_domain and bbox is not None and np.unique(domain_map).size > 1:
+#                 full_shape = tuple(frame.grid.resolution[::-1])  # (Z,Y,X)
+#                 scalar_field_full = np.full(full_shape, np.nan, dtype=scalar_field_sub.dtype)
+#
+#                 kz0, kz1, ky0, ky1, kx0, kx1 = bbox
+#
+#                 scalar_field_full[
+#                 kz0:kz1 + 1,
+#                 ky0:ky1 + 1,
+#                 kx0:kx1 + 1
+#                 ] = scalar_field_sub
+#
+#                 scalar_field = scalar_field_full
+#             else:
+#                 scalar_field = scalar_field_sub
+#
+#             # Combine domain scalar fields and store only single one per group using domain masks
+#             # note that group._scalar_field is transposed to fit [Z,Y,X]
+#             group._scalar_field = np.where(domain_map == active_domain_ids, scalar_field, group.get_scalar_field().T)
+#
+#             # Transpose back to [X,Y,Z] for final storage
+#             group._scalar_field = group.get_scalar_field().T
+#
+#             # Store scalar values on elements
+#             for elem in group.structural_elements:
+#                 if elem.name not in scalar_values:
+#                     raise ValueError(
+#                         "Interpolator did not return a scalar value for element "
+#                         f"'{elem.name}' in group '{group.name}'."
+#                     )
+#
+#                 # Set scalar value on element (overwrites previous, but consistent over domains)
+#                 elem.set_scalar_value(float(scalar_values[elem.name]))
 
 
 # --- 2) Age masks per domain --------------------------------------------------
 
-def set_scalar_masks_per_domain(frame: StructuralFrame, fault_frame: FaultFrame) -> None:
-    """Compute and set age masks per group *per domain*.
+def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
+    """Compute and set age masks per group, respecting fault activity.
 
-    Oldest group => mask of all ``True``; otherwise mask is ``sf >= oldest_element.scalar_value``
-    within that group/domain.
-
-    Parameters
-    ----------
-    frame : StructuralFrame
-        Model frame with groups and per-domain scalar fields/values set.
-    fault_frame : FaultFrame
-        Fault frame providing a 3D ``domain_map`` with domain identifiers.
+    Stores a **single mask per group** that combines all active domains.
     """
-    domain_ids = np.unique(fault_frame.domain_map)
+    ff = frame.fault_frame
+    domain_map = ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=int).T
+    domain_ids = np.unique(domain_map)
 
     if not frame.structural_groups:
         raise ValueError("The structural frame contains no groups.")
 
     groups = frame.structural_groups
 
-    for d in domain_ids:
-        for i, group in enumerate(groups):
-            # sf = group.get_scalar_field_for_domain(d)
-            sf = group.get_scalar_field()
-            if sf is None:
-                raise ValueError(f"Domain {d}: Group '{group.name}' has no scalar field set.")
+    for group_idx, group in enumerate(groups):
+        sf = group.get_scalar_field()
+        if sf is None:
+            raise ValueError(f"Group '{group.name}' has no scalar field set.")
 
-            if i == len(groups) - 1:
-                # Oldest group: everywhere True
-                mask = np.ones_like(sf, dtype=bool)
-            else:
-                if not group.structural_elements:
-                    raise ValueError(f"Domain {d}: Group '{group.name}' has no structural elements.")
-                oldest = group.structural_elements[-1]
-                sval = oldest.get_scalar_value()
-                if sval is None:
-                    raise ValueError(
-                        f"Domain {d}: Oldest element '{oldest.name}' in group '{group.name}' has no scalar value."
-                    )
-                mask = sf >= sval
+        # Compute "oldest group" mask
+        if group_idx == len(groups) - 1:
+            mask = np.ones_like(sf, dtype=bool)
+        else:
+            if not group.structural_elements:
+                raise ValueError(f"Group '{group.name}' has no structural elements.")
+            oldest = group.structural_elements[-1]
+            sval = oldest.get_scalar_value()
+            if sval is None:
+                raise ValueError(
+                    f"Oldest element '{oldest.name}' in group '{group.name}' has no scalar value."
+                )
+            mask = sf >= sval
 
-            group.set_mask(mask)
+        # If fault frame exists, only keep mask in active domains
+        if ff is not None:
+            combined_mask = np.zeros_like(mask, dtype=bool)
+            for d in domain_ids:
+                # Check if this domain is active for this group
+                domain_ok = False
+                for fault in ff.fault_elements:
+                    max_group_idx = frame._fault_activity[fault.name]
+                    if group_idx > max_group_idx:
+                        continue
+                    if d in fault.separated_domains_flat():
+                        domain_ok = True
+                        break
+                # Groups unaffected by any fault in this domain are allowed
+                if not domain_ok and all(group_idx > frame._fault_activity[f.name] for f in ff.fault_elements):
+                    domain_ok = True
+
+                if domain_ok:
+                    combined_mask[domain_map == d] = mask[domain_map == d]
+
+            mask = combined_mask
+
+        # Store the final mask
+        group.set_mask(mask)
+
+
+
+# def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
+#     """Compute and set age masks per group *per domain*.
+#
+#     Oldest group => mask of all ``True``; otherwise mask is ``sf >= oldest_element.scalar_value``
+#     within that group/domain.
+#
+#     Parameters
+#     ----------
+#     frame : StructuralFrame
+#         Model frame with groups and per-domain scalar fields/values set.
+#     """
+#     domain_ids = np.unique(frame.fault_frame.domain_map)
+#
+#     if not frame.structural_groups:
+#         raise ValueError("The structural frame contains no groups.")
+#
+#     groups = frame.structural_groups
+#
+#     for d in domain_ids:
+#         for i, group in enumerate(groups):
+#             # sf = group.get_scalar_field_for_domain(d)
+#             sf = group.get_scalar_field()
+#             if sf is None:
+#                 raise ValueError(f"Domain {d}: Group '{group.name}' has no scalar field set.")
+#
+#             if i == len(groups) - 1:
+#                 # Oldest group: everywhere True
+#                 mask = np.ones_like(sf, dtype=bool)
+#             else:
+#                 if not group.structural_elements:
+#                     raise ValueError(f"Domain {d}: Group '{group.name}' has no structural elements.")
+#                 oldest = group.structural_elements[-1]
+#                 sval = oldest.get_scalar_value()
+#                 if sval is None:
+#                     raise ValueError(
+#                         f"Domain {d}: Oldest element '{oldest.name}' in group '{group.name}' has no scalar value."
+#                     )
+#                 mask = sf >= sval
+#
+#             group.set_mask(mask)
 
 
 # --- 3) Combine all domains to final lithology block --------------------------
 
-def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: FaultFrame) -> np.ndarray:
-    """Combine domain-specific group results into a single lithology block.
+def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
+    """Combine group results into a single lithology block, respecting fault domains
+    and per-fault activity.
 
-    Honors age masks and domain masks. Element IDs are global (same color across domains).
+    Stores element IDs globally (same across domains) and honors age/group masks.
 
     Parameters
     ----------
     frame : StructuralFrame
-        Frame containing groups/elements and per-domain fields.
-    fault_frame : FaultFrame
-        Provides the ``domain_map`` used to clip each domain.
+        Structural frame containing groups/elements and per-domain scalar fields/masks.
 
     Returns
     -------
     np.ndarray
-        Final lithology volume (integer IDs) with shape ``frame.grid.resolution``.
+        Final lithology volume (integer IDs) with shape frame.grid.resolution.
     """
-    shape = tuple(map(int, frame.grid.resolution))
-
+    shape = tuple(map(int, frame.grid.resolution))  # (X,Y,Z)
     final_lith = np.zeros(shape, dtype=int)
-    final_lith = final_lith.T
-
     final_scalar = np.zeros(shape, dtype=float)
 
-    # Assign stable global IDs and scalar values if not already set: oldest -> youngest
+    # Assign stable global IDs to elements if not already set
     current_id = 1
-
     for group in reversed(frame.structural_groups):
-        for element in reversed(group.structural_elements):
-            if element.id is None:
-                element.set_id(current_id)
+        for elem in reversed(group.structural_elements):
+            if elem.id is None:
+                elem.set_id(current_id)
                 current_id += 1
 
-    domain_ids = np.unique(fault_frame.domain_map)
+    # Fault frame and domain map
+    ff = frame.fault_frame
+    if ff is not None:
+        domain_map = ff.domain_map
+        domain_ids = np.unique(domain_map)
+    else:
+        domain_map = np.zeros(shape, dtype=int)
+        domain_ids = [0]
 
     # Process domains independently
     for d in domain_ids:
-        dommask = fault_frame.domain_map == d
+        dommask = domain_map == d
         domain_lith = np.zeros(shape, dtype=int)
-        domain_lith = domain_lith.T
 
-        # Process groups from oldest -> youngest so younger overwrites older
-        for group in reversed(frame.structural_groups):
-            # sf = group.get_scalar_field_for_domain(d)
-            sf = group.get_scalar_field().T
-            gm = group.get_mask().T
+        for group_idx, group in enumerate(reversed(frame.structural_groups)):
+            # sf and age mask
+            sf = group.get_scalar_field()
+            gm = group.get_mask()
             if sf is None or gm is None:
-                # No input_data in this domain for this group => skip
                 continue
 
-            group_block = np.zeros(shape, dtype=int)
-            group_block = group_block.T
+            # Compute write mask based on fault activity
+            if ff is not None:
+                active_in_domain = False
+                for fault in ff.fault_elements:
+                    max_group_idx = frame._fault_activity[fault.name]
+                    if group_idx > max_group_idx:
+                        continue
+                    if d in fault.separated_domains_flat():
+                        active_in_domain = True
+                        break
+                # If not affected by any fault, treat as active for all domains
+                if not active_in_domain and all(group_idx > frame._fault_activity[f.name] for f in ff.fault_elements):
+                    active_in_domain = True
+                if not active_in_domain:
+                    continue
 
-            # Fill elements in natural (oldest->youngest) order; use "== 0" so younger has priority
+            group_block = np.zeros(shape, dtype=int)
+
+            # Process elements oldest -> youngest
             for elem in group.structural_elements:
-                # sval = elem.get_scalar_value_for_domain(d)
                 sval = elem.get_scalar_value()
                 if sval is None:
                     continue
                 write_mask = (sf >= sval) & (group_block == 0)
-                group_block[write_mask] = elem.id #
+                group_block[write_mask] = elem.id
 
-            # Apply age mask then domain mask
+            # Apply age mask
             group_block = np.where(gm, group_block, 0)
+            # Apply domain mask
             group_block = np.where(dommask, group_block, 0)
 
-            # Younger groups overwrite older
+            # Younger elements overwrite older
             domain_lith = np.where(group_block > 0, group_block, domain_lith)
 
-        # Write this domain into final (domain masks are disjoint)
+        # Write this domain into final
         final_lith[dommask] = domain_lith[dommask]
 
     return final_lith
+
+# def compute_lithology_block_with_domains(frame: StructuralFrame, fault_frame: FaultFrame) -> np.ndarray:
+#     """Combine domain-specific group results into a single lithology block.
+#
+#     Honors age masks and domain masks. Element IDs are global (same color across domains).
+#
+#     Parameters
+#     ----------
+#     frame : StructuralFrame
+#         Frame containing groups/elements and per-domain fields.
+#     fault_frame : FaultFrame
+#         Provides the ``domain_map`` used to clip each domain.
+#
+#     Returns
+#     -------
+#     np.ndarray
+#         Final lithology volume (integer IDs) with shape ``frame.grid.resolution``.
+#     """
+#     shape = tuple(map(int, frame.grid.resolution))
+#
+#     final_lith = np.zeros(shape, dtype=int)
+#     final_lith = final_lith.T
+#
+#     final_scalar = np.zeros(shape, dtype=float)
+#
+#     # Assign stable global IDs and scalar values if not already set: oldest -> youngest
+#     current_id = 1
+#
+#     for group in reversed(frame.structural_groups):
+#         for element in reversed(group.structural_elements):
+#             if element.id is None:
+#                 element.set_id(current_id)
+#                 current_id += 1
+#
+#     domain_ids = np.unique(fault_frame.domain_map)
+#
+#     # Process domains independently
+#     for d in domain_ids:
+#         dommask = fault_frame.domain_map == d
+#         domain_lith = np.zeros(shape, dtype=int)
+#         domain_lith = domain_lith.T
+#
+#         # Process groups from oldest -> youngest so younger overwrites older
+#         for group in reversed(frame.structural_groups):
+#             # sf = group.get_scalar_field_for_domain(d)
+#             sf = group.get_scalar_field().T
+#             gm = group.get_mask().T
+#             if sf is None or gm is None:
+#                 # No input_data in this domain for this group => skip
+#                 continue
+#
+#             group_block = np.zeros(shape, dtype=int)
+#             group_block = group_block.T
+#
+#             # Fill elements in natural (oldest->youngest) order; use "== 0" so younger has priority
+#             for elem in group.structural_elements:
+#                 # sval = elem.get_scalar_value_for_domain(d)
+#                 sval = elem.get_scalar_value()
+#                 if sval is None:
+#                     continue
+#                 write_mask = (sf >= sval) & (group_block == 0)
+#                 group_block[write_mask] = elem.id #
+#
+#             # Apply age mask then domain mask
+#             group_block = np.where(gm, group_block, 0)
+#             group_block = np.where(dommask, group_block, 0)
+#
+#             # Younger groups overwrite older
+#             domain_lith = np.where(group_block > 0, group_block, domain_lith)
+#
+#         # Write this domain into final (domain masks are disjoint)
+#         final_lith[dommask] = domain_lith[dommask]
+#
+#     return final_lith
 
 
 # --- 4) Extract per-domain “masked” meshes for each element -------------------
 
 def extract_all_meshes_per_domain(
     frame: StructuralFrame,
-    fault_frame: FaultFrame,
     grid_spacing: np.ndarray,
     extent: np.ndarray,
 ) -> None:
-    """Extract and store per-domain masked surface meshes for every element.
+    """Extract and store per-domain masked and unmasked surface meshes for every element.
 
-    Mask used for extraction = (domain mask) & (age mask of the *previous* group),
-    mirroring the approach that enforces unconformity truncation.
+    Masked meshes stop at unconformities and domain boundaries.
+    Unmasked meshes go through unconformities.
+    Combined meshes come from the final lithology block.
 
     Parameters
     ----------
     frame : StructuralFrame
         Frame with groups/elements and per-domain values.
-    fault_frame : FaultFrame
-        Fault frame providing the 3D domain map.
     grid_spacing : np.ndarray
         Voxel spacing used by marching cubes per element.
     extent : np.ndarray
         Spatial extent passed to marching cubes.
     """
-    domain_ids = np.unique(fault_frame.domain_map)
-
-    # 1) MASKED meshes that end at unconformities and domain boundaries
+    # Use the fault frame stored inside the structural frame
+    fault_frame = frame.fault_frame
+    if fault_frame is None:
+        domain_ids = [0]
+        dom_map = np.zeros(tuple(frame.grid.resolution), dtype=int)
+    else:
+        dom_map = fault_frame.domain_map
+        domain_ids = np.unique(dom_map)
 
     # Temporary storage: { (elem, domain_id) : (verts, faces) }
     temp_domain_meshes = {}
 
     for d in domain_ids:
-        # Create domain mask from domain map
-        dommask = fault_frame.domain_map == d
+        dommask = dom_map == d  # keep in XYZ
 
         for i, group in enumerate(frame.structural_groups):
-            # Retrieve scalar field per group
-            sf = group.scalar_field.T
-
+            sf = group.get_scalar_field()  # XYZ
             if sf is None:
                 continue
 
-            # Age-mask logic mirroring the original function
+            # Age-mask logic
             if i == 0:
                 # Youngest group: no truncation
                 erosion_mask = np.ones_like(sf, dtype=bool)
             else:
-                # Older groups: truncate at previous group's age mask
-                prev_mask = frame.structural_groups[i - 1].get_mask().T
+                prev_mask = frame.structural_groups[i - 1].get_mask()  # XYZ
                 erosion_mask = ~prev_mask if prev_mask is not None else np.ones_like(sf, dtype=bool)
 
-            # Combined mask, erosion and domain
-            mc_mask = erosion_mask & dommask
+            # Combined mask
+            mc_mask = erosion_mask & dommask  # keep in XYZ
 
             for elem in group.structural_elements:
                 sval = elem.scalar_value
@@ -381,106 +696,227 @@ def extract_all_meshes_per_domain(
                     continue
 
                 verts, faces = marching_cubes_per_element(
-                    sf.T,  # keep transposition exactly as before
+                    sf,        # XYZ
                     sval,
                     grid_spacing,
                     extent,
-                    mask=mc_mask.T,  # keep transposition exactly as before
+                    mask=mc_mask  # XYZ
                 )
 
-                # Store per-domain masked mesh (TEMPORARY)
                 temp_domain_meshes[(elem.name, d)] = (verts, faces)
 
+    # Combine meshes across domains for each element
     def combine_meshes(vertices_list, edges_list):
-        """
-        vertices_list: list of (ni, 3) arrays
-        edges_list:    list of (ki, 3) arrays (indices into vertices)
-
-        returns:
-            combined_vertices: (N, 3)
-            combined_edges:    (K, 3)
-        """
         combined_vertices = []
         combined_edges = []
-
-        vertex_offset = 0
-
+        offset = 0
         for V, E in zip(vertices_list, edges_list):
             combined_vertices.append(V)
+            combined_edges.append(E + offset)
+            offset += V.shape[0]
+        return np.vstack(combined_vertices), np.vstack(combined_edges)
 
-            # Shift edge indices by current vertex offset
-            combined_edges.append(E + vertex_offset)
-
-            vertex_offset += V.shape[0]
-
-        combined_vertices = np.vstack(combined_vertices)
-        combined_edges = np.vstack(combined_edges)
-
-        return combined_vertices, combined_edges
-
-    # Combine domain meshes for improved storage
     for group in frame.structural_groups:
         for elem in group.structural_elements:
-
-            list_of_edges = []
-            list_of_vertices = []
-
+            verts_list, faces_list = [], []
             for d in domain_ids:
-                verts, faces = temp_domain_meshes[(elem.name, d)]
-                list_of_vertices.append(verts)
-                list_of_edges.append(faces)
+                verts, faces = temp_domain_meshes.get((elem.name, d), (np.empty((0,3)), np.empty((0,3))))
+                verts_list.append(verts)
+                faces_list.append(faces)
+            combined_vertices, combined_faces = combine_meshes(verts_list, faces_list)
+            elem.set_mesh("masked", combined_vertices, combined_faces)
 
-            combined_vertices, combined_edges = combine_meshes(list_of_vertices, list_of_edges)
-
-            # Store combined mesh
-            elem.set_mesh("masked", combined_vertices, combined_edges)
-
-    # 2) UNMASKED meshes that go through unconformities and domain boundaries
-
-    for i, group in enumerate(frame.structural_groups):
-        sf = group.scalar_field
+    # ---- unmasked meshes ----
+    for group in frame.structural_groups:
+        sf = group.get_scalar_field()
         if sf is None:
             continue
-
         for elem in group.structural_elements:
             sval = elem.scalar_value
             if sval is None:
                 continue
-
-            verts, faces = marching_cubes_per_element(
-                sf,  # keep transposition exactly as before
-                sval,
-                grid_spacing,
-                extent,
-                mask=None,  # keep transposition exactly as before
-            )
-
-            # Store per-domain masked mesh
+            verts, faces = marching_cubes_per_element(sf, sval, grid_spacing, extent, mask=None)
             elem.set_mesh("unmasked", verts, faces)
 
-    # 3) COMBINED meshes computed from the lithology block
+    # ---- combined meshes from lithology block ----
+    lith_block = frame.get_LithBlock()
+    if lith_block is None:
+        return
 
-    # Combined mesh extraction
     unique_ids = [
-        element.id - 0.1  # Adjust IDs to get contour levels slightly below the lowest ID
+        element.id - 0.1
         for group in frame.structural_groups
         for element in group.structural_elements
         if element.id is not None
     ]
+    combined_vertices, combined_edges = marching_cubes(lith_block, unique_ids, grid_spacing, extent)
 
-    combined_vertices, combined_edges = marching_cubes(
-        frame.get_LithBlock().T,
-        unique_ids,
-        grid_spacing,
-        extent
-    )
-
-    # Assign combined mesh to each element
     idx = 0
     for group in frame.structural_groups:
         for element in group.structural_elements:
             element.set_mesh("combined", combined_vertices[idx], combined_edges[idx])
             idx += 1
+
+
+
+# def extract_all_meshes_per_domain(
+#     frame: StructuralFrame,
+#     fault_frame: FaultFrame,
+#     grid_spacing: np.ndarray,
+#     extent: np.ndarray,
+# ) -> None:
+#     """Extract and store per-domain masked surface meshes for every element.
+#
+#     Mask used for extraction = (domain mask) & (age mask of the *previous* group),
+#     mirroring the approach that enforces unconformity truncation.
+#
+#     Parameters
+#     ----------
+#     frame : StructuralFrame
+#         Frame with groups/elements and per-domain values.
+#     fault_frame : FaultFrame
+#         Fault frame providing the 3D domain map.
+#     grid_spacing : np.ndarray
+#         Voxel spacing used by marching cubes per element.
+#     extent : np.ndarray
+#         Spatial extent passed to marching cubes.
+#     """
+#     domain_ids = np.unique(fault_frame.domain_map)
+#
+#     # 1) MASKED meshes that end at unconformities and domain boundaries
+#
+#     # Temporary storage: { (elem, domain_id) : (verts, faces) }
+#     temp_domain_meshes = {}
+#
+#     for d in domain_ids:
+#         # Create domain mask from domain map
+#         dommask = fault_frame.domain_map == d
+#
+#         for i, group in enumerate(frame.structural_groups):
+#             # Retrieve scalar field per group
+#             sf = group.scalar_field.T
+#
+#             if sf is None:
+#                 continue
+#
+#             # Age-mask logic mirroring the original function
+#             if i == 0:
+#                 # Youngest group: no truncation
+#                 erosion_mask = np.ones_like(sf, dtype=bool)
+#             else:
+#                 # Older groups: truncate at previous group's age mask
+#                 prev_mask = frame.structural_groups[i - 1].get_mask().T
+#                 erosion_mask = ~prev_mask if prev_mask is not None else np.ones_like(sf, dtype=bool)
+#
+#             # Combined mask, erosion and domain
+#             mc_mask = erosion_mask & dommask
+#
+#             for elem in group.structural_elements:
+#                 sval = elem.scalar_value
+#                 if sval is None:
+#                     continue
+#
+#                 verts, faces = marching_cubes_per_element(
+#                     sf.T,  # keep transposition exactly as before
+#                     sval,
+#                     grid_spacing,
+#                     extent,
+#                     mask=mc_mask.T,  # keep transposition exactly as before
+#                 )
+#
+#                 # Store per-domain masked mesh (TEMPORARY)
+#                 temp_domain_meshes[(elem.name, d)] = (verts, faces)
+#
+#     def combine_meshes(vertices_list, edges_list):
+#         """
+#         vertices_list: list of (ni, 3) arrays
+#         edges_list:    list of (ki, 3) arrays (indices into vertices)
+#
+#         returns:
+#             combined_vertices: (N, 3)
+#             combined_edges:    (K, 3)
+#         """
+#         combined_vertices = []
+#         combined_edges = []
+#
+#         vertex_offset = 0
+#
+#         for V, E in zip(vertices_list, edges_list):
+#             combined_vertices.append(V)
+#
+#             # Shift edge indices by current vertex offset
+#             combined_edges.append(E + vertex_offset)
+#
+#             vertex_offset += V.shape[0]
+#
+#         combined_vertices = np.vstack(combined_vertices)
+#         combined_edges = np.vstack(combined_edges)
+#
+#         return combined_vertices, combined_edges
+#
+#     # Combine domain meshes for improved storage
+#     for group in frame.structural_groups:
+#         for elem in group.structural_elements:
+#
+#             list_of_edges = []
+#             list_of_vertices = []
+#
+#             for d in domain_ids:
+#                 verts, faces = temp_domain_meshes[(elem.name, d)]
+#                 list_of_vertices.append(verts)
+#                 list_of_edges.append(faces)
+#
+#             combined_vertices, combined_edges = combine_meshes(list_of_vertices, list_of_edges)
+#
+#             # Store combined mesh
+#             elem.set_mesh("masked", combined_vertices, combined_edges)
+#
+#     # 2) UNMASKED meshes that go through unconformities and domain boundaries
+#
+#     for i, group in enumerate(frame.structural_groups):
+#         sf = group.scalar_field
+#         if sf is None:
+#             continue
+#
+#         for elem in group.structural_elements:
+#             sval = elem.scalar_value
+#             if sval is None:
+#                 continue
+#
+#             verts, faces = marching_cubes_per_element(
+#                 sf,  # keep transposition exactly as before
+#                 sval,
+#                 grid_spacing,
+#                 extent,
+#                 mask=None,  # keep transposition exactly as before
+#             )
+#
+#             # Store per-domain masked mesh
+#             elem.set_mesh("unmasked", verts, faces)
+#
+#     # 3) COMBINED meshes computed from the lithology block
+#
+#     # Combined mesh extraction
+#     unique_ids = [
+#         element.id - 0.1  # Adjust IDs to get contour levels slightly below the lowest ID
+#         for group in frame.structural_groups
+#         for element in group.structural_elements
+#         if element.id is not None
+#     ]
+#
+#     combined_vertices, combined_edges = marching_cubes(
+#         frame.get_LithBlock().T,
+#         unique_ids,
+#         grid_spacing,
+#         extent
+#     )
+#
+#     # Assign combined mesh to each element
+#     idx = 0
+#     for group in frame.structural_groups:
+#         for element in group.structural_elements:
+#             element.set_mesh("combined", combined_vertices[idx], combined_edges[idx])
+#             idx += 1
 
 
 # -----------------------------------------------------------------------------
@@ -521,34 +957,35 @@ def compute_structural_model(
     """
 
     # --- prepare domain map (supports "no faults" case) ---
-    if fault_frame is None:
+    ff = frame.fault_frame
+    if ff is None:
         # synthetic single domain
         dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=int).T
 
-        class _TmpFF:  # simple shim with a "domain_map" attribute
+        class _TmpFF:
             domain_map = dom_map
 
-        fault_frame = _TmpFF()  # type: ignore[assignment]
+        ff = _TmpFF()
         if verbose:
-            print("ℹ️ No fault_frame provided — running in single-domain mode.")
+            print("ℹ️ No fault_frame provided in StructuralFrame — running in single-domain mode.")
 
     # --- 1) per-domain interpolation, store results into per-domain slots ---
     if verbose:
         print("① Interpolation per domain ...")
     run_interpolation_with_fault_domains(
         frame=frame,
-        fault_frame=fault_frame,
+        fault_frame=ff,
     )
 
     # --- 2) per-domain age masks ---
     if verbose:
         print("② Computing age masks per domain ...")
-    set_scalar_masks_per_domain(frame, fault_frame)  # type: ignore[arg-type]
+    set_scalar_masks_per_domain(frame)
 
     # --- 3) final lithology block combining domains ---
     if verbose:
         print("③ Building final lithology block ...")
-    frame._lith_block = compute_lithology_block_with_domains(frame, fault_frame)  # type: ignore[arg-type]
+    frame._lith_block = compute_lithology_block_with_domains(frame)
 
     # --- 4) per-domain meshes (optional) ---
     if extract_meshes:
@@ -556,7 +993,6 @@ def compute_structural_model(
             print("④ Extracting per-domain masked meshes ...")
         extract_all_meshes_per_domain(
             frame=frame,
-            fault_frame=fault_frame,  # type: ignore[arg-type]
             grid_spacing=frame.grid.spacing,
             extent=frame.grid.extent,
         )
@@ -569,49 +1005,36 @@ def compute_structural_model(
 # -----------------------------------------------------------------------------
 
 def compute_domain_bbox_indices(domain_map: np.ndarray, domain_id: int):
-    """Return the tight [Z, Y, X] index bbox for a given domain id.
-
-
-    Parameters
-    ----------
-    domain_map : np.ndarray
-    3D array shaped like the grid resolution, indexed as ``[Z, Y, X]``.
-    domain_id : int
-    Target domain identifier.
-
-
-    Returns
-    -------
-    tuple[int, int, int, int, int, int] | None
-    ``(kz0, kz1, ky0, ky1, kx0, kx1)`` inclusive bounds, or ``None`` if domain is empty.
-    """
+    """Return tight bounding box in XYZ index order."""
     mask = domain_map == domain_id
     if not np.any(mask):
         return None
 
-    # Find ranges along each axis
-    z_any = mask.any(axis=(1, 2))
+    # Find ranges along each axis (XYZ)
+    x_any = mask.any(axis=(1, 2))
     y_any = mask.any(axis=(0, 2))
-    x_any = mask.any(axis=(0, 1))
+    z_any = mask.any(axis=(0, 1))
 
-    kz0, kz1 = np.where(z_any)[0][[0, -1]]
-    ky0, ky1 = np.where(y_any)[0][[0, -1]]
     kx0, kx1 = np.where(x_any)[0][[0, -1]]
-    return int(kz0), int(kz1), int(ky0), int(ky1), int(kx0), int(kx1)
+    ky0, ky1 = np.where(y_any)[0][[0, -1]]
+    kz0, kz1 = np.where(z_any)[0][[0, -1]]
+
+    return int(kx0), int(kx1), int(ky0), int(ky1), int(kz0), int(kz1)
+
 
 
 def build_subgrid_from_bbox(grid, bbox):
     """
-    bbox: (kz0, kz1, ky0, ky1, kx0, kx1) in [Z,Y,X] index space
+    bbox: (kx0, kx1, ky0, ky1, kz0, kz1) in [X,Y,Z] index space
     Returns a RegularGrid in [X,Y,Z] space
     """
-    kz0, kz1, ky0, ky1, kx0, kx1 = bbox
+    kx0, kx1, ky0, ky1, kz0, kz1 = bbox
 
     # Original grid info
     dx, dy, dz = grid.spacing  # spacing in X,Y,Z
     x0, x1, y0, y1, z0, z1 = grid.extent
 
-    # Convert index bbox → physical extents (IMPORTANT)
+    # Convert index bbox → physical extents
     sub_extent = (
         x0 + kx0 * dx,
         x0 + (kx1 + 1) * dx,
@@ -673,6 +1096,7 @@ def build_structural_frame(
     surface_points: pd.DataFrame,
     orientations: Optional[pd.DataFrame] = None,
     default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING,
+    fault_frame: Optional["FaultFrame"] = None,
 ) -> StructuralFrame:
     """Construct a :class:`StructuralFrame` from mapping, grid info, and input_data.
 
@@ -688,6 +1112,7 @@ def build_structural_frame(
         Orientations with columns ``['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z', 'formation']``.
     default_interpolation : InterpolationMethod, default ``ORDINARY_KRIGING``
         Interpolator assigned to each group (can be overridden later).
+    fault_frame : FaultFrame, optional
 
     Returns
     -------
@@ -762,13 +1187,13 @@ def build_structural_frame(
             elem.set_color(color_map[elem.name])
             element_objects[elem.name] = elem
 
-    # Create regular grid
-    # grid = RegularGrid(extent=extent, resolution=resolution)
-
     frame = StructuralFrame(structural_groups=group_objects)
     frame._grid = grid
     frame._surface_points = surface_points
     frame._orientations = orientations
+
+    if fault_frame is not None:
+        frame.set_fault_frame(fault_frame)
 
     return frame
 

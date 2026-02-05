@@ -160,7 +160,7 @@ def interpolate_group_universal_cokriging_for_faults(
     )
 
     # NOTE: transpose if that’s how your marching/plotting expects it
-    sf = geo_model.solutions.raw_arrays.scalar_field_matrix[0].reshape(tuple(grid.resolution)).T
+    sf = geo_model.solutions.raw_arrays.scalar_field_matrix[0].reshape(tuple(grid.resolution))
     element.set_scalar_field(sf)
 
     # Domain mask convention (positive side = True)
@@ -240,7 +240,7 @@ def compute_fault_domains(
     unique_ids = np.unique(domain_map)
     remap = {old: new for new, old in enumerate(unique_ids)}
     remapped_map = np.vectorize(remap.get)(domain_map)
-    fault_frame._domain_map = remapped_map
+    fault_frame._domain_map = remapped_map.T
 
     for fault in fault_frame._fault_elements:
         mask = fault.get_domain_mask()

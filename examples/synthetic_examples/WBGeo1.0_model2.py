@@ -26,33 +26,6 @@ grid = RegularGrid(
 
 #%%
 
-# Input data for elements
-data_elements = InputData_StructuralElements(name='Model_2',
-                                             mapping_object={
-                                                 "Strat_Series2": ('rock4', 'rock3'),
-                                                 "Strat_Series1": ('rock2', 'rock1')},
-                                             surface_points=pd.read_csv(
-                                                 cwd + "/examples/input_data/model2_surface_points_df.csv"),
-                                             orientations=pd.read_csv(
-                                                 cwd + "/examples/input_data/model2_orientations_df.csv")
-                                             )
-
-# Create a StructuralFrame
-frame = general.build_structural_frame(data_elements.mapping_object,
-                                       grid,
-                                       data_elements.surface_points,
-                                       data_elements.orientations)
-frame.detailed_report()
-
-#%%
-
-# Plot the input input_data (2D and 3D possible)
-plot_structural_model_2D(frame, axis='y', show_result=False)
-plot_structural_model_3D(frame, show_surface_meshes=False)
-
-
-#%%
-
 # Input data for faults
 data_faults = InputData_FaultElements(name='Faults_Model_2',
                                       fault_surface_points=pd.read_csv(
@@ -70,7 +43,6 @@ fault_frame = general_faults.build_fault_frame(
 
 fault_frame.detailed_report()
 
-
 #%%
 
 # Compute fault domains
@@ -78,7 +50,37 @@ general_faults.compute_fault_domains(fault_frame)
 
 #%%
 
-fault_frame.fault_elements[0].get_separated_domains()
+# Input data for elements
+data_elements = InputData_StructuralElements(name='Model_2',
+                                             mapping_object={
+                                                 "Strat_Series2": ('rock4', 'rock3'),
+                                                 "Strat_Series1": ('rock2', 'rock1')},
+                                             surface_points=pd.read_csv(
+                                                 cwd + "/examples/input_data/model2_surface_points_df.csv"),
+                                             orientations=pd.read_csv(
+                                                 cwd + "/examples/input_data/model2_orientations_df.csv")
+                                             )
+
+# Create a StructuralFrame
+frame = general.build_structural_frame(data_elements.mapping_object,
+                                       grid,
+                                       data_elements.surface_points,
+                                       data_elements.orientations,
+                                       fault_frame=fault_frame)
+
+frame.detailed_report()
+
+#%%
+
+fault_frame.fault_elements[0].scalar_field.shape
+
+
+#%%
+
+# Plot the input input_data (2D and 3D possible)
+plot_structural_model_2D(frame, axis='y', show_result=False)
+plot_structural_model_3D(frame, show_surface_meshes=False)
+
 
 #%%
 
@@ -119,13 +121,13 @@ frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
 
 frame.detailed_report()
 
+
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(
     frame,
-    fault_frame=fault_frame,  # or None for single-domain
-    extract_meshes=True,
+    extract_meshes=False,
     verbose=True,
 )
 
@@ -137,7 +139,6 @@ frame.structural_groups[0].structural_elements[1].scalar_value
 #%%
 
 plot_structural_model_2D(frame=frame,
-                         fault_frame=fault_frame,
                          axis='y',
                          show_input_data=True,
                          index=0)

@@ -126,7 +126,6 @@ def plot_structural_model_3D(
 def plot_structural_model_2D(
     frame,
     *,
-    fault_frame=None,
     axis='y',
     index=0,
     show_result=True,
@@ -196,6 +195,7 @@ def plot_structural_model_2D(
             id_to_label = {0: "Basement"}
             if frame.lith_block is not None:
                 slice_lith = np.take(frame.lith_block, index, axis=dim)
+                slice_lith = slice_lith.T
 
                 for group in frame.structural_groups:
                     for elem in group.structural_elements:
@@ -210,8 +210,8 @@ def plot_structural_model_2D(
                 ax.imshow(slice_lith, origin='lower', cmap=cmap, norm=norm, extent=extent, alpha=1)
 
     # ---- faults as contours from their scalar fields ----
-    if show_fault_contours and fault_frame is not None:
-        for fault in getattr(fault_frame, "fault_elements", []):
+    if show_fault_contours and frame.fault_frame is not None:
+        for fault in frame.fault_frame.fault_elements:
             f_sf = getattr(fault, "scalar_field", None)
             f_sv = getattr(fault, "scalar_value", None)
             if f_sf is None or f_sv is None:
@@ -258,9 +258,9 @@ def plot_structural_model_2D(
             legend_handles.append(plt.Line2D([0], [0], color=elem.color, lw=3, label=f"{elem.name}"))
 
     # add faults header + lines
-    if fault_frame is not None and getattr(fault_frame, "fault_elements", []):
+    if frame._fault_frame is not None and getattr(frame._fault_frame, "fault_elements", []):
         legend_handles.append(plt.Line2D([0], [0], color='black', lw=0, label=rf"$\bf{{Faults}}$"))
-        for fault in fault_frame.fault_elements:
+        for fault in frame._fault_frame.fault_elements:
             fcol = getattr(fault, "color", None) or "black"
             legend_handles.append(plt.Line2D([0], [0], color=fcol, lw=3, label=fault.name))
 

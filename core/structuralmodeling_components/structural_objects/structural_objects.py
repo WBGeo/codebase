@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 
@@ -5,8 +7,6 @@ from typing import Dict, Optional, List, Union, FrozenSet, Tuple
 from pydantic import BaseModel, Field, PrivateAttr
 from enum import Enum
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
-from core.utility.surface_mesh_extraction import marching_cubes_new
-import gempy as gp
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
 
@@ -461,6 +461,9 @@ class StructuralFrame(BaseModel):
     _surface_points: Optional[pd.DataFrame] = PrivateAttr(default=None)
     _orientations: Optional[pd.DataFrame] = PrivateAttr(default=None)
     _lith_block: Optional[np.ndarray] = PrivateAttr(default=None)
+    _fault_frame: Optional[FaultFrame] = PrivateAttr(default=None)
+    _fault_activity: Optional[dict[str, int]] = PrivateAttr(default=None)
+
 
     class Config:
         arbitrary_types_allowed = True
@@ -481,6 +484,94 @@ class StructuralFrame(BaseModel):
     @property
     def lith_block(self) -> Optional[np.ndarray]:
         return self._lith_block
+
+    @property
+    def fault_frame(self) -> Optional[FaultFrame]:
+        return self._fault_frame
+
+    def set_fault_frame(self, fault_frame: Optional["FaultFrame"]) -> None:
+        if fault_frame is None:
+            self._fault_frame = None
+            self._fault_activity = None
+            return
+
+        if self._grid is None:
+            raise ValueError(
+                "StructuralFrame grid must be set before assigning a FaultFrame."
+            )
+
+        if fault_frame.grid is None:
+            raise ValueError(
+                "FaultFrame grid must be set before being assigned to a StructuralFrame."
+            )
+
+        if fault_frame.grid is not self._grid:
+            raise ValueError(
+                "FaultFrame and StructuralFrame must share the same grid instance."
+            )
+
+        # Check that the fault frame has a computed solution
+        if fault_frame._domain_map is None:
+            raise ValueError(
+                "Cannot assign a FaultFrame without a computed solution (domain map missing). "
+                "Please run `compute_fault_domains(fault_frame)` first."
+            )
+
+        self._fault_frame = fault_frame
+
+        # 🔑 DEFAULT: all faults affect all groups
+        max_group_idx = len(self.structural_groups) - 1
+
+        self._fault_activity = {
+            fault.name: max_group_idx
+            for fault in fault_frame.fault_elements
+        }
+
+    @property
+    def fault_activity(self) -> Optional[dict[str, int]]:
+        if self._fault_activity is None:
+            return None
+        return dict(self._fault_activity)  # defensive copy
+
+    @property
+    def fault_activity_verbose(self) -> Optional[dict[str, dict[str, int | str]]]:
+        if self._fault_activity is None:
+            return None
+
+        return {
+            fault: {
+                "group_index": idx,
+                "group_name": self.structural_groups[idx].name,
+            }
+            for fault, idx in self._fault_activity.items()
+        }
+
+    def set_fault_activity_by_index(self, fault_name: str, max_group_idx: int) -> None:
+        if self._fault_frame is None or self._fault_activity is None:
+            raise RuntimeError(
+                "Cannot set fault activity without a FaultFrame attached."
+            )
+
+        if fault_name not in self._fault_activity:
+            raise KeyError(f"Fault '{fault_name}' not found in fault frame.")
+
+        if not isinstance(max_group_idx, int):
+            raise TypeError("max_group_idx must be an integer.")
+
+        if max_group_idx < 0 or max_group_idx >= len(self.structural_groups):
+            raise ValueError(
+                f"max_group_idx must be in range [0, {len(self.structural_groups) - 1}]."
+            )
+
+        self._fault_activity[fault_name] = max_group_idx
+
+    def set_fault_activity_by_group(self, fault_name: str, group_name: str) -> None:
+        for idx, group in enumerate(self.structural_groups):
+            if group.name == group_name:
+                self.set_fault_activity_by_index(fault_name, idx)
+                return
+
+        raise KeyError(f"Structural group '{group_name}' not found.")
 
     # Getters
     def get_surface_points_for_element(self, element_name: str) -> pd.DataFrame:
@@ -511,25 +602,6 @@ class StructuralFrame(BaseModel):
             if group.name == group_name:
                 return group
         raise KeyError(f"Structural group '{group_name}' not found.")
-
-    def summary(self):
-        print("📦 Structural Frame Summary")
-        print("────────────────────────────")
-        print(f"• Groups: {len(self.structural_groups)}\n")
-
-        for group in self.structural_groups:
-            print(f"▶ {group.name} — {group.interpolation_method}")
-            print("  Elements:")
-            for elem in group.structural_elements:
-                name = elem.name
-                color = elem.color or "#AAAAAA"
-                try:
-                    # Use ANSI escape for color (truecolor if supported)
-                    r, g, b = tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
-                    print(f"    \033[38;2;{r};{g};{b}m{name}\033[0m")
-                except Exception:
-                    print(f"    {name} (color: {color})")
-            print()  # blank line between groups
 
     def detailed_report(self):
         print("📦 Structural Frame — Detailed Report")
@@ -593,6 +665,22 @@ class StructuralFrame(BaseModel):
                 print(f"  └─ Per-element orientations: {', '.join(ori_counts)}\n")
             else:
                 print(f"  └─ Per-element orientations: N/A\n")
+
+        # --- Fault frame report ---
+        if self._fault_frame is not None:
+            print("⚡ Fault Frame Present")
+            num_faults = len(self._fault_frame.fault_elements)
+            print(f"• Number of faults: {num_faults}")
+
+            if self.fault_activity_verbose is not None:
+                print("• Fault activity (max group affected):")
+                for fault_name, group_name in self.fault_activity_verbose.items():
+                    idx = self._fault_activity[fault_name]
+                    print(f"  ├─ {fault_name}: group index {idx} → {group_name}")
+            else:
+                print("• Fault activity: default (all groups affected)")
+        else:
+            print("⚡ No fault frame assigned")
 
     def plot_scalar_field_section(
             self,
@@ -860,6 +948,10 @@ class FaultElement(BaseModel):
         """Set the tuple of separated domain IDs."""
         self._separated_domains = domain_ids
 
+    def separated_domains_flat(self) -> set[int]:
+        """Return all domain IDs this fault splits."""
+        return set().union(*self._separated_domains)
+
 
 class FaultFrame(BaseModel):
     """
@@ -1017,15 +1109,15 @@ class FaultFrame(BaseModel):
 
         # --- Extract slice and extent ---
         if axis == 'y':
-            domain_slice = self._domain_map[:, index, :]
+            domain_slice = self._domain_map[:, index, :].T
             extent = self._grid.extent[:4]
             xlabel, ylabel = 'X', 'Z'
         elif axis == 'x':
-            domain_slice = self._domain_map[index, :, :]
+            domain_slice = self._domain_map[index, :, :].T
             extent = self._grid.extent[[0, 2, 4, 1]]
             xlabel, ylabel = 'Y', 'Z'
         elif axis == 'z':
-            domain_slice = self._domain_map[:, :, index]
+            domain_slice = self._domain_map[:, :, index].T
             extent = self._grid.extent[[0, 2, 1, 3]]
             xlabel, ylabel = 'X', 'Y'
         else:
