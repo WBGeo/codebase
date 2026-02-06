@@ -56,6 +56,13 @@ plot_fault_frame_3D(fault_frame)
 
 #%%
 
+print(fault_frame.fault_elements[0].get_separated_domains())
+print(fault_frame.fault_elements[0].get_separated_domains())
+print(fault_frame.fault_elements[0].get_domain_pairs())
+print(fault_frame.fault_elements[1].get_domain_pairs())
+
+#%%
+
 # Input data for elements
 data_elements = InputData_StructuralElements(name='Model_8',
                                              mapping_object={
@@ -90,11 +97,6 @@ frame.set_fault_activity_by_group(fault_name="fault1", group_name="Mid")
 frame.set_fault_activity_by_group(fault_name="fault2", group_name="Bot")
 
 frame.fault_activity_verbose
-
-#%%
-
-fault_frame.fault_elements[0].get_separated_domains()
-
 
 #%%
 

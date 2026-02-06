@@ -51,6 +51,10 @@ general_faults.compute_fault_domains(fault_frame)
 
 #%%
 
+plot_fault_frame_3D(fault_frame)
+
+#%%
+
 # Input data for elements
 data_elements = InputData_StructuralElements(name='Model_2',
                                              mapping_object={

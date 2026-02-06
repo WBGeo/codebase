@@ -231,9 +231,6 @@ def compute_fault_domains(
                 temp_ids.append(9999 + domain_id_counter)
                 domain_id_counter += 1
 
-                # 🔑 THIS IS THE ONLY NEW LINE THAT MATTERS
-                # fault.set_separated_domains((existing_id, new_id))
-
         domain_map = new_domain_map
 
     # Remap domain IDs to consecutive values starting from 0
@@ -242,29 +239,53 @@ def compute_fault_domains(
     remapped_map = np.vectorize(remap.get)(domain_map)
     fault_frame._domain_map = remapped_map.T
 
-    for fault in fault_frame._fault_elements:
+    # remapped_map is currently ZYX in your code; convert to XYZ once
+    domain_map_xyz = remapped_map.transpose(2, 1, 0)
+
+    # --- ALSO store separated_domains (global side-sets), for reporting/sanity ---
+    for fault in fault_frame.fault_elements:
         mask = fault.get_domain_mask()
-        if mask.shape != remapped_map.shape:
+        # ensure mask is XYZ
+        if mask.shape != domain_map_xyz.shape:
             mask = mask.transpose(2, 1, 0)
 
-        left_ids = set(np.unique(remapped_map[mask]))
-        right_ids = set(np.unique(remapped_map[~mask]))
+        left_ids = set(np.unique(domain_map_xyz[mask]))
+        right_ids = set(np.unique(domain_map_xyz[~mask]))
 
         if not left_ids or not right_ids:
-            raise RuntimeError(
-                f"Fault '{fault.name}' does not create a valid split."
-            )
+            raise RuntimeError(f"Fault '{fault.name}' does not create a valid split (empty side).")
 
-        # 🔑 THIS is the correct invariant
         fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
+
+    for fault in fault_frame.fault_elements:
+        # Ensure scalar_field is XYZ (you said you standardized to XYZ later;
+        # here in this function it looks like it's already in the "native" orientation you use)
+        sf = fault.scalar_field
+        if sf.shape != domain_map_xyz.shape:
+            # if sf is ZYX, convert to XYZ
+            sf = sf.transpose(2, 1, 0)
+
+        pairs = compute_domain_pairs_from_fault_band(
+            domain_map_xyz=domain_map_xyz,
+            scalar_field_xyz=sf,
+            scalar_value=float(fault.scalar_value),
+            spacing_xyz=fault_frame.grid.spacing,
+            voxels=1.0,
+            use_gradient=True,
+        )
+
+        if not pairs:
+            raise RuntimeError(f"Fault '{fault.name}' produced no domain_pairs (check band tolerance / orientation).")
+
+        fault.set_domain_pairs(pairs)  # <-- you'll add this setter on the FaultElement
 
     #  Store per-domain masks
     fault_frame._domain_masks = {}
     for uid in np.unique(remapped_map):
         fault_frame._domain_masks[uid] = remapped_map == uid
 
-    # Extrac surfaces meshes for faults
-    for i, fault in enumerate(reversed(fault_frame._fault_elements)):
+    # Extract surfaces meshes for faults
+    for i, fault in enumerate(reversed(fault_frame.fault_elements)):
         vertices, edges = marching_cubes_new(fault.scalar_field,
                                              [fault.scalar_value],
                                              fault_frame._grid.spacing,
@@ -272,9 +293,6 @@ def compute_fault_domains(
 
         fault.set_vertices(vertices[0])
         fault.set_edges(edges[0])
-
-    # for fault in fault_frame.fault_elements:
-    #     set_separated_domains_from_local_band(fault_frame, fault, voxels=1.0, use_gradient=True)
 
     # 🔎 After all faults are processed
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
@@ -321,41 +339,44 @@ def build_fault_frame(
 
     return fault_frame
 
-def set_separated_domains_from_local_band(
-    fault_frame: FaultFrame,
-    fault: FaultElement,
+def compute_domain_pairs_from_fault_band(
+    domain_map_xyz: np.ndarray,
+    scalar_field_xyz: np.ndarray,
+    scalar_value: float,
+    spacing_xyz: np.ndarray,
     *,
     voxels: float = 1.0,
     use_gradient: bool = True,
-) -> None:
-    """Populate fault.separated_domains by sampling domain labels locally around the fault surface."""
-    domain_map = fault_frame.domain_map  # XYZ
-    sf = fault.scalar_field              # XYZ
-    sv = float(fault.scalar_value)
-
-    spacing = fault_frame.grid.spacing
-    thickness_world = float(voxels) * float(np.min(spacing))
+) -> frozenset[tuple[int, int]]:
+    """
+    Compute adjacent domain-id pairs across a fault by sampling a thin band around the fault surface.
+    All arrays must be XYZ.
+    Returns pairs as sorted (a,b) with a<b.
+    """
+    thickness_world = float(voxels) * float(np.min(spacing_xyz))
 
     if use_gradient:
-        gx, gy, gz = np.gradient(sf, *spacing, edge_order=1)
-        grad_mag = np.sqrt(gx*gx + gy*gy + gz*gz)
+        gx, gy, gz = np.gradient(scalar_field_xyz, *spacing_xyz, edge_order=1)
+        grad_mag = np.sqrt(gx * gx + gy * gy + gz * gz)
         med = float(np.nanmedian(grad_mag)) if np.isfinite(grad_mag).any() else 1e-12
         tol_scalar = thickness_world * max(med, 1e-12)
     else:
         tol_scalar = thickness_world
 
-    band = np.abs(sf - sv) <= tol_scalar
+    band = np.abs(scalar_field_xyz - float(scalar_value)) <= tol_scalar
 
-    # two sides of the fault (use your domain mask convention)
-    pos = band & (sf > sv)
-    neg = band & (sf <= sv)
+    # two sides near the surface
+    pos = band & (scalar_field_xyz > scalar_value)
+    neg = band & (scalar_field_xyz <= scalar_value)
 
-    left_ids = set(np.unique(domain_map[neg]))
-    right_ids = set(np.unique(domain_map[pos]))
+    pos_ids = np.unique(domain_map_xyz[pos])
+    neg_ids = np.unique(domain_map_xyz[neg])
 
-    # remove junk if present
-    left_ids.discard(-1)
-    right_ids.discard(-1)
+    pairs: set[tuple[int, int]] = set()
+    for a in neg_ids:
+        for b in pos_ids:
+            ia, ib = int(a), int(b)
+            if ia != ib:
+                pairs.add((ia, ib) if ia < ib else (ib, ia))
 
-    # store
-    fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
+    return frozenset(pairs)

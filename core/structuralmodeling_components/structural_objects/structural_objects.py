@@ -841,6 +841,7 @@ class FaultElement(BaseModel):
     _scalar_field: Optional[np.ndarray] = PrivateAttr(default=None)
     _color: str = PrivateAttr(default="#AAAAAA")  # Default color in hex format
     _separated_domains: Optional[Tuple[FrozenSet[int], FrozenSet[int]]] = PrivateAttr(default=None)
+    _domain_pairs: Optional[FrozenSet[Tuple[int, int]]] = PrivateAttr(default=None)
     _vertices: Optional[np.ndarray] = PrivateAttr(default_factory=None)
     _edges: Optional[np.ndarray] = PrivateAttr(default_factory=None)
     _mask: Optional[np.ndarray] = PrivateAttr(default=None)
@@ -940,8 +941,50 @@ class FaultElement(BaseModel):
         """Set the tuple of separated domain IDs."""
         self._separated_domains = domain_ids
 
+    def get_domain_pairs(self) -> Optional[FrozenSet[Tuple[int, int]]]:
+        """Return adjacent domain-id pairs across this fault surface."""
+        return self._domain_pairs
+
+    def set_domain_pairs(self, pairs: FrozenSet[Tuple[int, int]]) -> None:
+        """Set adjacent domain-id pairs across this fault surface.
+
+        Each pair must be (a,b) with a != b. Order will be normalized to (min,max).
+        """
+        if pairs is None:
+            self._domain_pairs = None
+            return
+
+        if not isinstance(pairs, frozenset):
+            pairs = frozenset(pairs)  # allow set/list input
+
+        norm: set[Tuple[int, int]] = set()
+        for p in pairs:
+            if not (isinstance(p, tuple) and len(p) == 2):
+                raise ValueError("Each domain pair must be a tuple (a, b).")
+            a, b = int(p[0]), int(p[1])
+            if a == b:
+                continue
+            norm.add((a, b) if a < b else (b, a))
+
+        if not norm:
+            raise ValueError(f"Fault '{self.name}' domain_pairs is empty after normalization.")
+
+        self._domain_pairs = frozenset(norm)
+
+    def domain_pairs_flat(self) -> set[int]:
+        """Return all domain IDs touched by this fault's adjacency pairs."""
+        if self._domain_pairs is None:
+            return set()
+        out: set[int] = set()
+        for a, b in self._domain_pairs:
+            out.add(a)
+            out.add(b)
+        return out
+
     def separated_domains_flat(self) -> set[int]:
-        """Return all domain IDs this fault splits."""
+        """Return all domain IDs this fault splits (from separated_domains)."""
+        if self._separated_domains is None:
+            return set()
         return set().union(*self._separated_domains)
 
 

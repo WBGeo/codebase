@@ -107,28 +107,6 @@ def run_interpolation_with_fault_domains(
                 group_idx=group_idx,
             )
 
-
-        # active_domain_ids = []
-        #
-        # if fault_frame is None:
-        #     active_domain_ids = domain_ids
-        # else:
-        #     for domain_id in domain_ids:
-        #         # Skip domain if no fault affects it for this group
-        #         domain_ok = False
-        #         for fault in fault_frame.fault_elements:
-        #             youngest_idx = frame.fault_activity[fault.name]
-        #             if group_idx < youngest_idx:
-        #                 continue  # fault not active for this (younger) group
-        #             if domain_id in fault.separated_domains_flat():
-        #                 domain_ok = True
-        #                 break
-        #         # If no faults affect this group in this domain, still allow interpolation
-        #         if not domain_ok and all(group_idx < frame.fault_activity[f.name] for f in fault_frame.fault_elements):
-        #             domain_ok = True
-        #         if domain_ok:
-        #             active_domain_ids.append(domain_id)
-
         # --- Interpolate per active domain ---
         for comp_ids in components:
             comp_ids_arr = np.array(sorted(comp_ids), dtype=int)
@@ -865,28 +843,15 @@ def effective_domain_components_for_group(
         is_active = group_idx >= youngest_idx
 
         if is_active:
-            continue  # keep this split
+            continue  # ACTIVE: keep this fault split
 
-        left_ids, right_ids = f.get_separated_domains()  # frozenset, frozenset
-        print(f"{f.name} old split {left_ids} | {right_ids}")
-
-        sd = getattr(f, "_separated_domains", None)
-        if sd is None or len(sd) != 2:
-            raise ValueError(f"Fault '{getattr(f, 'name', '?')}' missing valid separated_domains.")
-        left_ids, right_ids = sd
-
-        print(f"{f.name} new split {left_ids} | {right_ids}")
-
-        # merge everything across the split
-        left_ids = list(left_ids)
-        right_ids = list(right_ids)
-        if not left_ids or not right_ids:
+        pairs = f.get_domain_pairs()
+        if not pairs:
             continue
-        base = int(left_ids[0])
-        for rid in right_ids:
-            union(base, int(rid))
-        for lid in left_ids[1:]:
-            union(base, int(lid))
+
+        # INACTIVE: merge only the adjacent domain pairs across this fault
+        for a, b in pairs:
+            union(int(a), int(b))
 
     comps: dict[int, set[int]] = {}
     for d in domain_ids:
