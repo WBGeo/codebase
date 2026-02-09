@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from concepts.archive.universal_cokriging import universal_cokriging_interpolator
-from core.object_components import InputData_StructuralElements, GeomodelResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults
 
 data_dir = os.path.dirname(__file__) + "/../examples/input_data/"
 
@@ -43,7 +43,7 @@ class TestUniversalCokriging(unittest.TestCase):
         # self.update_data_files(results_test)
         # Load a universal co-kriging results - when we deviate from this object, an error occured
         with open(os.path.dirname(__file__) + '/model2_universal_cokriging_res.pkl', 'rb') as f:
-            results_to_regression_test_against: GeomodelResults = pickle.load(f)
+            results_to_regression_test_against: StructuralModelResults = pickle.load(f)
         np.testing.assert_array_equal(results_test.lith_block, results_to_regression_test_against.lith_block,
                                       "lith block input_data missmatch")
         self.assertEqual(len(results_test.surface_meshes_vertices),
@@ -65,7 +65,7 @@ class TestUniversalCokriging(unittest.TestCase):
                                       "surface meshes edges input_data missmatch")
 
     @classmethod
-    def update_data_files(cls, results_test: GeomodelResults):
+    def update_data_files(cls, results_test: StructuralModelResults):
         with open(os.path.dirname(__file__) + '/model2_universal_cokriging_res.pkl', 'wb') as f:
             pickle.dump(results_test, f)
 

@@ -23,6 +23,8 @@ from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
 
+from core.structuralmodeling_components.structural_objects.structural_objects import StructuralFrame
+
 
 # Pydantic adapter for panda DataFrame
 def df_serializer(df: pd.DataFrame) -> list[dict]:
@@ -85,37 +87,21 @@ class InputData_FaultElements:
     name: str
     fault_surface_points: PandasDataFrame
     fault_orientations: PandasDataFrame  # Might be optional in future when not only UCK is used here
-    fault_names: List[str] # This allows us to use one input data file
+    fault_names: List[str]  # This allows us to use one input data file
 
 
-@wbgeo_type(name='Result of a structural geological model', color='blue', identifier='GeomodelResults')
+@wbgeo_type(name='Result of a structural geological model', color='blue', identifier='StructuralModelResults')
 @dataclass(config={"arbitrary_types_allowed": True})
-class GeomodelResults:
+class StructuralModelResults:
     """
     A class to represent the results of a geological model.
 
         Attributes:.
             name (str): The name of the model.
-            lith_block (np.ndarray): The lithology block of the model.
-            surface_meshes_vertices (list): The vertices of the surface meshes of the model.
-            surface_meshes_edges (list): The edges of the surface meshes of the model.
-            grid (np.ndarray): The grid of the model.
-            extent (np.ndarray): The extent of the model.
-            resolution (np.ndarray): The resolution of the model.
-            mapping_object (dict): Mapping of structural groups to structural elements.
-            scalar_fields (Optional[List[np.ndarray]]): List of scalar fields.
+            structural_frame (StructuralFrame): The structural frame of the model.
     """
-    # TODO: Refactor to new structure, but not sure whats the best way here
-    name: str
-    lith_block: NpNDArrayInt64
-    surface_meshes_vertices: List[List[NpNDArrayFp64]]
-    surface_meshes_edges: List[List[NpNDArrayInt64]]
-    grid: NpNDArrayFp64
-    extent: NpNDArrayInt64
-    resolution: NpNDArrayInt64
-    mapping_object: Dict
-    scalar_fields: Optional[List[NpNDArrayFp64]] = None
-
+    # TODO: ALEX: This is the simplest version I could think of - does this work for you
+    structural_frame: StructuralFrame  # this is a deepcopy of the structural frame object
 
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True})

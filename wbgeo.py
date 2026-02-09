@@ -2,7 +2,7 @@ from typing import Optional
 
 from py_api_wbgeo import apitypes
 
-from core.object_components import InputData_StructuralElements, GeomodelResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults
 
 # from core.structuralmodeling_components.geo_inr import geo_inr_interpolator # removed until updated
 # from core.structuralmodeling_components.loopstructural_old import loop_structural_interpolator # removed until updated
@@ -45,7 +45,7 @@ PMType: apitypes.ScriptType = {"id": "PMTypePlaceHolder",
 InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData_StructuralElements,
                                       "name": 'Input input_data for a geological model', "color": 'orange'}
 
-GeomodelResultsType: apitypes.ScriptType = {"id": "GeomodelResults", "real_type": GeomodelResults, "name": 'Geo Result',
+GeomodelResultsType: apitypes.ScriptType = {"id": "StructuralModelResults", "real_type": StructuralModelResults, "name": 'Geo Result',
                                             "color": '#f4a259'}
 
 

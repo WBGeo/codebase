@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from core.object_components import InputData_StructuralElements, GeomodelResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults
 from core.utility.conversions import normalize_vectors
 
 
@@ -8,7 +8,7 @@ def get_surface_mesh_gradients(geo_model_results, norm=True, mesh_type="unmasked
     """
     Get the gradient vector field at the surface mesh vertices
     Args:
-        geo_model_results (GeomodelResults): The results of the geological model.
+        geo_model_results (StructuralModelResults): The results of the geological model.
         norm (bool): Normalize the gradient vectors. Default is True.
         mesh_type (str): The type of surface mesh to use. Default is "unmasked".
     Returns:

@@ -1,5 +1,5 @@
 
-from core.object_components import GeomodelResults
+from core.object_components import StructuralModelResults
 import os
 
 cwd = os.getcwd()
@@ -30,12 +30,12 @@ def modify_input_file(file_name, parameters, additional_tag="", extension=".i"):
     auto_inputfile.write(lines)
 
 
-def export_data_to_moose(geomodel_results: GeomodelResults):
+def export_data_to_moose(geomodel_results: StructuralModelResults):
     """
      Get parameters from geological model and write them to a MOOSE input file.
 
      Args:
-         geomodel_results (GeomodelResults): The results of the geological model.
+         geomodel_results (StructuralModelResults): The results of the geological model.
      """
 
     file_name = cwd + '/core/meshing_components/moose_mesh_input'

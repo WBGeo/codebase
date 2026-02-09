@@ -9,6 +9,8 @@ Main stages (per-domain when faults are provided):
 """
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,7 +18,7 @@ from matplotlib.colors import to_hex
 import itertools
 import colorsys
 
-from core.object_components import InputData_StructuralElements
+from core.object_components import InputData_StructuralElements, StructuralModelResults
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 
@@ -539,6 +541,14 @@ def compute_structural_model(
 
     if verbose:
         print("✅ Pipeline complete.")
+
+    # return a StructuralModelResults object instead
+    result = StructuralModelResults(
+        name=f"{frame.name}_results",
+        structural_frame=copy.deepcopy(frame),
+    )
+
+    return result
 
 # -----------------------------------------------------------------------------
 # Builders / helpers

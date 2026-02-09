@@ -2,7 +2,7 @@ import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from core.object_components import InputData_StructuralElements, GeomodelResults, MeshResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults, MeshResults
 import warnings
 
 def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:

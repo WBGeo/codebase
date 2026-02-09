@@ -1,15 +1,15 @@
 import pyvista as pv
 import os
 
-from core.object_components import GeomodelResults
+from core.object_components import StructuralModelResults
 
 
-def create_mesh_moose(geomodel_results: GeomodelResults, name: str) -> pv.DataSet:
+def create_mesh_moose(geomodel_results: StructuralModelResults, name: str) -> pv.DataSet:
     """
     Create a mesh for MOOSE based on the input input_data.
 
     Args:
-        geomodel_results (GeomodelResults): The input input_data for the geological model.
+        geomodel_results (StructuralModelResults): The input input_data for the geological model.
 
     Returns:
         comp_meshes (pyvista.core.composite.MultiBlock): The set of meshes precomputed by MOOSE
