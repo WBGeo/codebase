@@ -6,17 +6,38 @@ Main stages (per-domain when faults are provided):
   2) Age-mask computation per group
   3) Lithology block assembly
   4) (Optional) Masked surface mesh extraction for each element
+
+Notes on coordinate conventions
+------------------------------
+Most arrays in this pipeline are treated as being in XYZ index order (X, Y, Z) with shape:
+    (nx, ny, nz) == tuple(frame.grid.resolution)
+
+Some interpolators may return arrays in a different axis order; this file preserves the
+existing transpose behavior where required.
 """
+
 from __future__ import annotations
 
 import copy
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.colors import to_hex
 import itertools
 import colorsys
+from typing import (
+    Dict,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    TypeAlias,
+    cast,
+    Callable,
+    Any
+)
+
+import matplotlib.pyplot as plt
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+from matplotlib.colors import to_hex
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -26,10 +47,9 @@ from core.structuralmodeling_components.structural_objects.structural_objects im
     StructuralFrame,
     StructuralGroup,
     StructuralElement,
+    FaultFrame,
+    InterpolationMethod,
 )
-from core.structuralmodeling_components.structural_objects.structural_objects import FaultFrame
-
-from typing import Dict, Optional
 
 from core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group import (
     interpolate_group_ordinary_kriging,
@@ -47,13 +67,28 @@ from core.structuralmodeling_components.interpolators_per_group.loop_structural_
     interpolate_group_loop_structural,
 )
 
-from core.structuralmodeling_components.structural_objects.structural_objects import InterpolationMethod
+# -----------------------------------------------------------------------------
+# Typing helpers
+# -----------------------------------------------------------------------------
+FloatArray: TypeAlias = npt.NDArray[np.floating]
+IntArray: TypeAlias = npt.NDArray[np.integer]
+BoolArray: TypeAlias = npt.NDArray[np.bool_]
+
+Extent6: TypeAlias = Tuple[float, float, float, float, float, float]
+BBox6: TypeAlias = Tuple[int, int, int, int, int, int]  # (kx0, kx1, ky0, ky1, kz0, kz1) in XYZ index space
+
+
+class DomainMapProvider(Protocol):
+    """Minimal interface used in this module for a "fault-frame-like" provider."""
+    domain_map: npt.NDArray[np.integer]
 
 
 # -----------------------------------------------------------------------------
 # Interpolator dispatch
 # -----------------------------------------------------------------------------
-interpolate_dispatch = {
+# Mapping from interpolation method to per-group interpolator function.
+# Each interpolator is expected to return (scalar_field, scalar_values_dict).
+interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
     InterpolationMethod.ORDINARY_KRIGING: interpolate_group_ordinary_kriging,
     InterpolationMethod.RADIAL_BASIS_FUNCTION: interpolate_group_radial_basis_function,
     InterpolationMethod.UNIVERSAL_COKRIGING: interpolate_group_universal_cokriging,
@@ -63,31 +98,34 @@ interpolate_dispatch = {
 
 
 def run_interpolation_with_fault_domains(
-    frame: StructuralFrame,
-    fault_frame: Optional[FaultFrame],
-    *,
-    crop_to_domain: bool = True,
+        frame: StructuralFrame,
+        fault_frame: FaultFrame | None,
+        *,
+        crop_to_domain: bool = True,
 ) -> None:
-    """Interpolate structural groups inside fault domains, respecting fault activity.
+    """
+    Interpolate structural groups inside fault domains, respecting fault activity.
 
-    Groups not affected by any fault get a single continuous scalar field
-    across all points.
+    Groups not affected by any fault get a single continuous scalar field across
+    all points.
 
     Parameters
     ----------
     frame : StructuralFrame
         Structural frame containing groups, elements, grid, and input_data.
-    fault_frame : Optional[FaultFrame]
-        Fault frame providing a 3D domain_map with domain identifiers.
+    fault_frame : Optional[DomainMapProvider]
+        Provider of a 3D ``domain_map`` with integer domain identifiers.
+        When no faults exist, callers may pass an object that only exposes ``domain_map``.
     crop_to_domain : bool, default True
         Crop computation to minimal bounding box for speed.
     """
-
-    domain_map = (
-        fault_frame.domain_map if fault_frame is not None else np.zeros(frame.grid.resolution, dtype=int)
+    domain_map: IntArray = (
+        fault_frame.domain_map
+        if fault_frame is not None
+        else np.zeros(frame.grid.resolution, dtype=int)
     )
 
-    domain_ids = np.unique(domain_map)
+    domain_ids: IntArray = np.unique(domain_map)
 
     # Assign each point to a domain
     sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
@@ -100,22 +138,26 @@ def run_interpolation_with_fault_domains(
     for group_idx, group in enumerate(frame.structural_groups):
         group_formations = [e.name for e in group.structural_elements]
 
-        # # --- Determine which domains are active for this group ---
+        # Determine which domains are effectively merged for this group (fault activity).
+        # If we do not have a real FaultFrame (or fault_activity is unavailable), treat all domains as connected.
         if fault_frame is None or frame.fault_activity is None:
             components = [set(map(int, domain_ids))]
         else:
+            # At this point, a real fault frame is expected in practice.
+            # We keep typing permissive to support the "no faults" synthetic provider.
+            ff = cast(FaultFrame, fault_frame)
             components = effective_domain_components_for_group(
                 domain_ids=domain_ids,
-                faults=list(fault_frame.fault_elements),
+                faults=list(ff.fault_elements),
                 fault_activity=frame.fault_activity,
                 group_idx=group_idx,
             )
 
-        # --- Interpolate per active domain ---
+        # Interpolate per active merged component
         for comp_ids in components:
             comp_ids_arr = np.array(sorted(comp_ids), dtype=int)
 
-            # points from ALL domains in this merged component
+            # Points from ALL domains in this merged component
             sp_filtered_all = sp_in_domain[sp_in_domain["domain_id"].isin(comp_ids_arr)].drop(columns="domain_id")
             ori_filtered_all = (
                 ori_in_domain[ori_in_domain["domain_id"].isin(comp_ids_arr)].drop(columns="domain_id")
@@ -125,16 +167,18 @@ def run_interpolation_with_fault_domains(
 
             # Filter points for this group
             sp_filtered = sp_filtered_all[sp_filtered_all["formation"].isin(group_formations)]
-            ori_filtered = None
-            if ori_filtered_all is not None:
-                ori_filtered = ori_filtered_all[ori_filtered_all["formation"].isin(group_formations)]
+            ori_filtered = (
+                ori_filtered_all[ori_filtered_all["formation"].isin(group_formations)]
+                if ori_filtered_all is not None
+                else None
+            )
 
             if sp_filtered.empty:
                 continue
 
-            # bbox from merged component mask (optional crop)
+            # Bounding box crop from merged component mask (optional)
             use_grid = frame.grid
-            bbox = None
+            bbox: Optional[BBox6] = None
             if crop_to_domain and len(domain_ids) > 1:
                 comp_mask = np.isin(domain_map, comp_ids_arr)
                 # compute bbox from comp_mask (XYZ)
@@ -148,9 +192,9 @@ def run_interpolation_with_fault_domains(
             # Pick interpolator
             method = group.interpolation_method
             if method not in interpolate_dispatch:
-                     raise ValueError(f"Unsupported interpolation method: {method}")
+                raise ValueError(f"Unsupported interpolation method: {method}")
 
-            # interpolate once for the merged component
+            # Interpolate once for the merged component
             scalar_field_sub, scalar_values = interpolate_dispatch[method](
                 group=group,
                 grid=use_grid,
@@ -158,7 +202,8 @@ def run_interpolation_with_fault_domains(
                 group_orientations_points_df=ori_filtered,
             )
 
-            scalar_field_sub = scalar_field_sub.transpose(2, 1, 0)  # if needed for your interpolator output
+            # Preserve existing behavior: transpose to expected axis order
+            scalar_field_sub = scalar_field_sub.transpose(2, 1, 0)
 
             if bbox is not None and len(domain_ids) > 1:
                 full_shape = tuple(frame.grid.resolution)
@@ -180,17 +225,21 @@ def run_interpolation_with_fault_domains(
                     )
                 elem.set_scalar_value(float(scalar_values[elem.name]))
 
+
 # --- 2) Age masks per domain --------------------------------------------------
 
 
 def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
-    """Compute and set age masks per group, respecting fault activity.
+    """
+    Compute and set age masks per group, respecting fault activity.
 
-    Stores a **single mask per group** that combines all active domains.
+    Stores a single mask per group that combines all active domains.
     """
     ff = frame.fault_frame
-    domain_map = ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=int).T
-    domain_ids = np.unique(domain_map)
+    domain_map: IntArray = (
+        ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=int).T
+    )
+    domain_ids: IntArray = np.unique(domain_map)
 
     if not frame.structural_groups:
         raise ValueError("The structural frame contains no groups.")
@@ -229,6 +278,7 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
                     if d in fault.separated_domains_flat():
                         domain_ok = True
                         break
+
                 # Groups unaffected by any fault in this domain are allowed
                 if not domain_ok and all(group_idx < frame.fault_activity[f.name] for f in ff.fault_elements):
                     domain_ok = True
@@ -241,11 +291,13 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
         # Store the final mask
         group.set_mask(mask)
 
+
 # --- 3) Combine all domains to final lithology block --------------------------
 
 
 def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
-    """Combine group results into a single lithology block, respecting fault domains
+    """
+    Combine group results into a single lithology block, respecting fault domains
     and per-fault activity.
 
     Stores element IDs globally (same across domains) and honors age/group masks.
@@ -258,7 +310,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Final lithology volume (integer IDs) with shape frame.grid.resolution.
+        Final lithology volume (integer IDs) with shape ``frame.grid.resolution``.
     """
     shape = tuple(map(int, frame.grid.resolution))  # (X,Y,Z)
     final_lith = np.zeros(shape, dtype=int)
@@ -292,29 +344,25 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
         if sf is None or gm is None:
             continue
 
-        # --- compute effective domain components for THIS group ---
+        # Compute effective domain components for THIS group
         if ff is None or frame.fault_activity is None:
             components = [set(map(int, domain_ids))]
         else:
             components = effective_domain_components_for_group(
-                domain_ids=domain_ids,
+                domain_ids=np.array(domain_ids),
                 faults=list(ff.fault_elements),
-                fault_activity=frame.fault_activity,  # dict[str,int] youngest affected idx
+                fault_activity=frame.fault_activity,  # dict[str,int] the youngest affected idx
                 group_idx=group_idx,  # IMPORTANT: original index (youngest->oldest)
             )
 
-        # print(f"[{group.name}] components:", [sorted(list(c)) for c in components])
-
         # Process each merged component
         for comp_ids in components:
-
             comp_ids_arr = np.array(sorted(comp_ids), dtype=int)
             comp_mask = np.isin(domain_map, comp_ids_arr)
 
             group_block = np.zeros(shape, dtype=int)
 
-            # Fill elements oldest -> youngest inside the group (so younger elem overwrites older within group_block)
-            # Your element order seems youngest->oldest inside group; you want oldest->youngest fill with (==0) priority:
+            # Fill elements oldest -> the youngest inside the group
             for elem in group.structural_elements:
                 sval = elem.get_scalar_value()
                 if sval is None:
@@ -331,13 +379,13 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
 
     return final_lith
 
+
 # --- 4) Extract per-domain “masked” meshes for each element -------------------
 
 
-def extract_all_meshes_per_domain(
-    frame: StructuralFrame,
-) -> None:
-    """Extract and store per-domain masked and unmasked surface meshes for every element.
+def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
+    """
+    Extract and store per-domain masked and unmasked surface meshes for every element.
 
     Masked meshes stop at unconformities and domain boundaries.
     Unmasked meshes go through unconformities.
@@ -357,8 +405,9 @@ def extract_all_meshes_per_domain(
         dom_map = fault_frame.domain_map
         domain_ids = np.unique(dom_map)
 
-    # Temporary storage: { (elem, domain_id) : (verts, faces) }
-    temp_domain_meshes = {}
+    # Temporary storage: { (elem_name, domain_id) : (verts, faces) }
+    # NOTE: mesh extraction functions determine vertex/face array dtypes.
+    temp_domain_meshes: Dict[Tuple[str, int], Tuple[np.ndarray, np.ndarray]] = {}
 
     for d in domain_ids:
         dommask = dom_map == d  # keep in XYZ
@@ -385,19 +434,22 @@ def extract_all_meshes_per_domain(
                     continue
 
                 verts, faces = marching_cubes_per_element(
-                    sf,        # XYZ
+                    sf,  # XYZ
                     sval,
                     frame.grid.spacing,
                     frame.grid.extent,
-                    mask=mc_mask  # XYZ
+                    mask=mc_mask,  # XYZ
                 )
 
-                temp_domain_meshes[(elem.name, d)] = (verts, faces)
+                temp_domain_meshes[(elem.name, int(d))] = (verts, faces)
 
     # Combine meshes across domains for each element
-    def combine_meshes(vertices_list, edges_list):
-        combined_vertices = []
-        combined_edges = []
+    def combine_meshes(
+            vertices_list: Sequence[np.ndarray],
+            edges_list: Sequence[np.ndarray],
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        combined_vertices: list[np.ndarray] = []
+        combined_edges: list[np.ndarray] = []
         offset = 0
         for V, E in zip(vertices_list, edges_list):
             combined_vertices.append(V)
@@ -407,9 +459,13 @@ def extract_all_meshes_per_domain(
 
     for group in frame.structural_groups:
         for elem in group.structural_elements:
-            verts_list, faces_list = [], []
+            verts_list: list[np.ndarray] = []
+            faces_list: list[np.ndarray] = []
             for d in domain_ids:
-                verts, faces = temp_domain_meshes.get((elem.name, d), (np.empty((0, 3)), np.empty((0, 3))))
+                verts, faces = temp_domain_meshes.get(
+                    (elem.name, int(d)),
+                    (np.empty((0, 3)), np.empty((0, 3))),
+                )
                 verts_list.append(verts)
                 faces_list.append(faces)
             combined_vertices, combined_faces = combine_meshes(verts_list, faces_list)
@@ -449,9 +505,8 @@ def extract_all_meshes_per_domain(
     # ---- masked meshes for faults using existing age masks ----
     if fault_frame is not None:
         for fault in fault_frame.fault_elements:
-
-            # this mask is the age mask defined by youngest group affected by this fault
-            index = frame.fault_activity_verbose[fault.name]["youngest_group_index"]-1
+            # This mask is the age mask defined by youngest group affected by this fault
+            index = frame.fault_activity_verbose[fault.name]["youngest_group_index"] - 1
             mc_fault_mask = frame.structural_groups[index].get_mask() if index >= 0 else np.ones_like(sf, dtype=bool)
             # inverse
             mc_fault_mask = ~mc_fault_mask
@@ -465,18 +520,20 @@ def extract_all_meshes_per_domain(
             )
             fault.set_mesh("masked", verts, faces)
 
+
 # -----------------------------------------------------------------------------
 # Pipeline driver
 # -----------------------------------------------------------------------------
 
 
 def compute_structural_model(
-    frame: StructuralFrame,
-    *,
-    extract_meshes: bool = True,
-    verbose: bool = True,
-):
-    """Run the full pipeline with (optional) fault domains.
+        frame: StructuralFrame,
+        *,
+        extract_meshes: bool = True,
+        verbose: bool = True,
+) -> StructuralModelResults:
+    """
+    Run the full pipeline with (optional) fault domains.
 
     Steps
     -----
@@ -497,23 +554,26 @@ def compute_structural_model(
     Returns
     -------
     StructuralModelResults
-        Results object containing the updated structural frame with scalar fields, masks, and meshes.
+        Results object containing the updated (deepcopied) structural frame with
+        scalar fields, masks, and meshes.
     """
+    # Prepare domain map (supports "no faults" case).
+    # NOTE: We intentionally create a minimal provider when no fault_frame exists.
+    ff: FaultFrame | None = frame.fault_frame
 
-    # --- prepare domain map (supports "no faults" case) ---
-    ff = frame.fault_frame
     if ff is None:
-        # synthetic single domain
         dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=int)
 
         class _TmpFF:
             domain_map = dom_map
 
-        ff = _TmpFF()
+        # typing-only: pretend this is a FaultFrame
+        ff = cast(FaultFrame, _TmpFF())
+
         if verbose:
             print("ℹ️ No fault_frame provided in StructuralFrame — running in single-domain mode.")
 
-    # --- 1) per-domain interpolation, store results into per-domain slots ---
+    # 1) per-domain interpolation, store results into per-domain slots
     if verbose:
         print("① Interpolation per domain ...")
     run_interpolation_with_fault_domains(
@@ -521,41 +581,39 @@ def compute_structural_model(
         fault_frame=ff,
     )
 
-    # --- 2) per-domain age masks ---
+    # 2) per-domain age masks
     if verbose:
         print("② Computing age masks per domain ...")
     set_scalar_masks_per_domain(frame)
 
-    # --- 3) final lithology block combining domains ---
+    # 3) final lithology block combining domains
     if verbose:
         print("③ Building final lithology block ...")
     frame._lith_block = compute_lithology_block_with_domains(frame)
 
-    # --- 4) per-domain meshes (optional) ---
+    # 4) per-domain meshes (optional)
     if extract_meshes:
         if verbose:
             print("④ Extracting per-domain masked meshes ...")
-        extract_all_meshes_per_domain(
-            frame=frame
-        )
+        extract_all_meshes_per_domain(frame=frame)
 
     if verbose:
         print("✅ Pipeline complete.")
 
-    # return a StructuralModelResults object instead
+    # Return a StructuralModelResults object
     result = StructuralModelResults(
         structural_frame=copy.deepcopy(frame),
     )
-
     return result
+
 
 # -----------------------------------------------------------------------------
 # Builders / helpers
 # -----------------------------------------------------------------------------
 
 
-def compute_domain_bbox_indices(domain_map: np.ndarray, domain_id: int):
-    """Return tight bounding box in XYZ index order."""
+def compute_domain_bbox_indices(domain_map: np.ndarray, domain_id: int) -> Optional[BBox6]:
+    """Return tight bounding box in XYZ index order for a given domain_id."""
     mask = domain_map == domain_id
     if not np.any(mask):
         return None
@@ -573,10 +631,21 @@ def compute_domain_bbox_indices(domain_map: np.ndarray, domain_id: int):
     return int(kx0), int(kx1), int(ky0), int(ky1), int(kz0), int(kz1)
 
 
-def build_subgrid_from_bbox(grid, bbox):
+def build_subgrid_from_bbox(grid: RegularGrid, bbox: BBox6) -> RegularGrid:
     """
-    bbox: (kx0, kx1, ky0, ky1, kz0, kz1) in [X,Y,Z] index space
-    Returns a RegularGrid in [X,Y,Z] space
+    Build a sub-grid from an index-space bounding box.
+
+    Parameters
+    ----------
+    grid : RegularGrid
+        Original full grid.
+    bbox : BBox6
+        (kx0, kx1, ky0, ky1, kz0, kz1) in [X,Y,Z] index space.
+
+    Returns
+    -------
+    RegularGrid
+        A new RegularGrid covering only the bbox region in XYZ.
     """
     kx0, kx1, ky0, ky1, kz0, kz1 = bbox
 
@@ -585,7 +654,7 @@ def build_subgrid_from_bbox(grid, bbox):
     x0, x1, y0, y1, z0, z1 = grid.extent
 
     # Convert index bbox → physical extents
-    sub_extent = (
+    sub_extent: Extent6 = (
         x0 + kx0 * dx,
         x0 + (kx1 + 1) * dx,
         y0 + ky0 * dy,
@@ -606,12 +675,16 @@ def build_subgrid_from_bbox(grid, bbox):
     )
 
 
-def generate_grouped_colors_per_element(groups: list, base_colormap: str = "Accent") -> Dict[str, str]:
-    """Generate distinct color shades for each element in each group.
+def generate_grouped_colors_per_element(
+        groups: Sequence[StructuralGroup],
+        base_colormap: str = "Accent",
+) -> Dict[str, str]:
+    """
+    Generate distinct color shades for each element in each group.
 
     Parameters
     ----------
-    groups : list[StructuralGroup]
+    groups : Sequence[StructuralGroup]
         Structural groups whose elements will receive colors.
     base_colormap : str, default "Accent"
         Matplotlib colormap used for base group colors.
@@ -641,12 +714,13 @@ def generate_grouped_colors_per_element(groups: list, base_colormap: str = "Acce
 
 
 def build_structural_frame(
-    input_data_elements: InputData_StructuralElements,
-    grid: RegularGrid,
-    default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING,
-    fault_frame: Optional["FaultFrame"] = None,
+        input_data_elements: InputData_StructuralElements,
+        grid: RegularGrid,
+        default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING,
+        fault_frame: Optional[FaultFrame] = None,
 ) -> StructuralFrame:
-    """Construct a :class:`StructuralFrame` from mapping, grid info, and input_data.
+    """
+    Construct a :class:`StructuralFrame` from mapping, grid info, and input_data.
 
     Parameters
     ----------
@@ -657,19 +731,16 @@ def build_structural_frame(
     default_interpolation : InterpolationMethod, default ``ORDINARY_KRIGING``
         Interpolator assigned to each group (can be overridden later).
     fault_frame : FaultFrame, optional
+        Optional fault frame to attach to the resulting StructuralFrame.
 
     Returns
     -------
     StructuralFrame
         Frame with groups/elements, colors assigned, grid and inputs attached.
-
-    Args:
-        input_data_elements:
-        input_data_elements:
     """
     # Collect input_data
     surface_points = input_data_elements.surface_points.copy()
-    if hasattr(input_data_elements, 'orientations'):
+    if hasattr(input_data_elements, "orientations"):
         orientations = input_data_elements.orientations.copy()
     else:
         orientations = None
@@ -692,7 +763,7 @@ def build_structural_frame(
             missing = required_orientation_cols - set(orientations.columns)
             raise ValueError(f"Orientations missing required columns: {missing}")
 
-    # Turn every value in mapping_object into a tuple to ensure consistency for loops and itertools
+    # Turn every value in mapping_object into a tuple to ensure consistency
     for k, v in mapping_object.items():
         if not isinstance(v, tuple):
             mapping_object[k] = (v,)
@@ -754,7 +825,28 @@ def build_structural_frame(
     return frame
 
 
-def assign_domain_ids_to_points(grid: RegularGrid, domain_map: np.ndarray, df: pd.DataFrame) -> pd.DataFrame:
+def assign_domain_ids_to_points(
+        grid: RegularGrid,
+        domain_map: np.ndarray,
+        df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Assign a ``domain_id`` column to a surface/orientation points DataFrame.
+
+    Parameters
+    ----------
+    grid : RegularGrid
+        Grid used for mapping xyz coordinates to voxel indices.
+    domain_map : np.ndarray
+        Domain id volume in XYZ.
+    df : pd.DataFrame
+        Must contain columns ["X","Y","Z"]. Returns a copy with added "domain_id".
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of input df with integer "domain_id" column.
+    """
     if df.empty:
         out = df.copy()
         out["domain_id"] = pd.Series(dtype=int)
@@ -776,15 +868,21 @@ def assign_domain_ids_to_points(grid: RegularGrid, domain_map: np.ndarray, df: p
 
 
 def effective_domain_components_for_group(
-    domain_ids: np.ndarray,
-    faults: list,
-    fault_activity: dict[str, int],
-    group_idx: int,
+        domain_ids: np.ndarray,
+        faults: list,
+        fault_activity: dict[str, int],
+        group_idx: int,
 ) -> list[set[int]]:
-    """Return list of merged domain-id components for a given group.
+    """
+    Return list of merged domain-id components for a given group.
 
-    Assumes fault_activity[fault.name] stores the *youngest affected group index*.
-    Fault affects group iff group_idx >= youngest_idx.
+    Assumes ``fault_activity[fault.name]`` stores the *youngest affected group index*.
+    Fault affects group iff ``group_idx >= youngest_idx``.
+
+    Notes
+    -----
+    This uses a union-find structure to merge domains across *inactive* faults, i.e.
+    faults that should NOT split the scalar field for this group.
     """
     parent = {int(d): int(d) for d in domain_ids}
 
@@ -819,4 +917,3 @@ def effective_domain_components_for_group(
         r = find(int(d))
         comps.setdefault(r, set()).add(int(d))
     return list(comps.values())
-

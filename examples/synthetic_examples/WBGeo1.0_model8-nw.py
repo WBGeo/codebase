@@ -114,9 +114,6 @@ result = general.compute_structural_model(
     verbose=True,
 )
 
-#%%
-
-result.structural_frame
 
 #%%
 

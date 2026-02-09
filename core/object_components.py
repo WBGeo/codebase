@@ -97,7 +97,6 @@ class StructuralModelResults:
     A class to represent the results of a geological model.
 
         Attributes:.
-            name (str): The name of the model.
             structural_frame (StructuralFrame): The structural frame of the model.
     """
     # TODO: ALEX: This is the simplest version I could think of - does this work for you
