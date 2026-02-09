@@ -8,7 +8,7 @@ from core.object_components import InputData_StructuralElements, InputData_Fault
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
-                                           plot_fault_frame_3D)
+                                           plot_fault_model_3D)
 
 from core.structuralmodeling_components import general, general_faults
 
@@ -52,14 +52,7 @@ general_faults.compute_fault_domains(fault_frame)
 
 # Plot fault domains (2D and 3D possible)
 fault_frame.plot_fault_domain_section(axis='y', index=12)
-plot_fault_frame_3D(fault_frame)
-
-#%%
-
-print(fault_frame.fault_elements[0].get_separated_domains())
-print(fault_frame.fault_elements[0].get_separated_domains())
-print(fault_frame.fault_elements[0].get_domain_pairs())
-print(fault_frame.fault_elements[1].get_domain_pairs())
+plot_fault_model_3D(fault_frame)
 
 #%%
 
@@ -132,13 +125,6 @@ plot_structural_model_2D(frame=frame,
 
 #%%
 
-print(frame.fault_activity_verbose)
-
-print(fault_frame.fault_elements[0].get_separated_domains())
-print(fault_frame.fault_elements[1].get_separated_domains())
-
-#%%
-
 plot_structural_model_3D(frame=frame,
                          mesh_type="masked",
                          show_orientations=True)
@@ -146,7 +132,10 @@ plot_structural_model_3D(frame=frame,
 #%%
 
 # Optional plotting
-# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
-# frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
+frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+frame.plot_age_mask_section(group_nr=1, axis='y', index=12)
+
+
+
 
 

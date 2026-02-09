@@ -260,8 +260,7 @@ class StructuralElement(BaseModel):
         """
         if mesh_type not in {"masked", "unmasked", "combined"}:
             raise ValueError(f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined.")
-        # if mesh_type in self._vertices or mesh_type in self._edges:
-        #     raise ValueError(f"Mesh type '{mesh_type}' already set for element '{self.name}'.")
+
 
         self._vertices[mesh_type] = vertices
         self._edges[mesh_type] = edges
@@ -359,20 +358,6 @@ class StructuralGroup(BaseModel):
             method,
             self._context
         )
-
-        # # Set default parameters when method is set
-        # if method == InterpolationMethod.ORDINARY_KRIGING:
-        #     self._interpolation_params = OrdinaryKrigingParams()
-        # elif method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
-        #     self._interpolation_params = RBFParams()
-        # elif method == InterpolationMethod.UNIVERSAL_COKRIGING:
-        #     self._interpolation_params = UniversalCoKrigingParams()
-        # elif method == InterpolationMethod.GEOINR:
-        #     self._interpolation_params = GeoINRParams()
-        # elif method == InterpolationMethod.LOOP_STRUCTURAL:
-        #     self._interpolation_params = LoopStructuralParams()
-        # else:
-        #     self._interpolation_params = None  # fallback
 
     def set_interpolation_params(self, params: InterpolationParameterSet):
         self._interpolation_params = params
@@ -832,8 +817,8 @@ class FaultElement(BaseModel):
         affects_groups (Optional[List[str]]): Structural groups offset by this fault.
         color (str): Display color for the fault in hex format (default: "#AAAAAA").
         separated_domains (Optional[tuple[int, int]]): Tuple of domain IDs separated by the fault.
-        vertices (np.ndarray): Coordinates of the fault surface vertices.
-        edges (np.ndarray): Connectivity of the fault surface edges.
+        vertices: Dictionary of surface mesh vertices arrays keyed by mesh type ('masked', 'unmasked').
+        edges: Dictionary of surface mesh edges arrays keyed by mesh type ('masked', 'unmasked').
         mask (Optional[np.ndarray]): Boolean mask separating two fault blocks.
     """
     _name: str = PrivateAttr()
@@ -842,8 +827,8 @@ class FaultElement(BaseModel):
     _color: str = PrivateAttr(default="#AAAAAA")  # Default color in hex format
     _separated_domains: Optional[Tuple[FrozenSet[int], FrozenSet[int]]] = PrivateAttr(default=None)
     _domain_pairs: Optional[FrozenSet[Tuple[int, int]]] = PrivateAttr(default=None)
-    _vertices: Optional[np.ndarray] = PrivateAttr(default_factory=None)
-    _edges: Optional[np.ndarray] = PrivateAttr(default_factory=None)
+    _vertices: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
+    _edges: Dict[str, np.ndarray] = PrivateAttr(default_factory=dict)
     _mask: Optional[np.ndarray] = PrivateAttr(default=None)
 
     def __init__(self, name: str, scalar_value: Optional[float] = None):
@@ -867,11 +852,11 @@ class FaultElement(BaseModel):
         return self._color
 
     @property
-    def vertices(self) -> Optional[np.ndarray]:
+    def vertices(self) -> Optional[dict]:
         return self._vertices
 
     @property
-    def edges(self) -> Optional[np.ndarray]:
+    def edges(self) -> Optional[dict]:
         return self._edges
 
     @property
@@ -899,17 +884,43 @@ class FaultElement(BaseModel):
             raise ValueError("Color must be a valid hex string (e.g., '#RRGGBB').")
         self._color = color
 
-    def set_vertices(self, vertices: np.ndarray):
-        """Assign the coordinates of the fault surface vertices."""
-        if not isinstance(vertices, np.ndarray):
-            raise ValueError("Vertices must be a numpy array.")
-        self._vertices = vertices
+    def set_mesh(self, mesh_type: str, vertices: np.ndarray, edges: np.ndarray):
+        """
+        Set the vertices and edges for a specific mesh type (e.g., 'masked', 'unmasked', 'combined').
 
-    def set_edges(self, edges: np.ndarray):
-        """Assign the connectivity of the fault surface edges."""
-        if not isinstance(edges, np.ndarray):
-            raise ValueError("Edges must be a numpy array.")
-        self._edges = edges
+        Raises:
+            ValueError if mesh_type is not one of the allowed types or already exists.
+        """
+        if mesh_type not in {"masked", "unmasked"}:
+            raise ValueError(f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined.")
+
+
+        self._vertices[mesh_type] = vertices
+        self._edges[mesh_type] = edges
+
+    def get_mesh(self, mesh_type: str) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Retrieve the vertices and edges for the given mesh type.
+
+        Raises:
+            KeyError if the mesh type does not exist.
+        """
+        try:
+            return self._vertices[mesh_type], self._edges[mesh_type]
+        except KeyError:
+            raise KeyError(f"Mesh '{mesh_type}' not found in element '{self.name}'.")
+
+    # def set_vertices(self, vertices: np.ndarray):
+    #     """Assign the coordinates of the fault surface vertices."""
+    #     if not isinstance(vertices, np.ndarray):
+    #         raise ValueError("Vertices must be a numpy array.")
+    #     self._vertices = vertices
+    #
+    # def set_edges(self, edges: np.ndarray):
+    #     """Assign the connectivity of the fault surface edges."""
+    #     if not isinstance(edges, np.ndarray):
+    #         raise ValueError("Edges must be a numpy array.")
+    #     self._edges = edges
 
     def set_domain_mask(self, mask: np.ndarray):
         """

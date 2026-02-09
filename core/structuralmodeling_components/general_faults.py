@@ -291,8 +291,10 @@ def compute_fault_domains(
                                              fault_frame._grid.spacing,
                                              fault_frame._grid.extent)
 
-        fault.set_vertices(vertices[0])
-        fault.set_edges(edges[0])
+        fault.set_mesh("unmasked", vertices[0], edges[0])
+
+        # fault.set_vertices(vertices[0])
+        # fault.set_edges(edges[0])
 
     # 🔎 After all faults are processed
     check_fault_crosscuts_via_isovalue_bands(fault_frame)

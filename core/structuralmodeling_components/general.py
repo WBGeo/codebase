@@ -176,81 +176,6 @@ def run_interpolation_with_fault_domains(
                     )
                 elem.set_scalar_value(float(scalar_values[elem.name]))
 
-        # for domain_id in active_domain_ids:
-        #     sp_filtered_all = sp_in_domain[sp_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
-        #     ori_filtered_all = (
-        #         ori_in_domain[ori_in_domain["domain_id"] == domain_id].drop(columns="domain_id")
-        #         if ori_in_domain is not None
-        #         else None
-        #     )
-        #
-        #     # Crop grid if requested
-        #     use_grid = frame.grid
-        #     bbox = None
-        #     if crop_to_domain and len(domain_ids) > 1:
-        #         bbox = compute_domain_bbox_indices(domain_map, domain_id)
-        #         if bbox is not None:
-        #             use_grid = build_subgrid_from_bbox(frame.grid, bbox)
-        #
-        #     # Filter points for this group
-        #     sp_filtered = sp_filtered_all[sp_filtered_all["formation"].isin(group_formations)]
-        #     ori_filtered = None
-        #     if ori_filtered_all is not None:
-        #         ori_filtered = ori_filtered_all[ori_filtered_all["formation"].isin(group_formations)]
-        #
-        #     # Skip domain if no points for this group (possible for young groups above faults)
-        #     if sp_filtered.empty:
-        #         continue
-        #
-        #     # Check minimum points per element
-        #     for elem in group.structural_elements:
-        #         n_pts = (sp_filtered["formation"] == elem.name).sum()
-        #         if n_pts < 2:
-        #             raise ValueError(
-        #                 f"❌ Not enough surface points for '{elem.name}' in domain {domain_id}."
-        #             )
-        #
-        #     # Pick interpolator
-        #     method = group.interpolation_method
-        #     if method not in interpolate_dispatch:
-        #         raise ValueError(f"Unsupported interpolation method: {method}")
-        #
-        #     # ---- CALL: interpolate
-        #     scalar_field_sub, scalar_values = interpolate_dispatch[method](
-        #         group=group,
-        #         grid=use_grid,
-        #         group_surface_points_df=sp_filtered,
-        #         group_orientations_points_df=ori_filtered,
-        #     )
-        #
-        #     scalar_field_sub = scalar_field_sub.transpose(2, 1, 0)
-        #
-        #     # Write back to full grid if cropped
-        #     if crop_to_domain and bbox is not None and len(domain_ids) > 1:
-        #         # 1) Prepare full-size field
-        #         full_shape = tuple(frame.grid.resolution)  # XYZ
-        #         scalar_field_full = np.full(full_shape, np.nan, dtype=scalar_field_sub.dtype)
-        #
-        #         kx0, kx1, ky0, ky1, kz0, kz1 = bbox
-        #
-        #         scalar_field_full[kx0:kx1 + 1, ky0:ky1 + 1, kz0:kz1 + 1] = scalar_field_sub
-        #
-        #         scalar_field = scalar_field_full  # use for combination below
-        #
-        #     else:
-        #         scalar_field = scalar_field_sub
-        #
-        #     # Combine into group._scalar_field using domain map (also XYZ)
-        #     group._scalar_field = np.where(domain_map == domain_id, scalar_field, group.get_scalar_field())
-        #
-        #     # Store scalar values per element
-        #     for elem in group.structural_elements:
-        #         if elem.name not in scalar_values:
-        #             raise ValueError(
-        #                 f"Interpolator did not return a scalar value for element '{elem.name}' in group '{group.name}'."
-        #             )
-        #         elem.set_scalar_value(float(scalar_values[elem.name]))
-
 # --- 2) Age masks per domain --------------------------------------------------
 
 
@@ -374,7 +299,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
                 group_idx=group_idx,  # IMPORTANT: original index (youngest->oldest)
             )
 
-        print(f"[{group.name}] components:", [sorted(list(c)) for c in components])
+        # print(f"[{group.name}] components:", [sorted(list(c)) for c in components])
 
         # Process each merged component
         for comp_ids in components:
@@ -516,6 +441,25 @@ def extract_all_meshes_per_domain(
         for element in group.structural_elements:
             element.set_mesh("combined", combined_vertices[idx], combined_edges[idx])
             idx += 1
+
+    # ---- masked meshes for faults using existing age masks ----
+    if fault_frame is not None:
+        for fault in fault_frame.fault_elements:
+
+            # this mask is the age mask defined by youngest group affected by this fault
+            index = frame.fault_activity_verbose[fault.name]["youngest_group_index"]-1
+            mc_fault_mask = frame.structural_groups[index].get_mask() if index >= 0 else np.ones_like(sf, dtype=bool)
+            # inverse
+            mc_fault_mask = ~mc_fault_mask
+
+            verts, faces = marching_cubes_per_element(
+                fault.scalar_field,  # scalar field
+                fault.scalar_value,  # isovalue
+                frame.grid.spacing,
+                frame.grid.extent,
+                mask=mc_fault_mask,  # only keep mesh where fault_mask is True
+            )
+            fault.set_mesh("masked", verts, faces)
 
 # -----------------------------------------------------------------------------
 # Pipeline driver

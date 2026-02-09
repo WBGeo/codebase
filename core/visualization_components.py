@@ -16,6 +16,7 @@ def plot_structural_model_3D(
     frame,
     *,
     mesh_type="masked",              # "masked" | "unmasked" | "combined" (if present)
+    fault_mesh_type="masked",        # same options for fault meshes
     show_surface_meshes=True,
     show_points=True,
     show_orientations=True,
@@ -78,8 +79,10 @@ def plot_structural_model_3D(
         fault_entries = []
 
         for fault in getattr(frame._fault_frame, "fault_elements", []):
-            fv = getattr(fault, "vertices", None)
-            ff = getattr(fault, "edges", None)
+            if fault_mesh_type not in getattr(fault, "vertices", {}) or fault_mesh_type not in getattr(fault, "edges", {}):
+                fault_mesh_type = "unmasked"  # fallback if requested type not present
+            fv = getattr(fault, "vertices", None)[fault_mesh_type]
+            ff = getattr(fault, "edges", None)[fault_mesh_type]
             if fv is None or ff is None or len(fv) == 0 or len(ff) == 0:
                 continue
             faces_flat = _faces_to_vtk(np.asarray(ff))
@@ -277,8 +280,9 @@ def plot_structural_model_2D(
     plt.show()
 
 
-def plot_fault_frame_3D(
+def plot_fault_model_3D(
     fault_frame,
+    mesh_type="unmasked",
     show_surface_meshes=True,
     show_points=True,
     show_orientations=True,
@@ -292,8 +296,8 @@ def plot_fault_frame_3D(
     for fault in getattr(fault_frame, "_fault_elements", []):
         # mesh
         if show_surface_meshes:
-            fv = getattr(fault, "vertices", None)
-            ff = getattr(fault, "edges", None)
+            fv = getattr(fault, "vertices", None)[mesh_type]
+            ff = getattr(fault, "edges", None)[mesh_type]
             if fv is not None and ff is not None and len(fv) > 0 and len(ff) > 0:
                 faces_flat = _faces_to_vtk(np.asarray(ff))
                 try:
