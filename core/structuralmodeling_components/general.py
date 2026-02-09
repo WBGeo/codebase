@@ -29,7 +29,7 @@ from core.structuralmodeling_components.structural_objects.structural_objects im
 )
 from core.structuralmodeling_components.structural_objects.structural_objects import FaultFrame
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 from core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group import (
     interpolate_group_ordinary_kriging,
@@ -496,8 +496,8 @@ def compute_structural_model(
 
     Returns
     -------
-    np.ndarray
-        Final lithology volume (IDs are global across domains).
+    StructuralModelResults
+        Results object containing the updated structural frame with scalar fields, masks, and meshes.
     """
 
     # --- prepare domain map (supports "no faults" case) ---
@@ -544,7 +544,6 @@ def compute_structural_model(
 
     # return a StructuralModelResults object instead
     result = StructuralModelResults(
-        name=f"{frame.name}_results",
         structural_frame=copy.deepcopy(frame),
     )
 

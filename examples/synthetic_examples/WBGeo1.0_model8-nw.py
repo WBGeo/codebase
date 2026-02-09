@@ -70,10 +70,8 @@ data_elements = InputData_StructuralElements(name='Model_8',
                                              )
 
 # Create a StructuralFrame
-frame = general.build_structural_frame(data_elements.mapping_object,
-                                       grid,
-                                       data_elements.surface_points,
-                                       data_elements.orientations,
+frame = general.build_structural_frame(input_data_elements=data_elements,
+                                       grid = grid,
                                        fault_frame=fault_frame)
 frame.detailed_report()
 
@@ -110,7 +108,7 @@ frame.detailed_report()
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-general.compute_structural_model(
+result = general.compute_structural_model(
     frame,
     extract_meshes=True,
     verbose=True,
@@ -118,14 +116,18 @@ general.compute_structural_model(
 
 #%%
 
-plot_structural_model_2D(frame=frame,
+result.structural_frame
+
+#%%
+
+plot_structural_model_2D(frame=result.structural_frame,
                          axis='y',
                          show_input_data=True,
                          index=25)
 
 #%%
 
-plot_structural_model_3D(frame=frame,
+plot_structural_model_3D(frame=result.structural_frame,
                          mesh_type="masked",
                          show_orientations=True)
 
