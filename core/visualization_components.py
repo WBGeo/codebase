@@ -186,7 +186,6 @@ def plot_structural_model_2D(
         )
         print(f"has_result: {has_result}")
         if has_result is False:
-            print("hello")
             warnings.warn(
                 "show_result=True but no lithology block found. "
                 "Plotting input data only.",
@@ -219,8 +218,18 @@ def plot_structural_model_2D(
             if f_sf is None or f_sv is None:
                 continue
             f_slice = np.take(f_sf, index, axis=dim).T
+
+            # if a result was already computed
+            if show_result and frame.lith_block is not None:
+                # this mask is the age mask defined by youngest group affected by this fault
+                group_index = frame.fault_activity_verbose[fault.name]["youngest_group_index"] - 1
+                fault_mask = np.take(frame.structural_groups[group_index].get_mask().T, index, axis=dim) if index >= 0 else np.ones_like(f_slice, dtype=bool)
+                f_slice_masked = np.ma.array(f_slice, mask=fault_mask)
+            else:
+                # Fallback to unmasked contour if no result or mask available
+                f_slice_masked = f_slice
             fcol = getattr(fault, "color", None) or "black"
-            CSf = ax.contour(x_coords, y_coords, f_slice.T, levels=[f_sv], colors=[fcol], linewidths=1.5, linestyles="-")
+            CSf = ax.contour(x_coords, y_coords, f_slice_masked.T, levels=[f_sv], colors=[fcol], linewidths=1.5, linestyles="-")
             ax.clabel(CSf, fmt={f_sv: f"Fault: {fault.name}"}, fontsize=7)
 
     # ---- input input_data (optional) ----
