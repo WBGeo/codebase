@@ -1,11 +1,12 @@
 from skimage import measure
 
+
 def marching_cubes_new(block, elements, spacing, extent):
     """
     Extract the surface meshes using marching cubes.
     Args:
         block (np.array): The block to extract the surface meshes from.
-        elements (list[int]): IDs of unique structural elements in model.
+        elements (list[float]): IDs of unique structural elements in model.
         spacing (tuple): The spacing between grid points in the block.
         extent (tuple): The extent of the model.
 

@@ -1,24 +1,53 @@
 """
 Pipeline utilities for fault modeling and fault domaining.
+
+This module provides:
+- Fault interpolation (GemPy Universal CoKriging variant) to obtain scalar fields and isovalues
+- Domain map generation by iteratively splitting existing domains using fault masks
+- Cross-cut detection using overlapping isovalue bands
+- Domain adjacency (domain pair) inference via a thin band around the fault surface
+
+Axis-order convention notes
+---------------------------
+There is a mix of XYZ and ZYX conventions in this file (kept as-is).
+When you see transposes like `.transpose(2, 1, 0)`, those are converting between
+(Z, Y, X) and (X, Y, Z) representations. The code preserves the existing convention.
 """
+
+from __future__ import annotations
+
+from typing import Optional, TypeAlias, FrozenSet
+
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import gempy as gp
 
-from typing import Optional, Tuple, FrozenSet
-
 from core.object_components import InputData_FaultElements
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
-from core.structuralmodeling_components.structural_objects.structural_objects import FaultFrame, FaultElement
+from core.structuralmodeling_components.structural_objects.grids.grid_classes import (
+    RegularGrid,
+)
+from core.structuralmodeling_components.structural_objects.structural_objects import (
+    FaultFrame,
+    FaultElement,
+)
 
 from core.utility.surface_mesh_extraction import marching_cubes_new
 
+# -----------------------------------------------------------------------------
+# Type aliases (readability only)
+# -----------------------------------------------------------------------------
+FloatArray: TypeAlias = npt.NDArray[np.floating]
+IntArray: TypeAlias = npt.NDArray[np.integer]
+BoolArray: TypeAlias = npt.NDArray[np.bool_]
+Pairs: TypeAlias = FrozenSet[tuple[int, int]]
+
 
 def check_fault_crosscuts_via_isovalue_bands(
-        fault_frame: FaultFrame,
-        thickness_world: float | None = None,
-        voxels: float = 1.0,
-        use_gradient: bool = True,
+    fault_frame: FaultFrame,
+    thickness_world: float | None = None,
+    voxels: float = 1.0,
+    use_gradient: bool = True,
 ) -> None:
     """
     Detect cross-cutting faults by overlapping 'isovalue bands' around each fault's own scalar isovalue.
@@ -26,39 +55,42 @@ def check_fault_crosscuts_via_isovalue_bands(
     For each fault i with scalar field φ_i and isovalue L_i (fault.scalar_value):
         band_i = |φ_i - L_i| <= tol_scalar_i
 
-    If any voxel satisfies band_i & band_j for i!=j, the faults crosscut.
+    If any voxel satisfies band_i & band_j for i!=j, the faults cross-cut.
 
     Parameters
     ----------
+    fault_frame : FaultFrame
+        FaultFrame containing fault elements and an assigned grid.
     thickness_world : float | None
-        Desired half-thickness (in world units, e.g. meters) of each isovalue band.
+        Desired half-thickness (in world units) of each isovalue band.
         If None, it is computed as `voxels * min(grid.spacing)`.
     voxels : float
-        If `thickness_world` is None, use this many voxels (based on min spacing) as the half-thickness.
+        If `thickness_world` is None, uses this many voxels (based on min spacing) as the half-thickness.
     use_gradient : bool
-        If True (recommended), convert the world thickness to scalar tolerance per-fault using
-        that fault's median gradient magnitude: tol_scalar_i = thickness_world * median(|∇φ_i|).
-        If False, assumes φ is approximately a signed distance function and uses tol_scalar_i = thickness_world.
+        If True (recommended), convert world thickness to scalar tolerance per-fault using
+        that fault's median gradient magnitude:
+            tol_scalar_i = thickness_world * median(|∇φ_i|)
+        If False, assumes φ is approximately a signed distance function and uses:
+            tol_scalar_i = thickness_world
 
     Raises
     ------
     ValueError
         If any pair of faults' bands overlap (i.e., cross-cut is detected).
     """
-
-    if fault_frame._grid is None:
+    if fault_frame.grid is None:
         raise ValueError("FaultFrame grid must be set.")
-    spacing = getattr(fault_frame._grid, "spacing", None)
+    spacing = getattr(fault_frame.grid, "spacing", None)
     if spacing is None:
         raise ValueError("Grid.spacing must be defined to compute band thickness.")
 
-    # Determine band thickness in world units (meters)
+    # Determine band thickness in world units
     if thickness_world is None:
         thickness_world = float(voxels) * float(np.min(spacing))
 
     # Collect faults that have scalar fields and an isovalue
-    faults = []
-    for f in fault_frame._fault_elements:
+    faults: list[tuple[str, np.ndarray, float]] = []
+    for f in fault_frame.fault_elements:
         field = getattr(f, "scalar_field", None)
         level = getattr(f, "scalar_value", None)
         if field is None or level is None:
@@ -71,8 +103,8 @@ def check_fault_crosscuts_via_isovalue_bands(
         return  # nothing to compare
 
     # Compute per-fault scalar tolerances from world thickness
-    tol_scalar = []
-    for nm, fld, _ in faults:
+    tol_scalar: list[float] = []
+    for _, fld, _ in faults:
         if use_gradient:
             # gradient in scalar units per meter along each axis
             gx, gy, gz = np.gradient(fld, *spacing, edge_order=1)
@@ -87,7 +119,7 @@ def check_fault_crosscuts_via_isovalue_bands(
             tol_scalar.append(thickness_world)
 
     # Build boolean bands once
-    bands = []
+    bands: list[tuple[str, npt.NDArray[np.bool_]]] = []
     for (nm, fld, level), ts in zip(faults, tol_scalar):
         band = np.abs(fld - level) <= ts
         bands.append((nm, band))
@@ -102,15 +134,28 @@ def check_fault_crosscuts_via_isovalue_bands(
             if not band_j.any():
                 continue
             if np.any(band_i & band_j):
-                raise ValueError(f"❌ Fault '{name_i}' crosscuts fault '{name_j}' (isovalue-band overlap).")
+                raise ValueError(
+                    f"❌ Fault '{name_i}' crosscuts fault '{name_j}' (isovalue-band overlap)."
+                )
 
 
 def interpolate_group_universal_cokriging_for_faults(
-        element: FaultElement,
-        grid,
-        fault_surface_points_df: pd.DataFrame,
-        fault_orientations_points_df: Optional[pd.DataFrame] = None,
+    element: FaultElement,
+    grid: RegularGrid,
+    fault_surface_points_df: pd.DataFrame,
+    fault_orientations_points_df: Optional[pd.DataFrame] = None,
 ) -> None:
+    """
+    Interpolate a fault scalar field using GemPy and store the result on the FaultElement.
+
+    Notes
+    -----
+    - This function sets:
+        - element.scalar_value (from scalar_field_at_surface_points)
+        - element.scalar_field (from scalar_field_matrix reshaped to grid.resolution)
+        - element.domain_mask (boolean, positive side convention)
+    - Axis-order is preserved as implemented (no refactor).
+    """
     if fault_surface_points_df.empty:
         raise ValueError(f"No surface points provided for {element.name}")
 
@@ -145,8 +190,8 @@ def interpolate_group_universal_cokriging_for_faults(
 
     geo_model = gp.create_geomodel(
         project_name="random",
-        extent=grid.extent,
-        resolution=grid.resolution,
+        extent=list(grid.extent),
+        resolution=list(grid.resolution),
         structural_frame=gempy_structural_frame,
     )
 
@@ -160,8 +205,10 @@ def interpolate_group_universal_cokriging_for_faults(
         float(geo_model.solutions.raw_arrays.scalar_field_at_surface_points[0][0])
     )
 
-    # NOTE: transpose if that’s how your marching/plotting expects it
-    sf = geo_model.solutions.raw_arrays.scalar_field_matrix[0].reshape(tuple(grid.resolution))
+    # NOTE: kept exactly as-is: reshape uses tuple(grid.resolution)
+    sf = geo_model.solutions.raw_arrays.scalar_field_matrix[0].reshape(
+        tuple(grid.resolution)
+    )
     element.set_scalar_field(sf)
 
     # Domain mask convention (positive side = True)
@@ -169,29 +216,49 @@ def interpolate_group_universal_cokriging_for_faults(
 
 
 def compute_fault_domains(
-        fault_frame: FaultFrame,
+    fault_frame: FaultFrame,
 ) -> None:
     """
-    Interpolates all faults and generates a domain map across the model grid.
-    Relies on fault.domain_mask being set by the interpolator_func.
+    Interpolate all faults and generate a domain map across the model grid.
+
+    This function relies on fault.domain_mask being set by the interpolator.
+
+    Side effects
+    ------------
+    - Sets `fault_frame._domain_map`
+    - Sets `fault_frame._domain_masks`
+    - Sets per-fault separated_domains and domain_pairs
+    - Extracts unmasked fault meshes and stores them on each FaultElement
+    - Performs a cross-cut sanity check at the end
+
+    Raises
+    ------
+    ValueError
+        If required frame inputs are missing or interpolation fails.
+    RuntimeError
+        If any fault does not generate a valid split or yields no adjacency pairs.
     """
-    if not fault_frame._grid:
+    if not fault_frame.grid:
         raise ValueError("Grid must be set before domain generation.")
-    if fault_frame._fault_surface_points_df is None:
+    if fault_frame.fault_surface_points_df is None:
         raise ValueError("Fault surface points must be set.")
 
     # Initialize single-domain model
-    domain_map = np.zeros((fault_frame._grid.resolution[2],  # Z
-                           fault_frame._grid.resolution[1],  # Y
-                           fault_frame._grid.resolution[0]),  # X
-                          dtype=int)
+    # NOTE: kept axis order (Z,Y,X) here exactly as in original code.
+    domain_map: IntArray = np.zeros(
+        (
+            fault_frame.grid.resolution[2],  # Z
+            fault_frame.grid.resolution[1],  # Y
+            fault_frame.grid.resolution[0],  # X
+        ),
+        dtype=int,
+    )
 
     domain_id_counter = 1
-
-    temp_ids = []  # Track temporary domain IDs before remapping
+    temp_ids: list[int] = []  # Track temporary domain IDs before remapping
 
     # Interpolate faults from youngest to oldest
-    for i, fault in enumerate(reversed(fault_frame._fault_elements)):  # Youngest first
+    for _, fault in enumerate(reversed(fault_frame.fault_elements)):  # Youngest first
         name = fault.name
 
         # Extract surface point/orientation input_data for this fault
@@ -202,13 +269,17 @@ def compute_fault_domains(
             raise ValueError(f"❌ No surface points found for fault '{name}'.")
 
         # Run interpolation (sets scalar field, scalar value, mask internally)
-        interpolate_group_universal_cokriging_for_faults(fault_frame.get_element_by_name(name),
-                                                              fault_frame._grid,
-                                                              fault_surface_points_df=points,
-                                                              fault_orientations_points_df=orientations)
+        interpolate_group_universal_cokriging_for_faults(
+            fault_frame.get_element_by_name(name),
+            fault_frame.grid,
+            fault_surface_points_df=points,
+            fault_orientations_points_df=orientations,
+        )
 
         if fault.get_domain_mask() is None:
-            raise ValueError(f"❌ Interpolator did not set domain_mask for fault '{name}'.")
+            raise ValueError(
+                f"❌ Interpolator did not set domain_mask for fault '{name}'."
+            )
 
         fault_mask = fault.get_domain_mask()
 
@@ -236,11 +307,13 @@ def compute_fault_domains(
 
     # Remap domain IDs to consecutive values starting from 0
     unique_ids = np.unique(domain_map)
-    remap = {old: new for new, old in enumerate(unique_ids)}
+    remap: dict[int, int] = {int(old): int(new) for new, old in enumerate(unique_ids)}
     remapped_map = np.vectorize(remap.get)(domain_map)
+
+    # NOTE: preserved exactly: stored transpose on _domain_map
     fault_frame._domain_map = remapped_map.T
 
-    # remapped_map is currently ZYX in your code; convert to XYZ once
+    # remapped_map is currently ZYX; convert to XYZ once
     domain_map_xyz = remapped_map.transpose(2, 1, 0)
 
     # --- ALSO store separated_domains (global side-sets), for reporting/sanity ---
@@ -254,16 +327,16 @@ def compute_fault_domains(
         right_ids = set(np.unique(domain_map_xyz[~mask]))
 
         if not left_ids or not right_ids:
-            raise RuntimeError(f"Fault '{fault.name}' does not create a valid split (empty side).")
+            raise RuntimeError(
+                f"Fault '{fault.name}' does not create a valid split (empty side)."
+            )
 
         fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
 
     for fault in fault_frame.fault_elements:
-        # Ensure scalar_field is XYZ (you said you standardized to XYZ later;
-        # here in this function it looks like it's already in the "native" orientation you use)
+        # Ensure scalar_field is XYZ for adjacency pair inference
         sf = fault.scalar_field
         if sf.shape != domain_map_xyz.shape:
-            # if sf is ZYX, convert to XYZ
             sf = sf.transpose(2, 1, 0)
 
         pairs = compute_domain_pairs_from_fault_band(
@@ -276,28 +349,28 @@ def compute_fault_domains(
         )
 
         if not pairs:
-            raise RuntimeError(f"Fault '{fault.name}' produced no domain_pairs (check band tolerance / orientation).")
+            raise RuntimeError(
+                f"Fault '{fault.name}' produced no domain_pairs (check band tolerance / orientation)."
+            )
 
-        fault.set_domain_pairs(pairs)  # <-- you'll add this setter on the FaultElement
+        fault.set_domain_pairs(pairs)
 
-    #  Store per-domain masks
+    # Store per-domain masks (kept as-is: uses remapped_map in ZYX orientation)
     fault_frame._domain_masks = {}
     for uid in np.unique(remapped_map):
-        fault_frame._domain_masks[uid] = remapped_map == uid
+        fault_frame.domain_masks[int(uid)] = remapped_map == uid
 
     # Extract surfaces meshes for faults
-    for i, fault in enumerate(reversed(fault_frame.fault_elements)):
-        vertices, edges = marching_cubes_new(fault.scalar_field,
-                                             [fault.scalar_value],
-                                             fault_frame._grid.spacing,
-                                             fault_frame._grid.extent)
-
+    for _, fault in enumerate(reversed(fault_frame.fault_elements)):
+        vertices, edges = marching_cubes_new(
+            fault.scalar_field,
+            [fault.scalar_value],
+            fault_frame.grid.spacing,
+            fault_frame.grid.extent,
+        )
         fault.set_mesh("unmasked", vertices[0], edges[0])
 
-        # fault.set_vertices(vertices[0])
-        # fault.set_edges(edges[0])
-
-    # 🔎 After all faults are processed
+    # After all faults are processed
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
 
 
@@ -305,19 +378,20 @@ def build_fault_frame(
     input_data_fault_elements: InputData_FaultElements,
     grid: RegularGrid,
 ) -> FaultFrame:
-    """Build a :class:`FaultFrame` from ordered fault names, surface input_data, and a grid.
+    """
+    Build a :class:`FaultFrame` from ordered fault names, surface data, and a grid.
 
     Parameters
     ----------
     input_data_fault_elements : InputData_FaultElements
-        Input input_data for the fault elements, including names, surface points, and orientations.
+        Input data for the fault elements, including names, surface points, and orientations.
     grid : RegularGrid
         Model grid.
 
     Returns
     -------
     FaultFrame
-        A fully configured fault frame with elements, colors, input input_data, and grid.
+        Fully configured fault frame with elements, colors, input data, and grid.
     """
     # Collect input data
     fault_names = input_data_fault_elements.fault_names
@@ -327,8 +401,7 @@ def build_fault_frame(
     # Assign default gray colors if none provided
     colors = ["#555555"] * len(fault_names)
 
-    fault_elements = []
-
+    fault_elements: list[FaultElement] = []
     for name, color in reversed(list(zip(fault_names, colors))):
         fault = FaultElement(name=name)
         fault.set_color(color)
@@ -341,19 +414,40 @@ def build_fault_frame(
 
     return fault_frame
 
+
 def compute_domain_pairs_from_fault_band(
     domain_map_xyz: np.ndarray,
     scalar_field_xyz: np.ndarray,
     scalar_value: float,
-    spacing_xyz: np.ndarray,
+    spacing_xyz: npt.ArrayLike,
     *,
     voxels: float = 1.0,
     use_gradient: bool = True,
 ) -> frozenset[tuple[int, int]]:
     """
     Compute adjacent domain-id pairs across a fault by sampling a thin band around the fault surface.
-    All arrays must be XYZ.
-    Returns pairs as sorted (a,b) with a<b.
+
+    All arrays must be XYZ. Returns pairs as sorted (a, b) with a < b.
+
+    Parameters
+    ----------
+    domain_map_xyz : np.ndarray
+        Domain IDs in XYZ.
+    scalar_field_xyz : np.ndarray
+        Fault scalar field in XYZ.
+    scalar_value : float
+        Isovalue for the fault surface.
+    spacing_xyz : np.ndarray
+        Grid spacing (dx, dy, dz).
+    voxels : float, default 1.0
+        Half-thickness of the sampling band in voxels (converted via min spacing).
+    use_gradient : bool, default True
+        If True, scale scalar tolerance by median gradient magnitude (more robust).
+
+    Returns
+    -------
+    frozenset[tuple[int, int]]
+        Adjacent domain pairs across the fault surface.
     """
     thickness_world = float(voxels) * float(np.min(spacing_xyz))
 
@@ -367,7 +461,7 @@ def compute_domain_pairs_from_fault_band(
 
     band = np.abs(scalar_field_xyz - float(scalar_value)) <= tol_scalar
 
-    # two sides near the surface
+    # Two sides near the surface
     pos = band & (scalar_field_xyz > scalar_value)
     neg = band & (scalar_field_xyz <= scalar_value)
 
