@@ -31,13 +31,13 @@ data_faults = InputData_FaultElements(name='Faults_Model_8',
                                       fault_surface_points=pd.read_csv(
                                           cwd + "/examples/input_data/model8_surface_points_df.csv"),
                                       fault_orientations=pd.read_csv(
-                                          cwd + "/examples/input_data/model8_orientations_df.csv"))
+                                          cwd + "/examples/input_data/model8_orientations_df.csv"),
+                                      fault_names=['fault1', 'fault2']
+                                      )
 
 # Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
-    fault_surface_points_df=data_faults.fault_surface_points,
-    fault_orientations_df=data_faults.fault_orientations,
-    fault_names=["fault1", "fault2"],
+    input_data_fault_elements=data_faults,
     grid=grid
 )
 

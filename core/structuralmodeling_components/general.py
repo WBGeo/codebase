@@ -7,6 +7,7 @@ Main stages (per-domain when faults are provided):
   3) Lithology block assembly
   4) (Optional) Masked surface mesh extraction for each element
 """
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ from matplotlib.colors import to_hex
 import itertools
 import colorsys
 
+from core.object_components import InputData_StructuralElements
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 
@@ -630,10 +632,8 @@ def generate_grouped_colors_per_element(groups: list, base_colormap: str = "Acce
 
 
 def build_structural_frame(
-    mapping_object: Dict[str, Tuple[str, ...]],
+    input_data_elements: InputData_StructuralElements,
     grid: RegularGrid,
-    surface_points: pd.DataFrame,
-    orientations: Optional[pd.DataFrame] = None,
     default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING,
     fault_frame: Optional["FaultFrame"] = None,
 ) -> StructuralFrame:
@@ -641,14 +641,10 @@ def build_structural_frame(
 
     Parameters
     ----------
-    mapping_object : dict[str, tuple[str, ...]]
-        Mapping of group name -> tuple of element names in *youngest to oldest* order.
+    input_data_elements : InputData_StructuralElements
+        Input data containing mapping, surface points, and optional orientations.
     grid : RegularGrid
         Model grid.
-    surface_points : pd.DataFrame
-        Surface points with columns ``['X', 'Y', 'Z', 'formation']``.
-    orientations : pd.DataFrame, optional
-        Orientations with columns ``['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z', 'formation']``.
     default_interpolation : InterpolationMethod, default ``ORDINARY_KRIGING``
         Interpolator assigned to each group (can be overridden later).
     fault_frame : FaultFrame, optional
@@ -657,7 +653,19 @@ def build_structural_frame(
     -------
     StructuralFrame
         Frame with groups/elements, colors assigned, grid and inputs attached.
+
+    Args:
+        input_data_elements:
+        input_data_elements:
     """
+    # Collect input_data
+    surface_points = input_data_elements.surface_points.copy()
+    if hasattr(input_data_elements, 'orientations'):
+        orientations = input_data_elements.orientations.copy()
+    else:
+        orientations = None
+    mapping_object = input_data_elements.mapping_object.copy()
+
     # Normalize column names for consistency
     surface_points = surface_points.rename(columns=str.strip)
     if orientations is not None:

@@ -7,6 +7,7 @@ import gempy as gp
 
 from typing import Optional, Tuple, FrozenSet
 
+from core.object_components import InputData_FaultElements
 from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structuralmodeling_components.structural_objects.structural_objects import FaultFrame, FaultElement
 
@@ -301,21 +302,15 @@ def compute_fault_domains(
 
 
 def build_fault_frame(
-    fault_surface_points_df: pd.DataFrame,
-    fault_orientations_df: pd.DataFrame,
-    fault_names: list,  # youngest to oldest
+    input_data_fault_elements: InputData_FaultElements,
     grid: RegularGrid,
 ) -> FaultFrame:
     """Build a :class:`FaultFrame` from ordered fault names, surface input_data, and a grid.
 
     Parameters
     ----------
-    fault_surface_points_df : pd.DataFrame
-        Columns: ``['X', 'Y', 'Z', 'formation']``.
-    fault_orientations_df : pd.DataFrame
-        Columns: ``['X', 'Y', 'Z', 'G_x', 'G_y', 'G_z', 'formation']``.
-    fault_names : list
-        Fault names ordered from youngest to oldest (input convention).
+    input_data_fault_elements : InputData_FaultElements
+        Input input_data for the fault elements, including names, surface points, and orientations.
     grid : RegularGrid
         Model grid.
 
@@ -324,6 +319,11 @@ def build_fault_frame(
     FaultFrame
         A fully configured fault frame with elements, colors, input input_data, and grid.
     """
+    # Collect input data
+    fault_names = input_data_fault_elements.fault_names
+    fault_surface_points_df = input_data_fault_elements.fault_surface_points.copy()
+    fault_orientations_df = input_data_fault_elements.fault_orientations.copy()
+
     # Assign default gray colors if none provided
     colors = ["#555555"] * len(fault_names)
 

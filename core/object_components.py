@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pyvista
 import typing
 import numpy as np
@@ -83,6 +85,7 @@ class InputData_FaultElements:
     name: str
     fault_surface_points: PandasDataFrame
     fault_orientations: PandasDataFrame  # Might be optional in future when not only UCK is used here
+    fault_names: List[str] # This allows us to use one input data file
 
 
 @wbgeo_type(name='Result of a structural geological model', color='blue', identifier='GeomodelResults')
