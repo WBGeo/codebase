@@ -21,7 +21,7 @@ cwd = os.getcwd()
 # Create grid
 grid = RegularGrid(
     extent=(0, 2000, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(100, 50, 50)  # Example resolution
+    resolution=(40, 20, 20)  # Example resolution
 )
 
 #%%
@@ -51,7 +51,7 @@ general_faults.compute_fault_domains(fault_frame)
 #%%
 
 # Plot fault domains (2D and 3D possible)
-fault_frame.plot_fault_domain_section(axis='y', index=12)
+fault_frame.plot_fault_domain_section(axis='y')
 plot_fault_model_3D(fault_frame)
 
 #%%
@@ -117,9 +117,7 @@ frame.fault_activity_verbose
 # frame["Top"].set_interpolation_method("Loop Structural")
 # frame["Mid"].set_interpolation_method("Loop Structural")
 # frame["Bot"].set_interpolation_method("Loop Structural")
-# frame["Top"].configure_interpolation_params(interpolator_type="FDI")
-# frame["Mid"].configure_interpolation_params(interpolator_type="FDI")
-# frame["Bot"].configure_interpolation_params(interpolator_type="FDI")
+
 
 frame.detailed_report()
 
@@ -137,8 +135,7 @@ result = general.compute_structural_model(
 
 plot_structural_model_2D(frame=result.structural_frame,
                          axis='y',
-                         show_input_data=True,
-                         index=25)
+                         show_input_data=True)
 
 #%%
 

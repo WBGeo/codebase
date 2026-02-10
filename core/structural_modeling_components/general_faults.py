@@ -32,7 +32,7 @@ from core.structural_modeling_components.structural_objects.structural_objects i
     FaultElement,
 )
 
-from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes_new
+from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -362,7 +362,7 @@ def compute_fault_domains(
 
     # Extract surfaces meshes for faults
     for _, fault in enumerate(reversed(fault_frame.fault_elements)):
-        vertices, edges = marching_cubes_new(
+        vertices, edges = marching_cubes(
             fault.scalar_field,
             [fault.scalar_value],
             fault_frame.grid.spacing,

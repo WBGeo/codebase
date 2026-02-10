@@ -515,6 +515,12 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             # inverse
             mc_fault_mask = ~mc_fault_mask
 
+            # add a check to see if mc_fault_maks has any True values, if not skip marching cubes for this fault
+            if not np.any(mc_fault_mask):
+                # inverse again
+                mc_fault_mask = ~mc_fault_mask
+                print("problem detected")
+
             verts, faces = marching_cubes_per_element(
                 fault.scalar_field,  # scalar field
                 fault.scalar_value,  # isovalue

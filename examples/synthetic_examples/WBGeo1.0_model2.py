@@ -24,6 +24,7 @@ grid = RegularGrid(
     resolution=(125, 50, 50)  # Example resolution
 )
 
+
 #%%
 
 # Input data for faults
@@ -31,13 +32,12 @@ data_faults = InputData_FaultElements(name='Faults_Model_2',
                                       fault_surface_points=pd.read_csv(
                                           cwd + "/examples/input_data/model2_surface_points_df.csv"),
                                       fault_orientations=pd.read_csv(
-                                          cwd + "/examples/input_data/model2_orientations_df.csv"))
+                                          cwd + "/examples/input_data/model2_orientations_df.csv"),
+                                      fault_names=['fault'])
 
 # Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
-    fault_surface_points_df=data_faults.fault_surface_points,
-    fault_orientations_df=data_faults.fault_orientations,
-    fault_names=["fault"],
+    input_data_fault_elements=data_faults,
     grid=grid
 )
 
@@ -49,8 +49,11 @@ fault_frame.detailed_report()
 # Compute fault domains
 general_faults.compute_fault_domains(fault_frame)
 
+
 #%%
 
+# Plot fault domains (2D and 3D possible)
+fault_frame.plot_fault_domain_section(axis='y')
 plot_fault_model_3D(fault_frame)
 
 #%%
@@ -67,10 +70,8 @@ data_elements = InputData_StructuralElements(name='Model_2',
                                              )
 
 # Create a StructuralFrame
-frame = general.build_structural_frame(data_elements.mapping_object,
-                                       grid,
-                                       data_elements.surface_points,
-                                       data_elements.orientations,
+frame = general.build_structural_frame(input_data_elements=data_elements,
+                                       grid = grid,
                                        fault_frame=fault_frame)
 
 frame.detailed_report()
@@ -90,7 +91,7 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 #%%
 
 # Plot fault frame sections and 3D
-fault_frame.plot_fault_domain_section(axis='y', index=12)
+fault_frame.plot_fault_domain_section(axis='y', index=5)
 plot_fault_model_3D(fault_frame)
 
 
@@ -105,14 +106,10 @@ plot_fault_model_3D(fault_frame)
 # OK TODO: Find good parameters
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
 # frame["Strat_Series2"].set_interpolation_method("Ordinary Kriging")
-# # Set interpolation parameters if needed
-# frame["Strat_Series1"].configure_interpolation_params(range=500, variogram_model="gaussian", anisotropy_scaling_z=0.1)
-# frame["Strat_Series2"].configure_interpolation_params(range=500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
 
-# RBF TODO: Find good parameters
-frame["Strat_Series1"].set_interpolation_method("Radial Basis Function")
-frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
-
+# RBF
+# frame["Strat_Series1"].set_interpolation_method("Radial Basis Function")
+# frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
 
 # GeoINR
 # frame["Strat_Series1"].set_interpolation_method("GeoINR")
@@ -128,7 +125,7 @@ frame.detailed_report()
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-general.compute_structural_model(
+structural_model_result = general.compute_structural_model(
     frame,
     extract_meshes=True,
     verbose=True,
@@ -137,15 +134,13 @@ general.compute_structural_model(
 
 #%%
 
-frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
-frame.structural_groups[1].structural_elements[1].scalar_value
+frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
 
 #%%
 
 plot_structural_model_2D(frame=frame,
                          axis='y',
-                         show_input_data=True,
-                         index=0)
+                         show_input_data=True)
 
 #%%
 
