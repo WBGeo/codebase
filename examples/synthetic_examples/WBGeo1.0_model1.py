@@ -35,11 +35,12 @@ data_elements = InputData_StructuralElements(name='Model_1',
                                              )
 
 # Create a StructuralFrame
-frame = general.build_structural_frame(data_elements.mapping_object,
-                                       grid,
-                                       data_elements.surface_points,
-                                       data_elements.orientations)
+frame = general.build_structural_frame(input_data_elements=data_elements,
+                                       grid=grid
+                                       )
+
 frame.detailed_report()
+
 
 #%%
 
@@ -58,7 +59,6 @@ frame["Strat_Series1"].configure_interpolation_params(range=1000, anisotropy_sca
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(
     frame,
-    fault_frame=None,
     extract_meshes=True,
     verbose=True,
 )

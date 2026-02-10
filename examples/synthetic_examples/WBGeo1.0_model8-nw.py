@@ -94,14 +94,22 @@ frame.fault_activity_verbose
 # Set interpolation methods for each stratigraphic series
 
 # UCK
-# frame["Top"].set_interpolation_method("Universal Co-Kriging")
-# frame["Mid"].set_interpolation_method("Universal Co-Kriging")
-# frame["Bot"].set_interpolation_method("Universal Co-Kriging")
+frame["Top"].set_interpolation_method("Universal Co-Kriging")
+frame["Mid"].set_interpolation_method("Universal Co-Kriging")
+frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 
 # UCK
-frame["Top"].set_interpolation_method("Radial Basis Function")
-frame["Mid"].set_interpolation_method("Radial Basis Function")
-frame["Bot"].set_interpolation_method("Radial Basis Function")
+# frame["Top"].set_interpolation_method("Radial Basis Function")
+# frame["Mid"].set_interpolation_method("Radial Basis Function")
+# frame["Bot"].set_interpolation_method("Radial Basis Function")
+
+# OK --> dont have working parameters here
+# frame["Top"].set_interpolation_method("Ordinary Kriging")
+# frame["Mid"].set_interpolation_method("Ordinary Kriging")
+# frame["Bot"].set_interpolation_method("Ordinary Kriging")
+# frame["Top"].configure_interpolation_params(nugget=1)
+# frame["Mid"].configure_interpolation_params(nugget=1)
+# frame["Bot"].configure_interpolation_params(nugget=1)
 
 frame.detailed_report()
 
