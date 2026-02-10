@@ -110,8 +110,8 @@ def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
     npts = ctx.n_points
     nn_dist = ctx.mean_nn_distance
 
-    # Variogram
-    variogram_model = "exponential"
+    # Variogram: gaussian as default for smoother residuals; can be changed to exponential or others if needed
+    variogram_model = "gaussian"
 
     # Range
     range_ = np.clip(
@@ -290,8 +290,8 @@ def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
     npts = ctx.n_points
     nn_dist = ctx.mean_nn_distance
 
-    # Variogram: exponential is usually robust for noisy geoscience data
-    variogram_model = "exponential"
+    # Variogram: gaussian as default for smoother residuals; can be changed to exponential or others if needed
+    variogram_model = "gaussian"
 
     # Range: a bit longer than OK
     max_scale = max(sx, sy, sz)

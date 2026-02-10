@@ -97,18 +97,18 @@ frame.fault_activity_verbose
 
 # Set interpolation methods for each stratigraphic series
 
-# RBF
-# frame["A"].set_interpolation_method("Radial Basis Function")
-# frame["B"].set_interpolation_method("Radial Basis Function")
-# frame["C"].set_interpolation_method("Radial Basis Function")
-# frame["D"].set_interpolation_method("Radial Basis Function")
+# UK
+frame["A"].set_interpolation_method("Universal Kriging")
+frame["B"].set_interpolation_method("Universal Kriging")
+# frame["C"].set_interpolation_method("Universal Kriging") # This one causes problems with UK
+frame["D"].set_interpolation_method("Universal Kriging")
 
 # frame.detailed_report()
 
 #%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-result = general.compute_structural_model(
+structural_model_result = general.compute_structural_model(
     frame,
     extract_meshes=True,
     verbose=True,
@@ -117,14 +117,14 @@ result = general.compute_structural_model(
 
 #%%
 
-plot_structural_model_2D(frame=result.structural_frame,
+plot_structural_model_2D(frame=structural_model_result.structural_frame,
                          axis='y',
                          show_input_data=True,
                          index=25)
 
 #%%
 
-plot_structural_model_3D(frame=result.structural_frame,
+plot_structural_model_3D(frame=structural_model_result.structural_frame,
                          mesh_type="masked",
                          show_orientations=True)
 

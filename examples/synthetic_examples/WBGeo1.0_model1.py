@@ -54,23 +54,24 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 frame["Strat_Series1"].set_interpolation_method("Universal Kriging")
 
 # Set interpolation parameters if needed
-# frame["Strat_Series1"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.5, variogram_model="spherical")
+
+#%%
 
 # Component 2 --> Component 3: Interpolation to geomodel result
-general.compute_structural_model(
-    frame,
-    extract_meshes=True,
-    verbose=True,
-)
+structural_model_result = general.compute_structural_model(
+                                                frame,
+                                                extract_meshes=True,
+                                                verbose=True,
+                                            )
 
 #%%
 
 # 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
-plot_structural_model_2D(frame, axis='y')
+plot_structural_model_2D(structural_model_result.structural_frame)
 
 #%%
 
-plot_structural_model_3D(frame, show_surface_meshes=True)
+plot_structural_model_3D(structural_model_result, show_surface_meshes=True)
 
 #%%
 
