@@ -111,6 +111,19 @@ frame["Bot"].set_interpolation_method("Universal Co-Kriging")
 # frame["Mid"].configure_interpolation_params(nugget=1)
 # frame["Bot"].configure_interpolation_params(nugget=1)
 
+# GeoINR
+# frame["Top"].set_interpolation_method("GeoINR")
+# frame["Mid"].set_interpolation_method("GeoINR")
+# frame["Bot"].set_interpolation_method("GeoINR")
+
+# LoopStructural
+# frame["Top"].set_interpolation_method("Loop Structural")
+# frame["Mid"].set_interpolation_method("Loop Structural")
+# frame["Bot"].set_interpolation_method("Loop Structural")
+# frame["Top"].configure_interpolation_params(interpolator_type="FDI")
+# frame["Mid"].configure_interpolation_params(interpolator_type="FDI")
+# frame["Bot"].configure_interpolation_params(interpolator_type="FDI")
+
 frame.detailed_report()
 
 #%%

@@ -136,7 +136,9 @@ def interpolate_group_universal_cokriging(
     gp.map_stack_to_surfaces(gempy_model=geo_model, mapping_object=series_to_surfaces)
 
     # ---- compute ----
+    print("Before Computation")
     gp.compute_model(geo_model)
+    print("After Computation")
 
     # ---- fetch results ----
     raw_scalar_vals = geo_model.solutions.raw_arrays.scalar_field_at_surface_points[0]

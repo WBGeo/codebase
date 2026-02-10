@@ -1,21 +1,76 @@
+"""
+LoopStructural interpolation for a single structural group.
+
+This module provides a pure interpolator function that:
+- assigns strictly increasing scalar values per element (oldest=1 .. youngest=n),
+- builds a LoopStructural GeologicalModel from surface points + orientations,
+- evaluates the feature value on a RegularGrid.
+
+Notes
+-----
+- The function does NOT mutate the passed `group`.
+- `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
+- The scalar field reshape + transpose is preserved exactly as implemented.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, Optional, Tuple, TypeAlias
+
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
-from typing import Dict, Tuple
 from LoopStructural import GeologicalModel
+
+# -----------------------------------------------------------------------------
+# Type aliases (readability only)
+# -----------------------------------------------------------------------------
+FloatArray: TypeAlias = npt.NDArray[np.floating]
+ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
 
 def interpolate_group_loop_structural(
     *,
-    group,                        # StructuralGroup
-    grid,                         # RegularGrid (has extent, resolution, grid_coordinates)
+    group: Any,  # expected: StructuralGroup-like (name, structural_elements with .name, get_interpolation_params())
+    grid: Any,  # expected: RegularGrid-like (extent, resolution, grid_coordinates)
     group_surface_points_df: pd.DataFrame,
     group_orientations_points_df: pd.DataFrame,
-) -> Tuple[np.ndarray, Dict[str, float]]:
+) -> ScalarFieldAndValues:
     """
     LoopStructural interpolation for a single structural group (pure function).
 
-    Returns:
-        scalar_field : np.ndarray shaped to tuple(grid.resolution)
-        scalar_values_by_element : Dict[str, float] (element_name -> scalar value)
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object. Expected members:
+        - `name: str`
+        - `structural_elements: Sequence[... with .name]`
+        - `get_interpolation_params() -> LoopStructuralParams-like` (expects `.interpolator_type`)
+    grid
+        RegularGrid-like object. Expected members:
+        - `extent: tuple[float, float, float, float, float, float]`
+        - `resolution: tuple[int, int, int]`
+        - `grid_coordinates: (N, 3) ndarray` (cell-center coordinates)
+    group_surface_points_df
+        DataFrame with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        DataFrame with columns ["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"].
+
+    Returns
+    -------
+    scalar_field : np.ndarray
+        Evaluated scalar field on the grid, shaped to `tuple(grid.resolution)` and transposed
+        exactly as in the original implementation.
+    scalar_values_by_element : dict[str, float]
+        Mapping element_name -> scalar value. Values are strictly increasing from
+        oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
+        so reversed order is used here).
+
+    Raises
+    ------
+    ValueError
+        If surface/orientation inputs are missing/empty or required columns are absent,
+        or if the DataFrames include formations not present in the group.
     """
     # --- validation ---
     if group_surface_points_df is None or group_surface_points_df.empty:
@@ -57,7 +112,8 @@ def interpolate_group_loop_structural(
     surface_points = group_surface_points_df.copy()
     surface_points["feature_name"] = group.name
     surface_points["val"] = surface_points["formation"].map(formation_to_scalar)
-    # LS expects columns: X, Y, Z, val, feature_name, gx, gy, gz
+
+    # LoopStructural expects columns: X, Y, Z, val, feature_name, gx, gy, gz.
     surface_points = surface_points[["X", "Y", "Z", "val", "feature_name"]]
     surface_points["gx"] = np.nan
     surface_points["gy"] = np.nan
@@ -74,18 +130,22 @@ def interpolate_group_loop_structural(
     data_combined = pd.concat([surface_points, orientations], ignore_index=True)
 
     # --- build LoopStructural model ---
-    # GeologicalModel(min_bounds, max_bounds)
-    model = GeologicalModel(grid.extent[::2], grid.extent[1::2])
-    model.set_model_data(data_combined)
+    # GeologicalModel(min_bounds, max_bounds) expects 3-vectors
+    model = GeologicalModel(np.array(grid.extent[::2]), np.array(grid.extent[1::2]))
+    if hasattr(model, "data"):
+        model.data = data_combined
+    else:
+        # just to ensure backward compatibility
+        model.set_model_data(data_combined)
 
-    # Stratigraphic column: keep your original order (group.structural_elements)
-    stratigraphic_column = {group.name: {}}
+    # Stratigraphic column: preserve original order (group.structural_elements)
+    stratigraphic_column: Dict[str, Dict[str, Dict[str, float]]] = {group.name: {}}
     for i, rock in enumerate(group.structural_elements):
         stratigraphic_column[group.name][rock.name] = {"min": i, "max": i + 1, "id": i}
     model.set_stratigraphic_column(stratigraphic_column)
 
-    # Interpolator params
-    params = group.get_interpolation_params()  # LoopStructuralParams (expects .interpolator_type)
+    # Interpolator params (expected: LoopStructuralParams-like object with .interpolator_type)
+    params = group.get_interpolation_params()
 
     # Create the foliation / feature
     _ = model.create_and_add_foliation(
@@ -98,9 +158,10 @@ def interpolate_group_loop_structural(
     )
 
     # Evaluate on grid
-    regular_grid = grid.grid_coordinates  # (N, 3)
+    regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
     sf_flat = model.evaluate_feature_value(group.name, regular_grid, scale=True)
-    # Match your previous implementation: reshape then transpose
+
+    # Match previous implementation: reshape then transpose
     scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
 
     return scalar_field, scalar_values_by_element
