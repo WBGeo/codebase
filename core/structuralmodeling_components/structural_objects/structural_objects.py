@@ -34,6 +34,7 @@ class InterpolationMethod(str, Enum):
     UNIVERSAL_COKRIGING = "Universal Co-Kriging"
     GEOINR = "GeoINR"
     LOOP_STRUCTURAL = "Loop Structural"
+    UNIVERSAL_KRIGING = "Universal Kriging"
 
 
 class InterpolationContext(BaseModel):
@@ -124,9 +125,9 @@ def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
 
     # Anisotropy scaling per axis (scale relative to largest dimension)
     max_scale = max(sx, sy, sz)
-    anisotropy_scaling_x = np.clip(sx / max_scale, 0.05, 1.0)
-    anisotropy_scaling_y = np.clip(sy / max_scale, 0.05, 1.0)
-    anisotropy_scaling_z = np.clip(sz / max_scale, 0.05, 1.0)
+    anisotropy_scaling_x = 1.0
+    anisotropy_scaling_y = np.clip(sy / sx, 0.05, 1.0)
+    anisotropy_scaling_z = np.clip(sz / sx, 0.05, 1.0)
 
     # Rotation angles (degrees)
     # Default 0 → no rotation, but could be adapted if you detect tilted layers
@@ -260,12 +261,82 @@ class UniversalCoKrigingParams(BaseModel):
     pass
 
 
+class UniversalKrigingParams(OrdinaryKrigingParams):
+    """
+    Configuration parameters for Universal Kriging interpolation.
+
+    Adds drift (trend) configuration on top of ordinary kriging parameters.
+    """
+
+    drift_terms: Union[str, List[str]] = Field(
+        "regional_linear",
+        description=(
+            "Drift terms for Universal Kriging. Common: 'regional_linear'. "
+            "Can be a string or list of strings."
+        ),
+    )
+
+
+def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
+    """
+    Derive heuristic default Universal Kriging parameters from an interpolation context.
+
+    UK defaults are similar to OK, but:
+      - drift_terms defaults to "regional_linear" (good for geology),
+      - range is slightly larger (UK residual field tends to be smoother),
+      - anisotropy scaling uses ratios relative to X (PyKrige convention).
+    """
+    sx, sy, sz = ctx.data_scale
+    npts = ctx.n_points
+    nn_dist = ctx.mean_nn_distance
+
+    # Variogram: exponential is usually robust for noisy geoscience data
+    variogram_model = "exponential"
+
+    # Range: a bit longer than OK
+    max_scale = max(sx, sy, sz)
+    range_ = np.clip(
+        30 * nn_dist,  # OK used 20*nn_dist; UK often benefits from longer
+        0.15 * max_scale,
+        0.9 * max_scale,
+    )
+
+    sill = 1.0
+    nugget = 0.0
+
+    # Anisotropy scaling (PyKrige 3D: x is implicit; scale y/z relative to x)
+    # Guard against sx ~ 0
+    sx_safe = max(float(sx), 1e-12)
+    anisotropy_scaling_x = 1.0
+    anisotropy_scaling_y = float(np.clip(sy / sx_safe, 0.05, 20.0))
+    anisotropy_scaling_z = float(np.clip(sz / sx_safe, 0.05, 20.0))
+
+    # Neighbors (moving window)
+    if npts < 20:
+        neighbors = None
+    else:
+        neighbors = min(200, max(30, npts // 10))
+
+    return UniversalKrigingParams(
+        variogram_model=variogram_model,
+        range=float(range_),
+        sill=float(sill),
+        nugget=float(nugget),
+        anisotropy_scaling_x=float(anisotropy_scaling_x),
+        anisotropy_scaling_y=float(anisotropy_scaling_y),
+        anisotropy_scaling_z=float(anisotropy_scaling_z),
+        neighbors=neighbors,
+        drift_terms="regional_linear",
+    )
+
+
 InterpolationParameterSet = Union[
     OrdinaryKrigingParams,
     RBFParams,
     GeoINRParams,
     LoopStructuralParams,
     UniversalCoKrigingParams,
+    UniversalKrigingParams,
 ]
 
 
@@ -326,10 +397,10 @@ class StructuralElement(BaseModel):
         self._color = hex_color
 
     def set_mesh(
-        self,
-        mesh_type: MeshType3,
-        vertices: npt.NDArray[np.generic],
-        edges: npt.NDArray[np.generic],
+            self,
+            mesh_type: MeshType3,
+            vertices: npt.NDArray[np.generic],
+            edges: npt.NDArray[np.generic],
     ) -> None:
         """
         Set the vertices and edges for a specific mesh type.
@@ -351,7 +422,7 @@ class StructuralElement(BaseModel):
         self._edges[mesh_type] = edges
 
     def get_mesh(
-        self, mesh_type: MeshType3
+            self, mesh_type: MeshType3
     ) -> tuple[npt.NDArray[np.generic], npt.NDArray[np.generic]]:
         """
         Retrieve the vertices and edges for the given mesh type.
@@ -478,7 +549,7 @@ class StructuralGroup(BaseModel):
             setattr(self._interpolation_params, key, value)
 
     def _default_params_for_method(
-        self, method: InterpolationMethod, ctx: InterpolationContext
+            self, method: InterpolationMethod, ctx: InterpolationContext
     ) -> Optional[InterpolationParameterSet]:
         """Internal helper to map a method to its default parameter set."""
         if method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
@@ -495,6 +566,9 @@ class StructuralGroup(BaseModel):
 
         if method == InterpolationMethod.LOOP_STRUCTURAL:
             return LoopStructuralParams()
+
+        if method == InterpolationMethod.UNIVERSAL_KRIGING:
+            return default_uk_params(ctx)
 
         return None
 
@@ -777,11 +851,11 @@ class StructuralFrame(BaseModel):
             print("⚡ No fault frame assigned")
 
     def plot_scalar_field_section(
-        self,
-        group_nr: int = 0,
-        axis: str = "y",
-        index: int = 0,
-        plot_elements: bool = True,
+            self,
+            group_nr: int = 0,
+            axis: str = "y",
+            index: int = 0,
+            plot_elements: bool = True,
     ) -> None:
         """
         Plot a section of a scalar field along a specified axis at a given index.
@@ -860,7 +934,7 @@ class StructuralFrame(BaseModel):
         plt.show()
 
     def plot_age_mask_section(
-        self, group_nr: int = 0, axis: str = "y", index: int = 0
+            self, group_nr: int = 0, axis: str = "y", index: int = 0
     ) -> None:
         """
         Plot a section of an age mask (boolean field) along a specified axis
@@ -1005,10 +1079,10 @@ class FaultElement(BaseModel):
         self._color = color
 
     def set_mesh(
-        self,
-        mesh_type: MeshType2,
-        vertices: npt.NDArray[np.generic],
-        edges: npt.NDArray[np.generic],
+            self,
+            mesh_type: MeshType2,
+            vertices: npt.NDArray[np.generic],
+            edges: npt.NDArray[np.generic],
     ) -> None:
         """
         Set the vertices and edges for a specific mesh type.
@@ -1030,7 +1104,7 @@ class FaultElement(BaseModel):
         self._edges[mesh_type] = edges
 
     def get_mesh(
-        self, mesh_type: MeshType2
+            self, mesh_type: MeshType2
     ) -> tuple[npt.NDArray[np.generic], npt.NDArray[np.generic]]:
         """
         Retrieve the vertices and edges for the given mesh type.
@@ -1073,7 +1147,7 @@ class FaultElement(BaseModel):
         return self._separated_domains
 
     def set_separated_domains(
-        self, domain_ids: Tuple[FrozenSet[int], FrozenSet[int]]
+            self, domain_ids: Tuple[FrozenSet[int], FrozenSet[int]]
     ) -> None:
         """Set the tuple of separated domain IDs."""
         self._separated_domains = domain_ids
@@ -1144,9 +1218,9 @@ class FaultFrame(BaseModel):
     _domain_masks: dict[int, npt.NDArray[np.bool_]] = PrivateAttr(default_factory=dict)
 
     def __init__(
-        self,
-        fault_elements: List[FaultElement],
-        fault_relations: Optional[npt.NDArray[np.bool_]] = None,
+            self,
+            fault_elements: List[FaultElement],
+            fault_relations: Optional[npt.NDArray[np.bool_]] = None,
     ):
         super().__init__()
         self._fault_elements = fault_elements
@@ -1204,14 +1278,14 @@ class FaultFrame(BaseModel):
         if self._fault_surface_points_df is not None:
             return self._fault_surface_points_df[
                 self._fault_surface_points_df["formation"] == name
-            ]
+                ]
         return pd.DataFrame()
 
     def get_orientations_for_element(self, name: str) -> pd.DataFrame:
         if self._fault_orientations_df is not None:
             return self._fault_orientations_df[
                 self._fault_orientations_df["formation"] == name
-            ]
+                ]
         return pd.DataFrame()
 
     def set_domain_map(self, domain_map: npt.NDArray[np.floating]) -> None:
@@ -1264,7 +1338,7 @@ class FaultFrame(BaseModel):
         print("")
 
     def plot_fault_domain_section(
-        self, axis: str = "y", index: int = 0, plot_faults: bool = True
+            self, axis: str = "y", index: int = 0, plot_faults: bool = True
     ) -> None:
         """
         Plot a section of the fault domain map along a specified axis at a given index.

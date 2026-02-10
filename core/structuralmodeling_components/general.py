@@ -66,6 +66,9 @@ from core.structuralmodeling_components.interpolators_per_group.geoinr_per_group
 from core.structuralmodeling_components.interpolators_per_group.loop_structural_per_group import (
     interpolate_group_loop_structural,
 )
+from core.structuralmodeling_components.interpolators_per_group.universal_kriging_per_group import (
+    interpolate_group_universal_kriging
+)
 
 # -----------------------------------------------------------------------------
 # Typing helpers
@@ -94,6 +97,7 @@ interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
     InterpolationMethod.UNIVERSAL_COKRIGING: interpolate_group_universal_cokriging,
     InterpolationMethod.GEOINR: interpolate_group_geo_inr,
     InterpolationMethod.LOOP_STRUCTURAL: interpolate_group_loop_structural,
+    InterpolationMethod.UNIVERSAL_KRIGING: interpolate_group_universal_kriging,
 }
 
 
@@ -716,7 +720,7 @@ def generate_grouped_colors_per_element(
 def build_structural_frame(
         input_data_elements: InputData_StructuralElements,
         grid: RegularGrid,
-        default_interpolation: InterpolationMethod = InterpolationMethod.ORDINARY_KRIGING,
+        default_interpolation: InterpolationMethod = InterpolationMethod.RADIAL_BASIS_FUNCTION,
         fault_frame: Optional[FaultFrame] = None,
 ) -> StructuralFrame:
     """
@@ -728,7 +732,7 @@ def build_structural_frame(
         Input data containing mapping, surface points, and optional orientations.
     grid : RegularGrid
         Model grid.
-    default_interpolation : InterpolationMethod, default ``ORDINARY_KRIGING``
+    default_interpolation : InterpolationMethod, default ``RADIAL_BASIS_FUNCTION``
         Interpolator assigned to each group (can be overridden later).
     fault_frame : FaultFrame, optional
         Optional fault frame to attach to the resulting StructuralFrame.

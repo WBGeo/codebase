@@ -51,10 +51,10 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 #%%
 
 # Set interpolation methods for each stratigraphic series
-frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
+frame["Strat_Series1"].set_interpolation_method("Universal Kriging")
 
 # Set interpolation parameters if needed
-frame["Strat_Series1"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.5, variogram_model="spherical")
+# frame["Strat_Series1"].configure_interpolation_params(range=1000, anisotropy_scaling_z=0.5, variogram_model="spherical")
 
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(

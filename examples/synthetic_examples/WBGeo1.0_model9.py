@@ -98,12 +98,12 @@ frame.fault_activity_verbose
 # Set interpolation methods for each stratigraphic series
 
 # RBF
-frame["A"].set_interpolation_method("Radial Basis Function")
-frame["B"].set_interpolation_method("Radial Basis Function")
-frame["C"].set_interpolation_method("Radial Basis Function")
-frame["D"].set_interpolation_method("Radial Basis Function")
+# frame["A"].set_interpolation_method("Radial Basis Function")
+# frame["B"].set_interpolation_method("Radial Basis Function")
+# frame["C"].set_interpolation_method("Radial Basis Function")
+# frame["D"].set_interpolation_method("Radial Basis Function")
 
-frame.detailed_report()
+# frame.detailed_report()
 
 #%%
 
