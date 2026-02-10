@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 
-from core.structuralmodeling_components.structural_objects.structural_objects import (  # type: ignore
+from core.structural_modeling_components.structural_objects.structural_objects import (  # type: ignore
     StructuralElement,
     StructuralGroup,
     StructuralFrame,
@@ -11,8 +11,8 @@ from core.structuralmodeling_components.structural_objects.structural_objects im
     FaultFrame,
 )
 
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
-from core.structuralmodeling_components.interpolator_functions.interpolator_parameters import (
+from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
     InterpolationMethod,
 )
 
@@ -285,9 +285,9 @@ def test_structural_frame_set_fault_frame_validations_and_activity_mapping():
     g2 = StructuralGroup(name="G2", structural_elements=[StructuralElement(name="e2")])
     sf = StructuralFrame(structural_groups=[g1, g2])
 
-    # set required private state for test
+    # set required private state for tests
     grid = make_grid()
-    sf._grid = grid  # the class has no setter; OK for unit test
+    sf._grid = grid  # the class has no setter; OK for unit tests
 
     fault = FaultElement("F1")
     ff = FaultFrame([fault])

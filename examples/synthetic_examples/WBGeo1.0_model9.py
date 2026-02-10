@@ -2,15 +2,15 @@
 import pandas as pd
 import os
 
-import core.structuralmodeling_components.general_faults
+import core.structural_modeling_components.general_faults
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
                                            plot_fault_model_3D)
 
-from core.structuralmodeling_components import general, general_faults
+from core.structural_modeling_components import general, general_faults
 
 #%%
 

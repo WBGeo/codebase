@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 
 def test_post_init_computes_spacing_and_axes_cell_centers():

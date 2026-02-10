@@ -4,12 +4,12 @@ import os
 
 from core.object_components import InputData_StructuralElements
 
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
                                            plot_fault_model_3D)
 
-from core.structuralmodeling_components import general, general_faults
+from core.structural_modeling_components import general, general_faults
 
 #%%
 

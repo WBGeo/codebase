@@ -23,7 +23,7 @@ from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
 
-from core.structuralmodeling_components.structural_objects.structural_objects import StructuralFrame
+from core.structural_modeling_components.structural_objects.structural_objects import StructuralFrame
 
 
 # Pydantic adapter for panda DataFrame

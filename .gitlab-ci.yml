@@ -1,6 +1,6 @@
 test:
   image: python:3.12
-  stage: test
+  stage: tests
   before_script:
     - python -V               # Print out python version for debugging
     - pip install virtualenv  # Pip's cache doesn't store the python packages
@@ -36,7 +36,7 @@ pages:
   rules:
     - when: always
   dependencies:
-    - test
+    - tests
   script:
     - mv htmlcov/ public/
   artifacts:

@@ -40,10 +40,10 @@ import pandas as pd
 from matplotlib.colors import to_hex
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import RegularGrid
-from core.utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
+from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 
-from core.structuralmodeling_components.structural_objects.structural_objects import (
+from core.structural_modeling_components.structural_objects.structural_objects import (
     StructuralFrame,
     StructuralGroup,
     StructuralElement,
@@ -51,22 +51,22 @@ from core.structuralmodeling_components.structural_objects.structural_objects im
     InterpolationMethod,
 )
 
-from core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.ordinary_kriging_per_group import (
     interpolate_group_ordinary_kriging,
 )
-from core.structuralmodeling_components.interpolator_functions.radial_basis_function_per_group import (
+from core.structural_modeling_components.interpolator_functions.radial_basis_function_per_group import (
     interpolate_group_radial_basis_function,
 )
-from core.structuralmodeling_components.interpolator_functions.universal_cokriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.universal_cokriging_per_group import (
     interpolate_group_universal_cokriging,
 )
-from core.structuralmodeling_components.interpolator_functions.geoinr_per_group import (
+from core.structural_modeling_components.interpolator_functions.geoinr_per_group import (
     interpolate_group_geo_inr,
 )
-from core.structuralmodeling_components.interpolator_functions.loop_structural_per_group import (
+from core.structural_modeling_components.interpolator_functions.loop_structural_per_group import (
     interpolate_group_loop_structural,
 )
-from core.structuralmodeling_components.interpolator_functions.universal_kriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.universal_kriging_per_group import (
     interpolate_group_universal_kriging
 )
 

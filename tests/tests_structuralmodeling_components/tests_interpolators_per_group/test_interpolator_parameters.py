@@ -7,7 +7,7 @@ import pytest
 
 import numpy as np
 
-from core.structuralmodeling_components.interpolator_functions.interpolator_parameters import (  # type: ignore
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (  # type: ignore
     InterpolationContext,
     InterpolationMethod,
     LoopStructuralMethod,

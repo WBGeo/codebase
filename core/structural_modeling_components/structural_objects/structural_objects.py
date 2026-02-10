@@ -10,11 +10,11 @@ import pandas as pd
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from pydantic import BaseModel, Field, PrivateAttr
 
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import (
+from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     RegularGrid,
 )
 
-from core.structuralmodeling_components.interpolator_functions.interpolator_parameters import (
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
     InterpolationMethod,
     InterpolationContext,
     OrdinaryKrigingParams,

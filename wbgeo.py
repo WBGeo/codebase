@@ -4,8 +4,8 @@ from py_api_wbgeo import apitypes
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults
 
-# from core.structuralmodeling_components.geo_inr import geo_inr_interpolator # removed until updated
-# from core.structuralmodeling_components.loopstructural_old import loop_structural_interpolator # removed until updated
+# from core.structural_modeling_components.geo_inr import geo_inr_interpolator # removed until updated
+# from core.structural_modeling_components.loopstructural_old import loop_structural_interpolator # removed until updated
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL

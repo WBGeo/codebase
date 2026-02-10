@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.ordinary_kriging_per_group import (
     interpolate_group_ordinary_kriging,
 )
 
@@ -84,13 +84,13 @@ def test_raises_when_surface_points_missing_or_empty():
 
 
 def test_warns_when_orientations_provided_but_unused(monkeypatch):
-    # This is a pure warning test -> mock kriging so it doesn't try to compute.
+    # This is a pure warning tests -> mock kriging so it doesn't try to compute.
     group = FakeGroup("G", ["young", "old"])
     grid = FakeGrid()
     sdf = surface_df(["young", "old"])
     odf = pd.DataFrame({"dip": [1]})
 
-    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     class DummyOK3D:
         def __init__(self, *args, **kwargs):
@@ -146,7 +146,7 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n(monkeypatch):
     grid = FakeGrid()
     sdf = surface_df(["oldest", "middle", "youngest"])
 
-    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     class DummyOK3D:
         def __init__(self, *args, **kwargs):
@@ -184,7 +184,7 @@ def test_constructs_ordinary_kriging3d_with_expected_parameters_and_calls_execut
         }
     )
 
-    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     captured = {}
 
@@ -246,7 +246,7 @@ def test_backend_is_loop_and_n_closest_points_is_set_when_neighbors_provided(mon
         }
     )
 
-    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     captured = {}
 

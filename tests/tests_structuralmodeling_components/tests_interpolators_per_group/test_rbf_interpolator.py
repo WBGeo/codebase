@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from core.structuralmodeling_components.interpolator_functions.radial_basis_function_per_group import (
+from core.structural_modeling_components.interpolator_functions.radial_basis_function_per_group import (
     interpolate_group_radial_basis_function)
 
 
@@ -83,7 +83,7 @@ def test_warns_when_orientations_provided_but_unused(monkeypatch):
     sdf = surface_df(["young", "old"])
     odf = pd.DataFrame({"dip": [1]})
 
-    import core.structuralmodeling_components.interpolator_functions.radial_basis_function_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function_per_group as mod
 
     class DummyRBF:
         def __init__(self, *args, **kwargs):
@@ -128,8 +128,8 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n():
     grid = FakeGrid(use_grid_coordinates=True)
     sdf = surface_df(["oldest", "middle", "youngest"])
 
-    # Mock RBFInterpolator so we don't depend on SciPy internals for this test.
-    import core.structuralmodeling_components.interpolator_functions.radial_basis_function_per_group as mod
+    # Mock RBFInterpolator so we don't depend on SciPy internals for this tests.
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function_per_group as mod
 
     class DummyRBF:
         def __init__(self, coords, vals, kernel, smoothing, epsilon, neighbors):
@@ -165,7 +165,7 @@ def test_uses_grid_coordinates_when_available_and_transposes_output():
     grid = FakeGrid(resolution=(2, 1, 3), use_grid_coordinates=True)
     sdf = surface_df(["young", "old"])
 
-    import core.structuralmodeling_components.interpolator_functions.radial_basis_function_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function_per_group as mod
 
     captured = {}
 
@@ -214,7 +214,7 @@ def test_builds_grid_points_from_axes_when_grid_coordinates_missing():
     grid = FakeGrid(resolution=(2, 2, 1), use_grid_coordinates=False)
     sdf = surface_df(["young", "old"])
 
-    import core.structuralmodeling_components.interpolator_functions.radial_basis_function_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function_per_group as mod
 
     captured = {}
 
@@ -237,7 +237,7 @@ def test_builds_grid_points_from_axes_when_grid_coordinates_missing():
     assert field.shape == grid.resolution[::-1]
 
 
-# --- Optional: tiny real SciPy smoke test ------------------------------------
+# --- Optional: tiny real SciPy smoke tests ------------------------------------
 # Mark as slow if you want; usually it's still very fast for tiny grids.
 
 def test_real_rbfi_smoke_runs_and_returns_correct_shape():

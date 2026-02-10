@@ -24,15 +24,15 @@ import pandas as pd
 import gempy as gp
 
 from core.object_components import InputData_FaultElements
-from core.structuralmodeling_components.structural_objects.grids.grid_classes import (
+from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     RegularGrid,
 )
-from core.structuralmodeling_components.structural_objects.structural_objects import (
+from core.structural_modeling_components.structural_objects.structural_objects import (
     FaultFrame,
     FaultElement,
 )
 
-from core.utility.surface_mesh_extraction import marching_cubes_new
+from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes_new
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -124,7 +124,7 @@ def check_fault_crosscuts_via_isovalue_bands(
         band = np.abs(fld - level) <= ts
         bands.append((nm, band))
 
-    # Pairwise overlap test
+    # Pairwise overlap tests
     for i in range(len(bands)):
         name_i, band_i = bands[i]
         if not band_i.any():
