@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group import (
+from core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group import (
     interpolate_group_ordinary_kriging,
 )
 
@@ -90,7 +90,7 @@ def test_warns_when_orientations_provided_but_unused(monkeypatch):
     sdf = surface_df(["young", "old"])
     odf = pd.DataFrame({"dip": [1]})
 
-    import core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group as mod
+    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     class DummyOK3D:
         def __init__(self, *args, **kwargs):
@@ -146,7 +146,7 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n(monkeypatch):
     grid = FakeGrid()
     sdf = surface_df(["oldest", "middle", "youngest"])
 
-    import core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group as mod
+    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     class DummyOK3D:
         def __init__(self, *args, **kwargs):
@@ -184,7 +184,7 @@ def test_constructs_ordinary_kriging3d_with_expected_parameters_and_calls_execut
         }
     )
 
-    import core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group as mod
+    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     captured = {}
 
@@ -246,7 +246,7 @@ def test_backend_is_loop_and_n_closest_points_is_set_when_neighbors_provided(mon
         }
     )
 
-    import core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group as mod
+    import core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group as mod
 
     captured = {}
 

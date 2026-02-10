@@ -104,9 +104,9 @@ frame.fault_activity_verbose
 # frame["Bot"].set_interpolation_method("Radial Basis Function")
 
 # OK --> dont have working parameters here
-frame["Top"].set_interpolation_method("Ordinary Kriging")
-frame["Mid"].set_interpolation_method("Ordinary Kriging")
-frame["Bot"].set_interpolation_method("Ordinary Kriging")
+# frame["Top"].set_interpolation_method("Ordinary Kriging")
+# frame["Mid"].set_interpolation_method("Ordinary Kriging")
+# frame["Bot"].set_interpolation_method("Ordinary Kriging")
 
 # GeoINR
 # frame["Top"].set_interpolation_method("GeoINR")
@@ -150,7 +150,7 @@ plot_structural_model_3D(frame=result.structural_frame,
 
 # Optional plotting
 frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
-frame.plot_age_mask_section(group_nr=2, axis='y', index=12)
+frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 #%%
 

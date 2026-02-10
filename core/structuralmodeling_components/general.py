@@ -51,22 +51,22 @@ from core.structuralmodeling_components.structural_objects.structural_objects im
     InterpolationMethod,
 )
 
-from core.structuralmodeling_components.interpolators_per_group.ordinary_kriging_per_group import (
+from core.structuralmodeling_components.interpolator_functions.ordinary_kriging_per_group import (
     interpolate_group_ordinary_kriging,
 )
-from core.structuralmodeling_components.interpolators_per_group.radial_basis_function_per_group import (
+from core.structuralmodeling_components.interpolator_functions.radial_basis_function_per_group import (
     interpolate_group_radial_basis_function,
 )
-from core.structuralmodeling_components.interpolators_per_group.universal_cokriging_per_group import (
+from core.structuralmodeling_components.interpolator_functions.universal_cokriging_per_group import (
     interpolate_group_universal_cokriging,
 )
-from core.structuralmodeling_components.interpolators_per_group.geoinr_per_group import (
+from core.structuralmodeling_components.interpolator_functions.geoinr_per_group import (
     interpolate_group_geo_inr,
 )
-from core.structuralmodeling_components.interpolators_per_group.loop_structural_per_group import (
+from core.structuralmodeling_components.interpolator_functions.loop_structural_per_group import (
     interpolate_group_loop_structural,
 )
-from core.structuralmodeling_components.interpolators_per_group.universal_kriging_per_group import (
+from core.structuralmodeling_components.interpolator_functions.universal_kriging_per_group import (
     interpolate_group_universal_kriging
 )
 
