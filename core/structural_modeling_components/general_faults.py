@@ -243,32 +243,20 @@ def compute_fault_domains(
     if fault_frame.fault_surface_points_df is None:
         raise ValueError("Fault surface points must be set.")
 
-    # Initialize single-domain model
-    # NOTE: kept axis order (Z,Y,X) here exactly as in original code.
-    domain_map: IntArray = np.zeros(
-        (
-            fault_frame.grid.resolution[2],  # Z
-            fault_frame.grid.resolution[1],  # Y
-            fault_frame.grid.resolution[0],  # X
-        ),
-        dtype=int,
-    )
+    res_xyz = tuple(fault_frame.grid.resolution)  # (X,Y,Z)
+    res_zyx = (res_xyz[2], res_xyz[1], res_xyz[0])  # (Z,Y,X)
+
+    # XYZ domain map internally (recommended)
+    domain_map_xyz = np.zeros(res_xyz, dtype=int)
 
     domain_id_counter = 1
-    temp_ids: list[int] = []  # Track temporary domain IDs before remapping
+    temp_ids: list[int] = []
 
-    # Interpolate faults from youngest to oldest
-    for _, fault in enumerate(reversed(fault_frame.fault_elements)):  # Youngest first
+    for fault in reversed(fault_frame.fault_elements):  # youngest first
         name = fault.name
-
-        # Extract surface point/orientation input_data for this fault
         points = fault_frame.get_surface_points_for_element(name)
         orientations = fault_frame.get_orientations_for_element(name)
 
-        if points.empty:
-            raise ValueError(f"❌ No surface points found for fault '{name}'.")
-
-        # Run interpolation (sets scalar field, scalar value, mask internally)
         interpolate_group_universal_cokriging_for_faults(
             fault_frame.get_element_by_name(name),
             fault_frame.grid,
@@ -276,45 +264,40 @@ def compute_fault_domains(
             fault_orientations_points_df=orientations,
         )
 
-        if fault.get_domain_mask() is None:
-            raise ValueError(
-                f"❌ Interpolator did not set domain_mask for fault '{name}'."
-            )
+        mask = fault.get_domain_mask()
+        if mask is None:
+            raise ValueError(f"Interpolator did not set domain_mask for fault '{name}'")
 
-        fault_mask = fault.get_domain_mask()
+        # Force mask to XYZ deterministically
+        if mask.shape == res_xyz:
+            fault_mask_xyz = mask
+        elif mask.shape == res_zyx:
+            fault_mask_xyz = mask.transpose(2, 1, 0)
+        else:
+            raise ValueError(f"Fault mask has unexpected shape {mask.shape}, expected {res_xyz} or {res_zyx}")
 
-        # Security to ensure matching resolution
-        if fault_mask.shape != domain_map.shape:
-            # assume fault mask is (z, y, x) and grid is (x, y, z)
-            fault_mask = fault_mask.transpose(2, 1, 0)
+        new_domain_map = domain_map_xyz.copy()
 
-        new_domain_map = domain_map.copy()
-
-        # For each existing domain, split it if affected by this fault
-        for existing_id in np.unique(domain_map):
-            current_mask = domain_map == existing_id
-            overlap = current_mask & fault_mask
-
+        for existing_id in np.unique(domain_map_xyz):
+            current_mask = domain_map_xyz == existing_id
+            overlap = current_mask & fault_mask_xyz
             if np.any(overlap):
                 new_id = 9999 + domain_id_counter
-
-                # Assign a temporary large ID
                 new_domain_map[overlap] = new_id
-                temp_ids.append(9999 + domain_id_counter)
+                temp_ids.append(new_id)
                 domain_id_counter += 1
 
-        domain_map = new_domain_map
+        domain_map_xyz = new_domain_map
 
-    # Remap domain IDs to consecutive values starting from 0
-    unique_ids = np.unique(domain_map)
-    remap: dict[int, int] = {int(old): int(new) for new, old in enumerate(unique_ids)}
-    remapped_map = np.vectorize(remap.get)(domain_map)
+    # Remap IDs to consecutive
+    unique_ids = np.unique(domain_map_xyz)
+    remap = {int(old): int(new) for new, old in enumerate(unique_ids)}
+    remapped_xyz = np.vectorize(remap.get)(domain_map_xyz)
 
-    # NOTE: preserved exactly: stored transpose on _domain_map
-    fault_frame._domain_map = remapped_map.T
+    fault_frame._domain_map = remapped_xyz  # store XYZ (no .T)
 
-    # remapped_map is currently ZYX; convert to XYZ once
-    domain_map_xyz = remapped_map.transpose(2, 1, 0)
+    # Store domain masks ALSO in XYZ
+    fault_frame._domain_masks = {int(uid): (remapped_xyz == uid) for uid in np.unique(remapped_xyz)}
 
     # --- ALSO store separated_domains (global side-sets), for reporting/sanity ---
     for fault in fault_frame.fault_elements:
@@ -356,9 +339,9 @@ def compute_fault_domains(
         fault.set_domain_pairs(pairs)
 
     # Store per-domain masks (kept as-is: uses remapped_map in ZYX orientation)
-    fault_frame._domain_masks = {}
-    for uid in np.unique(remapped_map):
-        fault_frame.domain_masks[int(uid)] = remapped_map == uid
+    # fault_frame._domain_masks = {}
+    # for uid in np.unique(remapped_map):
+    #     fault_frame.domain_masks[int(uid)] = remapped_map == uid
 
     # Extract surfaces meshes for faults
     for _, fault in enumerate(reversed(fault_frame.fault_elements)):

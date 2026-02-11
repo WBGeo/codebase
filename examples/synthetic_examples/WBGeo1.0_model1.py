@@ -79,6 +79,8 @@ plot_structural_model_3D(structural_model_result, show_surface_meshes=True)
 # frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
+#%%
+
 
 #%%
 
