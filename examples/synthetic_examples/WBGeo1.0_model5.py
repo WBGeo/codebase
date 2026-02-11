@@ -38,10 +38,9 @@ data_elements = InputData_StructuralElements(name='Model_5',
                                              )
 
 # Create a StructuralFrame
-frame = general.build_structural_frame(data_elements.mapping_object,
-                                       grid,
-                                       data_elements.surface_points,
-                                       data_elements.orientations)
+frame = general.build_structural_frame(data_elements,
+                                       grid)
+
 frame.detailed_report()
 
 #%%
@@ -55,8 +54,8 @@ plot_structural_model_3D(frame, show_surface_meshes=False)
 # Set interpolation methods for each stratigraphic series
 
 # UCK
-frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
-frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
+# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
+# frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
 # OK
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
@@ -87,7 +86,6 @@ frame.detailed_report()
 # Component 2 --> Component 3: Interpolation to geomodel result
 general.compute_structural_model(
     frame,
-    fault_frame=None,  # or None for single-domain
     extract_meshes=True,
     verbose=True,
 )
@@ -95,7 +93,6 @@ general.compute_structural_model(
 #%%
 
 plot_structural_model_2D(frame=frame,
-                         fault_frame=None,
                          axis='y',
                          show_input_data=True,
                          index=0)
@@ -103,7 +100,6 @@ plot_structural_model_2D(frame=frame,
 #%%
 
 plot_structural_model_3D(frame=frame,
-                         fault_frame=None,
                          mesh_type="masked",
                          show_orientations=True)
 

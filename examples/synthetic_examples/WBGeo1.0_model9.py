@@ -93,15 +93,16 @@ frame.set_fault_activity_by_group(fault_name="fault5", group_name="D")
 
 frame.fault_activity_verbose
 
+
 #%%
 
 # Set interpolation methods for each stratigraphic series
 
 # UK
-frame["A"].set_interpolation_method("Universal Kriging")
-frame["B"].set_interpolation_method("Universal Kriging")
-# frame["C"].set_interpolation_method("Universal Kriging") # This one causes problems with UK
-frame["D"].set_interpolation_method("Universal Kriging")
+# frame["A"].set_interpolation_method("Universal Kriging")
+# frame["B"].set_interpolation_method("Universal Kriging")
+# # frame["C"].set_interpolation_method("Universal Kriging") # This one causes problems with UK
+# frame["D"].set_interpolation_method("Universal Kriging")
 
 # frame.detailed_report()
 
@@ -113,7 +114,6 @@ structural_model_result = general.compute_structural_model(
     extract_meshes=True,
     verbose=True,
 )
-
 
 #%%
 

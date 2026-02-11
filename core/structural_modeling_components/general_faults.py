@@ -246,7 +246,7 @@ def compute_fault_domains(
     res_xyz = tuple(fault_frame.grid.resolution)  # (X,Y,Z)
     res_zyx = (res_xyz[2], res_xyz[1], res_xyz[0])  # (Z,Y,X)
 
-    # XYZ domain map internally (recommended)
+    # XYZ domain map internally
     domain_map_xyz = np.zeros(res_xyz, dtype=int)
 
     domain_id_counter = 1
@@ -289,41 +289,25 @@ def compute_fault_domains(
 
         domain_map_xyz = new_domain_map
 
-    # Remap IDs to consecutive
+    # Remap IDs to consecutive (FINAL ID SPACE)
     unique_ids = np.unique(domain_map_xyz)
     remap = {int(old): int(new) for new, old in enumerate(unique_ids)}
     remapped_xyz = np.vectorize(remap.get)(domain_map_xyz)
 
-    fault_frame._domain_map = remapped_xyz  # store XYZ (no .T)
-
-    # Store domain masks ALSO in XYZ
+    # Store final domain map and masks in XYZ
+    fault_frame._domain_map = remapped_xyz
     fault_frame._domain_masks = {int(uid): (remapped_xyz == uid) for uid in np.unique(remapped_xyz)}
 
-    # --- ALSO store separated_domains (global side-sets), for reporting/sanity ---
+    valid_ids = set(map(int, np.unique(remapped_xyz)))
+
+    # --- Compute & store domain_pairs in FINAL ID SPACE ---
     for fault in fault_frame.fault_elements:
-        mask = fault.get_domain_mask()
-        # ensure mask is XYZ
-        if mask.shape != domain_map_xyz.shape:
-            mask = mask.transpose(2, 1, 0)
-
-        left_ids = set(np.unique(domain_map_xyz[mask]))
-        right_ids = set(np.unique(domain_map_xyz[~mask]))
-
-        if not left_ids or not right_ids:
-            raise RuntimeError(
-                f"Fault '{fault.name}' does not create a valid split (empty side)."
-            )
-
-        fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
-
-    for fault in fault_frame.fault_elements:
-        # Ensure scalar_field is XYZ for adjacency pair inference
         sf = fault.scalar_field
-        if sf.shape != domain_map_xyz.shape:
+        if sf.shape == res_zyx:
             sf = sf.transpose(2, 1, 0)
 
         pairs = compute_domain_pairs_from_fault_band(
-            domain_map_xyz=domain_map_xyz,
+            domain_map_xyz=remapped_xyz,  # IMPORTANT: final IDs
             scalar_field_xyz=sf,
             scalar_value=float(fault.scalar_value),
             spacing_xyz=fault_frame.grid.spacing,
@@ -331,17 +315,42 @@ def compute_fault_domains(
             use_gradient=True,
         )
 
+        pairs = frozenset((int(a), int(b)) for (a, b) in pairs if int(a) in valid_ids and int(b) in valid_ids)
+
         if not pairs:
-            raise RuntimeError(
-                f"Fault '{fault.name}' produced no domain_pairs (check band tolerance / orientation)."
-            )
+            raise RuntimeError(f"Fault '{fault.name}' produced no valid domain_pairs after remap.")
 
         fault.set_domain_pairs(pairs)
 
-    # Store per-domain masks (kept as-is: uses remapped_map in ZYX orientation)
-    # fault_frame._domain_masks = {}
-    # for uid in np.unique(remapped_map):
-    #     fault_frame.domain_masks[int(uid)] = remapped_map == uid
+    # --- ALSO store separated_domains in FINAL ID SPACE ---
+    for fault in fault_frame.fault_elements:
+        mask = fault.get_domain_mask()
+        if mask is None:
+            raise ValueError(f"Fault '{fault.name}' has no domain_mask set.")
+
+        # Force mask to XYZ deterministically (same logic as above)
+        if mask.shape == res_xyz:
+            mask_xyz = mask
+        elif mask.shape == res_zyx:
+            mask_xyz = mask.transpose(2, 1, 0)
+        else:
+            raise ValueError(f"Fault mask has unexpected shape {mask.shape}, expected {res_xyz} or {res_zyx}")
+
+        # IMPORTANT: use remapped_xyz (final IDs), not domain_map_xyz (temp IDs)
+        left_ids = set(map(int, np.unique(remapped_xyz[mask_xyz])))
+        right_ids = set(map(int, np.unique(remapped_xyz[~mask_xyz])))
+
+        if not left_ids or not right_ids:
+            raise RuntimeError(f"Fault '{fault.name}' does not create a valid split (empty side).")
+
+        # Optional sanity: ensure they're in final id space
+        if not left_ids.issubset(valid_ids) or not right_ids.issubset(valid_ids):
+            raise RuntimeError(
+                f"Fault '{fault.name}' separated_domains contain ids outside domain_map: "
+                f"left={sorted(left_ids - valid_ids)}, right={sorted(right_ids - valid_ids)}"
+            )
+
+        fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
 
     # Extract surfaces meshes for faults
     for _, fault in enumerate(reversed(fault_frame.fault_elements)):
@@ -353,8 +362,8 @@ def compute_fault_domains(
         )
         fault.set_mesh("unmasked", vertices[0], edges[0])
 
-    # After all faults are processed
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
+
 
 
 def build_fault_frame(

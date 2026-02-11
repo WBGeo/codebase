@@ -169,11 +169,7 @@ def test_single_vertical_fault_two_layers_with_offset(method, plot_mode):
     fault_frame = gf.build_fault_frame(fault_elements, grid)
     gf.compute_fault_domains(fault_frame)
 
-    fault_frame.plot_fault_domain_section()
-
     dm = fault_frame.domain_map
-
-    print(dm.shape)
 
     assert dm is not None
     assert dm.shape == tuple(grid.resolution)
@@ -198,10 +194,6 @@ def test_single_vertical_fault_two_layers_with_offset(method, plot_mode):
     for g in frame.structural_groups:
         g.set_interpolation_method(method)
 
-    # CRITICAL: ensure domains are not merged away.
-    # For a single group at idx=0, set fault active at 0 so interpolation stays split.
-    # frame.fault_activity = {"F1": 0}
-
     # Run the pipeline steps explicitly (avoids any signature ambiguity)
     general.run_interpolation_with_fault_domains(frame=frame, fault_frame=fault_frame, crop_to_domain=True)
     general.set_scalar_masks_per_domain(frame)
@@ -218,7 +210,7 @@ def test_single_vertical_fault_two_layers_with_offset(method, plot_mode):
     if plot_mode["always"]:
         plot_structural_model_2D(frame)
         # fault section view (optional)
-        # fault_frame.plot_fault_domain_section(axis="y", index=grid.resolution[1] // 2)
+        fault_frame.plot_fault_domain_section()
 
     # Allow 1-voxel offset near boundaries (interfaces + fault plane)
     near = _near_boundary_mask(expected, radius=1)

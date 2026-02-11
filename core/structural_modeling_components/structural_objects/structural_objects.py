@@ -635,50 +635,38 @@ class StructuralFrame(BaseModel):
 
         plt.show()
 
-    def plot_age_mask_section(
-            self, group_nr: int = 0, axis: str = "y", index: int = 0
-    ) -> None:
+    def plot_age_mask_section(self, group_nr: int = 0, axis: str = "y", index: int = 0) -> None:
         """
-        Plot a section of an age mask (boolean field) along a specified axis
-        at a given index.
+        Plot a section of an age mask (boolean field) along a specified axis at a given index.
+        Assumes masks are stored in XYZ order matching grid.resolution.
         """
-        # --- Pre checks ---
         group = self.structural_groups[group_nr]
+        mask = group.get_mask()
 
-        if getattr(group, "_mask", None) is None:
-            raise ValueError(
-                f"Structural group at index {group_nr} has no age mask computed."
-            )
+        if mask is None:
+            raise ValueError(f"Structural group at index {group_nr} has no age mask computed.")
 
-        # --- Extract slice and extent ---
+        xmin, xmax, ymin, ymax, zmin, zmax = self._grid.extent
+
         if axis == "y":
-            mask_slice = group.get_mask()[:, index, :].T
-            extent = self._grid.extent[:4]
+            # X-Z at fixed Y=index
+            mask_slice = mask[:, index, :].T  # (Z, X)
+            extent = (xmin, xmax, zmin, zmax)
             xlabel, ylabel = "X", "Z"
         elif axis == "x":
-            mask_slice = group.get_mask()[index, :, :].T
-            extent = (
-                self._grid.extent[0],
-                self._grid.extent[2],
-                self._grid.extent[4],
-                self._grid.extent[1],
-            )
+            # Y-Z at fixed X=index
+            mask_slice = mask[index, :, :].T  # (Z, Y)
+            extent = (ymin, ymax, zmin, zmax)
             xlabel, ylabel = "Y", "Z"
         elif axis == "z":
-            mask_slice = group.get_mask()[:, :, index].T
-            extent = (
-                self._grid.extent[0],
-                self._grid.extent[2],
-                self._grid.extent[1],
-                self._grid.extent[3],
-            )
+            # X-Y at fixed Z=index
+            mask_slice = mask[:, :, index].T  # (Y, X)
+            extent = (xmin, xmax, ymin, ymax)
             xlabel, ylabel = "X", "Y"
         else:
             raise ValueError("Axis must be 'x', 'y', or 'z'.")
 
         fig, ax = plt.subplots()
-
-        # --- Plot boolean mask ---
         im = ax.imshow(
             mask_slice.astype(float),
             extent=extent,
@@ -686,21 +674,16 @@ class StructuralFrame(BaseModel):
             cmap="gray",
             vmin=0,
             vmax=1,
+            aspect="auto",
         )
 
-        # Optional colorbar for clarity
         cbar = plt.colorbar(im, ax=ax, ticks=[0, 1])
         cbar.ax.set_yticklabels(["False", "True"])
         cbar.set_label("Age Mask")
 
-        # --- Labels and title ---
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.set_title(
-            f"Age Mask Section along {axis.upper()} at Index {index}\n"
-            f"Group '{group.name}'"
-        )
-
+        ax.set_title(f"Age Mask Section along {axis.upper()} at Index {index}\nGroup '{group.name}'")
         plt.show()
 
 

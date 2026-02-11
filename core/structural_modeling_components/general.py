@@ -241,7 +241,7 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
     """
     ff = frame.fault_frame
     domain_map: IntArray = (
-        ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=int).T
+        ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=int)
     )
     domain_ids: IntArray = np.unique(domain_map)
 
@@ -276,7 +276,7 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
                 # Check if this domain is active for this group
                 domain_ok = False
                 for fault in ff.fault_elements:
-                    youngest_idx = frame._fault_activity[fault.name]
+                    youngest_idx = frame.fault_activity[fault.name]
                     if group_idx < youngest_idx:
                         continue
                     if d in fault.separated_domains_flat():
@@ -519,7 +519,6 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             if not np.any(mc_fault_mask):
                 # inverse again
                 mc_fault_mask = ~mc_fault_mask
-                print("problem detected")
 
             verts, faces = marching_cubes_per_element(
                 fault.scalar_field,  # scalar field
