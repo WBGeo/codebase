@@ -3,7 +3,6 @@ from __future__ import annotations
 import pyvista
 import typing
 import numpy as np
-#from py_api_wbgeo.nodesapi import wbgeo_type, AnnotatedScriptType
 from pydantic.dataclasses import dataclass
 from typing import Optional
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64

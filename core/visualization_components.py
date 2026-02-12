@@ -240,7 +240,7 @@ def plot_structural_model_2D(
             fcol = getattr(fault, "color", None) or "black"
             CSf = ax.contour(x_coords, y_coords, f_slice_masked.T, levels=[f_sv], colors=[fcol], linewidths=1.5,
                              linestyles="-", zorder=10000)
-            ax.clabel(CSf, fmt={f_sv: f"Fault: {fault.name}"}, fontsize=7)
+            ax.clabel(CSf, fmt={f_sv: f"{fault.name}"}, fontsize=15)
 
     # ---- input input_data (optional) ----
     if show_input_data:
@@ -616,7 +616,7 @@ def plot_fault_model_2D(
                     CS,
                     fmt={sv: getattr(fault, "name", "fault")},
                     inline=True,
-                    fontsize=8
+                    fontsize=15
                 )
 
                 handles.append(plt.Line2D([0], [0], color=fcol, lw=1.5, label=getattr(fault, "name", "fault")))

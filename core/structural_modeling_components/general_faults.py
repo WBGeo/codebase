@@ -391,7 +391,7 @@ def build_fault_frame(
     fault_orientations_df = input_data_fault_elements.fault_orientations.copy()
 
     # Assign default gray colors if none provided
-    colors = ["#555555"] * len(fault_names)
+    colors = ["#000000"] * len(fault_names)
 
     fault_elements: list[FaultElement] = []
     for name, color in reversed(list(zip(fault_names, colors))):
