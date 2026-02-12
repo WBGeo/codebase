@@ -80,7 +80,7 @@ def plot_structural_model_3D(
         # we’ll append “Faults” header at the top with the flatten stage below
         fault_entries = []
 
-        for fault in getattr(frame._fault_frame, "fault_elements", []):
+        for fault in getattr(frame.fault_frame, "fault_elements", []):
             if fault_mesh_type not in getattr(fault, "vertices", {}) or fault_mesh_type not in getattr(fault, "edges",
                                                                                                        {}):
                 fault_mesh_type = "unmasked"  # fallback if requested type not present
@@ -209,11 +209,11 @@ def plot_structural_model_2D(
                 colors = [id_to_color[i] for i in sorted_ids]
                 cmap = ListedColormap(colors)
                 norm = BoundaryNorm(sorted_ids + [sorted_ids[-1] + 1], len(colors))
-                ax.imshow(slice_lith, origin='lower', cmap=cmap, norm=norm, extent=extent, alpha=1)
+                ax.imshow(slice_lith, origin='lower', cmap=cmap, norm=norm, extent=extent, alpha=1, zorder=-100)
 
     # ---- faults as contours from their scalar fields ----
     if show_fault_contours and frame.fault_frame is not None:
-        for fault in frame.fault_frame.fault_elements:
+        for fault_index, fault in enumerate(frame.fault_frame.fault_elements):
             f_sf = getattr(fault, "scalar_field", None)
             f_sv = getattr(fault, "scalar_value", None)
             if f_sf is None or f_sv is None:
@@ -224,15 +224,20 @@ def plot_structural_model_2D(
             if show_result and frame.lith_block is not None:
                 # this mask is the age mask defined by youngest group affected by this fault
                 group_index = frame.fault_activity_verbose[fault.name]["youngest_group_index"] - 1
-                fault_mask = np.take(frame.structural_groups[group_index].get_mask().T, index,
-                                     axis=dim) if index >= 0 else np.ones_like(f_slice, dtype=bool)
+                if group_index >= 0:
+                    fault_mask = (
+                        np.take(frame.structural_groups[group_index].get_mask().T, index, axis=dim)
+                    )
+                else:
+                    fault_mask = np.zeros_like(f_slice, dtype=bool)
+
                 f_slice_masked = np.ma.array(f_slice, mask=fault_mask)
             else:
                 # Fallback to unmasked contour if no result or mask available
                 f_slice_masked = f_slice
             fcol = getattr(fault, "color", None) or "black"
             CSf = ax.contour(x_coords, y_coords, f_slice_masked.T, levels=[f_sv], colors=[fcol], linewidths=1.5,
-                             linestyles="-")
+                             linestyles="-", zorder=10000)
             ax.clabel(CSf, fmt={f_sv: f"Fault: {fault.name}"}, fontsize=7)
 
     # ---- input input_data (optional) ----
