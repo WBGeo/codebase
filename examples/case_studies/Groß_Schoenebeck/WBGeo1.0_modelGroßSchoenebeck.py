@@ -40,7 +40,7 @@ grid = RegularGrid(
 #%%
 
 # Create input data for the structural elements
-data_elements = InputData_StructuralElements(name='Model_9',
+data_elements = InputData_StructuralElements(name='GSB',
                                              mapping_object={
                                                 "01": ('01_top_hannover'),
                                                 "02": ('02_top_dethlingen'),
