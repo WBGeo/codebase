@@ -1,15 +1,13 @@
 # Importing necessary libraries
-import numpy as np
 import pandas as pd
 import os
 
-import core.structural_modeling_components.general_faults
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
-                                           plot_fault_model_3D)
+                                           plot_fault_model_2D, plot_fault_model_3D)
 
 from core.structural_modeling_components import general, general_faults
 
@@ -31,61 +29,47 @@ print(len(surface_points_faults), len(orientations_faults))
 
 #%%
 
+margin = 100  # Add a margin of 100 units around the data
 grid = RegularGrid(
-    extent=(surface_points["X"].min(), surface_points["X"].max(),
-            surface_points["Y"].min(), surface_points["Y"].max(),
-            surface_points["Z"].min(), surface_points["Z"].max()+100),
+    extent=(surface_points["X"].min()-margin, surface_points["X"].max()+margin,
+            surface_points["Y"].min()-margin, surface_points["Y"].max()+margin,
+            surface_points["Z"].min()-margin, surface_points["Z"].max()+margin),
     resolution=(50, 50, 50)
 )
 
 #%%
 
-# Create a StructuralFrame
-# frame = general.build_structural_frame({
-#                                         "Main": ('01_top_hannover',
-#                                                  '02_top_dethlingen',
-#                                                  '03_top_ebs',
-#                                                  '04_top_rockel',
-#                                                  '05_top_havel',
-#                                                  '06_top_vulkanit',
-#                                                  '07_top_karbon'
-#                                                  )
-#                                        },
-#                                         grid=grid,
-#                                         surface_points=surface_points,
-#                                         orientations=orientations)
+# Create input data for the structural elements
+data_elements = InputData_StructuralElements(name='Model_9',
+                                             mapping_object={
+                                                "01": ('01_top_hannover'),
+                                                "02": ('02_top_dethlingen'),
+                                                "03": ('03_top_ebs'),
+                                                "04": ('04_top_rockel'),
+                                                "05": ('05_top_havel'),
+                                                "06": ('06_top_vulkanit'),
+                                                "07": ('07_top_karbon')
+                                             },
+                                             surface_points=surface_points,
+                                             orientations=orientations
+                                             )
 
-frame = general.build_structural_frame({
-                                        "01": ('01_top_hannover'),
-                                        "02": ('02_top_dethlingen'),
-                                        "03": ('03_top_ebs'),
-                                        "04": ('04_top_rockel'),
-                                        "05": ('05_top_havel'),
-                                        "06": ('06_top_vulkanit'),
-                                        "07": ('07_top_karbon')
-                                       },
-                                        grid=grid,
-                                        surface_points=surface_points,
-                                        orientations=orientations)
+# Create a StructuralFrame
+frame = general.build_structural_frame(input_data_elements=data_elements,
+                                       grid=grid
+                                       )
 
 frame.detailed_report()
 
 #%%
 
-plot_structural_model_3D(frame=frame, show_surface_meshes=False)
+# Plot the input input_data (2D and 3D possible)
+plot_structural_model_2D(frame)
+plot_structural_model_3D(frame)
 
 #%%
 
-# UCK
-# frame["Main"].set_interpolation_method("Universal Co-Kriging")
-
-# GeoINR
-# frame["Main"].set_interpolation_method("GeoINR")
-
-# RBF
-# frame["Main"].set_interpolation_method("Radial Basis Function")
-
-# This is what Mauro suggested
+# Set interpolation methods for each stratigraphic series
 frame["01"].set_interpolation_method("Universal Co-Kriging")
 frame["02"].set_interpolation_method("Universal Co-Kriging")
 frame["03"].set_interpolation_method("Universal Co-Kriging")
@@ -94,68 +78,40 @@ frame["05"].set_interpolation_method("Universal Co-Kriging")
 frame["06"].set_interpolation_method("Universal Co-Kriging")
 frame["07"].set_interpolation_method("Universal Co-Kriging")
 
+frame.detailed_report()
+
 #%%
 
-general.compute_structural_model(
+# Compute structural model result
+structural_model_result = general.compute_structural_model(
     frame,
-    fault_frame=None,  # or None for single-domain
     extract_meshes=True,
     verbose=True,
 )
 
 #%%
 
-plot_structural_model_3D(frame=frame, show_surface_meshes=True)
+# Plot the results (2D and 3D possible)
+plot_structural_model_2D(structural_model_result.structural_frame)
+plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
 
 #%%
 
-plot_structural_model_2D(frame=frame, axis='y', show_input_data=False)
+#%%
 
- #%%
-
- # TODO: Does not work because cross cutting, maybe still allow visualization?
-
-# Input data for faults
-data_faults = InputData_FaultElements(name='Faults_GSB',
-                                      fault_surface_points=surface_points_faults,
-                                      fault_orientations=orientations_faults)
-
-# Create FaultFrame
-# fault_frame = general_faults.build_fault_frame(
-#     fault_surface_points_df=data_faults.fault_surface_points,
-#     fault_orientations_df=data_faults.fault_orientations,
-#     fault_names=["seismic_plane"],
-#     colors=["#A9A9A9"],
-#     grid=grid
-# )
-
-# Create FaultFrame
-fault_frame = general_faults.build_fault_frame(
-    fault_surface_points_df=data_faults.fault_surface_points,
-    fault_orientations_df=data_faults.fault_orientations,
-    fault_names=["water"],
-    colors=["#A9A9A9"],
-    grid=grid
-)
-
-fault_frame.detailed_report()
+# Optional plotting
+# frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
+# frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 #%%
 
-plot_fault_model_3D(fault_frame)
-
-#%%
-
-fault_frame.fault_surface_points_df
-
-#%%
-
-# Compute fault domains
-general_faults.compute_fault_domains(fault_frame)
-
-#%%
-
-# Plot fault domains (2D and 3D possible)
-fault_frame.plot_fault_domain_section(axis='y', index=12)
-plot_fault_model_3D(fault_frame)
+# Optional: Compute gradients at the surface mesh vertices
+# from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+#
+# gradients_dict, gradients_faults_dict = surface_mesh_gradients.get_surface_mesh_gradients(structural_model_result,
+#                                                                                           mesh_type="unmasked")
+# surface_mesh_gradients.plot_surface_mesh_gradients(structural_model_result,
+#                                                    gradients_dict,
+#                                                    gradients_faults_dict,
+#                                                    mesh_type="unmasked")
 

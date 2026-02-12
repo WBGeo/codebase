@@ -11,9 +11,7 @@ cwd = os.getcwd()
 #%%
 
 # load the csv
-# This file too big for gitlab
-df = pd.read_csv("C:/Users/vonha/Desktop/schoenebeck_surface_points.csv")
-df.describe()
+df = pd.read_csv("file_path_here")
 
 df_faults_1 = pd.read_csv("C:/Users/vonha/Desktop/water.csv")
 df_faults_2 = pd.read_csv("C:/Users/vonha/Desktop/seismic_plane.csv")
@@ -25,14 +23,15 @@ df_faults = pd.concat([df_faults_1, df_faults_2], ignore_index=True)
 
 df_faults.head()
 
+
 #%%
 
 # Downsample the data for faster computation
 def spatial_downsample_by_formation(
-    df: pd.DataFrame,
-    percentage: float,
-    n_bins: int = 50,
-    random_state: int | None = None,
+        df: pd.DataFrame,
+        percentage: float,
+        n_bins: int = 50,
+        random_state: int | None = None,
 ) -> pd.DataFrame:
     """
     Spatially downsample contact points per formation while preserving XY coverage.
@@ -103,6 +102,7 @@ def spatial_downsample_by_formation(
 
     return pd.concat(out, ignore_index=True)
 
+
 def compute_surface_orientations(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
 
@@ -155,13 +155,12 @@ def compute_surface_orientations(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-
 def spatially_downsample_orientations(
-    df: pd.DataFrame,
-    n_target: int = 25,
-    n_bins: int = 6,
-    margin_frac: float = 0.1,   # NEW: fraction of extent to exclude per side
-    random_state: int | None = None,
+        df: pd.DataFrame,
+        n_target: int = 25,
+        n_bins: int = 6,
+        margin_frac: float = 0.1,  # NEW: fraction of extent to exclude per side
+        random_state: int | None = None,
 ) -> pd.DataFrame:
     """
     Spatially downsample orientation vectors per formation,
@@ -187,7 +186,7 @@ def spatially_downsample_orientations(
             (g["X"] <= x_max - x_margin) &
             (g["Y"] >= y_min + y_margin) &
             (g["Y"] <= y_max - y_margin)
-        ]
+            ]
 
         # If margin removes too much data, fall back
         if len(interior) < n_target:
@@ -239,7 +238,7 @@ def spatially_downsample_orientations(
 # Downsample surface points to 1% per formation
 downsampled_surface_df = spatial_downsample_by_formation(
     df,
-    percentage=0.005,   # 0.5%
+    percentage=0.005,  # 0.5%
     n_bins=40,
     random_state=42,
 )
@@ -263,7 +262,7 @@ orientations_ds = spatially_downsample_orientations(
 
 # Save to csv
 orientations_ds.to_csv(os.path.join(cwd, "examples/case_studies/Groß_Schoenebeck/input_data"
-                                        "/schoenebeck_orientations_downsampled.csv"), index=False)
+                                         "/schoenebeck_orientations_downsampled.csv"), index=False)
 
 #%%
 
@@ -272,14 +271,15 @@ orientations_ds.to_csv(os.path.join(cwd, "examples/case_studies/Groß_Schoenebec
 # Downsample surface points to 1% per formation
 downsampled_surface_df_faults = spatial_downsample_by_formation(
     df_faults,
-    percentage=0.1,   # 10%
+    percentage=0.1,  # 10%
     n_bins=40,
     random_state=42,
 )
 
 # Save to csv
 downsampled_surface_df_faults.to_csv(os.path.join(cwd, "examples/case_studies/Groß_Schoenebeck/input_data"
-                                                "/schoenebeck_faults_surface_points_downsampled.csv"), index=False)
+                                                       "/schoenebeck_faults_surface_points_downsampled.csv"),
+                                     index=False)
 
 #%%
 
@@ -296,4 +296,4 @@ orientations_ds_faults = spatially_downsample_orientations(
 
 # Save to csv
 orientations_ds_faults.to_csv(os.path.join(cwd, "examples/case_studies/Groß_Schoenebeck/input_data"
-                                        "/schoenebeck_faults_orientations_downsampled.csv"), index=False)
+                                                "/schoenebeck_faults_orientations_downsampled.csv"), index=False)
