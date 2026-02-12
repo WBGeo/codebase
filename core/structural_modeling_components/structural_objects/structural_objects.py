@@ -1133,6 +1133,3 @@ class FaultFrame(BaseModel):
         ax.set_title(f"Fault Domain Section along {axis.upper()} at Index {index}")
 
         plt.show()
-
-    # NOTE: _generate_default_relations is referenced by add_fault_element()
-    # but not shown in the provided file excerpt. Kept as-is.

@@ -133,6 +133,14 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #                                                    gradients_faults_dict,
 #                                                    mesh_type="unmasked")
 
-
 #%%
 
+# TODO: Meshing needs to be adapted to work with the new Structural Modeling output
+
+# Meshing for Process Simulation
+# mesh_test = create_structured_mesh_data(
+#     geomodel_result=results_test,
+#     refinement_data=[10,10,10],
+#     z_threshold=0.1,
+#     tolerance=1
+# )
