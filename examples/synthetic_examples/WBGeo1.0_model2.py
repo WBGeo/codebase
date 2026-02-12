@@ -84,8 +84,8 @@ frame.detailed_report()
 #%%
 
 # Plot the input data (2D and 3D possible)
-plot_structural_model_2D(frame, axis='y', show_result=False)
-plot_structural_model_3D(frame, show_surface_meshes=False)
+plot_structural_model_2D(frame)
+plot_structural_model_3D(frame)
 
 #%%
 

@@ -39,10 +39,9 @@ data_elements = InputData_StructuralElements(name='Model_4',
                                              )
 
 # Create a StructuralFrame
-frame = general.build_structural_frame(data_elements.mapping_object,
-                                       grid,
-                                       data_elements.surface_points,
-                                       data_elements.orientations)
+frame = general.build_structural_frame(data_elements,
+                                       grid
+                                       )
 frame.detailed_report()
 
 #%%

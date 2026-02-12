@@ -47,6 +47,8 @@ def plot_structural_model_3D(
             # meshes (per domain)
             if show_surface_meshes:
                 for mesh_elem in group.structural_elements:  # <--- renamed variable
+                    if mesh_type not in getattr(mesh_elem, "vertices", {}) or mesh_type not in getattr(mesh_elem, "edges", {}):
+                        continue  # skip if requested mesh type not present
                     plotter.add_mesh(
                         pv.PolyData(mesh_elem._vertices[mesh_type],
                                     np.insert(mesh_elem._edges[mesh_type], 0, 3, axis=1).ravel()),

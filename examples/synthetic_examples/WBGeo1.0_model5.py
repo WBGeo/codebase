@@ -2,19 +2,20 @@
 import pandas as pd
 import os
 
-import core.structural_modeling_components.general_faults
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
-                                           plot_fault_model_3D)
+                                           plot_fault_model_2D, plot_fault_model_3D)
 
 from core.structural_modeling_components import general, general_faults
 
 #%%
 
 cwd = os.getcwd()
+
+# WORKFLOW Synthetic Model 5: no faults, 1 unconformity, 2 stratigraphic groups
 
 #%%
 
@@ -26,7 +27,7 @@ grid = RegularGrid(
 
 #%%
 
-# Input data for elements
+# Create input data for the structural elements
 data_elements = InputData_StructuralElements(name='Model_5',
                                              mapping_object={
                                                  "Strat_Series2": ('rock4', 'rock3'),
@@ -38,109 +39,77 @@ data_elements = InputData_StructuralElements(name='Model_5',
                                              )
 
 # Create a StructuralFrame
-frame = general.build_structural_frame(data_elements,
-                                       grid)
+frame = general.build_structural_frame(input_data_elements=data_elements,
+                                       grid=grid,
+                                       )
 
 frame.detailed_report()
 
 #%%
 
-# Plot the input input_data (2D and 3D possible)
-plot_structural_model_2D(frame, axis='y', show_result=False)
+# Plot the input data (2D and 3D possible)
+plot_structural_model_2D(frame)
 plot_structural_model_3D(frame, show_surface_meshes=False)
 
 #%%
 
 # Set interpolation methods for each stratigraphic series
 
-# UCK
+# Set another interpolation method per group
 # frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
 # frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
-# OK
-# frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
-# frame["Strat_Series2"].set_interpolation_method("Ordinary Kriging")
-# # Set interpolation parameters if needed
-# frame["Strat_Series1"].configure_interpolation_params(range=500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
-# frame["Strat_Series2"].configure_interpolation_params(range=500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
+# Configure interpolation parameters if needed (available parameters depend on the interpolation method)
+# frame["Strat_Series1"].configure_interpolation_params()
+# frame["Strat_Series2"].configure_interpolation_params()
 
-# RBF
-# frame["Strat_Series1"].set_interpolation_method("Radial Basis Function")
-# frame["Strat_Series2"].set_interpolation_method("Radial Basis Function")
-# # Set interpolation parameters if needed
-# frame["Strat_Series1"].configure_interpolation_params(kernel="linear", epsilon=1)
-# frame["Strat_Series2"].configure_interpolation_params(kernel="linear", epsilon=1)
-
-# GeoINR
-# frame["Strat_Series1"].set_interpolation_method("GeoINR")
-# frame["Strat_Series2"].set_interpolation_method("GeoINR")
-
-# Loop
-# frame["Strat_Series1"].set_interpolation_method("Loop Structural")
-# frame["Strat_Series2"].set_interpolation_method("Loop Structural")
-
-frame.detailed_report()
+# frame.detailed_report()
 
 #%%
 
-# Component 2 --> Component 3: Interpolation to geomodel result
-general.compute_structural_model(
+# Compute structural model result
+structural_model_result = general.compute_structural_model(
     frame,
     extract_meshes=True,
     verbose=True,
 )
 
-#%%
-
-plot_structural_model_2D(frame=frame,
-                         axis='y',
-                         show_input_data=True,
-                         index=0)
 
 #%%
 
-plot_structural_model_3D(frame=frame,
-                         mesh_type="masked",
-                         show_orientations=True)
+# Plot the results (2D and 3D possible)
+plot_structural_model_2D(structural_model_result.structural_frame)
+plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
 
 #%%
 
 # Optional plotting
-# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+# frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
+#%%
+
+# Optional: Compute gradients at the surface mesh vertices
+# from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+#
+# gradients_dict, gradients_faults_dict = surface_mesh_gradients.get_surface_mesh_gradients(structural_model_result,
+#                                                                                           mesh_type="unmasked")
+# surface_mesh_gradients.plot_surface_mesh_gradients(structural_model_result,
+#                                                    gradients_dict,
+#                                                    gradients_faults_dict,
+#                                                    mesh_type="unmasked")
 
 #%%
 
+# TODO: Meshing needs to be adapted to work with the new Structural Modeling output
 
-#%%
-
-# TODO: Adapt meshing to new structural modeling components
-
-# 4: Meshing for Process Simulation
+# Meshing for Process Simulation
 # mesh_test = create_structured_mesh_data(
-#    geomodel_result=results_test,
-#    refinement_data=[25, 21, 16, 5, 6],
-#    z_threshold=0.1,
-#    tolerance=1
+#     geomodel_result=results_test,
+#     refinement_data=[10,10,10],
+#     z_threshold=0.1,
+#     tolerance=1
 # )
 
-# Generate mesh
-mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
-    geomodel_result=results_test,
-    tolerance=50,
-    mesh_size=10,
-    curve_mesh_size=5,
-    DISTANCE_THRESHOLD = 60,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10,
-    extent=[],
-    buffer_dist=0,
-    smooth =3
-)
-
-#%%
 
 

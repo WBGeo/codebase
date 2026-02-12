@@ -15,7 +15,7 @@ from core.structural_modeling_components import general, general_faults
 
 cwd = os.getcwd()
 
-# WORKFLOW Synthetic Model 2: 2 faults, 1 unconformity, 2 stratigraphic groups
+# WORKFLOW Synthetic Model 3: 2 faults, 1 unconformity, 2 stratigraphic groups
 
 #%%
 

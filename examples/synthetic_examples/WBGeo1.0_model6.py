@@ -2,13 +2,12 @@
 import pandas as pd
 import os
 
-import core.structural_modeling_components.general_faults
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
-                                           plot_fault_model_3D)
+                                           plot_fault_model_2D, plot_fault_model_3D)
 
 from core.structural_modeling_components import general, general_faults
 
@@ -16,17 +15,19 @@ from core.structural_modeling_components import general, general_faults
 
 cwd = os.getcwd()
 
+# WORKFLOW Synthetic Model 6: no faults, 2 unconformities, 3 stratigraphic groups
+
 #%%
 
-# Create grid
+# Create a grid for the model
 grid = RegularGrid(
-    extent=(0, 1000, 0, 500, 0, 1000),  # Example grid extent
-    resolution=(100, 50, 100)  # Example resolution
+    extent=(0, 1000, 0, 1000, 0, 1000),  # Example grid extent
+    resolution=(50, 50, 50)  # Example resolution
 )
 
 #%%
 
-# Input data for elements
+# Create input data for the structural elements
 data_elements = InputData_StructuralElements(name='Model_6',
                                              mapping_object={
                                               "Shallow_Strat": ('shallow_rock3', 'shallow_rock2', 'shallow_rock1'),
@@ -40,127 +41,76 @@ data_elements = InputData_StructuralElements(name='Model_6',
                                              )
 
 # Create a StructuralFrame
-frame = general.build_structural_frame(data_elements.mapping_object,
-                                       grid,
-                                       data_elements.surface_points,
-                                       data_elements.orientations)
+frame = general.build_structural_frame(input_data_elements=data_elements,
+                                       grid=grid
+                                       )
+
 frame.detailed_report()
 
 #%%
 
 # Plot the input input_data (2D and 3D possible)
-plot_structural_model_2D(frame, axis='y', show_result=False)
-plot_structural_model_3D(frame, show_surface_meshes=False)
+plot_structural_model_2D(frame)
+plot_structural_model_3D(frame)
 
 #%%
 
 # Set interpolation methods for each stratigraphic series
 
-# UCK
+# Set another interpolation method per group
 # frame["Shallow_Strat"].set_interpolation_method("Universal Co-Kriging")
 # frame["Medium_Strat"].set_interpolation_method("Universal Co-Kriging")
 # frame["Deep_Strat"].set_interpolation_method("Universal Co-Kriging")
 
-# OK
-# frame["Shallow_Strat"].set_interpolation_method("Ordinary Kriging")
-# frame["Medium_Strat"].set_interpolation_method("Ordinary Kriging")
-# frame["Deep_Strat"].set_interpolation_method("Ordinary Kriging")
-# # # Set interpolation parameters if needed
-# frame["Shallow_Strat"].configure_interpolation_params(range=1500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
-# frame["Medium_Strat"].configure_interpolation_params(range=1500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
-# frame["Deep_Strat"].configure_interpolation_params(range=1500, variogram_model="gaussian", anisotropy_scaling_z=0.3)
+# Configure interpolation parameters if needed (available parameters depend on the interpolation method)
+# frame["Shallow_Strat"].set_interpolation_parameters()
+# frame["Medium_Strat"].set_interpolation_parameters()
+# frame["Deep_Strat"].set_interpolation_parameters()
 
-# RBF
-frame["Shallow_Strat"].set_interpolation_method("Radial Basis Function")
-frame["Medium_Strat"].set_interpolation_method("Radial Basis Function")
-frame["Deep_Strat"].set_interpolation_method("Radial Basis Function")
-
-# # Set interpolation parameters if needed
-frame["Shallow_Strat"].configure_interpolation_params(kernel='multiquadric', epsilon=0.0001)
-frame["Medium_Strat"].configure_interpolation_params(kernel='multiquadric', epsilon=0.0001)
-frame["Deep_Strat"].configure_interpolation_params(kernel='multiquadric', epsilon=0.0001)
-
-# GeoINR
-# frame["Shallow_Strat"].set_interpolation_method("GeoINR")
-# frame["Medium_Strat"].set_interpolation_method("GeoINR")
-# frame["Deep_Strat"].set_interpolation_method("GeoINR")
-
-# Loop
-# frame["Shallow_Strat"].set_interpolation_method("Loop Structural")
-# frame["Medium_Strat"].set_interpolation_method("Loop Structural")
-# frame["Deep_Strat"].set_interpolation_method("Loop Structural")
-
-frame.detailed_report()
+# frame.detailed_report()
 
 #%%
 
-# Component 2 --> Component 3: Interpolation to geomodel result
-general.compute_structural_model(
+# Compute structural model result
+structural_model_result = general.compute_structural_model(
     frame,
-    fault_frame=None,  # or None for single-domain
     extract_meshes=True,
     verbose=True,
 )
 
 #%%
 
-plot_structural_model_2D(frame=frame,
-                         fault_frame=None,
-                         axis='y',
-                         show_input_data=True,
-                         index=0)
+# Plot the results (2D and 3D possible)
+plot_structural_model_2D(structural_model_result.structural_frame)
+plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
 
-#%%
-
-plot_structural_model_3D(frame=frame,
-                         fault_frame=None,
-                         mesh_type="masked",
-                         show_orientations=True)
 
 #%%
 
 # Optional plotting
-# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+# frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 #%%
 
-# TODO: Adapt to new structure
-
-mesh_test = create_unstructured_mesh_data(
-    data_test= data_test,
-    geomodel_result=results_test,
-    num_wells=0,
-    wells=[],
-    num_sources=0,
-    sources=[],
-    num_shafts=0,
-    centers=[],
-    axes=[],
-    radii=[],
-    num_planes=0,
-    extra_planes=[],
-    tolerance=50,
-    mesh_size=20,
-    curve_mesh_size=2,
-    DISTANCE_THRESHOLD = 60,
-    PROJECTION_THRESHOLD = 60,
-    EXTRUSION_FACTOR = 80,
-    z_threshold = 10,
-    extent=[],
-    buffer_dist=20,
-    smooth =2
-)
-
-
-mesh_test.export_vtm('file.vtm')
-print('doneeeeee')
-mesh_ex=mesh_test.export_exodus("filename.exo")
-mesh_vtu=mesh_test.export_vtu("filename.vtu")
-
-
+# Optional: Compute gradients at the surface mesh vertices
+# from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+#
+# gradients_dict, gradients_faults_dict = surface_mesh_gradients.get_surface_mesh_gradients(structural_model_result,
+#                                                                                           mesh_type="unmasked")
+# surface_mesh_gradients.plot_surface_mesh_gradients(structural_model_result,
+#                                                    gradients_dict,
+#                                                    gradients_faults_dict,
+#                                                    mesh_type="unmasked")
 
 #%%
 
-# 4.5: Plot the meshing result (only 3D at current state)
-plot_mesh_3d(mesh_test, data_test)
+# TODO: Meshing needs to be adapted to work with the new Structural Modeling output
+
+# Meshing for Process Simulation
+# mesh_test = create_structured_mesh_data(
+#     geomodel_result=results_test,
+#     refinement_data=[10,10,10],
+#     z_threshold=0.1,
+#     tolerance=1
+# )
