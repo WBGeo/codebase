@@ -470,6 +470,19 @@ class StructuralFrame(BaseModel):
                 return group
         raise KeyError(f"Structural group '{group_name}' not found.")
 
+    def get_element_by_name(self, element_name: str) -> StructuralElement:
+        for group in self.structural_groups:
+            for elem in group.structural_elements:
+                if elem.name == element_name:
+                    return elem
+        raise KeyError(f"Structural element '{element_name}' not found.")
+
+    def get_group_by_name(self, group_name: str) -> StructuralGroup:
+        for group in self.structural_groups:
+            if group.name == group_name:
+                return group
+        raise KeyError(f"Structural group '{group_name}' not found.")
+
     def detailed_report(self) -> None:
         """Print a human-readable report of the structural frame state."""
         print("📦 Structural Frame — Detailed Report")

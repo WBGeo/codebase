@@ -1,13 +1,9 @@
 import pandas as pd
-import glob
-import pyvista as pv
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import cKDTree
-import colorcet as cc
-from core.utility import surface_mesh_gradients
+from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
 from sklearn.cluster import HDBSCAN
-from scipy.spatial import cKDTree, KDTree
+from scipy.spatial import cKDTree
 
 
 def get_normals(near_points, points, normal_vec):

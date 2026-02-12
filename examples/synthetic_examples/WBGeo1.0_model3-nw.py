@@ -2,7 +2,6 @@
 import pandas as pd
 import os
 
-import core.structural_modeling_components.general_faults
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -154,7 +153,7 @@ plot_structural_model_3D(frame=frame,
 
 
 # Calculate gradients at the surface mesh vertices
-from core.utility import surface_mesh_gradients
+from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
 
 points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(results_test)
 

@@ -15,17 +15,19 @@ from core.structural_modeling_components import general, general_faults
 
 cwd = os.getcwd()
 
+# WORKFLOW Synthetic Model 1: no faults, no unconformities, 2 stratigraphic groups
+
 #%%
 
+# Create a grid for the model
 grid = RegularGrid(
     extent=(0, 1000, 0, 1000, 0, 1000),  # Example grid extent
     resolution=(25, 25, 25)  # Example resolution
 )
 
 #%%
-# WORKFLOW Model 1: no faults, no unconformities, 2 stratigraphic series
 
-# Component 1: input input_data
+# Create input data for the structural elements
 data_elements = InputData_StructuralElements(name='Model_1',
                                              mapping_object={"Strat_Series1": ('rock2', 'rock1')},
                                              surface_points=pd.read_csv(
@@ -45,19 +47,37 @@ frame.detailed_report()
 #%%
 
 # Plot the input input_data (2D and 3D possible)
-plot_structural_model_2D(frame, axis='y')
+plot_structural_model_2D(frame, axis='y', show_result=False)
 plot_structural_model_3D(frame, show_surface_meshes=False)
 
 #%%
 
-# Set interpolation methods for each stratigraphic series
-frame["Strat_Series1"].set_interpolation_method("Universal Kriging")
+# Default interpolation method is RBF, but we can set it to something else if we want
 
-# Set interpolation parameters if needed
+# # UK
+# frame["Strat_Series1"].set_interpolation_method("Universal Kriging")
+#
+# # UCK
+# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
+#
+# # OK
+# frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
+#
+# # Loop
+# frame["Strat_Series1"].set_interpolation_method("Loop Structural")
+#
+# # GeoINR
+# frame["Strat_Series1"].set_interpolation_method("GeoINR")
+
+
+# Configure interpolation parameters if needed (available parameters depend on the interpolation method)
+# frame["Strat_Series1"].configure_interpolation_params()
+
+# frame.detailed_report()
 
 #%%
 
-# Component 2 --> Component 3: Interpolation to geomodel result
+# Compute structural model result
 structural_model_result = general.compute_structural_model(
                                                 frame,
                                                 extract_meshes=True,
@@ -66,27 +86,21 @@ structural_model_result = general.compute_structural_model(
 
 #%%
 
-# 3.5: Plot the results (2D and 3D possible) - Should be an option of the results component
+# Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame)
-
-#%%
-
-plot_structural_model_3D(structural_model_result, show_surface_meshes=True)
+plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
 
 #%%
 
 # Optional plotting
-# frame.plot_scalar_field_section(group_nr=1, axis='y', index=12)
+# frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 #%%
 
+# TODO: Meshing needs to be adapted to work with the new Structural Modeling output
 
-#%%
-
-# TODO: Adapt to new results structure
-
-# 4: Meshing for Process Simulation
+# Meshing for Process Simulation
 # mesh_test = create_structured_mesh_data(
 #     geomodel_result=results_test,
 #     refinement_data=[10,10,10],

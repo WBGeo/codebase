@@ -184,7 +184,6 @@ def plot_structural_model_2D(
                 frame.lith_block is not None
                 and np.size(frame.lith_block) > 0
         )
-        print(f"has_result: {has_result}")
         if has_result is False:
             warnings.warn(
                 "show_result=True but no lithology block found. "
