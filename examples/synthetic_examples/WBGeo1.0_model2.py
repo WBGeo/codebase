@@ -45,8 +45,9 @@ fault_frame.detailed_report()
 
 #%%
 
-plot_fault_model_2D(fault_frame, axis='y', show_input_data=True, index=25)
-# plot_fault_model_3D(fault_frame)
+# Plot the fault input input_data (2D and 3D possible)
+plot_fault_model_2D(fault_frame)
+plot_fault_model_3D(fault_frame)
 
 #%%
 
@@ -55,7 +56,8 @@ general_faults.compute_fault_domains(fault_frame)
 
 #%%
 
-plot_fault_model_2D(fault_frame, axis='y', show_input_data=True, index=25)
+# Plot the fault model results (2D and 3D possible)
+plot_fault_model_2D(fault_frame)
 plot_fault_model_3D(fault_frame)
 
 #%%
@@ -81,7 +83,7 @@ frame.detailed_report()
 
 #%%
 
-# Plot the input input_data (2D and 3D possible)
+# Plot the input data (2D and 3D possible)
 plot_structural_model_2D(frame, axis='y', show_result=False)
 plot_structural_model_3D(frame, show_surface_meshes=False)
 

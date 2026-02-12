@@ -294,63 +294,173 @@ def plot_structural_model_2D(
 
 
 def plot_fault_model_3D(
-        fault_frame,
-        mesh_type="unmasked",
-        show_surface_meshes=True,
-        show_points=True,
-        show_orientations=True,
-        notebook=False,
-        show=True
+    fault_frame,
+    mesh_type="unmasked",
+    show_surface_meshes=True,
+    show_input_data=True,
+    show_domain_map=True,          # NEW
+    domain_opacity=0.15,           # NEW (opaque-ish tint, adjust)
+    notebook=False,
+    show=True,
 ):
     pv.global_theme.allow_empty_mesh = True
     plotter = pv.Plotter(notebook=notebook)
 
-    legend_entries = []
-    for fault in getattr(fault_frame, "_fault_elements", []):
-        # mesh
+    legend_entries_faults = []
+    legend_entries_domains = []
+
+    faults = getattr(fault_frame, "_fault_elements", []) or []
+
+    # -------------------------
+    # (A) Domain map as translucent voxel blocks (optional)
+    # -------------------------
+    domain_map = getattr(fault_frame, "_domain_map", None)
+    grid = getattr(fault_frame, "grid", None)
+
+    if show_domain_map and domain_map is not None and grid is not None:
+        # Get coordinate vectors (same pattern as your 2D)
+        def _get_coord(obj, name):
+            val = getattr(obj, name, None)
+            if val is not None:
+                return val
+            sub = getattr(obj, "grid", None)
+            if sub is not None:
+                return getattr(sub, name, None)
+            return None
+
+        x = np.asarray(_get_coord(grid, "gridx"))
+        y = np.asarray(_get_coord(grid, "gridy"))
+        z = np.asarray(_get_coord(grid, "gridz"))
+
+        # spacing + origin aligned to your 2D half-cell padding convention
+        dx = (x[-1] - x[0]) / (len(x) - 1) if len(x) > 1 else 1.0
+        dy = (y[-1] - y[0]) / (len(y) - 1) if len(y) > 1 else 1.0
+        dz = (z[-1] - z[0]) / (len(z) - 1) if len(z) > 1 else 1.0
+
+        origin = (x[0] - dx / 2, y[0] - dy / 2, z[0] - dz / 2)
+        spacing = (dx, dy, dz)
+
+        dm = np.asarray(domain_map)
+        # dm is assumed shaped (nx, ny, nz) as cell values
+        nx, ny, nz = dm.shape
+
+        # VTK ImageData uses POINT dimensions; cell dims are (nx,ny,nz) => point dims (nx+1,ny+1,nz+1)
+        img = pv.ImageData(
+            dimensions=(nx + 1, ny + 1, nz + 1),
+            spacing=spacing,
+            origin=origin,
+        )
+
+        # Attach as CELL data. Ordering can be tricky; this is the most common working default.
+        # If colors look permuted/swapped, change order='F' to order='C'.
+        img.cell_data["domain"] = dm.ravel(order="F").astype(np.float32)
+
+        # Discrete domain colors like the 2D logic (Set3)
+        domain_values = np.unique(dm)
+        domain_values = domain_values[~np.isnan(domain_values)]
+        domain_values = np.array(sorted(domain_values))
+
+        if len(domain_values) > 0:
+            base_cmap = plt.get_cmap("Set3")
+            colors = base_cmap(np.linspace(0, 1, len(domain_values)))
+
+            # Render each domain as a translucent block
+            for i, dv in enumerate(domain_values):
+                color = tuple(colors[i, :3])  # RGB
+
+                # threshold around the discrete id
+                th = img.threshold(
+                    (float(dv) - 0.5, float(dv) + 0.5),
+                    scalars="domain"
+                )
+
+                if th.n_cells == 0:
+                    continue
+
+                # show as filled voxels (no edges) with low opacity tint
+                plotter.add_mesh(
+                    th,
+                    color=color,
+                    opacity=domain_opacity,
+                    show_edges=False,
+                    lighting=False,
+                )
+
+                legend_entries_domains.append((f"■ Domain {int(dv) if float(dv).is_integer() else dv}", color))
+
+    # -------------------------
+    # (B) Fault meshes + input data
+    # -------------------------
+    for fault in faults:
+        fcol = getattr(fault, "color", None) or "black"
+        fname = getattr(fault, "name", "fault")
+
+        # mesh (optional, skip cleanly if not computed)
         if show_surface_meshes:
-            fv = getattr(fault, "vertices", None)[mesh_type]
-            ff = getattr(fault, "edges", None)[mesh_type]
+            verts = getattr(fault, "vertices", None)
+            edges = getattr(fault, "edges", None)
+            fv = verts.get(mesh_type) if isinstance(verts, dict) else None
+            ff = edges.get(mesh_type) if isinstance(edges, dict) else None
+
             if fv is not None and ff is not None and len(fv) > 0 and len(ff) > 0:
                 faces_flat = _faces_to_vtk(np.asarray(ff))
                 try:
                     mesh = pv.PolyData(np.asarray(fv), faces_flat)
                 except Exception:
                     mesh = pv.PolyData(np.asarray(fv), faces_flat.astype(np.int64, copy=False))
-                plotter.add_mesh(mesh, color=fault.color, name=fault.name, label=fault.name)
-                legend_entries.append((f"• {fault.name}", fault.color))
 
-        # points
-        if show_points and getattr(fault_frame, "_fault_surface_points_df", None) is not None:
-            df_points = fault_frame.get_surface_points_for_element(fault.name)
+                plotter.add_mesh(mesh, color=fcol, name=fname, label=fname)
+                legend_entries_faults.append((f"• {fname}", fcol))
+
+        # points (optional, show even if no meshes)
+        if show_input_data and getattr(fault_frame, "_fault_surface_points_df", None) is not None:
+            df_points = fault_frame.get_surface_points_for_element(fname)
             if df_points is not None and not df_points.empty:
                 cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values)
-                plotter.add_points(cloud, color=fault.color, point_size=8, render_points_as_spheres=True)
+                plotter.add_points(
+                    cloud,
+                    color=fcol,
+                    point_size=8,
+                    render_points_as_spheres=True
+                )
 
-        # orientations
-        if show_orientations and getattr(fault_frame, "_fault_orientations_df", None) is not None:
-            df_ori = fault_frame.get_orientations_for_element(fault.name)
+        # orientations (optional, show even if no meshes)
+        if show_input_data and getattr(fault_frame, "_fault_orientations_df", None) is not None:
+            df_ori = fault_frame.get_orientations_for_element(fname)
             if df_ori is not None and not df_ori.empty:
                 start = df_ori[["X", "Y", "Z"]].values
                 direction = df_ori[["G_x", "G_y", "G_z"]].values
+
                 scale = 50.0
                 for i in range(len(start)):
                     arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
-                    plotter.add_mesh(arrow, color=fault.color)
+                    plotter.add_mesh(arrow, color=fcol)
 
-    if legend_entries:
-        flat_legend = [("Faults", "black")]
-        flat_legend.extend(legend_entries)
+    # -------------------------
+    # (C) Legend (Domains + Faults)
+    # -------------------------
+    flat_legend = []
+    if legend_entries_domains:
+        flat_legend.append(("Domains", "black"))
+        flat_legend.extend(legend_entries_domains)
 
+    if legend_entries_faults:
+        flat_legend.append(("Faults", "black"))
+        flat_legend.extend(legend_entries_faults)
+
+    if flat_legend:
         plotter.add_legend(
             labels=flat_legend,
-            size=(0.22, 0.22),
+            size=(0.28, 0.28),
             loc="lower right",
-            face="rectangle"
+            face="rectangle",
         )
 
-    if getattr(fault_frame, "grid", None) is not None:
-        plotter.show_bounds(bounds=fault_frame.grid.extent, location="furthest", grid=True)
+    # -------------------------
+    # (D) Bounds + camera
+    # -------------------------
+    if grid is not None:
+        plotter.show_bounds(bounds=grid.extent, location="furthest", grid=True)
 
     plotter.camera.view_angle = 30.0
     plotter.camera.azimuth = 25.0
@@ -361,20 +471,14 @@ def plot_fault_model_3D(
     return plotter
 
 
-import warnings
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import BoundaryNorm, ListedColormap
-
-
 def plot_fault_model_2D(
-    fault_frame,
-    *,
-    axis: str = "y",
-    index: int = 0,
-    show_results: bool = True,
-    show_input_data: bool = True,
-    show_fault_contours: bool = True,
+        fault_frame,
+        *,
+        axis: str = "y",
+        index: int = 0,
+        show_results: bool = True,
+        show_input_data: bool = True,
+        show_fault_contours: bool = True,
 ) -> None:
     """
     2D slice plot for a FaultFrame.
@@ -575,7 +679,6 @@ def plot_fault_model_2D(
 
     plt.tight_layout()
     plt.show()
-
 
 
 #TODO: Adapt mesh plotting to new Structure
