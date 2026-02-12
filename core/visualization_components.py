@@ -5,6 +5,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 from core.object_components import InputData_StructuralElements, StructuralModelResults, MeshResults
 import warnings
 
+
 def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
     """Convert (N,3) int triangle array to VTK flat face array."""
     faces_arr = np.asarray(faces_arr)
@@ -12,17 +13,18 @@ def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
         raise ValueError("faces must be (N, 3) triangle indices")
     return np.hstack([np.full((faces_arr.shape[0], 1), 3, dtype=np.int64), faces_arr.astype(np.int64)]).ravel()
 
+
 def plot_structural_model_3D(
-    frame,
-    *,
-    mesh_type="masked",              # "masked" | "unmasked" | "combined" (if present)
-    fault_mesh_type="masked",        # same options for fault meshes
-    show_surface_meshes=True,
-    show_points=True,
-    show_orientations=True,
-    fault_opacity=0.35,
-    notebook=False,
-    show=True,
+        frame,
+        *,
+        mesh_type="masked",  # "masked" | "unmasked" | "combined" (if present)
+        fault_mesh_type="masked",  # same options for fault meshes
+        show_surface_meshes=True,
+        show_points=True,
+        show_orientations=True,
+        fault_opacity=0.35,
+        notebook=False,
+        show=True,
 ):
     """
     PyVista 3D plot of structural elements (per-domain meshes) + faults, with your preferred legend style.
@@ -79,7 +81,8 @@ def plot_structural_model_3D(
         fault_entries = []
 
         for fault in getattr(frame._fault_frame, "fault_elements", []):
-            if fault_mesh_type not in getattr(fault, "vertices", {}) or fault_mesh_type not in getattr(fault, "edges", {}):
+            if fault_mesh_type not in getattr(fault, "vertices", {}) or fault_mesh_type not in getattr(fault, "edges",
+                                                                                                       {}):
                 fault_mesh_type = "unmasked"  # fallback if requested type not present
             fv = getattr(fault, "vertices", None)[fault_mesh_type]
             ff = getattr(fault, "edges", None)[fault_mesh_type]
@@ -126,15 +129,14 @@ def plot_structural_model_3D(
 
 
 def plot_structural_model_2D(
-    frame,
-    *,
-    axis='y',
-    index=0,
-    show_result=True,
-    show_fault_contours=True,
-    show_input_data=True,
+        frame,
+        *,
+        axis='y',
+        index=0,
+        show_result=True,
+        show_fault_contours=True,
+        show_input_data=True,
 ):
-
     """
     2D slice of model with:
       - lithology block slice (if provided)
@@ -222,13 +224,15 @@ def plot_structural_model_2D(
             if show_result and frame.lith_block is not None:
                 # this mask is the age mask defined by youngest group affected by this fault
                 group_index = frame.fault_activity_verbose[fault.name]["youngest_group_index"] - 1
-                fault_mask = np.take(frame.structural_groups[group_index].get_mask().T, index, axis=dim) if index >= 0 else np.ones_like(f_slice, dtype=bool)
+                fault_mask = np.take(frame.structural_groups[group_index].get_mask().T, index,
+                                     axis=dim) if index >= 0 else np.ones_like(f_slice, dtype=bool)
                 f_slice_masked = np.ma.array(f_slice, mask=fault_mask)
             else:
                 # Fallback to unmasked contour if no result or mask available
                 f_slice_masked = f_slice
             fcol = getattr(fault, "color", None) or "black"
-            CSf = ax.contour(x_coords, y_coords, f_slice_masked.T, levels=[f_sv], colors=[fcol], linewidths=1.5, linestyles="-")
+            CSf = ax.contour(x_coords, y_coords, f_slice_masked.T, levels=[f_sv], colors=[fcol], linewidths=1.5,
+                             linestyles="-")
             ax.clabel(CSf, fmt={f_sv: f"Fault: {fault.name}"}, fontsize=7)
 
     # ---- input input_data (optional) ----
@@ -275,7 +279,8 @@ def plot_structural_model_2D(
             legend_handles.append(plt.Line2D([0], [0], color=fcol, lw=3, label=fault.name))
 
     by_label = {h.get_label(): h for h in legend_handles}
-    ax.legend(by_label.values(), by_label.keys(), loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=8, frameon=True)
+    ax.legend(by_label.values(), by_label.keys(), loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=8,
+              frameon=True)
 
     ax.set_xlabel(axis_labels[axis][0])
     ax.set_ylabel(axis_labels[axis][1])
@@ -289,13 +294,13 @@ def plot_structural_model_2D(
 
 
 def plot_fault_model_3D(
-    fault_frame,
-    mesh_type="unmasked",
-    show_surface_meshes=True,
-    show_points=True,
-    show_orientations=True,
-    notebook=False,
-    show=True
+        fault_frame,
+        mesh_type="unmasked",
+        show_surface_meshes=True,
+        show_points=True,
+        show_orientations=True,
+        notebook=False,
+        show=True
 ):
     pv.global_theme.allow_empty_mesh = True
     plotter = pv.Plotter(notebook=notebook)
@@ -356,6 +361,223 @@ def plot_fault_model_3D(
     return plotter
 
 
+import warnings
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import BoundaryNorm, ListedColormap
+
+
+def plot_fault_model_2D(
+    fault_frame,
+    *,
+    axis: str = "y",
+    index: int = 0,
+    show_results: bool = True,
+    show_input_data: bool = True,
+    show_fault_contours: bool = True,
+) -> None:
+    """
+    2D slice plot for a FaultFrame.
+
+    - If show_results=True AND a domain_map is present: plots domain map + fault isolines.
+    - Otherwise: plots only input data (points) if available.
+
+    Extent is computed from grid coordinates (grid.gridx/gridy/gridz) with half-cell padding,
+    so imshow/contour align properly.
+    """
+
+    assert axis in ("x", "y", "z"), "Axis must be 'x', 'y', or 'z'."
+
+    if getattr(fault_frame, "_grid", None) is None:
+        raise ValueError("FaultFrame has no grid associated.")
+
+    grid = fault_frame.grid
+
+    # --- safe attribute getter ---
+    def _get_coord(obj, name):
+        val = getattr(obj, name, None)
+        if val is not None:
+            return val
+
+        sub = getattr(obj, "grid", None)
+        if sub is not None:
+            return getattr(sub, name, None)
+
+        return None
+
+    x = _get_coord(grid, "gridx")
+    y = _get_coord(grid, "gridy")
+    z = _get_coord(grid, "gridz")
+
+    if x is None or y is None or z is None:
+        raise ValueError("Grid must provide gridx, gridy, gridz coordinate arrays.")
+
+    if x is None or y is None or z is None:
+        raise ValueError("Grid must provide gridx, gridy, gridz coordinate arrays.")
+
+    x = np.asarray(x)
+    y = np.asarray(y)
+    z = np.asarray(z)
+
+    # spacing for half-cell padded extent
+    dx = (x[-1] - x[0]) / (len(x) - 1) if len(x) > 1 else 1.0
+    dy = (y[-1] - y[0]) / (len(y) - 1) if len(y) > 1 else 1.0
+    dz = (z[-1] - z[0]) / (len(z) - 1) if len(z) > 1 else 1.0
+
+    # mapping to np.take axis (same as your inspiration)
+    dim = {"z": 0, "y": 1, "x": 2}[axis]
+
+    if axis == "x":
+        extent = (y[0] - dy / 2, y[-1] + dy / 2, z[0] - dz / 2, z[-1] + dz / 2)
+        Xc, Yc = np.meshgrid(y, z, indexing="ij")  # for contour coordinates
+        xlabel, ylabel = "Y", "Z"
+    elif axis == "y":
+        extent = (x[0] - dx / 2, x[-1] + dx / 2, z[0] - dz / 2, z[-1] + dz / 2)
+        Xc, Yc = np.meshgrid(x, z, indexing="ij")
+        xlabel, ylabel = "X", "Z"
+    else:  # "z"
+        extent = (x[0] - dx / 2, x[-1] + dx / 2, y[0] - dy / 2, y[-1] + dy / 2)
+        Xc, Yc = np.meshgrid(x, y, indexing="ij")
+        xlabel, ylabel = "X", "Y"
+
+    domain_map = getattr(fault_frame, "_domain_map", None)
+    faults = getattr(fault_frame, "_fault_elements", []) or []
+
+    has_result = show_results and domain_map is not None and np.size(domain_map) > 0
+    if show_results and not has_result:
+        warnings.warn(
+            "show_results=True but no domain_map found. Plotting input data only.",
+            UserWarning,
+        )
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # ---------------------------
+    # RESULTS: domain map + isolines
+    # ---------------------------
+    if has_result:
+        domain_slice = np.take(domain_map, index, axis=dim).T
+
+        domain_values = np.unique(domain_slice)
+        domain_values = domain_values[~np.isnan(domain_values)]
+
+        if len(domain_values) > 0:
+            base_cmap = plt.get_cmap("Set3")
+            colors = base_cmap(np.linspace(0, 1, len(domain_values)))
+            cmap = ListedColormap(colors)
+            bounds = np.append(domain_values, domain_values[-1] + 1)
+            norm = BoundaryNorm(bounds, cmap.N)
+
+            im = ax.imshow(
+                domain_slice,
+                origin="lower",
+                extent=extent,
+                cmap=cmap,
+                norm=norm,
+                alpha=1.0,
+            )
+            cbar = plt.colorbar(im, ax=ax, ticks=domain_values)
+            cbar.set_label("Fault Domain")
+
+        # fault contours (only if requested)
+        if show_fault_contours:
+            handles = []
+            for fault in faults:
+                sf = getattr(fault, "scalar_field", None)
+                sv = getattr(fault, "scalar_value", None)
+                if sf is None or sv is None:
+                    continue
+
+                f_slice = np.take(sf, index, axis=dim).T
+                fcol = getattr(fault, "color", None) or "black"
+
+                CS = ax.contour(
+                    Xc, Yc,
+                    f_slice.T,
+                    levels=[sv],
+                    colors=[fcol],
+                    linewidths=1.5,
+                    linestyles="-",
+                )
+
+                # label directly on contour line
+                ax.clabel(
+                    CS,
+                    fmt={sv: getattr(fault, "name", "fault")},
+                    inline=True,
+                    fontsize=8
+                )
+
+                handles.append(plt.Line2D([0], [0], color=fcol, lw=1.5, label=getattr(fault, "name", "fault")))
+
+            if handles:
+                by_label = {h.get_label(): h for h in handles}
+                ax.legend(by_label.values(), by_label.keys(), title="Faults", loc="lower left")
+
+    # ---------------------------
+    # INPUT DATA ONLY (project all points)
+    # ---------------------------
+
+    if show_input_data:
+        for fault in faults:
+            # Preferred: dataframe getter (X,Y,Z)
+            getter = getattr(fault_frame, "get_surface_points_for_element", None)
+            if getter is not None:
+                df_pts = getter(getattr(fault, "name", "fault"))
+
+                if df_pts is None or getattr(df_pts, "empty", False):
+                    continue
+
+                fcol = getattr(fault, "color", None) or "black"
+                if axis == "x":
+                    ax.scatter(df_pts["Y"], df_pts["Z"], color=fcol, s=30,
+                               edgecolors="black", linewidths=0.5, label=getattr(fault, "name", "fault"))
+                elif axis == "y":
+                    ax.scatter(df_pts["X"], df_pts["Z"], color=fcol, s=30,
+                               edgecolors="black", linewidths=0.5, label=getattr(fault, "name", "fault"))
+                else:  # z
+                    ax.scatter(df_pts["X"], df_pts["Y"], color=fcol, s=30,
+                               edgecolors="black", linewidths=0.5, label=getattr(fault, "name", "fault"))
+
+            # ---- orientations as arrows (optional, if getter exists and data present) ----
+            ori_getter = getattr(fault_frame, "get_orientations_for_element", None)
+            if ori_getter is not None:
+                df_ori = ori_getter(getattr(fault, "name", "fault"))
+                if df_ori is not None and not getattr(df_ori, "empty", False):
+                    if axis == "x":
+                        xs, ys, u, v = df_ori["Y"], df_ori["Z"], df_ori["G_y"], df_ori["G_z"]
+                    elif axis == "y":
+                        xs, ys, u, v = df_ori["X"], df_ori["Z"], df_ori["G_x"], df_ori["G_z"]
+                    else:  # z
+                        xs, ys, u, v = df_ori["X"], df_ori["Y"], df_ori["G_x"], df_ori["G_y"]
+
+                    ax.quiver(
+                        xs, ys, u, v,
+                        angles="xy", scale_units="xy", scale=0.03,
+                        width=0.01, headwidth=3, headlength=4, headaxislength=3,
+                        color=fcol, edgecolors="black", linewidths=0.5,
+                        zorder=11,  # above imshow + points
+                    )
+
+        # optional: tidy legend (avoid duplicates)
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = {lab: h for h, lab in zip(handles, labels)}
+        if by_label:
+            ax.legend(by_label.values(), by_label.keys(), title="Input data", loc="lower left")
+
+    # --- cosmetics ---
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{axis.upper()} Slice @ index {index}")
+    ax.set_aspect("equal")
+    ax.set_xlim(extent[0], extent[1])
+    ax.set_ylim(extent[2], extent[3])
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 #TODO: Adapt mesh plotting to new Structure
 def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData_StructuralElements, colors=None, style="surface",
                  show_plotter=True) -> pv.Plotter:
@@ -393,7 +615,6 @@ def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData_StructuralElem
         colors = ['#673ab7', '#34a853', '#ea4335', '#fbbc05', '#4285f4',
                   '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
                   '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5']
-
 
     if input_data.faults is not None:
 
@@ -449,4 +670,3 @@ def plot_mesh_3d(mesh_results: MeshResults, input_data: InputData_StructuralElem
         plotter.show()
 
     return plotter
-
