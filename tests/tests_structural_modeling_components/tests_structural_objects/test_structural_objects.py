@@ -335,7 +335,7 @@ def test_structural_frame_set_fault_frame_validations_and_activity_mapping():
         sf.set_fault_activity_by_group("F1", "nope")
 
 
-def test_structural_frame_set_fault_frame_requires_shared_grid_instance():
+def test_structural_frame_set_fault_frame_allows_equal_grid_values():
     sf = StructuralFrame(structural_groups=[StructuralGroup(name="G", structural_elements=[])])
     sf._grid = make_grid()
 
@@ -343,8 +343,12 @@ def test_structural_frame_set_fault_frame_requires_shared_grid_instance():
     ff.set_grid(make_grid())  # different instance, same values
     ff.set_domain_map(np.zeros((2, 2, 2), dtype=float))
 
-    with pytest.raises(ValueError, match="must share the same grid instance"):
-        sf.set_fault_frame(ff)
+    assert ff.grid is not sf._grid
+    assert ff.grid == sf._grid
+
+    # should NOT raise
+    sf.set_fault_frame(ff)
+    assert sf.fault_frame is ff   # or whatever accessor/attr you have
 
 
 def test_structural_frame_detach_fault_frame_clears_state():

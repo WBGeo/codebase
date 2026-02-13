@@ -39,7 +39,7 @@ import numpy.typing as npt
 import pandas as pd
 from matplotlib.colors import to_hex
 
-from core.object_components import InputData_StructuralElements, StructuralModelResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults, FaultModelResults
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
 
@@ -726,7 +726,7 @@ def build_structural_frame(
         input_data_elements: InputData_StructuralElements,
         grid: RegularGrid,
         default_interpolation: InterpolationMethod = InterpolationMethod.RADIAL_BASIS_FUNCTION,
-        fault_frame: Optional[FaultFrame] = None,
+        fault_model_results: Optional[FaultModelResults] = None,
 ) -> StructuralFrame:
     """
     Construct a :class:`StructuralFrame` from mapping, grid info, and input_data.
@@ -739,8 +739,8 @@ def build_structural_frame(
         Model grid.
     default_interpolation : InterpolationMethod, default ``RADIAL_BASIS_FUNCTION``
         Interpolator assigned to each group (can be overridden later).
-    fault_frame : FaultFrame, optional
-        Optional fault frame to attach to the resulting StructuralFrame.
+    fault_model_results : FaultModelResults, optional
+        Optional fault model results to attach to the resulting StructuralFrame.
 
     Returns
     -------
@@ -828,8 +828,8 @@ def build_structural_frame(
     frame._surface_points = surface_points
     frame._orientations = orientations
 
-    if fault_frame is not None:
-        frame.set_fault_frame(fault_frame)
+    if fault_model_results is not None:
+        frame.set_fault_frame(fault_model_results.fault_frame)
 
     return frame
 

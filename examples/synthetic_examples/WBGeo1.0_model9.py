@@ -54,13 +54,14 @@ plot_fault_model_3D(fault_frame)
 #%%
 
 # Compute fault model result
-general_faults.compute_fault_domains(fault_frame)
+fault_model_result = general_faults.compute_fault_domains(fault_frame)
 
 #%%
 
 # Plot the fault model results (2D and 3D possible)
-plot_fault_model_2D(fault_frame)
-plot_fault_model_3D(fault_frame)
+plot_fault_model_2D(fault_model_result.fault_frame)
+plot_fault_model_3D(fault_model_result.fault_frame)
+
 
 #%%
 
@@ -81,7 +82,7 @@ data_elements = InputData_StructuralElements(name='Model_9',
 # Create a StructuralFrame and include the fault frame
 frame = general.build_structural_frame(input_data_elements=data_elements,
                                        grid=grid,
-                                       fault_frame=fault_frame
+                                       fault_model_results=fault_model_result
                                        )
 
 frame.detailed_report()
@@ -108,10 +109,10 @@ frame.fault_activity_verbose
 # Set interpolation methods for each stratigraphic series
 
 # Set another interpolation method per group
-# frame["A"].set_interpolation_method("Universal Co-Kriging")
-# frame["B"].set_interpolation_method("Universal Co-Kriging")
-# frame["C"].set_interpolation_method("Universal Co-Kriging")
-# frame["D"].set_interpolation_method("Universal Co-Kriging")
+# frame["A"].set_interpolation_method("GeoINR")
+# frame["B"].set_interpolation_method("GeoINR")
+# frame["C"].set_interpolation_method("GeoINR")
+# frame["D"].set_interpolation_method("GeoINR")
 
 # Configure interpolation parameters if needed (available parameters depend on the interpolation method)
 # frame["A"].configure_interpolation_params()
@@ -139,20 +140,20 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #%%
 
 # Optional plotting
-# frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
-# frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
+# frame.plot_scalar_field_section(group_nr=3, axis='y', index=12)
+# frame.plot_age_mask_section(group_nr=2, axis='y', index=12)
 
 #%%
 
 # Optional: Compute gradients at the surface mesh vertices
-from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
-
-gradients_dict, gradients_faults_dict = surface_mesh_gradients.get_surface_mesh_gradients(structural_model_result,
-                                                                                          mesh_type="unmasked")
-surface_mesh_gradients.plot_surface_mesh_gradients(structural_model_result,
-                                                   gradients_dict,
-                                                   gradients_faults_dict,
-                                                   mesh_type="unmasked")
+# from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+#
+# gradients_dict, gradients_faults_dict = surface_mesh_gradients.get_surface_mesh_gradients(structural_model_result,
+#                                                                                           mesh_type="unmasked")
+# surface_mesh_gradients.plot_surface_mesh_gradients(structural_model_result,
+#                                                    gradients_dict,
+#                                                    gradients_faults_dict,
+#                                                    mesh_type="unmasked")
 
 #%%
 

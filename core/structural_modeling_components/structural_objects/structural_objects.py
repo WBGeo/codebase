@@ -27,7 +27,7 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
     UniversalCoKrigingParams,
     UniversalKrigingParams,
     default_uk_params,
-    InterpolationParameterSet,
+    InterpolationParameterSet, default_geo_inr_params,
 )
 
 # -----------------------------------------------------------------------------
@@ -264,7 +264,7 @@ class StructuralGroup(BaseModel):
             return UniversalCoKrigingParams()
 
         if method == InterpolationMethod.GEOINR:
-            return GeoINRParams()
+            return default_geo_inr_params(ctx)
 
         if method == InterpolationMethod.LOOP_STRUCTURAL:
             return LoopStructuralParams()
@@ -383,10 +383,8 @@ class StructuralFrame(BaseModel):
                 "FaultFrame grid must be set before being assigned to a StructuralFrame."
             )
 
-        if fault_frame.grid is not self._grid:
-            raise ValueError(
-                "FaultFrame and StructuralFrame must share the same grid instance."
-            )
+        if fault_frame.grid != self._grid:
+            raise ValueError("FaultFrame and StructuralFrame must share the same grid.")
 
         # Check that the fault frame has a computed solution
         if fault_frame.domain_map is None:

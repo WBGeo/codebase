@@ -22,8 +22,9 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import gempy as gp
+import copy
 
-from core.object_components import InputData_FaultElements
+from core.object_components import InputData_FaultElements, FaultModelResults
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     RegularGrid,
 )
@@ -217,7 +218,7 @@ def interpolate_group_universal_cokriging_for_faults(
 
 def compute_fault_domains(
     fault_frame: FaultFrame,
-) -> None:
+) -> FaultModelResults:
     """
     Interpolate all faults and generate a domain map across the model grid.
 
@@ -363,6 +364,12 @@ def compute_fault_domains(
         fault.set_mesh("unmasked", vertices[0], edges[0])
 
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
+
+    # Return a FaultModelResults object
+    result = FaultModelResults(
+        fault_frame=copy.deepcopy(fault_frame),
+    )
+    return result
 
 
 

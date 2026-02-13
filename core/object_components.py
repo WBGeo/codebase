@@ -22,7 +22,7 @@ from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator
 
-from core.structural_modeling_components.structural_objects.structural_objects import StructuralFrame
+from core.structural_modeling_components.structural_objects.structural_objects import StructuralFrame, FaultFrame
 
 
 # Pydantic adapter for panda DataFrame
@@ -100,6 +100,20 @@ class StructuralModelResults:
     """
     # TODO: ALEX: This is the simplest version I could think of - does this work for you
     structural_frame: StructuralFrame  # this is a deepcopy of the structural frame object
+
+
+@wbgeo_type(name='Result of a structural fault model', color='blue', identifier='FaultModelResults')
+@dataclass(config={"arbitrary_types_allowed": True})
+class FaultModelResults:
+    """
+    A class to represent the results of a fault model.
+
+        Attributes:.
+            fault_frame (FaultFrame): The fault frame of the model.
+    """
+    # TODO: ALEX: This is the simplest version I could think of - does this work for you
+    fault_frame: FaultFrame  # this is a deepcopy of the structural frame object
+
 
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True})
