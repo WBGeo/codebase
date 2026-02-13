@@ -51,13 +51,13 @@ plot_fault_model_3D(fault_frame)
 #%%
 
 # Compute fault model result
-general_faults.compute_fault_domains(fault_frame)
+fault_model_result = general_faults.compute_fault_domains(fault_frame)
 
 #%%
 
 # Plot the fault model results (2D and 3D possible)
-plot_fault_model_2D(fault_frame)
-plot_fault_model_3D(fault_frame)
+plot_fault_model_2D(fault_model_result.fault_frame)
+plot_fault_model_3D(fault_model_result.fault_frame)
 
 #%%
 
@@ -80,7 +80,7 @@ data_elements = InputData_StructuralElements(name='Kleinzeche',
 # Create a StructuralFrame and include the fault frame
 frame = general.build_structural_frame(input_data_elements=data_elements,
                                        grid=grid,
-                                       fault_frame=fault_frame
+                                       fault_model_results=fault_model_result
                                        )
 
 frame.structural_groups[0].structural_elements[0].set_color('#959595')
