@@ -164,4 +164,4 @@ def test_build_fault_frame_creates_elements_reversed_and_sets_defaults():
 
     # Code builds elements in reversed(zip(fault_names,...)) -> ["F_young","F_old"]
     assert [f.name for f in ff.fault_elements] == ["F_young", "F_old"]
-    assert all(f.color == "#555555" for f in ff.fault_elements)
+    assert all(f.color == "#000000" for f in ff.fault_elements)

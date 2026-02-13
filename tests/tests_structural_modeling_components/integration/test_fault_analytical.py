@@ -10,6 +10,7 @@ import core.structural_modeling_components.general_faults as gf  # type: ignore
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_objects.structural_objects import InterpolationMethod
+from core.visualization_components import plot_fault_model_2D
 
 
 def _near_boundary_mask(expected_lith: np.ndarray, *, radius: int = 1) -> np.ndarray:
@@ -208,9 +209,8 @@ def test_single_vertical_fault_two_layers_with_offset(method, plot_mode):
     # Optional plotting for debugging
     from core.visualization_components import plot_structural_model_2D  # type: ignore
     if plot_mode["always"]:
-        plot_structural_model_2D(frame)
         # fault section view (optional)
-        fault_frame.plot_fault_domain_section()
+        plot_fault_model_2D(fault_frame)
 
     # Allow 1-voxel offset near boundaries (interfaces + fault plane)
     near = _near_boundary_mask(expected, radius=1)

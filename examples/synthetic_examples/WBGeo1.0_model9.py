@@ -145,14 +145,14 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #%%
 
 # Optional: Compute gradients at the surface mesh vertices
-# from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
-#
-# gradients_dict, gradients_faults_dict = surface_mesh_gradients.get_surface_mesh_gradients(structural_model_result,
-#                                                                                           mesh_type="unmasked")
-# surface_mesh_gradients.plot_surface_mesh_gradients(structural_model_result,
-#                                                    gradients_dict,
-#                                                    gradients_faults_dict,
-#                                                    mesh_type="unmasked")
+from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+
+gradients_dict, gradients_faults_dict = surface_mesh_gradients.get_surface_mesh_gradients(structural_model_result,
+                                                                                          mesh_type="unmasked")
+surface_mesh_gradients.plot_surface_mesh_gradients(structural_model_result,
+                                                   gradients_dict,
+                                                   gradients_faults_dict,
+                                                   mesh_type="unmasked")
 
 #%%
 
