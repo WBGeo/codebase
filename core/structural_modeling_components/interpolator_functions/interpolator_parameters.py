@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, FrozenSet, List, Optional, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Tuple, Union, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,9 +10,6 @@ import pandas as pd
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from pydantic import BaseModel, Field, PrivateAttr
 
-from core.structural_modeling_components.structural_objects.grids.grid_classes import (
-    RegularGrid,
-)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -215,17 +212,189 @@ def default_rbf_params(ctx: InterpolationContext) -> RBFParams:
     )
 
 
+GeoINRActivation = Literal["Softplus", "ReLU", "LeakyReLU", "Tanh", "Sigmoid", "ELU", "PReLU"]
+
+
 class GeoINRParams(BaseModel):
     """
-    Parameters for GeoINR interpolation.
+    Parameters controlling GeoINR interpolation (implicit neural representation).
 
-    Attributes:
-        beta: Regularization/weighting parameter controlling constraint influence.
+    This parameter set maps directly to the arguments used by your GeoINR training routine
+    `stratigraphic_ConcatMLP()` and the network `ConcatMLP`.
+
+    Notes (current implementation)
+    ------------------------------
+    - Coordinates are normalized into [-1, 1] using the provided model extent.
+    - Interface constraints are trained with an L1 loss on predicted scalar vs. label.
+    - Orientation constraints are trained by matching the gradient direction of the scalar field
+      to the provided orientation vectors (cosine-based loss).
     """
 
-    beta: int = Field(
+    # --- core "geological" weights ---
+    beta: float = Field(
+        1.0,
+        ge=0.01,
+        description=(
+            "Softplus beta parameter when activation='Softplus'. Higher beta makes Softplus "
+            "closer to ReLU (sharper transitions). In your current code this is the only "
+            "group-level parameter that is used."
+        ),
+    )
+
+    alpha: float = Field(
+        0.1,
+        ge=0.0,
+        description=(
+            "Weight of the orientation (gradient) loss relative to the interface loss. "
+            "Total loss = loss_interface + alpha * loss_orientation. Increase alpha to "
+            "enforce structural orientations more strongly; decrease if interfaces dominate "
+            "or orientations are noisy/sparse."
+        ),
+    )
+
+    # --- network capacity / shape ---
+    hidden_dim: int = Field(
+        32,
+        ge=4,
+        description=(
+            "Width of hidden layers in the MLP. Larger values increase representational "
+            "capacity (can fit more complex folding/faulting) but increase runtime and "
+            "overfitting risk."
+        ),
+    )
+
+    n_hidden_layers: int = Field(
         1,
-        description="Regularization parameter controlling the influence of geometric constraints in the model.",
+        ge=0,
+        description=(
+            "Number of hidden layers (excluding input and output layers). More layers "
+            "increase model capacity; start small (1–3) and scale up for complex geometry."
+        ),
+    )
+
+    # activation: GeoINRActivation = Field(
+    #     "Softplus",
+    #     description=(
+    #         "Activation function used by the MLP. 'Softplus' is a smooth default that tends "
+    #         "to produce smooth scalar fields; ReLU/LeakyReLU can create sharper features."
+    #     ),
+    # )
+
+    # concat: bool = Field(
+    #     False,
+    #     description=(
+    #         "If True, concatenate input coordinates with hidden features at each layer "
+    #         "(a skip/concat architecture). This can improve expressivity but grows layer "
+    #         "sizes quickly and can become expensive."
+    #     ),
+    # )
+
+    # --- training / optimization ---
+    epochs: int = Field(
+        5000,
+        ge=1,
+        description=(
+            "Number of training epochs for the INR. Higher values can improve fit but "
+            "increase runtime. Consider fewer epochs for large datasets or when iterating."
+        ),
+    )
+
+    lr: float = Field(
+        0.01,
+        gt=0.0,
+        description=(
+            "Learning rate for AdamW optimizer. If training is unstable (loss oscillates), "
+            "reduce lr (e.g., 0.003 or 0.001)."
+        ),
+    )
+
+    # weight_decay: float = Field(
+    #     0.0,
+    #     ge=0.0,
+    #     description=(
+    #         "AdamW weight decay (L2 regularization) applied to network weights. Useful to "
+    #         "reduce overfitting, especially with very sparse constraints or high-capacity models."
+    #     ),
+    # )
+
+    # --- reproducibility / runtime knobs (optional, but handy) ---
+    # seed: Optional[int] = Field(
+    #     None,
+    #     description=(
+    #         "Random seed for reproducible training. If None, training is stochastic "
+    #         "(GPU + PyTorch nondeterminism may still apply)."
+    #     ),
+    # )
+
+    # verbose: bool = Field(
+    #     True,
+    #     description=(
+    #         "If True, print training/inference diagnostics (losses, times). "
+    #         "Set False to silence routine output."
+    #     ),
+    # )
+
+
+def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
+    """
+    Heuristic defaults for GeoINR based on problem size.
+
+    Heuristic intent
+    ---------------
+    - Small datasets: slightly higher epochs and/or lr to converge quickly.
+    - Large datasets: reduce epochs and lr, increase hidden_dim modestly.
+    - Keep architecture conservative by default (avoids overfitting and long runtimes).
+    """
+
+    n = ctx.n_points
+
+    # Capacity scaling (conservative)
+    if n < 500:
+        hidden_dim = 32
+        n_hidden_layers = 2
+    elif n < 3000:
+        hidden_dim = 32
+        n_hidden_layers = 1
+    else:
+        hidden_dim = 64
+        n_hidden_layers = 2
+
+    # Epoch scaling (sublinear-ish)
+    # - small: more epochs are cheap and often needed for smooth INR convergence
+    # - large: reduce epochs for runtime
+    if n < 800:
+        epochs = 6000
+        lr = 0.01
+    elif n < 5000:
+        epochs = 4000
+        lr = 0.005
+    else:
+        epochs = 2500
+        lr = 0.003
+
+    # Orientation weight:
+    # Without knowing orientation count/quality, keep moderate.
+    alpha = 0.1
+
+    # Softplus beta:
+    # Keep at 1.0 for smoothness; bump slightly for sharper transitions if desired.
+    beta = 1.0
+
+    # Mild regularization for larger problems
+    weight_decay = 0.0 if n < 3000 else 1e-4
+
+    return GeoINRParams(
+        beta=beta,
+        alpha=alpha,
+        hidden_dim=hidden_dim,
+        n_hidden_layers=n_hidden_layers,
+        activation="Softplus",
+        # concat=False,
+        epochs=epochs,
+        lr=lr,
+        weight_decay=weight_decay,
+        # seed=None,
+        # verbose=False,
     )
 
 

@@ -72,6 +72,7 @@ ALL_GROUP_METHODS = [
     m for m in InterpolationMethod
     if m not in {
         InterpolationMethod.ORDINARY_KRIGING,  # currently no good parameters
+        InterpolationMethod.GEOINR  # not determinsitic
     }
 ]
 

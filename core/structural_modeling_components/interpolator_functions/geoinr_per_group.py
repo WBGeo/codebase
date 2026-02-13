@@ -135,14 +135,15 @@ def interpolate_group_geo_inr(
         extent=grid.extent,
         resolution=grid.resolution,
         in_dim=3,
-        hidden_dim=32,
+        hidden_dim=params.hidden_dim,
         out_dim=1,
-        n_hidden_layers=1,
+        n_hidden_layers=params.n_hidden_layers,
         activation="Softplus",
         beta=params.beta,
         concat=False,
-        epochs=5000,
-        lr=0.01,
+        epochs=params.epochs,
+        lr=params.lr,
+        alpha=params.alpha
     )
 
     # `res_inr` -> (nx, ny, nz) without transpose (preserved behavior)
@@ -352,37 +353,6 @@ def loss_grad(
     return loss_grad_val
 
 
-# NOTE: The following two functions are duplicated in the original file.
-# Keeping them as-is preserves runtime behavior (the second definition overwrites the first).
-
-# loss function for the interface points
-# def loss_intf(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-#     """(Duplicate) L1 loss between predicted and target interface labels."""
-#     criterion = nn.L1Loss()
-#     return criterion(y_pred, y_true)
-#
-#
-# # loss function for the orientation points
-# def loss_grad(
-#     train_x: torch.Tensor,
-#     y_pred: torch.Tensor,
-#     y_true: torch.Tensor,
-#     n_orien: int,
-# ) -> torch.Tensor:
-#     """(Duplicate) Orientation-gradient loss using autograd (same as above)."""
-#     gradients = autograd.grad(
-#         outputs=y_pred,
-#         inputs=train_x,
-#         grad_outputs=torch.ones_like(y_pred),
-#         create_graph=True,
-#     )[0]
-#     grad_norm_pred = torch.norm(gradients[-n_orien:, :], p=2, dim=1)
-#     grad_inner_product = torch.einsum("ij, ij->i", y_true, gradients[-n_orien:, :])
-#     cosine = grad_inner_product / grad_norm_pred  # normal orientation
-#     loss_grad_val = torch.mean(1 - cosine)
-#     return loss_grad_val
-
-
 def predict_to_mesh_stratigraphic(
     extents: Tuple[float, float, float, float, float, float],
     resolution: Tuple[int, int, int],
@@ -511,6 +481,7 @@ def stratigraphic_ConcatMLP(
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Track minimum loss and corresponding parameters
     min_loss = float("inf")
