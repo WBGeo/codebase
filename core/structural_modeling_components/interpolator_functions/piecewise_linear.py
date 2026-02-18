@@ -188,7 +188,7 @@ def interpolate_group_piecewise_linear(
     sf_flat = model.evaluate_feature_value(
         group.name,
         regular_grid,
-        scale=True,
+        scale=False,
     )
 
     # Match previous implementation: reshape then transpose

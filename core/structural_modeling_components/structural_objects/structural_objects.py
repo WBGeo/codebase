@@ -23,8 +23,8 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
     default_pli_params,
     default_fdi_params,
     default_geo_inr_params,
-    UniversalCoKrigingParams,
-    InterpolationParameterSet,
+    UCKParams,
+    InterpolationParameterSet, default_uck_params,
 )
 
 # -----------------------------------------------------------------------------

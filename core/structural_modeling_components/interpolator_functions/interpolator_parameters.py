@@ -49,7 +49,7 @@ class InterpolationContext(BaseModel):
     mean_nn_distance: float
 
 
-class OrdinaryKrigingParams(BaseModel):
+class OKParams(BaseModel):
     """
     Configuration parameters for Ordinary Kriging interpolation.
 
@@ -93,7 +93,7 @@ class OrdinaryKrigingParams(BaseModel):
     )
 
 
-def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
+def default_ok_params(ctx: InterpolationContext) -> OKParams:
     """
     Derive heuristic default Ordinary Kriging parameters from an interpolation context.
 
@@ -101,7 +101,7 @@ def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
         ctx: Context statistics (data scale, point count, NN distance).
 
     Returns:
-        A populated :class:`OrdinaryKrigingParams`.
+        A populated :class:`OKParams`.
     """
     sx, sy, sz = ctx.data_scale
     npts = ctx.n_points
@@ -139,7 +139,7 @@ def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
     else:
         neighbors = min(200, max(30, npts // 10))
 
-    return OrdinaryKrigingParams(
+    return OKParams(
         variogram_model=variogram_model,
         range=range_,
         sill=sill,
@@ -582,7 +582,7 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
     )
 
 
-class UniversalCoKrigingParams(BaseModel):
+class UCKParams(BaseModel):
     """
     Placeholder class for Universal Co-Kriging interpolation parameters.
 
@@ -593,12 +593,12 @@ class UniversalCoKrigingParams(BaseModel):
     pass
 
 
-def default_uck_params(ctx: "InterpolationContext") -> UniversalCoKrigingParams:
-    #TODO: Placeholder default parameters for Universal Co-Kriging.
-    return UniversalCoKrigingParams()
+def default_uck_params(ctx: "InterpolationContext") -> UCKParams:
+    # Placeholder default parameters for Universal Co-Kriging.
+    return UCKParams()
 
 
-class UniversalKrigingParams(OrdinaryKrigingParams):
+class UKParams(OKParams):
     """
     Configuration parameters for Universal Kriging interpolation.
 
@@ -614,7 +614,7 @@ class UniversalKrigingParams(OrdinaryKrigingParams):
     )
 
 
-def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
+def default_uk_params(ctx: InterpolationContext) -> UKParams:
     """
     Derive heuristic default Universal Kriging parameters from an interpolation context.
 
@@ -654,7 +654,7 @@ def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
     else:
         neighbors = min(200, max(30, npts // 10))
 
-    return UniversalKrigingParams(
+    return UKParams(
         variogram_model=variogram_model,
         range=float(range_),
         sill=float(sill),
@@ -668,11 +668,11 @@ def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
 
 
 InterpolationParameterSet = Union[
-    OrdinaryKrigingParams,
+    OKParams,
     RBFParams,
     GeoINRParams,
     FDIParams,
     PLIParams,
-    UniversalCoKrigingParams,
-    UniversalKrigingParams,
+    UCKParams,
+    UKParams,
 ]
