@@ -17,17 +17,14 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
     InterpolationMethod,
     InterpolationContext,
-    OrdinaryKrigingParams,
     default_ok_params,
-    RBFParams,
     default_rbf_params,
-    GeoINRParams,
-    LoopStructuralMethod,
-    LoopStructuralParams,
-    UniversalCoKrigingParams,
-    UniversalKrigingParams,
     default_uk_params,
-    InterpolationParameterSet, default_geo_inr_params,
+    default_pli_params,
+    default_fdi_params,
+    default_geo_inr_params,
+    UniversalCoKrigingParams,
+    InterpolationParameterSet,
 )
 
 # -----------------------------------------------------------------------------
@@ -261,13 +258,16 @@ class StructuralGroup(BaseModel):
             return default_ok_params(ctx)
 
         if method == InterpolationMethod.UNIVERSAL_COKRIGING:
-            return UniversalCoKrigingParams()
+            return default_uck_params(ctx)
 
         if method == InterpolationMethod.GEOINR:
             return default_geo_inr_params(ctx)
 
-        if method == InterpolationMethod.LOOP_STRUCTURAL:
-            return LoopStructuralParams()
+        if method == InterpolationMethod.FINITE_DIFFERENCES:
+            return default_fdi_params(ctx)
+
+        if method == InterpolationMethod.PIECEWISE_LINEAR:
+            return default_pli_params(ctx)
 
         if method == InterpolationMethod.UNIVERSAL_KRIGING:
             return default_uk_params(ctx)

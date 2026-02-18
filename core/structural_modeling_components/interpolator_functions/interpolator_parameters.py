@@ -10,7 +10,6 @@ import pandas as pd
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from pydantic import BaseModel, Field, PrivateAttr
 
-
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
@@ -583,7 +582,6 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
     )
 
 
-
 class UniversalCoKrigingParams(BaseModel):
     """
     Placeholder class for Universal Co-Kriging interpolation parameters.
@@ -593,6 +591,11 @@ class UniversalCoKrigingParams(BaseModel):
     """
 
     pass
+
+
+def default_uck_params(ctx: "InterpolationContext") -> UniversalCoKrigingParams:
+    #TODO: Placeholder default parameters for Universal Co-Kriging.
+    return UniversalCoKrigingParams()
 
 
 class UniversalKrigingParams(OrdinaryKrigingParams):
@@ -668,7 +671,8 @@ InterpolationParameterSet = Union[
     OrdinaryKrigingParams,
     RBFParams,
     GeoINRParams,
-    LoopStructuralParams,
+    FDIParams,
+    PLIParams,
     UniversalCoKrigingParams,
     UniversalKrigingParams,
 ]
