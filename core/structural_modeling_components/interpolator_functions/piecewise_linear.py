@@ -1,9 +1,10 @@
 """
-LoopStructural interpolation for a single structural group.
+LoopStructural PLI interpolation for a single structural group.
 
 This module provides a pure interpolator function that:
 - assigns strictly increasing scalar values per element (oldest=1 .. youngest=n),
 - builds a LoopStructural GeologicalModel from surface points + orientations,
+- creates a PLI foliation (piecewise-linear interpolator),
 - evaluates the feature value on a RegularGrid.
 
 Notes
@@ -11,11 +12,30 @@ Notes
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
 - The scalar field reshape + transpose is preserved exactly as implemented.
+- Orientation/gradient observations are treated as point constraints by LoopStructural
+  (i.e., their XYZ location matters to the solution).
+
+PLI-specific parameters
+-----------------------
+All LoopStructural creation/evaluation parameters are sourced from
+`group.get_interpolation_params()`.
+
+Expected attributes on params
+-----------------------------
+- nelements: int | float
+    Discretisation size passed to `create_and_add_foliation`.
+    (For PLI this controls the piecewise-linear support/mesh density.)
+- solver: str
+    Solver argument passed to `create_and_add_foliation` (if supported by your LS version).
+- damp: bool
+    Damp argument passed to `create_and_add_foliation` (if supported by your LS version).
+- tol: float | None
+    Tolerance passed to `create_and_add_foliation` as `tol` (if provided).
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple, TypeAlias
+from typing import Any, Dict, Tuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -29,15 +49,15 @@ FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
 
 
-def interpolate_group_loop_structural(
+def interpolate_group_piecewise_linear(
     *,
-    group: Any,  # expected: StructuralGroup-like (name, structural_elements with .name, get_interpolation_params())
-    grid: Any,  # expected: RegularGrid-like (extent, resolution, grid_coordinates)
+    group: Any,  # StructuralGroup-like (name, structural_elements with .name, get_interpolation_params())
+    grid: Any,  # RegularGrid-like (extent, resolution, grid_coordinates)
     group_surface_points_df: pd.DataFrame,
     group_orientations_points_df: pd.DataFrame,
 ) -> ScalarFieldAndValues:
     """
-    LoopStructural interpolation for a single structural group (pure function).
+    LoopStructural PLI interpolation for a single structural group (pure function).
 
     Parameters
     ----------
@@ -45,7 +65,8 @@ def interpolate_group_loop_structural(
         StructuralGroup-like object. Expected members:
         - `name: str`
         - `structural_elements: Sequence[... with .name]`
-        - `get_interpolation_params() -> LoopStructuralParams-like` (expects `.interpolator_type`)
+        - `get_interpolation_params() -> params-like`
+          The params object is expected to provide PLI-relevant attributes described in the module docstring.
     grid
         RegularGrid-like object. Expected members:
         - `extent: tuple[float, float, float, float, float, float]`
@@ -135,7 +156,7 @@ def interpolate_group_loop_structural(
     if hasattr(model, "data"):
         model.data = data_combined
     else:
-        # just to ensure backward compatibility
+        # backward compatibility
         model.set_model_data(data_combined)
 
     # Stratigraphic column: preserve original order (group.structural_elements)
@@ -144,22 +165,31 @@ def interpolate_group_loop_structural(
         stratigraphic_column[group.name][rock.name] = {"min": i, "max": i + 1, "id": i}
     model.set_stratigraphic_column(stratigraphic_column)
 
-    # Interpolator params (expected: LoopStructuralParams-like object with .interpolator_type)
-    params = group.get_interpolation_params()
+    # --- parameters (PLI) ---
+    params = group.get_interpolation_params() if hasattr(group, "get_interpolation_params") else None
+    if params is None:
+        raise ValueError(f"Missing interpolation params for group '{group.name}' (required for PLI)")
 
-    # Create the foliation / feature
-    _ = model.create_and_add_foliation(
-        group.name,
-        interpolatortype=params.interpolator_type,  # "FDI" or "PLI"
-        nelements=1e4,
-        buffer=0,
-        solver="cg",
-        damp=True,
+    # Create the foliation / feature (PLI)
+    create_kwargs: Dict[str, Any] = dict(
+        interpolatortype="PLI",
+        nelements=params.nelements,
+        buffer=0.0,
+        solver=params.solver,
+        damp=params.damp,
     )
+    if getattr(params, "tol", None) is not None:
+        create_kwargs["tol"] = params.tol
+
+    _ = model.create_and_add_foliation(group.name, **create_kwargs)
 
     # Evaluate on grid
     regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
-    sf_flat = model.evaluate_feature_value(group.name, regular_grid, scale=True)
+    sf_flat = model.evaluate_feature_value(
+        group.name,
+        regular_grid,
+        scale=True,
+    )
 
     # Match previous implementation: reshape then transpose
     scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T

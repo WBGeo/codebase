@@ -41,7 +41,8 @@ from matplotlib.colors import to_hex
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults, FaultModelResults
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
-from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes_per_element, marching_cubes
+from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import (
+    marching_cubes_per_element, marching_cubes)
 
 from core.structural_modeling_components.structural_objects.structural_objects import (
     StructuralFrame,
@@ -51,22 +52,25 @@ from core.structural_modeling_components.structural_objects.structural_objects i
     InterpolationMethod,
 )
 
-from core.structural_modeling_components.interpolator_functions.ordinary_kriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (
     interpolate_group_ordinary_kriging,
 )
-from core.structural_modeling_components.interpolator_functions.radial_basis_function_per_group import (
+from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     interpolate_group_radial_basis_function,
 )
-from core.structural_modeling_components.interpolator_functions.universal_cokriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.universal_cokriging import (
     interpolate_group_universal_cokriging,
 )
-from core.structural_modeling_components.interpolator_functions.geoinr_per_group import (
+from core.structural_modeling_components.interpolator_functions.geoinr import (
     interpolate_group_geo_inr,
 )
-from core.structural_modeling_components.interpolator_functions.loop_structural_per_group import (
-    interpolate_group_loop_structural,
+from core.structural_modeling_components.interpolator_functions.finite_difference import (
+    interpolate_group_finite_differences,
 )
-from core.structural_modeling_components.interpolator_functions.universal_kriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.piecewise_linear import (
+    interpolate_group_piecewise_linear,
+)
+from core.structural_modeling_components.interpolator_functions.universal_kriging import (
     interpolate_group_universal_kriging
 )
 
@@ -96,7 +100,8 @@ interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
     InterpolationMethod.RADIAL_BASIS_FUNCTION: interpolate_group_radial_basis_function,
     InterpolationMethod.UNIVERSAL_COKRIGING: interpolate_group_universal_cokriging,
     InterpolationMethod.GEOINR: interpolate_group_geo_inr,
-    InterpolationMethod.LOOP_STRUCTURAL: interpolate_group_loop_structural,
+    InterpolationMethod.FINITE_DIFFERENCES: interpolate_group_finite_differences,
+    InterpolationMethod.PIECEWISE_LINEAR: interpolate_group_piecewise_linear,
     InterpolationMethod.UNIVERSAL_KRIGING: interpolate_group_universal_kriging,
 }
 

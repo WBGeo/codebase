@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 # TODO: adjust if your module path differs
-from core.structural_modeling_components.interpolator_functions.universal_cokriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.universal_cokriging import (
     interpolate_group_universal_cokriging,
     rescale_scalar_field_safe,
 )
@@ -134,7 +134,7 @@ def test_happy_path_calls_gempy_and_rescales(monkeypatch):
     sp = surface_df(["e1", "e2", "e3"])
     od = ori_df(["e1", "e2", "e3"])
 
-    import core.structural_modeling_components.interpolator_functions.universal_cokriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_cokriging as mod
 
     # ---- capture calls ----
     captured = {}
@@ -243,7 +243,7 @@ def test_raises_if_gempy_returns_wrong_number_of_scalar_values(monkeypatch):
     sp = surface_df(["e1", "e2", "e3"])
     od = ori_df(["e1", "e2", "e3"])
 
-    import core.structural_modeling_components.interpolator_functions.universal_cokriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_cokriging as mod
 
     class FakeSurfaceTable:
         def __init__(self):

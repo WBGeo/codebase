@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 # TODO: change to your real import path if different:
-from core.structural_modeling_components.interpolator_functions.universal_kriging_per_group import (
+from core.structural_modeling_components.interpolator_functions.universal_kriging import (
     interpolate_group_universal_kriging,
 )
 
@@ -102,7 +102,7 @@ def test_warns_when_orientations_provided_but_unused(monkeypatch):
     sdf = surface_df(["young", "old"])
     odf = pd.DataFrame({"dip": [1]})
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
     class DummyUK3D:
         def __init__(self, *args, **kwargs):
@@ -155,7 +155,7 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n(monkeypatch):
     grid = FakeGrid()
     sdf = surface_df(["oldest", "middle", "youngest"])
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
     class DummyUK3D:
         def __init__(self, *args, **kwargs):
@@ -187,7 +187,7 @@ def test_default_drift_terms_is_regional_linear(monkeypatch):
         }
     )
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
     captured = {}
 
@@ -218,7 +218,7 @@ def test_drift_terms_tuple_or_set_is_converted_to_list(monkeypatch):
         }
     )
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
     captured = {}
 
@@ -252,7 +252,7 @@ def test_specified_drift_dict_is_converted_to_specified_drift_arrays(monkeypatch
         }
     )
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
     captured = {}
 
@@ -288,7 +288,7 @@ def test_specified_drift_single_array_becomes_list(monkeypatch):
         }
     )
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
     captured = {}
 
@@ -325,7 +325,7 @@ def test_external_drift_is_passed_to_constructor_and_external_drift_grid_to_exec
         }
     )
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging_per_group as mod
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
     captured = {}
 
