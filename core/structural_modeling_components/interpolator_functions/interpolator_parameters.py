@@ -10,7 +10,6 @@ import pandas as pd
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from pydantic import BaseModel, Field, PrivateAttr
 
-
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
@@ -30,7 +29,8 @@ class InterpolationMethod(str, Enum):
     RADIAL_BASIS_FUNCTION = "Radial Basis Function"
     UNIVERSAL_COKRIGING = "Universal Co-Kriging"
     GEOINR = "GeoINR"
-    LOOP_STRUCTURAL = "Loop Structural"
+    FINITE_DIFFERENCES = "Finite Differences"
+    PIECEWISE_LINEAR = "Piecewise Linear"
     UNIVERSAL_KRIGING = "Universal Kriging"
 
 
@@ -49,7 +49,7 @@ class InterpolationContext(BaseModel):
     mean_nn_distance: float
 
 
-class OrdinaryKrigingParams(BaseModel):
+class OKParams(BaseModel):
     """
     Configuration parameters for Ordinary Kriging interpolation.
 
@@ -93,7 +93,7 @@ class OrdinaryKrigingParams(BaseModel):
     )
 
 
-def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
+def default_ok_params(ctx: InterpolationContext) -> OKParams:
     """
     Derive heuristic default Ordinary Kriging parameters from an interpolation context.
 
@@ -101,7 +101,7 @@ def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
         ctx: Context statistics (data scale, point count, NN distance).
 
     Returns:
-        A populated :class:`OrdinaryKrigingParams`.
+        A populated :class:`OKParams`.
     """
     sx, sy, sz = ctx.data_scale
     npts = ctx.n_points
@@ -139,7 +139,7 @@ def default_ok_params(ctx: InterpolationContext) -> OrdinaryKrigingParams:
     else:
         neighbors = min(200, max(30, npts // 10))
 
-    return OrdinaryKrigingParams(
+    return OKParams(
         variogram_model=variogram_model,
         range=range_,
         sill=sill,
@@ -398,28 +398,191 @@ def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
     )
 
 
-class LoopStructuralMethod(str, Enum):
-    """LoopStructural interpolator selection."""
-
-    FDI = "FDI"
-    PLI = "PLI"
-
-
-class LoopStructuralParams(BaseModel):
+class FDIParams(BaseModel):
     """
-    Parameters for LoopStructural interpolation.
+    Parameters for LoopStructural FDI (finite difference) interpolation.
 
-    Attributes:
-        interpolator_type: Choice of interpolator in LoopStructural.
+    Notes
+    -----
+    - FDI in LoopStructural solves the implicit scalar field on a regular cartesian grid
+      (discrete finite-difference support).
+    - Many additional LoopStructural knobs exist; we expose a small stable subset and allow
+      optional pass-through via dictionaries.
+
+    Attributes
+    ----------
+    nelements:
+        Discretisation size passed to `create_and_add_foliation`.
+        (Controls the size of the discrete support; larger -> finer/more expensive.)
+    buffer:
+        Optional buffer around the model bounds used when building the interpolator domain.
+    solver:
+        Linear solver choice (LoopStructural versions commonly accept "cg").
+    damp:
+        Whether to apply damping (regularisation / stabilisation) if supported by the LS version.
+    tol:
+        Solver tolerance. If None, LoopStructural defaults are used.
     """
 
-    interpolator_type: LoopStructuralMethod = Field(
-        default=LoopStructuralMethod.FDI,
-        description="Type of LoopStructural interpolator. Choose 'FDI' or 'PLI'.",
+    nelements: int = Field(
+        10_000,
+        ge=1_000,
+        description="FDI discretisation size for create_and_add_foliation (larger = finer, slower).",
+    )
+    solver: str = Field(
+        "cg",
+        description="Linear solver (commonly 'cg' in LoopStructural examples/usage).",
+    )
+    damp: bool = Field(
+        True,
+        description="Enable damping/regularisation",
+    )
+    tol: Optional[float] = Field(
+        None,
+        gt=0.0,
+        description="Solver tolerance. If None, LoopStructural defaults are used.",
     )
 
 
-class UniversalCoKrigingParams(BaseModel):
+def default_fdi_params(ctx: "InterpolationContext") -> FDIParams:
+    """
+    Derive heuristic default LoopStructural FDI parameters from an interpolation context.
+
+    Heuristics
+    ----------
+    - `nelements` grows sublinearly with problem size: more data -> allow finer support,
+      but keep a hard cap to avoid runaway compute/memory costs.
+    - `buffer` defaults to 0 because your workflow already defines the grid/domain explicitly.
+    - `solver` defaults to 'cg' because it's commonly used for these sparse linear systems.
+    - `damp=True` by default for robustness (stabilises noisy/heterogeneous constraints).
+    - `tol=None` to let LoopStructural choose a version-appropriate default.
+
+    Returns
+    -------
+    FDIParams
+        A populated parameter object.
+    """
+    # Start from LoopStructural's common default nelements (~1e4) and scale with point count.
+    # Use sqrt scaling so it increases, but gently:
+    #   1k pts -> ~10k
+    #   4k pts -> ~20k
+    #   25k pts -> ~50k
+    #
+    # Clamp to keep memory/runtime predictable.
+    base = 10_000
+    scale = (max(ctx.n_points, 1) / 1_000) ** 0.5
+    nelements = int(base * max(0.7, min(scale, 8.0)))  # factor in [0.7 .. 8.0]
+    nelements = max(5_000, min(nelements, 200_000))
+
+    return FDIParams(
+        nelements=nelements,
+        solver="cg",
+        damp=True,
+        tol=None,
+    )
+
+
+class PLIParams(BaseModel):
+    """
+    Parameters for LoopStructural PLI (piecewise linear) interpolation.
+
+    Notes
+    -----
+    - PLI in LoopStructural solves the implicit scalar field on a piecewise-linear support
+      (mesh-based / tetrahedral-style discretisation).
+    - Compared to FDI, PLI typically benefits from a somewhat higher discretisation density
+      for similar visual smoothness, but may become sensitive to clustered/uneven data.
+
+    Attributes
+    ----------
+    nelements:
+        Discretisation size passed to `create_and_add_foliation`.
+        (Controls the density of the piecewise-linear support; larger -> finer/more expensive.)
+    solver:
+        Linear solver choice (LoopStructural versions commonly accept "cg").
+    damp:
+        Whether to apply damping/regularisation for robustness.
+    tol:
+        Solver tolerance. If None, LoopStructural defaults are used.
+    """
+
+    nelements: int = Field(
+        20_000,
+        ge=1_000,
+        description="PLI discretisation size for create_and_add_foliation (larger = finer, slower).",
+    )
+    solver: str = Field(
+        "cg",
+        description="Linear solver (commonly 'cg' in LoopStructural examples/usage).",
+    )
+    damp: bool = Field(
+        True,
+        description="Enable damping/regularisation",
+    )
+    tol: Optional[float] = Field(
+        None,
+        gt=0.0,
+        description="Solver tolerance. If None, LoopStructural defaults are used.",
+    )
+
+
+def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
+    """
+    Derive heuristic default LoopStructural PLI parameters from an interpolation context.
+
+    Heuristics
+    ----------
+    - PLI generally needs a denser discretisation than FDI to avoid faceting / overly angular
+      results, so we start from a higher base `nelements`.
+    - `nelements` grows sublinearly with problem size (sqrt scaling with point count),
+      and is softly adjusted by how well-sampled the domain is (mean NN distance vs extent).
+    - `solver` defaults to 'cg' (sparse linear systems).
+    - `damp=True` by default for robustness (mixed constraints, noisy normals).
+    - `tol=None` to let LoopStructural choose a version-appropriate default.
+
+    Returns
+    -------
+    PLIParams
+        A populated parameter object.
+    """
+    # --- base scaling with problem size ---
+    # Higher base than FDI because piecewise-linear support can look faceted if too coarse.
+    base = 20_000
+
+    # Sublinear growth with number of constraints.
+    scale_n = (max(ctx.n_points, 1) / 1_000) ** 0.5  # gentle growth
+
+    # --- sampling-density adjustment (optional but useful) ---
+    # If points are dense relative to the domain extent, we can afford (and benefit from)
+    # a bit more discretisation; if points are sparse, keep it conservative.
+    extent = max(ctx.data_scale)
+    if extent > 0:
+        # dimensionless: bigger means denser sampling
+        density = extent / max(ctx.mean_nn_distance, 1e-9)
+        # Map density into a mild multiplier in ~[0.8 .. 1.4]
+        # (log keeps it stable across huge ranges)
+        import math
+
+        scale_d = 0.8 + 0.1 * min(6.0, max(0.0, math.log10(max(density, 1.0))))
+        scale_d = max(0.8, min(scale_d, 1.4))
+    else:
+        scale_d = 1.0
+
+    nelements = int(base * max(0.8, min(scale_n, 10.0)) * scale_d)
+
+    # Clamp: PLI often benefits from a higher upper cap than FDI,
+    # but keep it bounded for memory/runtime predictability.
+    nelements = max(10_000, min(nelements, 400_000))
+
+    return PLIParams(
+        nelements=nelements,
+        solver="cg",
+        damp=True,
+        tol=None,
+    )
+
+
+class UCKParams(BaseModel):
     """
     Placeholder class for Universal Co-Kriging interpolation parameters.
 
@@ -430,7 +593,12 @@ class UniversalCoKrigingParams(BaseModel):
     pass
 
 
-class UniversalKrigingParams(OrdinaryKrigingParams):
+def default_uck_params(ctx: "InterpolationContext") -> UCKParams:
+    # Placeholder default parameters for Universal Co-Kriging.
+    return UCKParams()
+
+
+class UKParams(OKParams):
     """
     Configuration parameters for Universal Kriging interpolation.
 
@@ -446,7 +614,7 @@ class UniversalKrigingParams(OrdinaryKrigingParams):
     )
 
 
-def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
+def default_uk_params(ctx: InterpolationContext) -> UKParams:
     """
     Derive heuristic default Universal Kriging parameters from an interpolation context.
 
@@ -486,7 +654,7 @@ def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
     else:
         neighbors = min(200, max(30, npts // 10))
 
-    return UniversalKrigingParams(
+    return UKParams(
         variogram_model=variogram_model,
         range=float(range_),
         sill=float(sill),
@@ -500,10 +668,11 @@ def default_uk_params(ctx: InterpolationContext) -> UniversalKrigingParams:
 
 
 InterpolationParameterSet = Union[
-    OrdinaryKrigingParams,
+    OKParams,
     RBFParams,
     GeoINRParams,
-    LoopStructuralParams,
-    UniversalCoKrigingParams,
-    UniversalKrigingParams,
+    FDIParams,
+    PLIParams,
+    UCKParams,
+    UKParams,
 ]
