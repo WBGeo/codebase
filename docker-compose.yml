@@ -1,0 +1,55 @@
+services:
+  frontend:
+    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/frontend:latest
+    pull_policy: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    environment:
+      UMLP_DEPLOYED_DOMAIN: ":80"
+  backend:
+    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/backend:latest
+    pull_policy: always
+    environment:
+      S3_HOST: "minio:9000"
+    depends_on:
+      - minio
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-02-28T09-55-16Z
+    command: server /data --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
+    ports:
+      - "127.0.0.1:9001:9001"
+      - "127.0.0.1:9002:9000"
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      MINIO_ROOT_USER: wbgeoM1n10admin
+      MINIO_ROOT_PASSWORD: g@bJ!&NS8K^!
+    volumes:
+      - "./docker/storage:/data:rw"
+  
+  py_runner:
+    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/pyrunner:latest
+    restart: on-failure
+    pull_policy: always
+    depends_on:
+      - minio
+      - backend
+    environment:
+      LIQUIDEARTH_TOKEN: "" # TODO place your token here to use it by default
+      MINIO_HOST: "minio:9000"
+      BACKEND_HOST: "backend:8081"
+#    volumes:
+      # for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
+      # if this file is located at the root of the "codebase" project, the defaults work
+#      - "./core/:/usr/src/app/codebase/core/"
+#      - "./examples/:/usr/src/app/codebase/examples/"
+      # option 2 - if the codebase is in a different folder, you can also use this format
+#      - "./path/to/my/codebase/:/usr/src/app/codebase/"

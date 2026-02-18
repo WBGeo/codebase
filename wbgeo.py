@@ -4,9 +4,6 @@ from py_api_wbgeo import apitypes
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults
 
-# from core.structural_modeling_components.geo_inr import geo_inr_interpolator # removed until updated
-# from core.structural_modeling_components.loopstructural_old import loop_structural_interpolator # removed until updated
-
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
 ####################################################################################################
@@ -318,6 +315,8 @@ def does_have_orientations(input: InputData_StructuralElements) -> Optional[str]
 #                                }])
 
 
+
+
 # Register 3 yet-to-be-implemented block types
 
 # a placeholder, passthrough
@@ -374,3 +373,4 @@ def placeholder_m(**kwargs):
 #                                    {'param': 'o', 'type': GeomodelResultsType},
 #                                ],
 #                                )
+

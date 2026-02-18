@@ -2,8 +2,10 @@ import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.colors as mcolors
 from core.object_components import InputData_StructuralElements, StructuralModelResults, MeshResults
 import warnings
+from py_api_wbgeo import nodesapi
 
 
 def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:

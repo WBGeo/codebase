@@ -1,13 +1,18 @@
+import typing
+
 import gmsh
 import meshio
 import numpy as np
 from collections import defaultdict
 from scipy.spatial import cKDTree
 
-
+from typing import List, Tuple, Union, Mapping
+from core.object_components import InputData, GeomodelResults
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
+
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 
 
 def point_on_line_segment(pt, p1, p2, tol=1e-6):
@@ -79,9 +84,15 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
           for s_tag in source_tag:
               gmsh.model.mesh.embed(0, [s_tag], 3, volume_tag)
 
+  # === Show geometry before meshing ===
+  #gmsh.fltk.initialize()  # Start the Gmsh GUI
+  #gmsh.fltk.run()         # Keep GUI open until you close it manually
+  #gmsh.fltk.finalize()    # Close GUI cleanly
+
   # Finally, let's specify a global mesh size and mesh the partitioned model:
   gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
 
+  gmsh.option.setNumber("General.Verbosity", 4)
 
   gmsh.model.mesh.generate(3)
 
@@ -163,55 +174,50 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
         print(f"Shaft {shaft_tag} has {len(blocks)} blocks")
 
 
+  # Precompute KD-tree
+  grid_coords = grid_litho.iloc[:, :3].to_numpy()
+  grid_litho_values = grid_litho.iloc[:, 3].to_numpy()
+  tree = cKDTree(grid_coords)
 
-
-  # === assign lithology to different blocks ===
-
+  threshold_ratio = 0.7  # fraction of nodes needed to assign a lithology
   lithology_numbers = []
-  number_random_sample = 800
 
   for block in tetra_blocks:
-      num_nodes_in_block = np.unique(block.data).size
-      if num_nodes_in_block < number_random_sample:
-          number_random_sample = int(num_nodes_in_block)
+    node_ids = np.unique(block.data)
+    node_coords = nodes[node_ids]
 
-      random_nodes = np.random.choice(block.data.flatten(), size=number_random_sample, replace=False)
-      random_nodes_coords = nodes[random_nodes]
+    # Query nearest lithology point for all nodes in block
+    _, nearest_idx = tree.query(node_coords, k=1)
+    node_litho = grid_litho_values[nearest_idx]
 
-      block_lithology_numbers = []
-      for random_coord in random_nodes_coords:
-          distances = np.linalg.norm(grid_litho.iloc[:, :3].to_numpy() - random_coord, axis=1)
-          nearest_idx = np.argmin(distances)
-          lithology_number = grid_litho.iloc[nearest_idx, 3]
-          block_lithology_numbers.append(lithology_number)
+    # Majority vote
+    unique_vals, counts = np.unique(node_litho, return_counts=True)
+    max_count_idx = np.argmax(counts)
 
-      lithology_numbers.append(block_lithology_numbers)
+    if counts[max_count_idx] / len(node_ids) >= threshold_ratio:
+        lithology_numbers.append(int(unique_vals[max_count_idx]))
+    else:
+        # fallback: assign the lithology of the centroid
+        centroid = np.mean(node_coords, axis=0)
+        _, nearest_idx = tree.query(centroid)
+        lithology_numbers.append(int(grid_litho_values[nearest_idx]))
 
-  threshold = int(0.7 * number_random_sample)
-
-  final_litho = []
-  for row in lithology_numbers:
-      unique_values, counts = np.unique(row, return_counts=True)
-      max_count_idx = np.argmax(counts)
-      if counts[max_count_idx] >= threshold:
-          final_litho.append(unique_values[max_count_idx])
-      else:
-          final_litho.append(None)
-
-  # === Group blocks by lithology ===
-
+  # Group blocks by lithology
   litho_to_blocks = defaultdict(list)
-  for block_index, (lith, block) in enumerate(zip(final_litho, tetra_blocks)):
-      litho_to_blocks[lith].append(block_index)
+  for block_index, (lith, block) in enumerate(zip(lithology_numbers, tetra_blocks)):
+    litho_to_blocks[lith].append(block_index)
 
-  # === Merge blocks per lithology ===
-
+  # Merge blocks per lithology
   merged_tetra_blocks = []
   for lith, block_indices in litho_to_blocks.items():
-      merged_nodes = []
-      for idx in block_indices:
-          merged_nodes.extend(tetra_blocks[idx].data)
-      merged_tetra_blocks.append(meshio.CellBlock(cell_type="tetra", data=np.array(merged_nodes)))
+    merged_nodes = np.concatenate([tetra_blocks[idx].data for idx in block_indices])
+    merged_tetra_blocks.append(meshio.CellBlock(cell_type="tetra", data=merged_nodes))
+
+  print("Number of merged lithology blocks:", len(merged_tetra_blocks))
+
+
+
+
 
   # === Add shaft blocks as a separate CellBlock ===
 
@@ -363,28 +369,103 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
     print('No tags found')
     return nodes, cells_n
 
+WellData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData', controlled='Table|x3')]
+SourcesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData', controlled='Table|3|X|Y|Z')]
 
-def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells=[], num_sources=0, sources=[], num_shafts=0, centers=[],
-                                  axes=[], radii=[], num_planes=0, extra_planes=[], tolerance=50,  mesh_size= 30, curve_mesh_size=5,
-                                  DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10, extent =[],
-                                  buffer_dist=0, smooth =1e-5):
+CenterData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData', controlled='Table|3|X|Y|Z')]
+AxesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='axes', color='aqua', identifier='mesh::AxesData', controlled='Table|3|X|Y|Z')]
+RadiData = typing.Annotated[List[float], AnnotatedScriptType(name='radi', color='aqua', identifier='mesh::RadiData', controlled='Table|1|Radius')]
+
+PlanesData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='planes', color='aqua', identifier='mesh::PlanesData')]
+RadiiData = typing.Annotated[List[float], AnnotatedScriptType(name='radii', color='aqua', identifier='mesh::RadiiData')]
+ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
+
+
+# the file must end with "wells.csv", e.g., "example_wells.csv", etc.
+WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
+
+@wbgeo_component(description='Loads a well from a wells.CSV file',
+                 title='Load Well',  # The title shown in the GUI
+                 color='#cc9999',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Meshing',
+                 identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
+                 return_name='Wells',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
+def load_wells_from_csv(well_file: WellCSVDataType) -> WellData:
+  # format of the csv is: id, x,y,z\n
+  named_well_data: Mapping[str, List[Tuple[float]]] = {}
+  # load csv file
+  with open(well_file, 'r') as f:
+    for line in f.readlines():
+      if line.startswith('#'): continue
+      well_id, well_x, well_y, well_z = [s.strip() for s in line.split(",")]
+      if well_id not in named_well_data:
+        named_well_data[well_id] = []
+      named_well_data[well_id].append([float(well_x), float(well_y), float(well_z)])
+  # ensure that we have at least 2 points per well
+  if any(True for well in named_well_data.values() if len(well) < 2):
+    incorrect_wells = [well_id for well_id, well_data in named_well_data.items() if
+                       len(well_data) < 2]
+    raise ValueError(f"Some well(s) {incorrect_wells} are missing their second point")
+  # format right now is {key: [(x,y,z)]} -> map it to [x1, y1, z1, ..., xi, yi, zi] for each well
+  return [tuple([coordinate for well_group in well_data for coordinate in well_group]) for well_data
+          in named_well_data.values()]
+
+# Register this function as a component
+@wbgeo_component(description='Provides unstructured mesh',
+                 title='Create Unstructured Mesh',  # The title shown in the GUI
+                 color='#cc9999',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Meshing',
+                 identifier='create_unstructured_mesh_data',  # a unique identifier
+                 return_name='Mesh',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
+def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited amount of inputs
+    geomodel_result: GeomodelResults,
+    wells: WellData = [],
+    tolerance: float = 50,
+    mesh_size: float = 30,
+    curve_mesh_size: float = 5,
+    DISTANCE_THRESHOLD: float = 50,
+    PROJECTION_THRESHOLD: float = 60,
+    EXTRUSION_FACTOR: float = 100,
+    z_threshold: float = 10,
+    buffer_dist: float = 0,
+    smooth: float = 1e-5 ) -> MeshResults:
+  return create_unstructured_mesh_data(**locals())
+
+def create_unstructured_mesh_data(
+    geomodel_result: GeomodelResults,
+    wells: WellData = [],
+    sources: SourcesData = [],
+    centers: CenterData = [],
+    axes: AxesData = [],
+    radii: RadiiData = [],
+    extra_planes: PlanesData = [],
+    tolerance: float = 50,
+    mesh_size: float = 30,
+    curve_mesh_size: float = 5,
+    DISTANCE_THRESHOLD: float = 50,
+    PROJECTION_THRESHOLD: float = 60,
+    EXTRUSION_FACTOR: float = 100,
+    z_threshold: float = 10,
+    extent: ExtentData = [],
+    buffer_dist: float = 0,
+    smooth: float = 1e-5 ) -> MeshResults:
     """
     Generates an unstructured geological mesh using a geomodel and additional structures
     such as wells, sources, shafts, and extra planes. It performs surface cleaning,
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        data_test (InputData): Input input_data object containing surface points, orientations, mapping, faults, and extent.
+        input_data (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
         geomodel_result (object): Output object from the geomodel interpolation, e.g. from `universal_cokriging_interpolator`.
-        num_wells (int): Number of wells.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
-        num_sources (int): Number of source points.
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
-        num_shafts (int): Number of mine shafts.
         centers (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z).
         axes (list of tuples): List of direction vectors (dx, dy, dz) for the axes of mine shaft cylinders.
         radii (list of floats): List of radii for the mine shaft cylinders.
-        num_planes (int): Number of extra planes.
         extra_planes (list of tuples): Each tuple contains coordinates of 4 corners (12 values) defining an extra plane.
         tolerance (float): Distance threshold to identify boarder of mesh.
         mesh_size (int): Default mesh size for surface and volume meshing (default is 30).
@@ -394,85 +475,65 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
         EXTRUSION_FACTOR (float): Factor that scales extrusion distance.
         z_threshold (float): Threshold for determining whether two surfaces on either side of a fault are close in elevation.
         extent (list): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
-        buffer_dist (float): extent of interpolated surfaces
+        buffer_dist (float): extent of interpolated surfaces (extrapolation)
         smooth (float): smoothness factor for interpolation of surfaces
     Returns:
         MeshResults: An instance of the MeshResults class.
     """
-    # Validate that num_wells is an int
-    if not isinstance(num_wells, int):
-        print("❌ 'num_wells' must be an integer.")
-        return
+
     # Validate that wells is a list of tuples with at least 6 coordinates and length is a multiple of 3
     if not isinstance(wells, list) or not all(isinstance(w, tuple) and len(w) >= 6 and len(w) % 3 == 0 for w in wells):
-        print("❌ 'wells' must be a list of tuples, each containing 2 or more 3D coordinate points (e.g., 6, 9, 12 values, etc.).")
-        return  # Exit the function early
+      raise Exception("❌ 'wells' must be a list of tuples, each containing 2 or more 3D coordinate points (e.g., 6, 9, 12 values, etc.).")
 
-    # Check number of wells matches
-    if num_wells > 0 and len(wells) != num_wells:
-        print(f"❌ Number of well entries ({len(wells)}) does not match 'num_wells' ({num_wells}).")
-        return
-
-    # Validate that num_sources is an int
-    if not isinstance(num_sources, int):
-        print("❌ 'num_sources' must be an integer.")
-        return
     # Validate that sources is a list of tuples
     if not all(isinstance(s, tuple) and len(s) == 3 for s in sources):
-        print("❌ 'sources' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
-        return  # Exit the function early
-    # Check number of sources matches
-    if num_sources > 0 and len(sources) != num_sources:
-        print(f"❌ Number of source entries ({len(sources)}) does not match 'num_sources' ({num_sources}).")
-        return
-
-   # Validate that num_shafts is an int
-    if not isinstance(num_shafts, int):
-        print("❌ 'num_shafts' must be an integer.")
-        return
-     # Validate that centers is a list of 3D tuples
+      raise Exception("❌ 'sources' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
+    # Validate that centers is a list of 3D tuples
     if not all(isinstance(center, tuple) and len(center) == 3 for center in centers):
-        print("❌ 'centers' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
-        return
+      raise Exception("❌ 'centers' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
     # If shafts are specified, check the number of centers
-    if num_shafts > 0 and len(centers) != num_shafts:
-        print(f"❌ Number of shaft centers ({len(centers)}) does not match 'num_shafts' ({num_shafts}).")
-        return
     # Validate that axes is a list of tuples
     if not all(isinstance(axis, tuple) and len(axis) == 3 for axis in axes):
-        print("❌ 'axes' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
-        return  # Exit the function early
+      raise Exception("❌ 'axes' must be a list of 3D coordinate tuples like [(x, y, z), ...].")
     # Check number of axes matches num_shafts if specified
-    if num_shafts > 0 and len(axes) != num_shafts:
-        print(f"❌ Number of axes ({len(axes)}) does not match 'num_shafts' ({num_shafts}).")
-        return
+    if len(axes) != len(radii):
+        raise Exception(f"❌ Number of axes ({len(axes)}) does not match 'radii' ({len(radii)}).")
+    if len(axes) != len(centers):
+      raise Exception(f"❌ Number of axes ({len(axes)}) does not match 'center' ({len(center)}).")
     # Validate that radiis is a list of int
     if not isinstance(radii, list) or not all(isinstance(r, int) for r in radii):
-        print("❌ 'radii' must be a list of integers like [10, 20, 30].")
-        return
-    # Check if the number of radii matches num_shafts
-    if num_shafts > 0 and len(radii) != num_shafts:
-        print(f"❌ Number of radii ({len(radii)}) does not match 'num_shafts' ({num_shafts}).")
-        return
+        raise Exception("❌ 'radii' must be a list of integers like [10, 20, 30].")
+    num_shafts = len(radii)
 
-    # Validate that num_planes is an int
-    if not isinstance(num_planes, int):
-        print("❌ 'num_planes' must be an integer.")
-        return
     # Validate that sources is a list of tuples
     if not all(isinstance(extra, tuple) and len(extra) == 12 for extra in extra_planes):
-        print("❌ 'extra_planes' must be a list of four sets of 3D coordinate tuples like [(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4), ...].")
-        return  # Exit the function early
-    # Validate that number of extra_planes matches num_planes
-    if num_planes > 0 and len(extra_planes) != num_planes:
-        print(f"❌ Number of extra_planes ({len(extra_planes)}) does not match 'num_planes' ({num_planes}).")
-        return
+        raise Exception("❌ 'extra_planes' must be a list of four sets of 3D coordinate tuples like [(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4), ...].")
+    num_planes = len(extra_planes)
+
+    mine_shafts = []
+    if num_shafts !=0:
+      for i in range(len(centers)):
+        mine_shafts.append({
+            "center": centers[i],
+            "axis": axes[i],
+            "radius": radii[i]  # each is a tuple like (600, 500, 400)
+        })
+      # Print confirmation
+      for i, shaft in enumerate(mine_shafts, 1):
+        print(f"Mine shaft {i}:")
+        print(f"  center = {shaft['center']}")
+        print(f"  axis   = {shaft['axis']}")
+        print(f"  radius  = {shaft['radius']}")
+
+    else:
+      mine_shafts = []
+
 
     gmsh.initialize()  # Initialize GMSH once
-    cleaned_surfaces, ref_surface_indices , grid_litho, wells, extra_planes, mine_shafts, source_points = data_prepration(data_test, geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD, EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold, num_wells=num_wells, wells=wells, num_sources=num_sources, sources=sources, num_shafts=num_shafts, centers=centers, axes=axes, radii=radii, num_planes=num_planes,extra_planes=extra_planes)
+    cleaned_surfaces, ref_surface_indices , grid_litho = data_prepration(geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
+                                                                                                                EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold)
 
     interpolated_s = create_surface_grid(cleaned_surfaces, buffer_dist = buffer_dist, smooth=smooth)
-    #### plot_surfaces_individually(interpolated_s)
 
     # fragment
     if extent ==[]:
@@ -484,21 +545,21 @@ def create_unstructured_mesh_data(data_test, geomodel_result, num_wells=0, wells
     surfaces_orginal, bounds = import_surfaces(interpolated_s, extent, tolerance=tolerance)
     print(bounds, 'biii')
 
-    ###gmsh.model.occ.synchronize()
-    ###gmsh.fltk.initialize()
-    ###while gmsh.fltk.isAvailable():
-    ###    gmsh.fltk.wait()
+    gmsh.model.occ.synchronize()
+    #gmsh.fltk.initialize()
+    #while gmsh.fltk.isAvailable():
+    #    gmsh.fltk.wait()
 
 
 
 
 
     surfaces=surfaces_orginal.copy()
-    ov,ovv, tagssss, well_tags, shaft_tags,shaft_to_child_fragments,  source_tag = fragment_surfaces(surfaces, bounds, ref_surface_indices,wells, extra_planes, source_points, mine_shafts, mesh_size=mesh_size,curve_mesh_size=curve_mesh_size )
+    ov,ovv, tagssss, well_tags, shaft_tags,shaft_to_child_fragments,  source_tag = fragment_surfaces(surfaces, bounds, ref_surface_indices,wells, extra_planes, sources, mine_shafts, mesh_size=mesh_size,curve_mesh_size=curve_mesh_size )
     nodes, cells = mesh_generator(ov, tagssss, wells, well_tags, source_tag, shaft_tags, shaft_to_child_fragments,  grid_litho, curve_mesh_size=curve_mesh_size )
 
 
     # Create and return a MeshData instance
-    return MeshResults(elements=cells,
+    return MeshResults(elements_unstructured=cells,
                        nodes=nodes,
                        )

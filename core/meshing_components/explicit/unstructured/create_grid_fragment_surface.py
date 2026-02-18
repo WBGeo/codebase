@@ -27,7 +27,7 @@ def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
     interpolated_surfaces = []
     max_n_gx=250
     max_n_gy=100
-    for _, points in cleaned_surfaces:  # Extract points directly
+    for id, points in cleaned_surfaces:  # Extract points directly
         # Create DataFrame and remove duplicates
         df = pd.DataFrame({'x': points[:, 0], 'y': points[:, 1], 'z': points[:, 2]}).drop_duplicates()
         x_cleaned = df['x'].values
@@ -60,7 +60,8 @@ def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
 
         # Interpolation using RBF
         rbf = Rbf(x_cleaned, y_cleaned, z_cleaned, function='multiquadric', epsilon=2, smooth=smooth)
-        z_interpolated = np.round(rbf(grid_x, grid_y))
+
+        z_interpolated = (rbf(grid_x, grid_y))
 
         # Combine into final interpolated surface
         interpolated_grid = np.column_stack((grid_x.flatten(), grid_y.flatten(), z_interpolated.flatten()))
@@ -92,79 +93,112 @@ def import_surfaces(interpolated_s, extent=None, tolerance=50):
     Gets a list of interpolated surface grids and creates B-spline surfaces using GMSH.
 
     Args:
-        interpolated_s (list of np.ndarray): List of surface points (x, y, z) for each surface.
-        extent (tuple): Optional bounding box (x_b_min, x_b_max, y_b_min, y_b_max, z_b_min, z_b_max).
-        tolerance (float): Acceptable deviation from the extent values.
+        interpolated_s (list of np.ndarray):
+            List of surface points (x, y, z) for each surface.
+            Each array must have shape (n, 3), where n is the number of points.
+        extent (tuple):
+            Optional bounding box (x_b_min, x_b_max, y_b_min, y_b_max, z_b_min, z_b_max)
+            defining the expected spatial limits of the surfaces.
+        tolerance (float):
+            Acceptable deviation (in model units) when matching the extent values to surface boundaries.
 
     Returns:
-        surfaces (list): List of GMSH B-spline surface IDs.
-        bounds (tuple): Adjusted bounding box based on overlap and extent constraints.
+        surfaces (list):
+            List of GMSH B-spline surface IDs created from the input point clouds.
+        bounds (tuple):
+            Adjusted bounding box values that best fit all imported surfaces
+            while respecting the tolerance limit.
     """
 
+    # Initialize an empty list to store GMSH surface IDs.
     surfaces = []
 
+    # Initialize lists to store the minimum and maximum x, y, z coordinates of each surface.
     min_x_list, max_x_list = [], []
     min_y_list, max_y_list = [], []
     min_z_list, max_z_list = [], []
 
+    # Iterate through each interpolated surface in the input list
     for surface_points in interpolated_s:
+
+        # Ensure that each element is a NumPy array with 3 columns (x, y, z)
         if not isinstance(surface_points, np.ndarray) or surface_points.shape[1] != 3:
             print("Invalid surface points format")
-            continue
+            continue  # Skip invalid surfaces
 
+        # Compute min and max coordinates for this surface and store them
         min_x_list.append(np.min(surface_points[:, 0]))
         max_x_list.append(np.max(surface_points[:, 0]))
         min_y_list.append(np.min(surface_points[:, 1]))
         max_y_list.append(np.max(surface_points[:, 1]))
         min_z_list.append(np.min(surface_points[:, 2]))
         max_z_list.append(np.max(surface_points[:, 2]))
+
+        # Extract x and y coordinates to identify the grid structure
         x = surface_points[:, 0]
         y = surface_points[:, 1]
 
+        # Unique x and y values define the surface grid resolution
         unique_x = np.unique(x)
         unique_y = np.unique(y)
+        numPointsU = len(unique_x)  # Number of control points in the U direction
+        numPointsV = len(unique_y)  # Number of control points in the V direction
 
-        numPointsU = len(unique_x)
-        numPointsV = len(unique_y)
-
+        # Create a list of GMSH point IDs for this surface
         ps = []
         for i in range(numPointsU):
             for j in range(numPointsV):
                 index = i * numPointsV + j
                 if index < len(surface_points):
                     point = surface_points[index]
+                    # Create a GMSH point for each grid node
                     ps.append(gmsh.model.occ.addPoint(point[0], point[1], point[2]))
 
+        # Check if the expected number of points matches the actual number
         if len(ps) != numPointsU * numPointsV:
-            print(f"Warning: Skipping B-spline surface due to mismatch in control points: {len(ps)} != {numPointsU * numPointsV}")
+            print(f"Warning: Skipping B-spline surface due to mismatch in control points: "
+                  f"{len(ps)} != {numPointsU * numPointsV}")
             continue
 
+        # Create a B-spline surface using the list of GMSH points
         s = gmsh.model.occ.addBSplineSurface(ps, numPointsU=numPointsU)
         surfaces.append(s)
 
+    # Define an internal helper function to adjust bounds to fit within tolerance
     def find_adjusted_bound(bound_list, target_value, mode='max'):
         """
-        Return the closest bound within tolerance, trying the next best if the closest is out of range.
+        Returns the closest bound within tolerance to the target_value.
+        The 'mode' parameter controls whether the function seeks a minimum or maximum bound.
         """
+        # Sort bounds: descending for max mode, ascending for min mode
         sorted_list = sorted(bound_list, reverse=(mode == 'max'))
 
         for val in sorted_list:
+            # Check if the value is within the acceptable tolerance range
             if abs(val - target_value) <= tolerance:
+                # Prevent over-adjusting beyond the target
                 if (mode == 'min' and val > target_value) or (mode == 'max' and val < target_value):
                     return target_value
                 else:
                     return val
 
+        # If no suitable value is found, return the original target
         print(f"Warning: No bounds found within ±{tolerance} of {target_value}")
         return target_value
 
+    # Initialize the bounding box output
     bounds = None
+
+    # Ensure the extent tuple is valid before processing
     extent = tuple(extent)
 
+    # If surfaces were successfully created and extent is provided
     if surfaces and extent:
         print(extent)
+        # Unpack extent into individual boundary coordinates
         x_b_min, x_b_max, y_b_min, y_b_max, z_b_min, z_b_max = extent
 
+        # Compute adjusted bounds using tolerance-based matching
         bounds = (
             find_adjusted_bound(min_x_list, x_b_min, mode='max'),
             find_adjusted_bound(max_x_list, x_b_max, mode='min'),
@@ -174,8 +208,12 @@ def import_surfaces(interpolated_s, extent=None, tolerance=50):
             find_adjusted_bound(max_z_list, z_b_max, mode='min')
         )
 
+    # Confirmation message after successful import
     print('B-spline surfaces have been imported!')
+
+    # Return the list of surface IDs and the final bounding box
     return surfaces, bounds
+
 
 
 
@@ -205,7 +243,7 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
         shaft_to_child_fragments (dict): Mapping from shaft tags to the IDs of intersecting or resulting child fragments (used to track mesh regions influenced by mine shafts).
         source_tag (int): GMSH physical group tag assigned to the source points.
     """
-    outside_threshold = 0.5  # Define the threshold for coordinates of points outside the model domain
+    outside_threshold = 0.1  # Define the threshold for coordinates of points outside the model domain
 
     # Create a box for fragmenting
     x_min, x_max, y_min, y_max, z_min, z_max = extent
@@ -302,6 +340,8 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
             mine_shaft_volumes.append(tag)
         gmsh.model.occ.synchronize()
 
+    print("Number of surfaces:", len(surfaces))
+    print("Surface tags:", surfaces)
 
     tool_entities = [(2, s) for s in surfaces]  # start with surfaces
 
@@ -315,7 +355,9 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
 
     if mine_shafts:
         tool_entities += [(3, tag) for tag in mine_shaft_volumes]
-
+    #gmsh.write("model.brep")  # Saves full geometry
+    # or
+    #gmsh.write("model.geo_unrolled")  # For readable Gmsh .geo
 
     ov, ovv = gmsh.model.occ.fragment(
         [(3, v)] + tool_entities, [],
@@ -323,6 +365,7 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
         removeTool=True
     )
     gmsh.model.occ.synchronize()
+    #gmsh.write("model1.brep")  # Saves full geometry
 
     # Filter to get only 3D volumes from ov
     fragmented_volumes = [entity for entity in ov if entity[0] == 3]
@@ -331,6 +374,9 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
     gmsh.option.setNumber("Mesh.AngleToleranceFacetOverlap", 1e-4)
 
     gmsh.model.occ.synchronize()
+    #gmsh.write("fragmented_model.brep")  # Saves full geometry
+    # or
+    #gmsh.write("fragmented_model.geo_unrolled")  # For readable Gmsh .geo
 
     tagsss = []  # List to store physical groups
 
@@ -340,7 +386,6 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
         gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
         gmsh.model.mesh.removeDuplicateNodes()
         gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
-
         gmsh.model.mesh.generate(2)
         mesh_file = "mesh.msh"
         gmsh.write(mesh_file)
@@ -374,10 +419,8 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
 
             for e in zip_info:
                 print("parent " + str(e[0]) + " -> child " + str(e[1]))
-            print('doneeeeeee')
             zipped_list = list(zip_info)  # Convert zip object to a list
-            print(zipped_list, 'zopp')
-            print(zip_info, 'infooo')
+
             for i in range(1, len(zipped_list)):
                 if i == ref_index + 1:
                     values = [item[1] for item in zipped_list[i][1]]
@@ -697,7 +740,6 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
     if source_points:
           source_tag=[]
           for i in range(len(source)):
-            print(source, source[i], 'iiiiii')
             tag_source= gmsh.model.addPhysicalGroup(0, [source[i]], 2000+i+1)
             source_tag.append(tag_source)
     else:
@@ -708,6 +750,7 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
       well_tags=[]
     if not mine_shafts:
       shaft_tags = []
+
     # Return updated entities
     return ov, ovv, tagsss, well_tags, shaft_tags, shaft_to_child_fragments, source_tag
 
