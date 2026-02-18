@@ -1,6 +1,6 @@
 test:
   image: python:3.12
-  stage: tests
+  stage: test
   before_script:
     - python -V               # Print out python version for debugging
     - pip install virtualenv  # Pip's cache doesn't store the python packages
@@ -42,7 +42,7 @@ pages:
     - when: always
       if: $CI_COMMIT_BRANCH == "main"
   dependencies:
-    - tests
+    - test
   script:
     - mv htmlcov/ public/
   artifacts:
