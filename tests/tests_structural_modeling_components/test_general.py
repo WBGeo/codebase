@@ -144,6 +144,71 @@ def test_effective_domain_components_merges_across_inactive_faults_only():
     assert comps_sorted == [[0, 1], [2], [3]]
 
 
+def test_effective_domain_components_all_faults_active_keeps_domains_separate():
+    """When every fault is active for the group, no domains are merged."""
+    domain_ids = np.array([0, 1, 2, 3], dtype=int)
+    faults = [FakeFault("F1", {(0, 1)}), FakeFault("F2", {(2, 3)})]
+    # youngest_idx=0 → is_active = group_idx >= 0 → True for any group_idx >= 0
+    fault_activity = {"F1": 0, "F2": 0}
+
+    comps = mod.effective_domain_components_for_group(domain_ids, faults, fault_activity, group_idx=0)
+    comps_sorted = sorted([sorted(c) for c in comps])
+    assert comps_sorted == [[0], [1], [2], [3]]
+
+
+def test_effective_domain_components_all_faults_inactive_merges_all():
+    """When every fault is inactive for the group, all connected domains collapse into one."""
+    domain_ids = np.array([0, 1, 2, 3], dtype=int)
+    # F1 links 0-1 and 2-3; F2 bridges 1-2 → transitively connects 0,1,2,3
+    faults = [FakeFault("F1", {(0, 1), (2, 3)}), FakeFault("F2", {(1, 2)})]
+    fault_activity = {"F1": 5, "F2": 5}
+
+    comps = mod.effective_domain_components_for_group(domain_ids, faults, fault_activity, group_idx=0)
+    comps_sorted = sorted([sorted(c) for c in comps])
+    assert comps_sorted == [[0, 1, 2, 3]]
+
+
+def test_effective_domain_components_transitive_merge_via_shared_domain():
+    """F1 merges (0,1) and F2 merges (1,2); transitively 0,1,2 form one component."""
+    domain_ids = np.array([0, 1, 2], dtype=int)
+    faults = [FakeFault("F1", {(0, 1)}), FakeFault("F2", {(1, 2)})]
+    fault_activity = {"F1": 5, "F2": 5}  # both inactive
+
+    comps = mod.effective_domain_components_for_group(domain_ids, faults, fault_activity, group_idx=0)
+    comps_sorted = sorted([sorted(c) for c in comps])
+    assert comps_sorted == [[0, 1, 2]]
+
+
+def test_effective_domain_components_fault_with_no_pairs_has_no_effect():
+    """A fault with an empty domain-pair set must not change the components."""
+    domain_ids = np.array([0, 1], dtype=int)
+    faults = [FakeFault("F_empty", set())]
+    fault_activity = {"F_empty": 5}  # inactive, but no pairs to merge
+
+    comps = mod.effective_domain_components_for_group(domain_ids, faults, fault_activity, group_idx=0)
+    comps_sorted = sorted([sorted(c) for c in comps])
+    assert comps_sorted == [[0], [1]]
+
+
+def test_effective_domain_components_single_domain_returns_one_component():
+    """With a single domain there is nothing to merge; result is always one component."""
+    domain_ids = np.array([0], dtype=int)
+    faults = []  # no faults — nothing to merge
+
+    comps = mod.effective_domain_components_for_group(domain_ids, faults=faults, fault_activity={}, group_idx=0)
+    assert len(comps) == 1
+    assert 0 in comps[0]
+
+
+def test_effective_domain_components_no_faults_returns_all_separate():
+    """With no faults every domain is its own component."""
+    domain_ids = np.array([0, 1, 2], dtype=int)
+
+    comps = mod.effective_domain_components_for_group(domain_ids, faults=[], fault_activity={}, group_idx=0)
+    comps_sorted = sorted([sorted(c) for c in comps])
+    assert comps_sorted == [[0], [1], [2]]
+
+
 # -----------------------------------------------------------------------------
 # run_interpolation_with_fault_domains (mock-heavy wiring test)
 # -----------------------------------------------------------------------------
