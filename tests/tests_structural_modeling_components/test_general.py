@@ -202,3 +202,232 @@ def test_compute_structural_model_orchestrates_steps(monkeypatch):
 
     assert calls == ["interp", "masks", "lith", "meshes"]
     assert hasattr(res, "structural_frame")
+
+
+# -----------------------------------------------------------------------------
+# set_scalar_masks_per_domain
+# -----------------------------------------------------------------------------
+
+def _make_1d_grid(n: int = 5) -> RegularGrid:
+    """1-D grid: n voxels along X, 1 in Y and Z."""
+    return RegularGrid(extent=(0.0, float(n), 0.0, 1.0, 0.0, 1.0), resolution=(n, 1, 1))
+
+
+def _lin_sf(n: int = 5) -> np.ndarray:
+    """Scalar field [1, 2, ..., n] shaped (n, 1, 1)."""
+    return np.arange(1.0, n + 1.0).reshape(n, 1, 1)
+
+
+def test_set_scalar_masks_raises_when_no_groups():
+    grid = _make_1d_grid()
+    frame = StructuralFrame(structural_groups=[])
+    frame._grid = grid
+    with pytest.raises(ValueError, match="no groups"):
+        mod.set_scalar_masks_per_domain(frame)
+
+
+def test_set_scalar_masks_raises_when_group_has_no_scalar_field():
+    grid = _make_1d_grid()
+    e1 = StructuralElement(name="e1")
+    g = StructuralGroup(name="G1", structural_elements=[e1])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+    # scalar field intentionally NOT set
+    with pytest.raises(ValueError, match="no scalar field"):
+        mod.set_scalar_masks_per_domain(frame)
+
+
+def test_set_scalar_masks_raises_when_oldest_element_has_no_scalar_value():
+    grid = _make_1d_grid()
+    e_young = StructuralElement(name="e_young")
+    e_old = StructuralElement(name="e_old")
+    # G0 is NOT the last group, so its oldest element scalar value is required
+    g0 = StructuralGroup(name="G0", structural_elements=[e_young, e_old])
+    g1 = StructuralGroup(name="G1", structural_elements=[StructuralElement(name="base")])
+    frame = StructuralFrame(structural_groups=[g0, g1])
+    frame._grid = grid
+    g0.set_scalar_field(_lin_sf())
+    g1.set_scalar_field(_lin_sf())
+    # e_old (structural_elements[-1]) has no scalar value
+    with pytest.raises(ValueError, match="no scalar value"):
+        mod.set_scalar_masks_per_domain(frame)
+
+
+def test_set_scalar_masks_single_group_gets_all_true_mask():
+    """The only (= last) group always receives an all-True mask."""
+    grid = _make_1d_grid()
+    e1 = StructuralElement(name="e1")
+    g = StructuralGroup(name="G1", structural_elements=[e1])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+    g.set_scalar_field(_lin_sf())
+
+    mod.set_scalar_masks_per_domain(frame)
+
+    mask = g.get_mask()
+    assert mask is not None
+    assert mask.shape == (5, 1, 1)
+    assert mask.all()
+
+
+def test_set_scalar_masks_non_last_group_thresholds_at_oldest_element():
+    """Non-last group mask = sf >= oldest_element.scalar_value."""
+    grid = _make_1d_grid()
+    e_young = StructuralElement(name="e_young")
+    e_old = StructuralElement(name="e_old")
+    # elements ordered youngest → oldest (convention); oldest = structural_elements[-1]
+    g0 = StructuralGroup(name="G0", structural_elements=[e_young, e_old])
+    g1 = StructuralGroup(name="G1", structural_elements=[StructuralElement(name="base")])
+    frame = StructuralFrame(structural_groups=[g0, g1])
+    frame._grid = grid
+
+    sf = _lin_sf()  # [1, 2, 3, 4, 5]
+    g0.set_scalar_field(sf)
+    g1.set_scalar_field(sf.copy())
+    e_old.set_scalar_value(3.0)
+
+    mod.set_scalar_masks_per_domain(frame)
+
+    mask_g0 = g0.get_mask()
+    expected = np.array([False, False, True, True, True]).reshape(5, 1, 1)
+    np.testing.assert_array_equal(mask_g0, expected)
+    assert g1.get_mask().all()
+
+
+# -----------------------------------------------------------------------------
+# compute_lithology_block_with_domains
+# -----------------------------------------------------------------------------
+
+def test_compute_lithology_returns_correct_shape():
+    grid = make_grid((4, 3, 2))
+    e1 = StructuralElement(name="e1")
+    g = StructuralGroup(name="G1", structural_elements=[e1])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+    g.set_scalar_field(np.ones((4, 3, 2)))
+    g.set_mask(np.ones((4, 3, 2), dtype=bool))
+    e1.set_scalar_value(0.5)
+
+    lith = mod.compute_lithology_block_with_domains(frame)
+    assert lith.shape == (4, 3, 2)
+
+
+def test_compute_lithology_assigns_element_ids_automatically():
+    grid = _make_1d_grid()
+    e1 = StructuralElement(name="e1")
+    g = StructuralGroup(name="G1", structural_elements=[e1])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+    g.set_scalar_field(np.ones((5, 1, 1)))
+    g.set_mask(np.ones((5, 1, 1), dtype=bool))
+    e1.set_scalar_value(0.5)
+
+    assert e1.id is None
+    mod.compute_lithology_block_with_domains(frame)
+    assert e1.id is not None
+
+
+def test_compute_lithology_single_element_fills_above_threshold():
+    """Voxels with sf >= sval get the element ID; others stay 0."""
+    grid = _make_1d_grid()
+    e1 = StructuralElement(name="e1")
+    g = StructuralGroup(name="G1", structural_elements=[e1])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+    g.set_scalar_field(_lin_sf())          # [1, 2, 3, 4, 5]
+    g.set_mask(np.ones((5, 1, 1), dtype=bool))
+    e1.set_scalar_value(3.0)
+
+    lith = mod.compute_lithology_block_with_domains(frame)
+    eid = e1.id
+    expected = np.array([0, 0, eid, eid, eid]).reshape(5, 1, 1)
+    np.testing.assert_array_equal(lith, expected)
+
+
+def test_compute_lithology_two_elements_partition_correctly():
+    """Younger element (higher threshold) fills first; older fills remaining."""
+    grid = _make_1d_grid()
+    # Convention: elements listed youngest → oldest
+    e_young = StructuralElement(name="e_young")  # sval=4 → fills sf >= 4
+    e_old = StructuralElement(name="e_old")       # sval=2 → fills remaining sf >= 2
+    g = StructuralGroup(name="G1", structural_elements=[e_young, e_old])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+    g.set_scalar_field(_lin_sf())          # [1, 2, 3, 4, 5]
+    g.set_mask(np.ones((5, 1, 1), dtype=bool))
+    e_young.set_scalar_value(4.0)
+    e_old.set_scalar_value(2.0)
+
+    lith = mod.compute_lithology_block_with_domains(frame)
+    # sf=1 → below e_old threshold → 0
+    # sf=2,3 → e_old (not yet claimed by e_young)
+    # sf=4,5 → e_young
+    expected = np.array([0, e_old.id, e_old.id, e_young.id, e_young.id]).reshape(5, 1, 1)
+    np.testing.assert_array_equal(lith, expected)
+
+
+def test_compute_lithology_younger_group_overwrites_older():
+    """groups[0] is youngest and must overwrite groups[1] (oldest) where both are active."""
+    grid = _make_1d_grid()
+    e_young = StructuralElement(name="e_young")
+    e_old = StructuralElement(name="e_old")
+    # groups[0] = youngest, groups[1] = oldest
+    g_youngest = StructuralGroup(name="G_youngest", structural_elements=[e_young])
+    g_oldest = StructuralGroup(name="G_oldest", structural_elements=[e_old])
+    frame = StructuralFrame(structural_groups=[g_youngest, g_oldest])
+    frame._grid = grid
+
+    sf = _lin_sf()  # [1, 2, 3, 4, 5]
+    g_oldest.set_scalar_field(sf)
+    g_oldest.set_mask(np.ones((5, 1, 1), dtype=bool))
+    e_old.set_scalar_value(1.0)   # fills all voxels (sf >= 1)
+
+    g_youngest.set_scalar_field(sf)
+    g_youngest.set_mask(np.ones((5, 1, 1), dtype=bool))
+    e_young.set_scalar_value(3.0)  # fills only sf >= 3 (voxels 2, 3, 4)
+
+    lith = mod.compute_lithology_block_with_domains(frame)
+    # voxels 0,1 → e_old (oldest fills, youngest doesn't reach)
+    # voxels 2,3,4 → e_young (youngest overwrites oldest)
+    assert lith.flat[0] == e_old.id
+    assert lith.flat[1] == e_old.id
+    assert lith.flat[2] == e_young.id
+    assert lith.flat[3] == e_young.id
+    assert lith.flat[4] == e_young.id
+
+
+def test_compute_lithology_age_mask_limits_fill():
+    """Only voxels inside the group mask receive an element ID."""
+    grid = _make_1d_grid()
+    e1 = StructuralElement(name="e1")
+    g = StructuralGroup(name="G1", structural_elements=[e1])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+    g.set_scalar_field(_lin_sf())
+    e1.set_scalar_value(1.0)  # would fill entire grid without mask
+    # Only first 3 voxels are inside the group's age mask
+    g.set_mask(np.array([True, True, True, False, False]).reshape(5, 1, 1))
+
+    lith = mod.compute_lithology_block_with_domains(frame)
+    eid = e1.id
+    expected = np.array([eid, eid, eid, 0, 0]).reshape(5, 1, 1)
+    np.testing.assert_array_equal(lith, expected)
+
+
+def test_compute_lithology_skips_group_with_no_scalar_field():
+    """A group with no scalar field is silently skipped; other groups fill normally."""
+    grid = _make_1d_grid()
+    e_skip = StructuralElement(name="e_skip")
+    e_fill = StructuralElement(name="e_fill")
+    # groups[0] = youngest (no sf → skipped), groups[1] = oldest (has sf)
+    g_skip = StructuralGroup(name="G_skip", structural_elements=[e_skip])
+    g_fill = StructuralGroup(name="G_fill", structural_elements=[e_fill])
+    frame = StructuralFrame(structural_groups=[g_skip, g_fill])
+    frame._grid = grid
+    # g_skip: no scalar field set
+    g_fill.set_scalar_field(np.ones((5, 1, 1)))
+    g_fill.set_mask(np.ones((5, 1, 1), dtype=bool))
+    e_fill.set_scalar_value(0.5)
+
+    lith = mod.compute_lithology_block_with_domains(frame)
+    assert (lith == e_fill.id).all()
