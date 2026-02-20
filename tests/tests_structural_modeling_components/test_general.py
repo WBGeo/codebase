@@ -496,3 +496,278 @@ def test_compute_lithology_skips_group_with_no_scalar_field():
 
     lith = mod.compute_lithology_block_with_domains(frame)
     assert (lith == e_fill.id).all()
+
+
+# -----------------------------------------------------------------------------
+# extract_all_meshes_per_domain
+# -----------------------------------------------------------------------------
+
+# Helpers shared across mesh tests
+
+def _make_mesh_frame(grid: RegularGrid, n_groups: int = 1):
+    """
+    Build a minimal StructuralFrame with `n_groups` groups (each with one element),
+    all scalar fields set to all-ones and scalar values set to 0.5.
+    Groups are ordered youngest (index 0) → oldest (index n-1).
+    """
+    groups = []
+    elems = []
+    for i in range(n_groups):
+        e = StructuralElement(name=f"elem{i}")
+        e.set_scalar_value(0.5)
+        g = StructuralGroup(name=f"G{i}", structural_elements=[e])
+        g.set_scalar_field(np.ones(grid.resolution, dtype=float))
+        g.set_mask(np.ones(grid.resolution, dtype=bool))
+        groups.append(g)
+        elems.append(e)
+    frame = StructuralFrame(structural_groups=groups)
+    frame._grid = grid
+    return frame, groups, elems
+
+
+def _stub_mc_per_element(verts=None, faces=None):
+    """Return a monkeypatch replacement for marching_cubes_per_element that records calls."""
+    if verts is None:
+        verts = np.zeros((1, 3), dtype=float)
+    if faces is None:
+        faces = np.zeros((1, 3), dtype=int)
+    calls = []
+
+    def _fake(sf, sval, spacing, extent, mask=None):
+        calls.append({"mask": mask, "sval": sval})
+        return verts.copy(), faces.copy()
+
+    return _fake, calls
+
+
+class _FakeFaultFrame:
+    """Minimal fault frame stub with a domain_map."""
+    def __init__(self, domain_map: np.ndarray):
+        self.domain_map = domain_map
+        self.fault_elements = []  # no faults → skip fault-mesh section
+
+
+def test_extract_meshes_youngest_group_masked_with_all_true_erosion(monkeypatch):
+    """Youngest group (i=0): erosion_mask is all-True → mc_mask == domain_mask (all-True for no fault)."""
+    grid = make_grid((3, 2, 2))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
+
+    captured_masks = []
+
+    def fake_mc(sf, sval, spacing, extent, mask=None):
+        captured_masks.append(mask)
+        return np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", fake_mc)
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    # First call is the masked pass; mask should be all True (no erosion, single full domain)
+    masked_mask = captured_masks[0]
+    assert masked_mask is not None
+    assert masked_mask.all(), "Youngest group should receive an all-True combined mask"
+
+
+def test_extract_meshes_older_group_erosion_mask_is_inverted_prev_mask(monkeypatch):
+    """For the second (oldest) group, erosion_mask = ~prev_mask. Verify mc receives ~G0.mask & domain."""
+    grid = make_grid((4, 1, 1))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=2)
+
+    # Give G0 a partial mask: first 2 voxels True
+    partial_mask = np.array([True, True, False, False]).reshape(4, 1, 1)
+    groups[0].set_mask(partial_mask)
+
+    captured = []
+
+    def fake_mc(sf, sval, spacing, extent, mask=None):
+        captured.append(mask.copy() if mask is not None else None)
+        return np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", fake_mc)
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    # Masked pass: 2 calls (one per group). Index 0=G0, index 1=G1.
+    # G1's mask = ~partial_mask & domain_mask(all True) = [False, False, True, True]
+    g1_masked_call = captured[1]
+    expected = np.array([False, False, True, True]).reshape(4, 1, 1)
+    np.testing.assert_array_equal(g1_masked_call, expected)
+
+
+def test_extract_meshes_group_without_scalar_field_is_skipped(monkeypatch):
+    """Groups with no scalar field must be silently skipped (no mc call for that group)."""
+    grid = make_grid((3, 2, 2))
+    e0 = StructuralElement(name="e0")
+    e0.set_scalar_value(0.5)
+    g_no_sf = StructuralGroup(name="G_noSF", structural_elements=[e0])
+    # intentionally no scalar field set on g_no_sf
+
+    e1 = StructuralElement(name="e1")
+    e1.set_scalar_value(0.5)
+    g_ok = StructuralGroup(name="G_ok", structural_elements=[e1])
+    g_ok.set_scalar_field(np.ones(grid.resolution, dtype=float))
+    g_ok.set_mask(np.ones(grid.resolution, dtype=bool))
+
+    frame = StructuralFrame(structural_groups=[g_no_sf, g_ok])
+    frame._grid = grid
+
+    call_count = [0]
+
+    def fake_mc(sf, sval, spacing, extent, mask=None):
+        call_count[0] += 1
+        return np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", fake_mc)
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    # Only g_ok contributes: 1 masked call + 1 unmasked call = 2 total
+    assert call_count[0] == 2, f"Expected 2 mc calls (skip g_no_sf), got {call_count[0]}"
+
+
+def test_extract_meshes_element_without_scalar_value_is_skipped(monkeypatch):
+    """Elements with no scalar value must be skipped in the masked pass."""
+    grid = make_grid((3, 2, 2))
+    e_no_sval = StructuralElement(name="e_no_sval")   # scalar_value intentionally None
+    e_ok = StructuralElement(name="e_ok")
+    e_ok.set_scalar_value(0.5)
+
+    g = StructuralGroup(name="G1", structural_elements=[e_no_sval, e_ok])
+    g.set_scalar_field(np.ones(grid.resolution, dtype=float))
+    g.set_mask(np.ones(grid.resolution, dtype=bool))
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+
+    called_with_svals = []
+
+    def fake_mc(sf, sval, spacing, extent, mask=None):
+        called_with_svals.append(sval)
+        return np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", fake_mc)
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    # Only e_ok should be processed: 1 masked + 1 unmasked = 2 calls, both with sval=0.5
+    assert all(sv == 0.5 for sv in called_with_svals)
+    assert len(called_with_svals) == 2
+
+
+def test_extract_meshes_unmasked_calls_mc_with_none_mask(monkeypatch):
+    """Unmasked meshes must be extracted by calling marching_cubes_per_element with mask=None."""
+    grid = make_grid((3, 2, 2))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
+
+    none_mask_calls = []
+
+    def fake_mc(sf, sval, spacing, extent, mask=None):
+        if mask is None:
+            none_mask_calls.append(sval)
+        return np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", fake_mc)
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    assert len(none_mask_calls) == 1, "Expected exactly one unmasked mc call"
+    verts, faces = elems[0].get_mesh("unmasked")
+    assert verts.shape[1] == 3
+
+
+def test_extract_meshes_multidomain_vertices_are_offset(monkeypatch):
+    """When two fault domains exist, domain-1 vertex indices are offset by domain-0's vertex count."""
+    grid = make_grid((4, 2, 2))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
+
+    # Two-domain map: left half = domain 0, right half = domain 1
+    dom_map = np.zeros(grid.resolution, dtype=int)
+    dom_map[2:, :, :] = 1
+    frame._fault_frame = _FakeFaultFrame(dom_map)
+
+    domain_call_idx = [0]
+    V0 = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])   # 2 verts for domain 0
+    V1 = np.array([[5.0, 5.0, 5.0]])                      # 1 vert for domain 1
+    F0 = np.array([[0, 1, 0]], dtype=int)
+    F1 = np.array([[0, 0, 0]], dtype=int)
+
+    def fake_mc(sf, sval, spacing, extent, mask=None):
+        idx = domain_call_idx[0]
+        domain_call_idx[0] += 1
+        return (V0.copy(), F0.copy()) if idx == 0 else (V1.copy(), F1.copy())
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", fake_mc)
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    combined_verts, combined_faces = elems[0].get_mesh("masked")
+
+    # Vertices: V0 rows then V1 rows
+    assert combined_verts.shape == (3, 3)
+    np.testing.assert_allclose(combined_verts[:2], V0)
+    np.testing.assert_allclose(combined_verts[2], V1[0])
+
+    # Faces: F0 unchanged (offset=0); F1 shifted by +2 (V0 had 2 verts)
+    np.testing.assert_array_equal(combined_faces[:1], F0)
+    np.testing.assert_array_equal(combined_faces[1:], F1 + 2)
+
+
+def test_extract_meshes_combined_not_set_without_lith_block(monkeypatch):
+    """Combined meshes must not be set when the frame has no lith block."""
+    grid = make_grid((3, 2, 2))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
+    # frame._lith_block is None by default
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", lambda *a, **kw: (
+        np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+    ))
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    with pytest.raises(KeyError):
+        elems[0].get_mesh("combined")
+
+
+def test_extract_meshes_combined_set_when_lith_block_present(monkeypatch):
+    """Combined meshes are stored from lith block when frame._lith_block is available."""
+    grid = make_grid((3, 2, 2))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
+
+    elems[0].set_id(1)
+    frame._lith_block = np.ones(grid.resolution, dtype=int)
+
+    sentinel_verts = np.array([[9.0, 9.0, 9.0]])
+    sentinel_faces = np.array([[0, 0, 0]], dtype=int)
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", lambda *a, **kw: (
+        np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+    ))
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [sentinel_verts], [sentinel_faces]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    combined_verts, combined_faces = elems[0].get_mesh("combined")
+    np.testing.assert_array_equal(combined_verts, sentinel_verts)
+    np.testing.assert_array_equal(combined_faces, sentinel_faces)
