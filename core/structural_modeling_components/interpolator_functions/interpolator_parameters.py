@@ -507,7 +507,7 @@ class PLIParams(BaseModel):
     """
 
     nelements: int = Field(
-        20_000,
+        5_000,
         ge=1_000,
         description="PLI discretisation size for create_and_add_foliation (larger = finer, slower).",
     )
@@ -546,8 +546,10 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
         A populated parameter object.
     """
     # --- base scaling with problem size ---
-    # Higher base than FDI because piecewise-linear support can look faceted if too coarse.
-    base = 20_000
+    # PLI builds an unstructured tetrahedral mesh which is much more expensive per element
+    # than FDI's structured Cartesian grid.  A lower base keeps runtimes reasonable for
+    # small/medium inputs while still scaling up for large production datasets.
+    base = 2_000
 
     # Sublinear growth with number of constraints.
     scale_n = (max(ctx.n_points, 1) / 1_000) ** 0.5  # gentle growth
@@ -570,9 +572,9 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
 
     nelements = int(base * max(0.8, min(scale_n, 10.0)) * scale_d)
 
-    # Clamp: PLI often benefits from a higher upper cap than FDI,
-    # but keep it bounded for memory/runtime predictability.
-    nelements = max(10_000, min(nelements, 400_000))
+    # Clamp: keep a low floor so tiny inputs don't over-allocate, and cap at 50k so
+    # even very large models remain tractable without manual tuning.
+    nelements = max(2_000, min(nelements, 50_000))
 
     return PLIParams(
         nelements=nelements,
