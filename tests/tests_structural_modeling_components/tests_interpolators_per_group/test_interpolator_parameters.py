@@ -66,7 +66,7 @@ def test_pydantic_param_models_have_expected_defaults():
     assert fdi.tol is None
 
     pli = PLIParams()
-    assert pli.nelements == 20_000
+    assert pli.nelements == 5_000
     assert pli.solver == "cg"
     assert pli.damp is True
     assert pli.tol is None
@@ -174,48 +174,74 @@ def test_default_uk_params_sets_drift_terms_regional_linear():
 # LoopStructural defaults (split FDI / PLI)
 # -----------------------------------------------------------------------------
 
-def test_default_fdi_params_nelements_scaling_and_bounds():
-    # n=1000 -> around base (10k)
-    ctx1 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1000, mean_nn_distance=2.0)
-    p1 = default_fdi_params(ctx1)
-    assert 5_000 <= p1.nelements <= 200_000
-    assert p1.solver == "cg"
-    assert p1.damp is True
-    assert p1.tol is None
+def test_default_fdi_params_nelements_within_bounds():
+    for n in [1, 10, 1_000, 10_000, 10_000_000]:
+        ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=n, mean_nn_distance=2.0)
+        p = default_fdi_params(ctx)
+        assert 5_000 <= p.nelements <= 200_000, f"n={n}: nelements={p.nelements} out of [5k, 200k]"
 
-    # n very small -> should still be clamped >= 5000
-    ctx2 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=10, mean_nn_distance=2.0)
-    p2 = default_fdi_params(ctx2)
-    assert p2.nelements >= 5_000
-
-    # n huge -> should clamp to <= 200k
-    ctx3 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=10_000_000, mean_nn_distance=2.0)
-    p3 = default_fdi_params(ctx3)
-    assert p3.nelements <= 200_000
+    # Check fixed fields
+    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=2.0)
+    p = default_fdi_params(ctx)
+    assert p.solver == "cg"
+    assert p.damp is True
+    assert p.tol is None
 
 
-def test_default_pli_params_nelements_scaling_and_bounds():
-    # moderate
-    ctx1 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1000, mean_nn_distance=2.0)
-    p1 = default_pli_params(ctx1)
-    assert 10_000 <= p1.nelements <= 400_000
-    assert p1.solver == "cg"
-    assert p1.damp is True
-    assert p1.tol is None
+def test_default_fdi_params_exact_at_1k_points():
+    """At n=1000: scale=(1000/1000)^0.5=1.0, factor=max(0.7,min(1.0,8.0))=1.0, nelements=int(10000*1.0)=10000."""
+    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=2.0)
+    p = default_fdi_params(ctx)
+    assert p.nelements == 10_000
 
-    # very small -> should still clamp >= 10k
-    ctx2 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=10, mean_nn_distance=2.0)
-    p2 = default_pli_params(ctx2)
-    assert p2.nelements >= 10_000
 
-    # huge -> should clamp <= 400k
-    ctx3 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=10_000_000, mean_nn_distance=2.0)
-    p3 = default_pli_params(ctx3)
-    assert p3.nelements <= 400_000
+def test_default_fdi_params_grows_with_npoints():
+    """nelements is non-decreasing as n_points increases."""
+    base_ctx = dict(data_scale=(100.0, 100.0, 100.0), mean_nn_distance=2.0)
+    ns = [100, 1_000, 10_000, 1_000_000]
+    params = [default_fdi_params(InterpolationContext(**base_ctx, n_points=n)) for n in ns]
+    for smaller, larger in zip(params, params[1:]):
+        assert smaller.nelements <= larger.nelements
 
-    # sanity: PLI defaults should generally be >= FDI defaults for the same context
-    fdi = default_fdi_params(ctx1)
-    assert p1.nelements >= fdi.nelements
+
+def test_default_pli_params_nelements_within_bounds():
+    # Bounds are [2k, 50k] after clamping
+    for n in [10, 100, 1_000, 10_000, 10_000_000]:
+        ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=n, mean_nn_distance=2.0)
+        p = default_pli_params(ctx)
+        assert 2_000 <= p.nelements <= 50_000, f"n={n}: nelements={p.nelements} out of [2k, 50k]"
+
+    # Check fixed fields are always set correctly
+    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=2.0)
+    p = default_pli_params(ctx)
+    assert p.solver == "cg"
+    assert p.damp is True
+    assert p.tol is None
+
+
+def test_default_pli_params_floor_clamping():
+    """Tiny n_points: scale_n << 1, factor clamped to 0.8 → raw nelements < 2000 → floored to 2000."""
+    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=10, mean_nn_distance=2.0)
+    p = default_pli_params(ctx)
+    assert p.nelements == 2_000
+
+
+def test_default_pli_params_grows_with_npoints():
+    """nelements is non-decreasing as n_points increases (same scale / nn_distance)."""
+    base_ctx = dict(data_scale=(100.0, 100.0, 100.0), mean_nn_distance=2.0)
+    ns = [100, 1_000, 10_000, 100_000]
+    params = [default_pli_params(InterpolationContext(**base_ctx, n_points=n)) for n in ns]
+    for smaller, larger in zip(params, params[1:]):
+        assert smaller.nelements <= larger.nelements
+
+
+def test_default_pli_params_density_adjustment_increases_nelements():
+    """Denser sampling (smaller nn_dist relative to extent) produces >= nelements."""
+    ctx_sparse = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=10.0)
+    ctx_dense  = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=0.01)
+    p_sparse = default_pli_params(ctx_sparse)
+    p_dense  = default_pli_params(ctx_dense)
+    assert p_dense.nelements >= p_sparse.nelements
 
 
 # -----------------------------------------------------------------------------
@@ -240,3 +266,39 @@ def test_default_geo_inr_params_returns_instance_and_has_reasonable_ranges():
     assert p.lr > 0.0
     assert p.alpha >= 0.0
     assert p.beta >= 0.01
+
+
+def test_default_geo_inr_params_capacity_breakpoints():
+    """Verify hidden_dim / n_hidden_layers at each capacity breakpoint."""
+    # n < 500: hidden_dim=32, n_hidden_layers=2
+    p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=100, mean_nn_distance=2.0))
+    assert p.hidden_dim == 32
+    assert p.n_hidden_layers == 2
+
+    # 500 <= n < 3000: hidden_dim=32, n_hidden_layers=1
+    p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=600, mean_nn_distance=2.0))
+    assert p.hidden_dim == 32
+    assert p.n_hidden_layers == 1
+
+    # n >= 3000: hidden_dim=64, n_hidden_layers=2
+    p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=5_000, mean_nn_distance=2.0))
+    assert p.hidden_dim == 64
+    assert p.n_hidden_layers == 2
+
+
+def test_default_geo_inr_params_epoch_lr_breakpoints():
+    """Verify epochs / lr at each training breakpoint."""
+    # n < 800: epochs=6000, lr=0.01
+    p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=100, mean_nn_distance=2.0))
+    assert p.epochs == 6_000
+    assert math.isclose(p.lr, 0.01)
+
+    # 800 <= n < 5000: epochs=4000, lr=0.005
+    p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=2_000, mean_nn_distance=2.0))
+    assert p.epochs == 4_000
+    assert math.isclose(p.lr, 0.005)
+
+    # n >= 5000: epochs=2500, lr=0.003
+    p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=10_000, mean_nn_distance=2.0))
+    assert p.epochs == 2_500
+    assert math.isclose(p.lr, 0.003)
