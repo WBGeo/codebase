@@ -685,7 +685,7 @@ class StructuralFrame(BaseModel):
             cmap="gray",
             vmin=0,
             vmax=1,
-            aspect="auto",
+            aspect="equal",
         )
 
         cbar = plt.colorbar(im, ax=ax, ticks=[0, 1])
