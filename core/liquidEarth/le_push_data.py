@@ -12,7 +12,6 @@ from py_api_wbgeo import apitypes
 def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: str = "masked") -> ss.UnstructuredData:
     """
     Convert a StructuralModelResults to a subsurface UnstructuredData mesh.
-
     Collects the requested mesh type from every structural element across all groups,
     offsets simplex indices so they do not overlap when concatenated, and assigns
     per-element integer IDs to vertices and cells.
@@ -33,6 +32,7 @@ def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: s
 
     valid_vertex = []
     valid_simplex = []
+    # colors = []  # hex color per element, same order as valid_vertex/valid_simplex
 
     for group in frame.structural_groups:
         for elem in group.structural_elements:
@@ -44,6 +44,20 @@ def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: s
                 continue
             valid_vertex.append(np.asarray(verts))
             valid_simplex.append(np.asarray(edges))
+            # colors.append(elem.color)
+
+    fault_frame = frame.fault_frame
+    if fault_frame is not None:
+        for fault in fault_frame.fault_elements:
+            try:
+                verts, edges = fault.get_mesh(mesh_type)
+            except KeyError:
+                continue  # mesh type not computed for this fault
+            if verts is None or edges is None or len(verts) == 0 or len(edges) == 0:
+                continue
+            valid_vertex.append(np.asarray(verts))
+            valid_simplex.append(np.asarray(edges))
+            # colors.append(fault.color)
 
     if not valid_vertex or not valid_simplex:
         raise ValueError(
