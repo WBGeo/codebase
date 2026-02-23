@@ -7,7 +7,7 @@ from collections import defaultdict
 from scipy.spatial import cKDTree
 
 from typing import List, Tuple, Union, Mapping
-from core.object_components import InputData_StructuralElements, StructuralModelResults
+from core.object_components import StructuralModelResults
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
@@ -537,7 +537,7 @@ def create_unstructured_mesh_data(
 
     # fragment
     if extent ==[]:
-        extent = geomodel_result.extent
+        extent = geomodel_result.structural_frame.grid.extent
     else:
         extent= np.array(extent)
 
