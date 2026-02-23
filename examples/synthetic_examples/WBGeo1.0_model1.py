@@ -2,6 +2,7 @@
 import pandas as pd
 import os
 
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.object_components import InputData_StructuralElements
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -100,9 +101,15 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 # TODO: Meshing needs to be adapted to work with the new Structural Modeling output
 
 # Meshing for Process Simulation
-# mesh_test = create_structured_mesh_data(
-#     geomodel_result=results_test,
-#     refinement_data=[10,10,10],
-#     z_threshold=0.1,
-#     tolerance=1
-# )
+mesh_test = create_structured_mesh_data(
+    geomodel_result=structural_model_result,
+    refinement_data=[10,10,10],
+    z_threshold=0.1,
+    tolerance=1
+)
+
+#%%
+
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+
+plot_mesh_3d(mesh_test, structural_model_result, show_plotter=True)
