@@ -5,53 +5,67 @@ import liquid_earth_sdk as le
 import subsurface as ss
 import numpy as np
 import pandas as pd
-from core.object_components import InputData_StructuralElements, StructuralModelResults
+from core.object_components import StructuralModelResults
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_inspector
 from py_api_wbgeo import apitypes
 
+def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: str = "masked") -> ss.UnstructuredData:
+    """
+    Convert a StructuralModelResults to a subsurface UnstructuredData mesh.
 
+    Collects the requested mesh type from every structural element across all groups,
+    offsets simplex indices so they do not overlap when concatenated, and assigns
+    per-element integer IDs to vertices and cells.
 
-def convert_to_subsurface_mesh(geosolution):
-    # Note: surface_meshes_vertices and surface_meshes_edges are List[List[NpNDArrayFp64/Int64]]
-    vertex_groups: List[List[np.ndarray]] = geosolution.surface_meshes_vertices
-    simplex_groups: List[List[np.ndarray]] = geosolution.surface_meshes_edges
+    Args:
+        geosolution: The structural model results containing the structural frame.
+        mesh_type: Which mesh variant to use ("masked", "unmasked", or "combined").
+                   Defaults to "masked". Elements that do not have this mesh type
+                   are silently skipped.
 
-    # Use only the first group (group 0)
-    if not vertex_groups or not simplex_groups:
-        raise ValueError("No mesh groups found in geosolution")
+    Returns:
+        A subsurface UnstructuredData object ready for upload.
 
-    if len(vertex_groups) == 0 or len(simplex_groups) == 0:
-        raise ValueError("Empty mesh groups in geosolution")
+    Raises:
+        ValueError: If no valid meshes of the requested type are found.
+    """
+    frame = geosolution.structural_frame
 
-    # Extract only the first group
-    vertex = vertex_groups[0]
-    simplex_list = simplex_groups[0]
+    valid_vertex = []
+    valid_simplex = []
 
-    idx_max = 0
-    for simplex_array in simplex_list:
-        # Ensure we're working with numpy arrays
-        if isinstance(simplex_array, np.ndarray) and simplex_array.size > 0:
-            simplex_array += idx_max
-            idx_max = simplex_array.max() + 1
-
-    # Create ID arrays - filter out empty or invalid arrays
-    valid_vertex = [v for v in vertex if isinstance(v, np.ndarray) and v.size > 0]
-    valid_simplex = [s for s in simplex_list if isinstance(s, np.ndarray) and s.size > 0]
+    for group in frame.structural_groups:
+        for elem in group.structural_elements:
+            try:
+                verts, edges = elem.get_mesh(mesh_type)
+            except KeyError:
+                continue  # mesh type not computed for this element
+            if verts is None or edges is None or len(verts) == 0 or len(edges) == 0:
+                continue
+            valid_vertex.append(np.asarray(verts))
+            valid_simplex.append(np.asarray(edges))
 
     if not valid_vertex or not valid_simplex:
-        raise ValueError("No valid mesh data found in geosolution group 0")
+        raise ValueError(
+            f"No valid '{mesh_type}' meshes found in geosolution. "
+            "Ensure surface mesh extraction has been run before uploading."
+        )
 
+    # Offset simplex indices so they refer to the correct rows after concatenation
+    idx_max = 0
+    for simplex_array in valid_simplex:
+        simplex_array += idx_max
+        idx_max = int(simplex_array.max()) + 1
+
+    # Assign a 1-based integer ID per element for vertex/cell attribution
     vertex_id_array = [np.full(v.shape[0], i + 1) for i, v in enumerate(valid_vertex)]
     cell_id_array = [np.full(s.shape[0], i + 1) for i, s in enumerate(valid_simplex)]
-
-    concatenated_id_array = np.concatenate(vertex_id_array)
-    concatenated_cell_id_array = np.concatenate(cell_id_array)
 
     meshes: ss.UnstructuredData = ss.UnstructuredData.from_array(
         vertex=np.concatenate(valid_vertex),
         cells=np.concatenate(valid_simplex),
-        vertex_attr=pd.DataFrame({'id': concatenated_id_array}),
-        cells_attr=pd.DataFrame({'id': concatenated_cell_id_array})
+        vertex_attr=pd.DataFrame({'id': np.concatenate(vertex_id_array)}),
+        cells_attr=pd.DataFrame({'id': np.concatenate(cell_id_array)}),
     )
 
     return meshes
@@ -88,7 +102,7 @@ def push_geosolution_to_le(geosolution: StructuralModelResults, space_name: str 
     if api_token is None:
       api_token = os.getenv("LIQUIDEARTH_TOKEN")
     if model_name is None:
-      model_name = geosolution.name
+        model_name = "WBGeo Model"
     if api_token is None:
       raise Exception("No api_token or LIQUIDEARTH_TOKEN environment variable")
 
