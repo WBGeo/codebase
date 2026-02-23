@@ -304,7 +304,7 @@ def test_multi_fault_with_differential_activity(method, plot_mode):
     interior_match = float(np.mean((lith == expected)[interior]))
     min_match = _MIN_INTERIOR_MATCH.get(method, 0.85)
 
-    from core.visualization_components import plot_structural_model_2D  # type: ignore
+    from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import plot_structural_model_2D  # type: ignore
     if plot_mode["always"]:
         plot_structural_model_2D(res.structural_frame)
 

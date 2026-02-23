@@ -6,8 +6,7 @@ from core.object_components import InputData_StructuralElements, InputData_Fault
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
-                                           plot_fault_model_2D, plot_fault_model_3D)
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D)
 
 from core.structural_modeling_components import general, general_faults
 

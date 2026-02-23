@@ -173,7 +173,7 @@ def test_unconformity_lithology_and_masks(method, plot_mode):
     assert np.array_equal(lower.mask, expected_lower_mask)
     assert np.array_equal(upper.mask, expected_upper_mask)
 
-    from core.visualization_components import plot_structural_model_2D  # type: ignore
+    from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import plot_structural_model_2D  # type: ignore
     if plot_mode["always"]:
         plot_structural_model_2D(out_frame)
 

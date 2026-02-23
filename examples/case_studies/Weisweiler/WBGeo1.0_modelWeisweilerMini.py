@@ -6,8 +6,7 @@ from core.object_components import InputData_StructuralElements, InputData_Fault
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.visualization_components import (plot_structural_model_2D, plot_structural_model_3D,
-                                           plot_fault_model_2D, plot_fault_model_3D)
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D)
 
 from core.structural_modeling_components import general, general_faults
 
@@ -59,7 +58,7 @@ plot_structural_model_3D(frame)
 # Set interpolation methods for each stratigraphic series
 
 # Set another interpolation method per group
-# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
+frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
 
 # Configure interpolation parameters if needed (available parameters depend on the interpolation method)
 # frame["Strat_Series1"].configure_interpolation_params()

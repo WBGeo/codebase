@@ -131,7 +131,7 @@ def test_layercake_analytical_lithology_block(method, plot_mode):
     lith = out_frame._lith_block
     expected = _expected_lith_block(grid, z_top=z_top, z_bottom=z_bottom)
 
-    from core.visualization_components import plot_structural_model_2D  # type: ignore
+    from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import plot_structural_model_2D  # type: ignore
 
     if plot_mode["always"]:
         plot_structural_model_2D(res.structural_frame)
