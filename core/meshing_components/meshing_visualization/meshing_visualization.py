@@ -77,15 +77,23 @@ def plot_mesh_3d(
     plotter = pv.Plotter(off_screen=not show_plotter)
 
     n_blocks = mesh_results.mesh.n_blocks
+    plotted: List[int] = []
     for i in range(n_blocks):
         block = mesh_results.mesh[i]
         if block is None:
             continue
-        label = labels[i] if i < len(labels) else f"Block {i}"
         color = colors[i] if i < len(colors) else _FALLBACK_COLORS[i % len(_FALLBACK_COLORS)]
-        plotter.add_mesh(block, show_edges=True, style=style, color=color, label=label)
+        plotter.add_mesh(block, show_edges=True, style=style, color=color)
+        plotted.append(i)
 
-    plotter.add_legend(size=(0.13, 0.13), loc='lower right', face='circle')
+    # Legend ordered youngest on top → oldest → basement at the bottom,
+    # which is the reverse of the block plot order (bottom→top).
+    legend_entries = [
+        [labels[i] if i < len(labels) else f"Block {i}",
+         colors[i] if i < len(colors) else _FALLBACK_COLORS[i % len(_FALLBACK_COLORS)]]
+        for i in reversed(plotted)
+    ]
+    plotter.add_legend(legend_entries, size=(0.13, 0.13), loc='lower right', face='circle')
     plotter.show_bounds(grid=True)
     plotter.camera.view_angle = 30.0
     plotter.camera.azimuth = 25.0
