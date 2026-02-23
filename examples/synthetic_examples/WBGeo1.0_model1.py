@@ -103,7 +103,7 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 # Meshing for Process Simulation
 mesh_test = create_structured_mesh_data(
     geomodel_result=structural_model_result,
-    refinement_data=[10,10,10],
+    refinement_data=(10,10,10),
     z_threshold=0.1,
     tolerance=1
 )

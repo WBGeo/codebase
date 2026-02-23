@@ -105,7 +105,6 @@ frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
 # set fault activity verbose
 frame.set_fault_activity_by_group(fault_name="Stoerung", group_name="Strat_Series2")
 
-
 frame.fault_activity_verbose
 
 
@@ -128,7 +127,7 @@ structural_model_result = general.compute_structural_model(
 
 # Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame)
-plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
+plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True, show_orientations=False)
 
 #%%
 
