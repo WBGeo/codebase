@@ -2,7 +2,12 @@ import numpy as np
 import pyvista as pv
 from scipy.interpolate import RegularGridInterpolator
 from core.object_components import StructuralModelResults
-from core.utility.conversions import normalize_vectors
+
+
+# Normalize function
+def normalize_vectors(vectors):
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)  # Compute L2 norm
+    return vectors / np.where(norms == 0, 1, norms)  # Avoid division by zero
 
 
 def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_faults=True):
