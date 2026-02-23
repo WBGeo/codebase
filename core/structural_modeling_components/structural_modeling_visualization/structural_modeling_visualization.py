@@ -1,8 +1,17 @@
+from __future__ import annotations
+
+from typing import Literal
+
 import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import warnings
+
+from core.structural_modeling_components.structural_objects.structural_objects import (
+    FaultFrame,
+    StructuralFrame,
+)
 
 
 def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
@@ -14,17 +23,17 @@ def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
 
 
 def plot_structural_model_3D(
-        frame,
+        frame: StructuralFrame,
         *,
-        mesh_type="masked",  # "masked" | "unmasked" | "combined" (if present)
-        fault_mesh_type="masked",  # same options for fault meshes
-        show_surface_meshes=True,
-        show_points=True,
-        show_orientations=True,
-        fault_opacity=0.35,
-        notebook=False,
-        show=True,
-):
+        mesh_type: str = "masked",  # "masked" | "unmasked" | "combined" (if present)
+        fault_mesh_type: str = "masked",  # same options for fault meshes
+        show_surface_meshes: bool = True,
+        show_points: bool = True,
+        show_orientations: bool = True,
+        fault_opacity: float = 0.35,
+        notebook: bool = False,
+        show: bool = True,
+) -> pv.Plotter:
     """
     PyVista 3D plot of structural elements (per-domain meshes) + faults, with your preferred legend style.
     - frame.structural_groups[...] elements store meshes by domain via element.meshes_for_domain(domain_id)
@@ -130,14 +139,14 @@ def plot_structural_model_3D(
 
 
 def plot_structural_model_2D(
-        frame,
+        frame: StructuralFrame,
         *,
-        axis='y',
-        index=0,
-        show_result=True,
-        show_fault_contours=True,
-        show_input_data=True,
-):
+        axis: Literal['x', 'y', 'z'] = 'y',
+        index: int = 0,
+        show_result: bool = True,
+        show_fault_contours: bool = True,
+        show_input_data: bool = True,
+) -> None:
     """
     2D slice of model with:
       - lithology block slice (if provided)
@@ -300,15 +309,15 @@ def plot_structural_model_2D(
 
 
 def plot_fault_model_3D(
-    fault_frame,
-    mesh_type="unmasked",
-    show_surface_meshes=True,
-    show_input_data=True,
-    show_domain_map=True,          # NEW
-    domain_opacity=0.15,           # NEW (opaque-ish tint, adjust)
-    notebook=False,
-    show=True,
-):
+    fault_frame: FaultFrame,
+    mesh_type: str = "unmasked",
+    show_surface_meshes: bool = True,
+    show_input_data: bool = True,
+    show_domain_map: bool = True,
+    domain_opacity: float = 0.15,
+    notebook: bool = False,
+    show: bool = True,
+) -> pv.Plotter:
     pv.global_theme.allow_empty_mesh = True
     plotter = pv.Plotter(notebook=notebook)
 
@@ -478,9 +487,9 @@ def plot_fault_model_3D(
 
 
 def plot_fault_model_2D(
-        fault_frame,
+        fault_frame: FaultFrame,
         *,
-        axis: str = "y",
+        axis: Literal['x', 'y', 'z'] = "y",
         index: int = 0,
         show_results: bool = True,
         show_input_data: bool = True,
