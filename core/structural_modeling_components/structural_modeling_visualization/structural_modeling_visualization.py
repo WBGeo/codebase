@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 import numpy as np
 import pyvista as pv
@@ -142,7 +142,7 @@ def plot_structural_model_2D(
         frame: StructuralFrame,
         *,
         axis: Literal['x', 'y', 'z'] = 'y',
-        index: int = 0,
+        index: Optional[int] = None,
         show_result: bool = True,
         show_fault_contours: bool = True,
         show_input_data: bool = True,
@@ -163,6 +163,9 @@ def plot_structural_model_2D(
     x = frame.grid.gridx
     y = frame.grid.gridy
     z = frame.grid.gridz
+
+    if index is None:
+        index = {'x': len(x), 'y': len(y), 'z': len(z)}[axis] // 2
 
     #  Compute spacing for imshow extent
     dx = (x[-1] - x[0]) / (len(x) - 1)
@@ -490,7 +493,7 @@ def plot_fault_model_2D(
         fault_frame: FaultFrame,
         *,
         axis: Literal['x', 'y', 'z'] = "y",
-        index: int = 0,
+        index: Optional[int] = None,
         show_results: bool = True,
         show_input_data: bool = True,
         show_fault_contours: bool = True,
@@ -537,6 +540,9 @@ def plot_fault_model_2D(
     x = np.asarray(x)
     y = np.asarray(y)
     z = np.asarray(z)
+
+    if index is None:
+        index = {'x': len(x), 'y': len(y), 'z': len(z)}[axis] // 2
 
     # spacing for half-cell padded extent
     dx = (x[-1] - x[0]) / (len(x) - 1) if len(x) > 1 else 1.0
