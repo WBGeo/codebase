@@ -42,27 +42,36 @@ def plot_mesh_3d(
 
     frame = geomodel_result.structural_frame
 
-    # Collect (name, color) for each element: structural elements (youngest→oldest
-    # across all groups) followed by fault elements.
-    labels: List[str] = []
-    colors: List[str] = []
+    # Collect (name, color) youngest→oldest across all groups, then fault elements.
+    # structural_elements is ordered youngest→oldest; mesh blocks are ordered by
+    # ascending surface_id (oldest→youngest), so we reverse before assigning.
+    labels_fwd: List[str] = []
+    colors_fwd: List[str] = []
 
+    idx = 0
     for group in frame.structural_groups:
         for elem in group.structural_elements:
-            labels.append(elem.name)
-            colors.append(
+            labels_fwd.append(elem.name)
+            colors_fwd.append(
                 elem.color if elem.color is not None
-                else _FALLBACK_COLORS[len(colors) % len(_FALLBACK_COLORS)]
+                else _FALLBACK_COLORS[idx % len(_FALLBACK_COLORS)]
             )
+            idx += 1
 
     fault_frame = frame.fault_frame
     if fault_frame is not None:
         for fault in fault_frame.fault_elements:
-            labels.append(fault.name)
-            colors.append(
+            labels_fwd.append(fault.name)
+            colors_fwd.append(
                 fault.color if fault.color is not None
-                else _FALLBACK_COLORS[len(colors) % len(_FALLBACK_COLORS)]
+                else _FALLBACK_COLORS[idx % len(_FALLBACK_COLORS)]
             )
+            idx += 1
+
+    # Reverse so that block 0 (oldest, lowest surface_id) gets the oldest element's
+    # label/color. Append basement as the final block below all formations.
+    labels: List[str] = list(reversed(labels_fwd)) + ["basement"]
+    colors: List[str] = list(reversed(colors_fwd)) + ["#808080"]
 
     plotter = pv.Plotter(off_screen=not show_plotter)
 
