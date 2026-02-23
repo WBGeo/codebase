@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import colorcet as cc
 from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
-from core.object_components import GeomodelResults
-from core.utility import surface_mesh_gradients
+from core.object_components import StructuralModelResults
+from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
 from sklearn.cluster import HDBSCAN
 from scipy.spatial import cKDTree
 

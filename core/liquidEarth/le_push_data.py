@@ -5,7 +5,7 @@ import liquid_earth_sdk as le
 import subsurface as ss
 import numpy as np
 import pandas as pd
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_inspector
 from py_api_wbgeo import apitypes
 
@@ -71,7 +71,7 @@ LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', 
                  group='visualisation',
                  return_name='space link',  # name of the returned port
                  )
-def push_geosolution_to_le(geosolution: GeomodelResults, space_name: str = 'WBGeo: Demo',
+def push_geosolution_to_le(geosolution: StructuralModelResults, space_name: str = 'WBGeo: Demo',
                            model_name: str = None, api_token: SecretDataType = None) -> LETarget:
     """
     Push a geosolution to Liquid Earth.

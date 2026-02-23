@@ -7,7 +7,7 @@ from collections import defaultdict
 from scipy.spatial import cKDTree
 
 from typing import List, Tuple, Union, Mapping
-from core.object_components import InputData, GeomodelResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
@@ -422,7 +422,7 @@ def load_wells_from_csv(well_file: WellCSVDataType) -> WellData:
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited amount of inputs
-    geomodel_result: GeomodelResults,
+    geomodel_result: StructuralModelResults,
     wells: WellData = [],
     tolerance: float = 50,
     mesh_size: float = 30,
@@ -436,7 +436,7 @@ def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited 
   return create_unstructured_mesh_data(**locals())
 
 def create_unstructured_mesh_data(
-    geomodel_result: GeomodelResults,
+    geomodel_result: StructuralModelResults,
     wells: WellData = [],
     sources: SourcesData = [],
     centers: CenterData = [],
@@ -459,7 +459,7 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        input_data (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
+        input_data (InputData_StructuralElements): Input data object containing surface points, orientations, mapping, faults, and extent.
         geomodel_result (object): Output object from the geomodel interpolation, e.g. from `universal_cokriging_interpolator`.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.

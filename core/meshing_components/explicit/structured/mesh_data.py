@@ -8,7 +8,7 @@ from core.meshing_components.explicit.structured.node_element_generator import a
     create_hexahedral_elements_with_nodes
 from core.object_components import MeshResults
 from typing import Tuple
-from core.object_components import GeomodelResults
+from core.object_components import StructuralModelResults
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 import typing
 
@@ -27,7 +27,7 @@ RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='ref
                  )  # inputs are handled via the method signature
 
 
-def create_structured_mesh_data(geomodel_result: GeomodelResults, refinement_data: RefinementData =(25,21,16,5,6),
+def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinement_data: RefinementData =(25,21,16,5,6),
                                 z_threshold: float =0.1, tolerance: float =1) -> MeshResults:
     """
     Generates a geological mesh and returns a MeshData object.

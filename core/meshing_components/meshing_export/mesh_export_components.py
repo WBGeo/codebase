@@ -2,7 +2,7 @@ import io
 
 from py_api_wbgeo.nodesapi import wbgeo_type, wbgeo_component, GeoTempFile, BasicallyABufferedFile
 
-from core.object_components import GeomodelResults, MeshResults
+from core.object_components import MeshResults
 
 
 @wbgeo_component(title='Download Mesh as VTZ',
