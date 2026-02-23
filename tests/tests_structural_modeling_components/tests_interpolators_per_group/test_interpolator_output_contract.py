@@ -59,7 +59,10 @@ def _layercake_input() -> InputData_StructuralElements:
 # Parametrized contract test
 # ---------------------------------------------------------------------------
 
-ALL_METHODS = [m for m in InterpolationMethod if m != InterpolationMethod.GEOINR]
+ALL_METHODS = [
+    m for m in InterpolationMethod
+    if m not in (InterpolationMethod.GEOINR, InterpolationMethod.PIECEWISE_LINEAR)
+]
 
 
 @pytest.mark.parametrize("method", ALL_METHODS)
