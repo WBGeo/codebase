@@ -68,10 +68,11 @@ def plot_mesh_3d(
             )
             idx += 1
 
-    # Reverse so that block 0 (oldest, lowest surface_id) gets the oldest element's
-    # label/color. Append basement as the final block below all formations.
-    labels: List[str] = list(reversed(labels_fwd)) + ["basement"]
-    colors: List[str] = list(reversed(colors_fwd)) + ["#808080"]
+    # Blocks are ordered bottom→top: basement first (block 0), then geological
+    # layers from oldest to youngest. structural_elements is youngest→oldest,
+    # so reverse it and prepend the basement entry.
+    labels: List[str] = ["basement"] + list(reversed(labels_fwd))
+    colors: List[str] = ["#808080"] + list(reversed(colors_fwd))
 
     plotter = pv.Plotter(off_screen=not show_plotter)
 
