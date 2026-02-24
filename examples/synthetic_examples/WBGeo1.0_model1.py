@@ -2,14 +2,16 @@
 import pandas as pd
 import os
 
-from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.object_components import InputData_StructuralElements
-
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
+from core.object_components import InputData_StructuralElements
+from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D)
 
-from core.structural_modeling_components import general, general_faults
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+
 
 #%%
 
@@ -98,18 +100,29 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
-# TODO: Meshing needs to be adapted to work with the new Structural Modeling output
+# Test push to LE
+# from core.liquidEarth.le_push_data import push_geosolution_to_le
+# push_geosolution_to_le(structural_model_result,
+#                        model_name="WBGeo Demo Model 1")
 
-# Meshing for Process Simulation
-mesh_test = create_structured_mesh_data(
+#%%
+
+# Explicit Structured meshing
+mesh_result = create_structured_mesh_data(
     geomodel_result=structural_model_result,
     refinement_data=(10,10,10),
     z_threshold=0.1,
     tolerance=1
 )
 
+# Explicit Unstructured meshing
+# mesh_result = create_unstructured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     z_threshold=0.1,
+#     tolerance=1
+# )
+
 #%%
 
-from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
-
-plot_mesh_3d(mesh_test, structural_model_result, show_plotter=True)
+# Plot the meshing results
+plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)

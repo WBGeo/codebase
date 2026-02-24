@@ -2,13 +2,16 @@
 import pandas as pd
 import os
 
-from core.object_components import InputData_StructuralElements, InputData_FaultElements
-
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D)
-
+from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components import general, general_faults
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
+plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D, plot_fault_model_2D)
+
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 
 #%%
 
@@ -154,16 +157,19 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #                                                    gradients_faults_dict,
 #                                                    mesh_type="unmasked")
 
+
 #%%
 
-# TODO: Meshing needs to be adapted to work with the new Structural Modeling output
+# Explicit Unstructured meshing (Structured does not work with faults)
+mesh_result = create_unstructured_mesh_data(
+      geomodel_result=structural_model_result,
+      z_threshold=0.1,
+      tolerance=1,
+      mesh_size=150,
+      curve_mesh_size=30,
+  )
 
-# Meshing for Process Simulation
-# mesh_test = create_structured_mesh_data(
-#     geomodel_result=results_test,
-#     refinement_data=[10,10,10],
-#     z_threshold=0.1,
-#     tolerance=1
-# )
+#%%
 
-
+# Plot the meshing results
+plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)

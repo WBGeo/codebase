@@ -42,7 +42,9 @@ def plot_mesh_3d(
 
     frame = geomodel_result.structural_frame
 
-    # Collect (name, color) youngest→oldest across all groups, then fault elements.
+    # Collect (name, color) youngest→oldest across all structural groups only.
+    # Faults are meshed as surfaces (triangles), not volumes, so they have no
+    # corresponding MultiBlock entry and must not be included here.
     # structural_elements is ordered youngest→oldest; mesh blocks are ordered by
     # ascending surface_id (oldest→youngest), so we reverse before assigning.
     labels_fwd: List[str] = []
@@ -54,16 +56,6 @@ def plot_mesh_3d(
             labels_fwd.append(elem.name)
             colors_fwd.append(
                 elem.color if elem.color is not None
-                else _FALLBACK_COLORS[idx % len(_FALLBACK_COLORS)]
-            )
-            idx += 1
-
-    fault_frame = frame.fault_frame
-    if fault_frame is not None:
-        for fault in fault_frame.fault_elements:
-            labels_fwd.append(fault.name)
-            colors_fwd.append(
-                fault.color if fault.color is not None
                 else _FALLBACK_COLORS[idx % len(_FALLBACK_COLORS)]
             )
             idx += 1

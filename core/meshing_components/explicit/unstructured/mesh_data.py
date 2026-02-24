@@ -1,3 +1,4 @@
+import os
 import typing
 
 import gmsh
@@ -104,8 +105,9 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
   # Save the mesh
   mesh_file = "generated_mesh.msh"
   gmsh.write(mesh_file)
-  # Read the mesh and get nodes and elements information
+  # Read the mesh and get nodes and elements information, then clean up the file
   mesh_model=meshio.read(mesh_file)
+  os.remove(mesh_file)
   nodes = mesh_model.points  # Coordinates of the nodes
   cells = mesh_model.cells  # Elements (cells)
 
@@ -207,14 +209,14 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
   for block_index, (lith, block) in enumerate(zip(lithology_numbers, tetra_blocks)):
     litho_to_blocks[lith].append(block_index)
 
-  # Merge blocks per lithology
+  # Merge blocks per lithology, sorted by lith ID so the MultiBlock ordering
+  # matches the convention expected by plot_mesh_3d:
+  #   block 0 = lith 0 (basement), block 1 = lith 1 (oldest), ..., block N = lith N (youngest)
   merged_tetra_blocks = []
-  for lith, block_indices in litho_to_blocks.items():
+  for lith in sorted(litho_to_blocks.keys()):
+    block_indices = litho_to_blocks[lith]
     merged_nodes = np.concatenate([tetra_blocks[idx].data for idx in block_indices])
     merged_tetra_blocks.append(meshio.CellBlock(cell_type="tetra", data=merged_nodes))
-
-  print("Number of merged lithology blocks:", len(merged_tetra_blocks))
-
 
 
 
@@ -533,7 +535,17 @@ def create_unstructured_mesh_data(
     cleaned_surfaces, ref_surface_indices , grid_litho = data_prepration(geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
                                                                                                                 EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold)
 
-    interpolated_s = create_surface_grid(cleaned_surfaces, buffer_dist = buffer_dist, smooth=smooth)
+    # Resolve the model extent before surface interpolation so we can guarantee
+    # the B-spline surfaces extend to (and slightly past) the bounding-box walls.
+    # Without this the GMSH fragment produces only 1 volume instead of N+1.
+    model_extent = (
+        geomodel_result.structural_frame.grid.extent
+        if extent == []
+        else tuple(extent)
+    )
+    interpolated_s = create_surface_grid(
+        cleaned_surfaces, buffer_dist=buffer_dist, smooth=smooth, extent=model_extent
+    )
 
     # fragment
     if extent ==[]:
