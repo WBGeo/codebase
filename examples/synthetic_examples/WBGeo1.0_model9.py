@@ -1,6 +1,8 @@
 # Importing necessary libraries
 import pandas as pd
 import os
+# from dotenv import load_dotenv
+# load_dotenv()
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
@@ -161,15 +163,25 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #%%
 
 # Explicit Unstructured meshing (Structured does not work with faults)
-mesh_result = create_unstructured_mesh_data(
-      geomodel_result=structural_model_result,
-      z_threshold=0.1,
-      tolerance=1,
-      mesh_size=150,
-      curve_mesh_size=30,
-  )
+# NOTE: This is very very slow for this model, not recommended to run
+# mesh_result = create_unstructured_mesh_data(
+#       geomodel_result=structural_model_result,
+#       z_threshold=0.1,
+#       tolerance=1,
+#       mesh_size=150,
+#       curve_mesh_size=30,
+#   )
 
 #%%
 
 # Plot the meshing results
-plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)
+# plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)
+
+#%%
+
+# Test push to LE
+# from core.liquidEarth.le_push_data import push_geosolution_to_le
+# push_geosolution_to_le(structural_model_result,
+#                        model_name="WBGeo Demo Model 1",
+#                        space_name="WBGeo Demo",
+#                        api_token=os.getenv("LIQUIDEARTH_TOKEN"))

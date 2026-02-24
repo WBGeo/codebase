@@ -100,13 +100,6 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
-# Test push to LE
-# from core.liquidEarth.le_push_data import push_geosolution_to_le
-# push_geosolution_to_le(structural_model_result,
-#                        model_name="WBGeo Demo Model 1")
-
-#%%
-
 # Explicit Structured meshing
 mesh_result = create_structured_mesh_data(
     geomodel_result=structural_model_result,
