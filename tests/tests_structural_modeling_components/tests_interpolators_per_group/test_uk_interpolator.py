@@ -122,13 +122,69 @@ def test_warns_when_orientations_provided_but_unused(monkeypatch):
         )
 
 
-def test_requires_at_least_two_elements():
+def test_zero_elements_raises():
+    """Zero structural elements must still raise ValueError (phantom workaround only handles exactly 1)."""
+    group = FakeGroup("G", [])
+    grid = FakeGrid()
+    sdf = pd.DataFrame({"X": [0.5], "Y": [0.5], "Z": [0.5], "formation": ["orphan"]})
+
+    with pytest.raises(ValueError):
+        interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
+
+
+# --- Single-element phantom workaround tests ---------------------------------
+
+def _dummy_uk3d_class():
+    class DummyUK3D:
+        def __init__(self, *args, **kwargs):
+            pass
+        def execute(self, *args, **kwargs):
+            return np.zeros(1), None
+    return DummyUK3D
+
+
+def test_single_element_issues_warning(monkeypatch):
+    """Single-element group warns instead of raising."""
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
+    monkeypatch.setattr(mod, "UniversalKriging3D", _dummy_uk3d_class())
+
     group = FakeGroup("G", ["only_one"])
     grid = FakeGrid()
     sdf = surface_df(["only_one"])
 
-    with pytest.raises(ValueError, match="at least two structural elements"):
+    with pytest.warns(UserWarning, match="phantom"):
         interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
+
+
+def test_single_element_phantom_not_in_returned_scalar_values(monkeypatch):
+    """The synthetic phantom formation must not leak into the returned scalar_values_by_element."""
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
+    monkeypatch.setattr(mod, "UniversalKriging3D", _dummy_uk3d_class())
+
+    group = FakeGroup("G", ["only_one"])
+    grid = FakeGrid()
+    sdf = surface_df(["only_one"])
+
+    with pytest.warns(UserWarning):
+        _, mapping = interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
+
+    assert list(mapping.keys()) == ["only_one"]
+    assert "__phantom__" not in mapping
+
+
+def test_single_element_real_element_scalar_is_1(monkeypatch):
+    """Real element keeps its normal scalar value of 1.0."""
+    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
+    monkeypatch.setattr(mod, "UniversalKriging3D", _dummy_uk3d_class())
+
+    group = FakeGroup("G", ["only_one"])
+    grid = FakeGrid()
+    sdf = surface_df(["only_one"])
+
+    with pytest.warns(UserWarning):
+        _, mapping = interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
+
+    assert mapping["only_one"] == 1.0
 
 
 @pytest.mark.parametrize("missing_col", ["X", "Y", "Z", "formation"])

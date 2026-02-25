@@ -160,6 +160,12 @@ def validate_interpolation_inputs(
             )
             continue
 
+        if len(group.structural_elements) == 0:
+            violations.append(
+                f"Group '{group.name}': {method.name} requires at least one structural element."
+            )
+            continue  # domain-level checks need at least one element to filter by formation
+
         # Replicate the component-splitting logic from run_interpolation_with_fault_domains
         if fault_frame is None or frame.fault_activity is None:
             components = [set(map(int, domain_ids))]
@@ -195,11 +201,6 @@ def validate_interpolation_inputs(
             prefix = f"Group '{group.name}' ({comp_label})"
 
             # --- per-interpolator requirements ---
-            if len(group.structural_elements) == 0:
-                violations.append(
-                    f"{prefix}: {method.name} requires at least one structural element."
-                )
-
             if method in _INTERPOLATORS_REQUIRING_ORIENTATIONS:
                 if ori_filtered is None:
                     violations.append(
