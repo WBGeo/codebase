@@ -77,6 +77,25 @@ class InputData_StructuralElements:
         self.surface_points = self.surface_points.sort_values(by='formation').reset_index(drop=True)
         self.surface_points['formation'] = self.surface_points['formation'].astype(str)
 
+        # Remove duplicate surface points (same X, Y, Z, formation)
+        _before = len(self.surface_points)
+        self.surface_points = self.surface_points.drop_duplicates(
+            subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+        _removed = _before - len(self.surface_points)
+        if _removed > 0:
+            print(f"[InputData_StructuralElements '{self.name}'] "
+                  f"Removed {_removed} duplicate surface point(s) (identical X, Y, Z, formation).")
+
+        # Remove duplicate orientations (same X, Y, Z, formation)
+        if self.orientations is not None and not self.orientations.empty:
+            _before = len(self.orientations)
+            self.orientations = self.orientations.drop_duplicates(
+                subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+            _removed = _before - len(self.orientations)
+            if _removed > 0:
+                print(f"[InputData_StructuralElements '{self.name}'] "
+                      f"Removed {_removed} duplicate orientation(s) (identical X, Y, Z, formation).")
+
 
 @wbgeo_type(name='Input input_data for the fault elements of a structural geological model',
             color='orange',
@@ -95,6 +114,25 @@ class InputData_FaultElements:
     fault_surface_points: PandasDataFrame
     fault_orientations: PandasDataFrame  # Might be optional in future when not only UCK is used here
     fault_names: List[str]  # This allows us to use one input data file
+
+    def __post_init__(self):
+        # Remove duplicate fault surface points (same X, Y, Z, formation)
+        _before = len(self.fault_surface_points)
+        self.fault_surface_points = self.fault_surface_points.drop_duplicates(
+            subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+        _removed = _before - len(self.fault_surface_points)
+        if _removed > 0:
+            print(f"[InputData_FaultElements '{self.name}'] "
+                  f"Removed {_removed} duplicate fault surface point(s) (identical X, Y, Z, formation).")
+
+        # Remove duplicate fault orientations (same X, Y, Z, formation)
+        _before = len(self.fault_orientations)
+        self.fault_orientations = self.fault_orientations.drop_duplicates(
+            subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+        _removed = _before - len(self.fault_orientations)
+        if _removed > 0:
+            print(f"[InputData_FaultElements '{self.name}'] "
+                  f"Removed {_removed} duplicate fault orientation(s) (identical X, Y, Z, formation).")
 
 
 @wbgeo_type(name='Result of a structural geological model', color='blue', identifier='StructuralModelResults')
