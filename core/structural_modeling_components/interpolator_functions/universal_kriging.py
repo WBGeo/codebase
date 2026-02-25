@@ -60,10 +60,32 @@ def interpolate_group_universal_kriging(
             UserWarning,
         )
 
+    _phantom_name: Optional[str] = None
     if len(group.structural_elements) < 2:
-        raise ValueError(
-            f"Group '{group.name}' must contain at least two structural elements for Universal Kriging"
-        )
+        if len(group.structural_elements) == 1:
+            _coords_tmp = group_surface_points_df[["X", "Y", "Z"]].to_numpy()
+            _bbox_diag = float(np.linalg.norm(_coords_tmp.max(axis=0) - _coords_tmp.min(axis=0)))
+            _shift = max(0.1 * _bbox_diag, 1.0)
+            _phantom_name = "__phantom__"
+            _phantom_df = group_surface_points_df.copy()
+            _phantom_df = _phantom_df.assign(Z=_phantom_df["Z"] - _shift, formation=_phantom_name)
+            group_surface_points_df = pd.concat(
+                [group_surface_points_df, _phantom_df], ignore_index=True
+            )
+            warnings.warn(
+                f"Group '{group.name}' has only one structural element. Universal Kriging "
+                f"requires at least two. A phantom 'older' element has been synthesized by "
+                f"shifting all points downward by {_shift:.4g} units (10%% of the point "
+                f"cloud bounding-box diagonal). This approximation assumes sub-horizontal "
+                f"layering and WILL produce incorrect results for steeply dipping or "
+                f"overturned structures. Consider using FDI, PLI, UCK, or GeoINR instead.",
+                UserWarning,
+                stacklevel=2,
+            )
+        else:
+            raise ValueError(
+                f"Group '{group.name}' must contain at least two structural elements for Universal Kriging"
+            )
 
     for col in ("X", "Y", "Z", "formation"):
         if col not in group_surface_points_df.columns:
@@ -74,6 +96,8 @@ def interpolate_group_universal_kriging(
         elem.name: float(i)
         for i, elem in enumerate(reversed(group.structural_elements), start=1)
     }
+    if _phantom_name is not None:
+        scalar_values_by_element[_phantom_name] = 0.0
 
     unknown = set(group_surface_points_df["formation"].unique()) - set(scalar_values_by_element.keys())
     if unknown:
@@ -87,6 +111,8 @@ def interpolate_group_universal_kriging(
         .astype(float)
         .to_numpy()
     )
+    if _phantom_name is not None:
+        scalar_values_by_element.pop(_phantom_name)
 
     x: FloatArray = group_surface_points_df["X"].to_numpy()
     y: FloatArray = group_surface_points_df["Y"].to_numpy()
