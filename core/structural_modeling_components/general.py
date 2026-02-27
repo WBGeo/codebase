@@ -536,13 +536,12 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             if sf is None:
                 continue
 
-            # Age-mask logic
-            if i == 0:
-                # Youngest group: no truncation
-                erosion_mask = np.ones_like(sf, dtype=bool)
-            else:
-                prev_mask = frame.structural_groups[i - 1].get_mask()  # XYZ
-                erosion_mask = ~prev_mask if prev_mask is not None else np.ones_like(sf, dtype=bool)
+            # Age-mask logic: exclude all younger groups (not just the immediately preceding one)
+            erosion_mask = np.ones_like(sf, dtype=bool)
+            for j in range(i):
+                younger_mask = frame.structural_groups[j].get_mask()
+                if younger_mask is not None:
+                    erosion_mask &= ~younger_mask
 
             # Combined mask
             mc_mask = erosion_mask & dommask  # keep in XYZ
