@@ -1,3 +1,4 @@
+import numpy as np
 from skimage import measure
 
 
@@ -27,7 +28,13 @@ def marching_cubes_per_element(block, element, spacing, extent, mask):
         edges (np.array): Edges of the surface meshes.
     """
 
-    # Extract the surface meshes using marching cubes
-    verts, edges, _, _ = measure.marching_cubes(block, element, spacing=spacing, mask=mask)
+    # Extract the surface meshes using marching cubes.
+    # If the scalar field does not cross the iso-value anywhere in the (masked)
+    # domain — e.g. a formation that is absent from one fault block — return
+    # empty arrays so the caller can combine or skip them gracefully.
+    try:
+        verts, edges, _, _ = measure.marching_cubes(block, element, spacing=spacing, mask=mask)
+    except RuntimeError:
+        return np.empty((0, 3)), np.empty((0, 3), dtype=int)
     vertices = verts + [extent[0], extent[2], extent[4]]
     return vertices, edges
