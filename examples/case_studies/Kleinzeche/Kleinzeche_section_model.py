@@ -26,6 +26,8 @@ import sys
 import numpy as np
 import pandas as pd
 
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
@@ -84,9 +86,27 @@ _GZ = float(np.cos(_true_dip))
 # Orientations are computed analytically below; discard those from the picker.
 surface_points, _ = picks_to_dataframes()
 
-surface_points = surface_points[surface_points['Z'] >= Z_MIN].reset_index(drop=True)
+# ── Proxy Clay/Coal points in the hanging-wall (Profile A) domain ─────────────
+# Placed at the leftmost Profile A Sand-3 pick, stacked downward by apparent
+# vertical thickness = true thickness / cos(true_dip).
+_proxy_base = {'X': 380048.827256, 'Y': 5700894.0}
+_dz_clay1 = 4  / np.cos(_true_dip)
+_dz_coal1 = 3  / np.cos(_true_dip)
+_dz_clay2 = 4  / np.cos(_true_dip)
+_z_sand3_base = 72.331387
+print(f"  Apparent dZ — Clay-1: {_dz_clay1:.1f} m, Coal-1: {_dz_coal1:.1f} m, Clay-2: {_dz_clay2:.1f} m")
+surface_points = pd.concat([surface_points, pd.DataFrame([
+    {**_proxy_base, 'Z': _z_sand3_base - _dz_clay1,                        'formation': 'Clay-1'},
+    {**_proxy_base, 'Z': _z_sand3_base - _dz_clay1 - _dz_coal1,            'formation': 'Coal-1'},
+    {**_proxy_base, 'Z': _z_sand3_base - _dz_clay1 - _dz_coal1 - _dz_clay2, 'formation': 'Clay-2'},
+])], ignore_index=True)
 
-print(f"Surface points : {len(surface_points)} rows")
+# Extend model 10 m deeper to capture Clay/Coal in hanging-wall domain
+_Z_MIN_MODEL = Z_MIN - 10
+
+surface_points = surface_points[surface_points['Z'] >= _Z_MIN_MODEL].reset_index(drop=True)
+
+print(f"Surface points : {len(surface_points)} rows  (Z_MIN extended to {_Z_MIN_MODEL} m)")
 
 # ── Fault-1 data from borehole CSV (UTM) ─────────────────────────────────────
 _csv = pd.read_csv(CSV_PATH)
@@ -112,7 +132,7 @@ print(f"Fault-1 derived normal : G=({_normal[0]:.3f}, {_normal[1]:.3f}, {_normal
 
 # ── Grid (UTM extent) ─────────────────────────────────────────────────────────
 _grid = RegularGrid(
-    extent=(380040, 380132, 5700884, 5700938, Z_MIN, 130),
+    extent=(380040, 380132, 5700884, 5700938, _Z_MIN_MODEL, 130),
     resolution=(92, 54, 90),
 )
 
@@ -133,14 +153,14 @@ fault_frame.detailed_report()
 
 #%%
 
-plot_fault_model_2D(fault_frame)
-plot_fault_model_3D(fault_frame)
+# plot_fault_model_2D(fault_frame)
+# plot_fault_model_3D(fault_frame)
 
 #%%
 
 fault_model_result = general_faults.compute_fault_domains(fault_frame)
 
-plot_fault_model_2D(fault_model_result.fault_frame)
+# plot_fault_model_2D(fault_model_result.fault_frame)
 plot_fault_model_3D(fault_model_result.fault_frame)
 
 # ── Formation mapping (youngest → oldest) ────────────────────────────────────
@@ -150,12 +170,7 @@ print(f"\nFormations with data: {sorted(_available)}")
 _ALL_SERIES = [
     ("Strat_Series3", ("Gravel-1",)),
     ("Strat_Series2", ("Loose-1",)),
-    ("Strat_Series1", ("Silt-1", "Sand-1", "Silt-2", "Sand-2", "Silt-3", "Sand-3")),
-    # Clay/Coal only picked in Profile B → only present in the shallow fault domain.
-    # Fault-1 activity applies to all groups older than Strat_Series1, so this group
-    # is also faulted.  The codebase handles missing iso-surfaces gracefully (no mesh
-    # extracted for domains where the formation is absent).
-    ("Strat_Series0", ("Clay-1", "Coal-1", "Clay-2")),
+    ("Strat_Series1", ("Silt-1", "Sand-1", "Silt-2", "Sand-2", "Silt-3", "Sand-3", "Clay-1", "Coal-1", "Clay-2")),
 ]
 
 mapping_object = {}
@@ -208,7 +223,7 @@ print(f"Orientations   : {len(orientations)} rows")
 
 # ── Structural input data ─────────────────────────────────────────────────────
 grid = RegularGrid(
-    extent=(380040, 380132, 5700884, 5700938, Z_MIN, 130),
+    extent=(380040, 380132, 5700884, 5700938, _Z_MIN_MODEL, 130),
     resolution=(92, 54, 90),
 )
 
@@ -247,8 +262,9 @@ for _series in mapping_object:
     frame[_series].set_interpolation_method("Universal Co-Kriging")
 
 # ── Plot input data ───────────────────────────────────────────────────────────
-plot_structural_model_2D(frame)
+# plot_structural_model_2D(frame, show_result=False)
 plot_structural_model_3D(frame)
+
 
 #%%
 
@@ -373,3 +389,17 @@ p.add_checkbox_button_widget(
 p.add_text('Boreholes', position=(0.065, 0.062), font_size=11, color='white', shadow=True)
 
 p.show()
+
+#%%
+
+# Explicit Unstructured meshing (Structured does not work with faults)
+mesh_result = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    z_threshold=0.1,
+    tolerance=1
+)
+
+#%%
+
+# Plot the meshing results
+plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)
