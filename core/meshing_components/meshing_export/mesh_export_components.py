@@ -22,6 +22,23 @@ def export_mesh_results_to_vtu(mesh: MeshResults) -> BasicallyABufferedFile:
   # as long as we return a BytesIO (buffered file)
   return buf
 
+@wbgeo_component(title='Download Mesh as GMSH',
+                 description='Export Mesh to GMSH .msh format (structured or unstructured)',
+                 group='Export',
+                 identifier='wbgeo::export_mesh_results_gmsh',
+                 )
+def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
+  """
+  Provides a mesh as a downloadable GMSH .msh file.
+  Supports both structured hexahedral and unstructured meshes.
+  mesh: the Mesh to export
+  """
+  buf = GeoTempFile()
+  mesh.export_gmsh(buf)
+  buf.filename = 'export.msh'
+  return buf
+
+
 @wbgeo_component(title='Download Mesh as Exodus',
                  description='Export Mesh to Exodus',
                  group='Export',

@@ -341,21 +341,17 @@ class MeshResults:
         mesh.write(filename, file_format="ansys")
         print(f"Ansys file '{filename}' created successfully!")
 
-    def export_gmsh(self, filename: str):
+    def export_gmsh(self, filename: typing.Union[str, os.PathLike]):
         """
-        Export the mesh data to an GMSH file.
+        Export the mesh data to a GMSH file.
+        Supports both structured (hexahedral) and unstructured meshes.
         Args:
-            filename (str): The name of the GMSH file to export.
+            filename: Path to the output .msh file.
         """
         gmsh_in = GMSHInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
-        # Create mesh
         mesh = gmsh_in.create_mesh()
-        if mesh is None:
-           print('GMSH cannot be created for structure mesh')
-        else:
-            # Write the mesh to an Exodus file
-            mesh.write(filename, file_format="gmsh22")
-            print(f"GMSH file '{filename}' created successfully!")
+        mesh.write(filename, file_format="gmsh22")
+        print(f"GMSH file '{filename}' created successfully!")
 
     def export_stl(self, filename: str):
         """
