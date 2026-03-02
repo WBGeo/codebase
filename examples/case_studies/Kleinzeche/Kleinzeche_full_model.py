@@ -80,16 +80,19 @@ fault_frame = general_faults.build_fault_frame(
     input_data_fault_elements=data_faults,
     grid=grid,
 )
+
 fault_frame.detailed_report()
 
 #%%
 
-# plot_fault_model_3D(fault_frame)
+plot_fault_model_3D(fault_frame)
 
 #%%
 
 fault_model_result = general_faults.compute_fault_domains(fault_frame)
 plot_fault_model_3D(fault_model_result.fault_frame)
+
+#%%
 
 # ── Formation mapping (youngest → oldest) ─────────────────────────────────────
 _available = set(surface_points['formation'].unique())
@@ -130,15 +133,12 @@ for _series, _fms in _ALL_SERIES:
 # Fault-1 displaces Strat_Series1 (Silt/Sand/Clay); Gravel-1 and Loose-1 are post-fault.
 frame.set_fault_activity_by_group(fault_name='Fault-1', group_name='Strat_Series1')
 
-frame.detailed_report()
-
-#%%
-
 # ── Interpolation ──────────────────────────────────────────────────────────────
 for _series in mapping_object:
     frame[_series].set_interpolation_method('Universal Co-Kriging')
 
 # plot_structural_model_2D(frame, show_result=False)
+frame.detailed_report()
 plot_structural_model_3D(frame)
 
 #%%
@@ -157,7 +157,7 @@ plot_structural_model_2D(structural_model_result.structural_frame)
 plot_structural_model_3D(
     structural_model_result.structural_frame,
     show_surface_meshes=True,
-    show_orientations=True,
+    show_orientations=False,
 )
 
 #%%
@@ -260,12 +260,18 @@ p.show()
 
 #%%
 
+# TODO: Next step, meshing does not yet work for this model
 # Explicit Unstructured meshing (Structured does not work with faults)
-# from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-# from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
-# mesh_result = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     z_threshold=0.1,
-#     tolerance=1
-# )
-# plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+
+# DISTANCE_THRESHOLD must be << model extent.  The default (50) removes ALL points
+# from a 50×50 m model.  Use ~10 % of the minimum horizontal extent (here 5 m).
+mesh_result = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    z_threshold=0.1,
+    tolerance=1,
+    DISTANCE_THRESHOLD=5,  # Minimum distance between points to be retained (after surface sampling and before meshing)
+    mesh_size=10  # Target edge length for meshing (not a hard constraint, but smaller → finer mesh)
+)
+plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)
