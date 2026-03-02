@@ -46,7 +46,7 @@ for _d in [_SECTION_DIR, _INPUT_DATA_DIR]:
     if _d not in sys.path:
         sys.path.insert(0, _d)
 
-from Kleinzeche_shared import (
+from input_data.Kleinzeche_shared import (
     BOREHOLES, BH_COLORS, COLLARS, Z_MIN, Z_MIN_A, Z_MIN_B,
     FORMATION_COLORS, FAULT_FORMATIONS, FAULT_COLORS, TUBE_RADIUS,
     PATH_A, PATH_B, CSV_PATH, MARKER_CACHE,
