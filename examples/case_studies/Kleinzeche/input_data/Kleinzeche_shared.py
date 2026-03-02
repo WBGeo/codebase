@@ -1,9 +1,10 @@
 """
 Kleinzeche shared constants and utility functions
 =================================================
-Imported by Kleinzeche_input_data.py, Kleinzeche_section_picking.py, and
-Kleinzeche_section_model.py to avoid duplicating borehole coordinates,
-formation colours, path definitions, and georeferencing helpers.
+Imported by Kleinzeche_input_data.py, Kleinzeche_section_picking.py,
+Kleinzeche_full_model.py, and Kleinzeche_simple_model.py to avoid
+duplicating borehole coordinates, formation colours, path definitions,
+and georeferencing helpers.
 """
 
 import os
@@ -12,8 +13,8 @@ import numpy as np
 
 # ── Paths (all __file__-relative) ─────────────────────────────────────────────
 
-SECTION_DIR    = os.path.dirname(os.path.abspath(__file__))
-INPUT_DATA_DIR = os.path.join(SECTION_DIR, "input_data")
+INPUT_DATA_DIR = os.path.dirname(os.path.abspath(__file__))   # this file lives in input_data/
+SECTION_DIR    = os.path.dirname(INPUT_DATA_DIR)               # parent Kleinzeche/ folder
 CACHE_DIR      = os.path.join(SECTION_DIR, "cache")
 
 PATH_A       = os.path.join(INPUT_DATA_DIR, "Kleinzeche_profile_A.png")
