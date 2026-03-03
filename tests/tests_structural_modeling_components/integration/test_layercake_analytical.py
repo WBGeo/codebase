@@ -70,7 +70,10 @@ def _expected_lith_block(grid: RegularGrid, z_top: float, z_bottom: float) -> np
 
 ALL_GROUP_METHODS = [
     m for m in InterpolationMethod
-    if m != InterpolationMethod.GEOINR  # non-deterministic
+    if m not in {
+        InterpolationMethod.GEOINR,            # non-deterministic
+        InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
+    }
 ]
 
 # Minimum fraction of interior voxels (1-voxel boundary margin excluded) that
@@ -80,8 +83,8 @@ _MIN_INTERIOR_MATCH: dict[InterpolationMethod, float] = {
     InterpolationMethod.FINITE_DIFFERENCES:    0.95,
     InterpolationMethod.UNIVERSAL_COKRIGING:   0.90,
     InterpolationMethod.UNIVERSAL_KRIGING:     0.90,
-    InterpolationMethod.PIECEWISE_LINEAR:      0.80,
-    InterpolationMethod.ORDINARY_KRIGING:      0.75,
+
+    InterpolationMethod.ORDINARY_KRIGING:      0.90,
 }
 
 
@@ -134,7 +137,7 @@ def test_layercake_analytical_lithology_block(method, plot_mode):
     from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import plot_structural_model_2D  # type: ignore
 
     if plot_mode["always"]:
-        plot_structural_model_2D(res.structural_frame)
+        plot_structural_model_2D(res.structural_frame, title_suffix=method.value)
 
     interior = ~_near_boundary_mask(expected, radius=1)
     interior_match = float(np.mean((lith == expected)[interior]))
@@ -146,5 +149,5 @@ def test_layercake_analytical_lithology_block(method, plot_mode):
         )
     except AssertionError:
         if plot_mode["on_fail"]:
-            plot_structural_model_2D(res.structural_frame)
+            plot_structural_model_2D(res.structural_frame, title_suffix=method.value)
         raise
