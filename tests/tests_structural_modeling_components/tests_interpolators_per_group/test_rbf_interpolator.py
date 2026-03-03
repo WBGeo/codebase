@@ -103,13 +103,89 @@ def test_warns_when_orientations_provided_but_unused(monkeypatch):
 
 
 
-def test_requires_at_least_two_elements():
+def test_zero_elements_raises():
+    """Zero structural elements must still raise ValueError (phantom workaround only handles exactly 1)."""
+    group = FakeGroup("G", [])
+    grid = FakeGrid(use_grid_coordinates=True)
+    sdf = pd.DataFrame({"X": [0.5], "Y": [0.5], "Z": [0.5], "formation": ["orphan"]})
+
+    with pytest.raises(ValueError):
+        interpolate_group_radial_basis_function(group=group, grid=grid, group_surface_points_df=sdf)
+
+
+# --- Single-element phantom workaround tests ---------------------------------
+
+def _dummy_rbf_class():
+    """Return a DummyRBF class that accepts the RBFInterpolator interface."""
+    class DummyRBF:
+        def __init__(self, coords, vals, **kwargs):
+            pass
+        def __call__(self, points):
+            return np.zeros(points.shape[0])
+    return DummyRBF
+
+
+def test_single_element_issues_warning(monkeypatch):
+    """Single-element group warns instead of raising."""
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function as mod
+    monkeypatch.setattr(mod, "RBFInterpolator", _dummy_rbf_class())
+
     group = FakeGroup("G", ["only_one"])
     grid = FakeGrid(use_grid_coordinates=True)
     sdf = surface_df(["only_one"])
 
-    with pytest.raises(ValueError, match="at least two structural elements"):
+    with pytest.warns(UserWarning, match="phantom"):
         interpolate_group_radial_basis_function(group=group, grid=grid, group_surface_points_df=sdf)
+
+
+def test_single_element_phantom_not_in_returned_scalar_values(monkeypatch):
+    """The synthetic phantom formation must not leak into the returned scalar_values_by_element."""
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function as mod
+    monkeypatch.setattr(mod, "RBFInterpolator", _dummy_rbf_class())
+
+    group = FakeGroup("G", ["only_one"])
+    grid = FakeGrid(use_grid_coordinates=True)
+    sdf = surface_df(["only_one"])
+
+    with pytest.warns(UserWarning):
+        _, mapping = interpolate_group_radial_basis_function(group=group, grid=grid, group_surface_points_df=sdf)
+
+    assert list(mapping.keys()) == ["only_one"]
+    assert "__phantom__" not in mapping
+
+
+def test_single_element_real_element_scalar_is_1(monkeypatch):
+    """Real element keeps its normal scalar value of 1.0 (same as if it were the oldest of two)."""
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function as mod
+    monkeypatch.setattr(mod, "RBFInterpolator", _dummy_rbf_class())
+
+    group = FakeGroup("G", ["only_one"])
+    grid = FakeGrid(use_grid_coordinates=True)
+    sdf = surface_df(["only_one"])
+
+    with pytest.warns(UserWarning):
+        _, mapping = interpolate_group_radial_basis_function(group=group, grid=grid, group_surface_points_df=sdf)
+
+    assert mapping["only_one"] == 1.0
+
+
+def test_single_element_smoke_runs_and_returns_finite_field():
+    """End-to-end: single element with real SciPy RBF produces a finite scalar field."""
+    group = FakeGroup("G", ["only_one"])
+    grid = FakeGrid(resolution=(3, 3, 3), use_grid_coordinates=True)
+    sdf = pd.DataFrame({
+        "X": [0.5, 1.5, 2.5],
+        "Y": [0.5, 1.5, 0.5],
+        "Z": [1.0, 1.0, 1.0],
+        "formation": ["only_one", "only_one", "only_one"],
+    })
+
+    with pytest.warns(UserWarning, match="phantom"):
+        field, mapping = interpolate_group_radial_basis_function(group=group, grid=grid, group_surface_points_df=sdf)
+
+    assert list(mapping.keys()) == ["only_one"]
+    assert field.shape == grid.resolution
+    assert np.isfinite(field).all()
 
 
 @pytest.mark.parametrize("missing_col", ["X", "Y", "Z", "formation"])

@@ -95,15 +95,125 @@ class DomainMapProvider(Protocol):
 # -----------------------------------------------------------------------------
 # Mapping from interpolation method to per-group interpolator function.
 # Each interpolator is expected to return (scalar_field, scalar_values_dict).
+
+# Methods that require orientation data to produce any result.
+_INTERPOLATORS_REQUIRING_ORIENTATIONS: frozenset[InterpolationMethod] = frozenset({
+    InterpolationMethod.FINITE_DIFFERENCES,
+    # InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
+    InterpolationMethod.UNIVERSAL_COKRIGING,
+    InterpolationMethod.GEOINR,
+})
+
 interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
     InterpolationMethod.ORDINARY_KRIGING: interpolate_group_ordinary_kriging,
     InterpolationMethod.RADIAL_BASIS_FUNCTION: interpolate_group_radial_basis_function,
     InterpolationMethod.UNIVERSAL_COKRIGING: interpolate_group_universal_cokriging,
     InterpolationMethod.GEOINR: interpolate_group_geo_inr,
     InterpolationMethod.FINITE_DIFFERENCES: interpolate_group_finite_differences,
-    InterpolationMethod.PIECEWISE_LINEAR: interpolate_group_piecewise_linear,
+    # InterpolationMethod.PIECEWISE_LINEAR: interpolate_group_piecewise_linear,  # excluded pending parameter tuning
     InterpolationMethod.UNIVERSAL_KRIGING: interpolate_group_universal_kriging,
 }
+
+
+def validate_interpolation_inputs(
+        frame: StructuralFrame,
+        fault_frame: FaultFrame | None,
+) -> None:
+    """
+    Pre-flight check: verify that each group has sufficient input data for its
+    chosen interpolator, taking fault domain splitting into account.
+
+    Mirrors the domain-filtering logic of :func:`run_interpolation_with_fault_domains`
+    so that every (group, component) pair that would be interpolated is checked.
+    Empty domain components are skipped, exactly as in the real pipeline.
+
+    Raises
+    ------
+    ValueError
+        A single error listing ALL detected issues so the user can fix them
+        together rather than discovering them one by one.
+    """
+    domain_map: IntArray = (
+        fault_frame.domain_map
+        if fault_frame is not None
+        else np.zeros(frame.grid.resolution, dtype=int)
+    )
+    domain_ids: IntArray = np.unique(domain_map)
+    multi_domain = len(domain_ids) > 1
+
+    sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
+    ori_in_domain = (
+        assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
+        if frame.orientations is not None
+        else None
+    )
+
+    violations: list[str] = []
+
+    for group_idx, group in enumerate(frame.structural_groups):
+        group_formations = [e.name for e in group.structural_elements]
+        method = group.interpolation_method
+
+        if method not in interpolate_dispatch:
+            violations.append(
+                f"Group '{group.name}': unsupported interpolation method '{method}'."
+            )
+            continue
+
+        if len(group.structural_elements) == 0:
+            violations.append(
+                f"Group '{group.name}': {method.name} requires at least one structural element."
+            )
+            continue  # domain-level checks need at least one element to filter by formation
+
+        # Replicate the component-splitting logic from run_interpolation_with_fault_domains
+        if fault_frame is None or frame.fault_activity is None:
+            components = [set(map(int, domain_ids))]
+        else:
+            components = effective_domain_components_for_group(
+                domain_ids=domain_ids,
+                faults=list(fault_frame.fault_elements),
+                fault_activity=frame.fault_activity,
+                group_idx=group_idx,
+            )
+
+        for comp_ids in components:
+            comp_ids_arr = np.array(sorted(comp_ids), dtype=int)
+            comp_label = (
+                f"domain(s) {sorted(comp_ids)}" if multi_domain else "single domain"
+            )
+
+            # Filter surface points — same as the real pipeline
+            sp_comp = sp_in_domain[sp_in_domain["domain_id"].isin(comp_ids_arr)]
+            sp_filtered = sp_comp[sp_comp["formation"].isin(group_formations)]
+
+            if sp_filtered.empty:
+                continue  # real pipeline silently skips this too
+
+            # Filter orientations
+            ori_filtered: Optional[pd.DataFrame] = None
+            if ori_in_domain is not None:
+                ori_comp = ori_in_domain[ori_in_domain["domain_id"].isin(comp_ids_arr)]
+                ori_filtered = ori_comp[ori_comp["formation"].isin(group_formations)]
+                if ori_filtered.empty:
+                    ori_filtered = None
+
+            prefix = f"Group '{group.name}' ({comp_label})"
+
+            # --- per-interpolator requirements ---
+            if method in _INTERPOLATORS_REQUIRING_ORIENTATIONS:
+                if ori_filtered is None:
+                    violations.append(
+                        f"{prefix}: {method.name} requires orientation data, "
+                        f"but none were found in this domain component."
+                    )
+
+    if violations:
+        bullet_list = "\n  - ".join(violations)
+        raise ValueError(
+            f"Input data validation failed — {len(violations)} issue(s) detected. "
+            f"Fix these before running the interpolation pipeline:\n  - {bullet_list}"
+        )
 
 
 def run_interpolation_with_fault_domains(
@@ -426,13 +536,12 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             if sf is None:
                 continue
 
-            # Age-mask logic
-            if i == 0:
-                # Youngest group: no truncation
-                erosion_mask = np.ones_like(sf, dtype=bool)
-            else:
-                prev_mask = frame.structural_groups[i - 1].get_mask()  # XYZ
-                erosion_mask = ~prev_mask if prev_mask is not None else np.ones_like(sf, dtype=bool)
+            # Age-mask logic: exclude all younger groups (not just the immediately preceding one)
+            erosion_mask = np.ones_like(sf, dtype=bool)
+            for j in range(i):
+                younger_mask = frame.structural_groups[j].get_mask()
+                if younger_mask is not None:
+                    erosion_mask &= ~younger_mask
 
             # Combined mask
             mc_mask = erosion_mask & dommask  # keep in XYZ
@@ -586,6 +695,11 @@ def compute_structural_model(
 
         if verbose:
             print("ℹ️ No fault_frame provided in StructuralFrame — running in single-domain mode.")
+
+    # 0) pre-flight validation — raise before touching any expensive computation
+    if verbose:
+        print("⓪ Validating interpolation inputs ...")
+    validate_interpolation_inputs(frame=frame, fault_frame=frame.fault_frame)
 
     # 1) per-domain interpolation, store results into per-domain slots
     if verbose:

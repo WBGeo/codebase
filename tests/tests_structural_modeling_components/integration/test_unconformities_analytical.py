@@ -128,7 +128,9 @@ def _match_ratio(a: np.ndarray, b: np.ndarray) -> float:
 
 ALL_GROUP_METHODS = [
     m for m in InterpolationMethod
-    if m != InterpolationMethod.GEOINR  # non-deterministic
+    if m not in {
+        InterpolationMethod.GEOINR,            # non-deterministic
+    }
 ]
 
 # Minimum fraction of interior voxels (1-voxel boundary margin excluded) that
@@ -138,8 +140,8 @@ _MIN_INTERIOR_MATCH: dict[InterpolationMethod, float] = {
     InterpolationMethod.FINITE_DIFFERENCES:    0.95,
     InterpolationMethod.UNIVERSAL_COKRIGING:   0.90,
     InterpolationMethod.UNIVERSAL_KRIGING:     0.90,
-    InterpolationMethod.PIECEWISE_LINEAR:      0.80,
-    InterpolationMethod.ORDINARY_KRIGING:      0.75,
+
+    InterpolationMethod.ORDINARY_KRIGING:      0.90,
 }
 
 @pytest.mark.integration
@@ -175,7 +177,7 @@ def test_unconformity_lithology_and_masks(method, plot_mode):
 
     from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import plot_structural_model_2D  # type: ignore
     if plot_mode["always"]:
-        plot_structural_model_2D(out_frame)
+        plot_structural_model_2D(out_frame, title_suffix=method.value)
 
     interior = ~_near_boundary_mask(expected_lith, radius=1)
     interior_match = float(np.mean((lith == expected_lith)[interior]))
@@ -188,7 +190,7 @@ def test_unconformity_lithology_and_masks(method, plot_mode):
         )
     except AssertionError:
         if plot_mode["on_fail"]:
-            plot_structural_model_2D(out_frame)
+            plot_structural_model_2D(out_frame, title_suffix=method.value)
         raise
 
     # Extra safety: basement must exist and be below the lowest horizon in many cells

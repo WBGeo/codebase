@@ -61,7 +61,7 @@ def _layercake_input() -> InputData_StructuralElements:
 
 ALL_METHODS = [
     m for m in InterpolationMethod
-    if m not in (InterpolationMethod.GEOINR, InterpolationMethod.PIECEWISE_LINEAR)
+    if m not in (InterpolationMethod.GEOINR,)
 ]
 
 

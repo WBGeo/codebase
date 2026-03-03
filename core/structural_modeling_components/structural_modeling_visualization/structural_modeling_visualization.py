@@ -146,6 +146,7 @@ def plot_structural_model_2D(
         show_result: bool = True,
         show_fault_contours: bool = True,
         show_input_data: bool = True,
+        title_suffix: str = "",
 ) -> None:
     """
     2D slice of model with:
@@ -302,7 +303,8 @@ def plot_structural_model_2D(
 
     ax.set_xlabel(axis_labels[axis][0])
     ax.set_ylabel(axis_labels[axis][1])
-    ax.set_title(f"{axis.upper()} Slice @ index {index}")
+    base_title = f"{axis.upper()} Slice @ index {index}"
+    ax.set_title(f"{base_title} — {title_suffix}" if title_suffix else base_title)
     ax.set_aspect("equal")
     ax.set_xlim(extent[0], extent[1])
     ax.set_ylim(extent[2], extent[3])

@@ -8,7 +8,6 @@ This module contains:
 
 Important notes
 ---------------
-- This file suppresses warnings globally via `warnings.filterwarnings("ignore")` (kept as-is).
 - `loss_intf` and `loss_grad` are defined twice in the original source. This is likely accidental,
   but removing one definition would be a code change, so both are kept. The second definition
   overwrites the first at runtime (standard Python behavior).
@@ -28,8 +27,6 @@ import torch
 import torch.autograd as autograd
 import torch.nn as nn
 
-warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore")  # kept exactly as present in original file
 
 
 # -----------------------------------------------------------------------------
@@ -128,23 +125,26 @@ def interpolate_group_geo_inr(
     params = group.get_interpolation_params()  # GeoINRParams-like (expects .beta)
 
     # --- run GeoINR (external function you already use) ---
-    res_inr, iso_values = stratigraphic_ConcatMLP(
-        interface_data=interface_data,
-        orientation_data=orientation_data,
-        meshgrid_data=grid_points,
-        extent=grid.extent,
-        resolution=grid.resolution,
-        in_dim=3,
-        hidden_dim=params.hidden_dim,
-        out_dim=1,
-        n_hidden_layers=params.n_hidden_layers,
-        activation="Softplus",
-        beta=params.beta,
-        concat=False,
-        epochs=params.epochs,
-        lr=params.lr,
-        alpha=params.alpha
-    )
+    # Suppress noisy PyTorch / third-party warnings only for the duration of training.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res_inr, iso_values = stratigraphic_ConcatMLP(
+            interface_data=interface_data,
+            orientation_data=orientation_data,
+            meshgrid_data=grid_points,
+            extent=grid.extent,
+            resolution=grid.resolution,
+            in_dim=3,
+            hidden_dim=params.hidden_dim,
+            out_dim=1,
+            n_hidden_layers=params.n_hidden_layers,
+            activation="Softplus",
+            beta=params.beta,
+            concat=False,
+            epochs=params.epochs,
+            lr=params.lr,
+            alpha=params.alpha
+        )
 
     # `res_inr` -> (nx, ny, nz) without transpose (preserved behavior)
     scalar_field = np.asarray(res_inr).reshape(tuple(grid.resolution)).T

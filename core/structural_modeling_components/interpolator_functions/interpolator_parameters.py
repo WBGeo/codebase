@@ -30,7 +30,7 @@ class InterpolationMethod(str, Enum):
     UNIVERSAL_COKRIGING = "Universal Co-Kriging"
     GEOINR = "GeoINR"
     FINITE_DIFFERENCES = "Finite Differences"
-    PIECEWISE_LINEAR = "Piecewise Linear"
+    # PIECEWISE_LINEAR = "Piecewise Linear"  # excluded pending parameter tuning
     UNIVERSAL_KRIGING = "Universal Kriging"
 
 
@@ -110,11 +110,15 @@ def default_ok_params(ctx: InterpolationContext) -> OKParams:
     # Variogram: gaussian as default for smoother residuals; can be changed to exponential or others if needed
     variogram_model = "gaussian"
 
-    # Range
+    # Range: use the data diagonal as the reference scale so that the range
+    # covers the full data extent even when points are sparse at corners.
+    # (Using only max(sx,sy,sz) would underestimate the range for data spread
+    # across multiple axes, causing a "pillow" artefact with 4-corner data.)
+    data_diagonal = float(np.sqrt(sx ** 2 + sy ** 2 + sz ** 2))
     range_ = np.clip(
         20 * nn_dist,
         0.1 * max(sx, sy, sz),
-        0.8 * max(sx, sy, sz),
+        1.5 * data_diagonal,
     )
 
     sill = 1.0

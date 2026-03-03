@@ -146,8 +146,8 @@ def _majority_domain(domain_map: np.ndarray, mask: np.ndarray) -> int:
 ALL_GROUP_METHODS = [
     m for m in InterpolationMethod
     if m not in {
-        InterpolationMethod.GEOINR,           # non-deterministic
-        InterpolationMethod.ORDINARY_KRIGING, # singular matrix with small cropped fault domains
+        InterpolationMethod.GEOINR,            # non-deterministic
+        InterpolationMethod.ORDINARY_KRIGING,  # singular matrix with small cropped fault domains
     }
 ]
 
@@ -158,7 +158,7 @@ _MIN_INTERIOR_MATCH: dict[InterpolationMethod, float] = {
     InterpolationMethod.FINITE_DIFFERENCES:    0.95,
     InterpolationMethod.UNIVERSAL_COKRIGING:   0.90,
     InterpolationMethod.UNIVERSAL_KRIGING:     0.90,
-    InterpolationMethod.PIECEWISE_LINEAR:      0.80,
+
     InterpolationMethod.ORDINARY_KRIGING:      0.75,
 }
 
@@ -234,7 +234,7 @@ def test_single_vertical_fault_two_layers_with_offset(method, plot_mode):
         )
     except AssertionError:
         if plot_mode["on_fail"]:
-            plot_structural_model_2D(frame)
+            plot_structural_model_2D(frame, title_suffix=method.value)
         raise
 
     # Extra “offset exists” sanity check:

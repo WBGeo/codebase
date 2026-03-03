@@ -40,6 +40,13 @@ class TestComponentSignatures(unittest.TestCase):
         codebase_folder = core.parent.resolve()
         cls.py_files = [".".join(py_file.relative_to(codebase_folder).parts)[:-3] for py_file in
                         components_folder.rglob("*.py") if py_file.stem != "__init__"]
+        # Save original module objects before evicting them, so teardown can restore
+        # them and any already-imported function references remain valid.
+        cls._saved_modules = {
+            py_file: sys.modules[py_file]
+            for py_file in cls.py_files
+            if py_file in sys.modules
+        }
         nodesapi.set_instance(MockBackendInstance())
         # force unload all py-files to allow decorators to actually work
         for py_file in cls.py_files:
@@ -49,11 +56,25 @@ class TestComponentSignatures(unittest.TestCase):
 
     @classmethod
     def teardown_class(cls):
-        # and unload/reset the decorated modules
+        # Unload the mock-reloaded modules and reset the backend instance
         nodesapi.set_instance(None)
         for py_file in cls.py_files:
             if py_file in sys.modules:
                 del sys.modules[py_file]
+        # Restore original module objects so that functions imported by other test
+        # modules during collection continue to resolve their globals correctly.
+        if hasattr(cls, '_saved_modules'):
+            sys.modules.update(cls._saved_modules)
+            # Also restore parent package attributes: importing a submodule sets an
+            # attribute on the parent package object, which `import a.b.c as mod`
+            # uses instead of sys.modules when the parent is already loaded.
+            for full_name, orig_mod in cls._saved_modules.items():
+                parts = full_name.rsplit('.', 1)
+                if len(parts) == 2:
+                    parent_name, child_name = parts
+                    parent = sys.modules.get(parent_name)
+                    if parent is not None:
+                        setattr(parent, child_name, orig_mod)
 
     def test_load_components(self):
         import importlib

@@ -445,13 +445,14 @@ def data_prepration(geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHO
                             filtered.append(filtered_in)
 
 
-                    if len(filtered) > 0:
-                        filtered_array = np.vstack(filtered)
-                        filtered_array = np.unique(filtered_array, axis=0)
+                    if len(filtered) == 0:
+                        # Nothing to remove — keep the surface intact
+                        cleaned_surfaces.append((file, points))
+                        cleaned_normals.append((file, normal_surfaces[file][1]))
+                        continue
 
-                    # Ensure both arrays are numpy arrays
+                    filtered_array = np.unique(np.vstack(filtered), axis=0)
                     points = np.array(points)
-                    filtered_array = np.array(filtered_array)
 
                     ## Create a mask to keep only points NOT in filtered_array
                     mask = ~np.any(np.all(points[:, None, :] == filtered_array, axis=2), axis=1)

@@ -1,8 +1,0 @@
-X,Y,Z,G_x,G_y,G_z,formation
-45,5,68,0.0,0.0,0.01,Schlufstein_sandig_A
-45,5,119,0.0,0.0,0.01,Schlufstein_locker
-45,5,123.5,0.0,0.0,0.01,Schottertragschicht
-0,5,68,0.0,0.0,0.01,Schlufstein_sandig_A
-0,5,119,0.0,0.0,0.01,Schlufstein_locker
-0,5,123.5,0.0,0.0,0.01,Schottertragschicht
-47,5,55,0.70,0,0.4,Stoerung

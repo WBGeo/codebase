@@ -258,6 +258,7 @@ def test_compute_structural_model_orchestrates_steps(monkeypatch):
 
     calls = []
 
+    monkeypatch.setattr(mod, "validate_interpolation_inputs", lambda frame, fault_frame: calls.append("validate"))
     monkeypatch.setattr(mod, "run_interpolation_with_fault_domains", lambda **kw: calls.append("interp"))
     monkeypatch.setattr(mod, "set_scalar_masks_per_domain", lambda fr: calls.append("masks"))
     monkeypatch.setattr(mod, "compute_lithology_block_with_domains", lambda fr: calls.append("lith") or np.zeros(grid.resolution, dtype=int))
@@ -265,7 +266,7 @@ def test_compute_structural_model_orchestrates_steps(monkeypatch):
 
     res = mod.compute_structural_model(frame, extract_meshes=True, verbose=False)
 
-    assert calls == ["interp", "masks", "lith", "meshes"]
+    assert calls == ["validate", "interp", "masks", "lith", "meshes"]
     assert hasattr(res, "structural_frame")
 
 
@@ -771,3 +772,208 @@ def test_extract_meshes_combined_set_when_lith_block_present(monkeypatch):
     combined_verts, combined_faces = elems[0].get_mesh("combined")
     np.testing.assert_array_equal(combined_verts, sentinel_verts)
     np.testing.assert_array_equal(combined_faces, sentinel_faces)
+
+
+# -----------------------------------------------------------------------------
+# validate_interpolation_inputs
+# -----------------------------------------------------------------------------
+
+# Duck-typed helpers used only in this section.
+
+class _FakeFaultElem:
+    def __init__(self, name: str, pairs: set):
+        self.name = name
+        self._pairs = pairs
+
+    def get_domain_pairs(self):
+        return self._pairs
+
+
+class _FakeFaultFrameWithFaults:
+    """Fault frame stub that exposes both domain_map and fault_elements."""
+    def __init__(self, domain_map: np.ndarray, fault_elements: list):
+        self.domain_map = domain_map
+        self.fault_elements = fault_elements
+
+
+def _make_validate_frame(
+        grid: RegularGrid,
+        method: InterpolationMethod,
+        *,
+        n_elements: int = 2,
+        has_orientations: bool = True,
+) -> StructuralFrame:
+    """Minimal frame wired up for validate_interpolation_inputs."""
+    elements = [StructuralElement(name=f"e{i}") for i in range(n_elements)]
+    g = StructuralGroup(name="G1", structural_elements=elements)
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+
+    sp_rows = max(n_elements, 1)
+    formations = [e.name for e in elements] if n_elements > 0 else ["orphan"]
+    frame._surface_points = pd.DataFrame({
+        "X": np.linspace(0.5, 1.5, sp_rows),
+        "Y": [0.5] * sp_rows,
+        "Z": [0.5] * sp_rows,
+        "formation": formations,
+    })
+
+    if has_orientations and n_elements > 0:
+        frame._orientations = pd.DataFrame({
+            "X": [1.0], "Y": [0.5], "Z": [0.5],
+            "G_x": [0.0], "G_y": [0.0], "G_z": [1.0],
+            "formation": [elements[0].name],
+        })
+    else:
+        frame._orientations = None
+
+    # update_interpolation_context requires ≥2 points; provide dummy points when needed
+    ctx_pts = np.array([[0.5, 0.5, 0.5], [1.5, 0.5, 0.5]])
+    g.update_interpolation_context(ctx_pts)
+    g.set_interpolation_method(method)
+    g._scalar_field = np.zeros(grid.resolution, dtype=float)
+    return frame
+
+
+def test_validate_passes_for_valid_rbf_group():
+    """RBF with 2 elements and surface points — no fault frame — should not raise."""
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, has_orientations=False)
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_passes_for_valid_fdi_group():
+    """FDI with 1+ elements, surface points, and orientations should not raise."""
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.FINITE_DIFFERENCES, has_orientations=True)
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_fails_when_orientations_required_but_absent():
+    """FDI/PLI/UCK/GeoINR group without any orientation data must raise."""
+    grid = make_grid((4, 3, 2))
+    for method in (
+        InterpolationMethod.FINITE_DIFFERENCES,
+        # InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
+        InterpolationMethod.UNIVERSAL_COKRIGING,
+    ):
+        frame = _make_validate_frame(grid, method, has_orientations=False)
+        with pytest.raises(ValueError, match="orientation"):
+            mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+
+def test_validate_fails_for_zero_elements():
+    """A group with zero structural elements must raise regardless of interpolator."""
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, n_elements=0)
+    with pytest.raises(ValueError, match="structural element"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+
+def test_validate_collects_multiple_violations():
+    """All violations across groups are reported together in a single ValueError."""
+    grid = make_grid((4, 3, 2))
+
+    _ctx = np.array([[0.5, 0.5, 0.5], [1.5, 0.5, 0.5]])  # ≥2 points required
+
+    # Group 1: FDI, no orientations
+    e1 = StructuralElement(name="a")
+    g1 = StructuralGroup(name="G1", structural_elements=[e1])
+    g1.update_interpolation_context(_ctx)
+    g1.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
+    g1._scalar_field = np.zeros(grid.resolution, dtype=float)
+
+    # Group 2: FDI, no orientations (PLI excluded pending parameter tuning)
+    e2 = StructuralElement(name="b")
+    g2 = StructuralGroup(name="G2", structural_elements=[e2])
+    g2.update_interpolation_context(_ctx)
+    g2.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
+    g2._scalar_field = np.zeros(grid.resolution, dtype=float)
+
+    frame = StructuralFrame(structural_groups=[g1, g2])
+    frame._grid = grid
+    frame._surface_points = pd.DataFrame({
+        "X": [0.5, 1.5], "Y": [0.5, 0.5], "Z": [0.5, 0.5],
+        "formation": ["a", "b"],
+    })
+    frame._orientations = None
+
+    with pytest.raises(ValueError) as exc_info:
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    msg = str(exc_info.value)
+    assert "2 issue" in msg
+    assert "G1" in msg
+    assert "G2" in msg
+
+
+def test_validate_fails_when_orientations_absent_in_active_fault_domain():
+    """
+    FDI group whose orientations exist globally but all land in the wrong fault
+    domain component should fail validation (domain-aware check).
+    """
+    # 4×1×1 grid: voxels 0,1 → domain 0; voxels 2,3 → domain 1
+    grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
+    dom_map = np.array([0, 0, 1, 1]).reshape(4, 1, 1)
+
+    e = StructuralElement(name="layer")
+    g = StructuralGroup(name="G", structural_elements=[e])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+
+    # Surface points in domain 1 (x=2.5 and x=3.5)
+    frame._surface_points = pd.DataFrame({
+        "X": [2.5, 3.5], "Y": [0.5, 0.5], "Z": [0.5, 0.5], "formation": ["layer", "layer"],
+    })
+    # Orientation in domain 0 (x=0.5) — wrong domain
+    frame._orientations = pd.DataFrame({
+        "X": [0.5], "Y": [0.5], "Z": [0.5],
+        "G_x": [0.0], "G_y": [0.0], "G_z": [1.0],
+        "formation": ["layer"],
+    })
+
+    g.update_interpolation_context(np.array([[2.5, 0.5, 0.5], [3.5, 0.5, 0.5]]))
+    g.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
+    g._scalar_field = np.zeros(grid.resolution, dtype=float)
+
+    # Fault active for this group (youngest_idx=0, group_idx=0 → active → domains stay separate)
+    fault_elem = _FakeFaultElem("F1", {(0, 1)})
+    fake_ff = _FakeFaultFrameWithFaults(dom_map, [fault_elem])
+    frame._fault_activity = {"F1": 0}
+
+    with pytest.raises(ValueError, match="orientation"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)
+
+
+def test_validate_passes_when_orientations_present_in_correct_domain():
+    """
+    Same two-domain setup as above, but orientations ARE in the same domain as
+    surface points — validation should pass.
+    """
+    grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
+    dom_map = np.array([0, 0, 1, 1]).reshape(4, 1, 1)
+
+    e = StructuralElement(name="layer")
+    g = StructuralGroup(name="G", structural_elements=[e])
+    frame = StructuralFrame(structural_groups=[g])
+    frame._grid = grid
+
+    frame._surface_points = pd.DataFrame({
+        "X": [2.5, 3.5], "Y": [0.5, 0.5], "Z": [0.5, 0.5], "formation": ["layer", "layer"],
+    })
+    # Orientation also in domain 1 (x=3.5) — correct domain
+    frame._orientations = pd.DataFrame({
+        "X": [3.5], "Y": [0.5], "Z": [0.5],
+        "G_x": [0.0], "G_y": [0.0], "G_z": [1.0],
+        "formation": ["layer"],
+    })
+
+    g.update_interpolation_context(np.array([[2.5, 0.5, 0.5], [3.5, 0.5, 0.5]]))
+    g.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
+    g._scalar_field = np.zeros(grid.resolution, dtype=float)
+
+    fault_elem = _FakeFaultElem("F1", {(0, 1)})
+    fake_ff = _FakeFaultFrameWithFaults(dom_map, [fault_elem])
+    frame._fault_activity = {"F1": 0}
+
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)  # must not raise
