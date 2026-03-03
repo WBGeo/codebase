@@ -99,7 +99,7 @@ class DomainMapProvider(Protocol):
 # Methods that require orientation data to produce any result.
 _INTERPOLATORS_REQUIRING_ORIENTATIONS: frozenset[InterpolationMethod] = frozenset({
     InterpolationMethod.FINITE_DIFFERENCES,
-    InterpolationMethod.PIECEWISE_LINEAR,
+    # InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
     InterpolationMethod.UNIVERSAL_COKRIGING,
     InterpolationMethod.GEOINR,
 })
@@ -110,7 +110,7 @@ interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
     InterpolationMethod.UNIVERSAL_COKRIGING: interpolate_group_universal_cokriging,
     InterpolationMethod.GEOINR: interpolate_group_geo_inr,
     InterpolationMethod.FINITE_DIFFERENCES: interpolate_group_finite_differences,
-    InterpolationMethod.PIECEWISE_LINEAR: interpolate_group_piecewise_linear,
+    # InterpolationMethod.PIECEWISE_LINEAR: interpolate_group_piecewise_linear,  # excluded pending parameter tuning
     InterpolationMethod.UNIVERSAL_KRIGING: interpolate_group_universal_kriging,
 }
 

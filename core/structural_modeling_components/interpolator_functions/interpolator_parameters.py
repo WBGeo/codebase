@@ -30,7 +30,7 @@ class InterpolationMethod(str, Enum):
     UNIVERSAL_COKRIGING = "Universal Co-Kriging"
     GEOINR = "GeoINR"
     FINITE_DIFFERENCES = "Finite Differences"
-    PIECEWISE_LINEAR = "Piecewise Linear"
+    # PIECEWISE_LINEAR = "Piecewise Linear"  # excluded pending parameter tuning
     UNIVERSAL_KRIGING = "Universal Kriging"
 
 

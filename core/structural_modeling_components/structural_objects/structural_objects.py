@@ -266,8 +266,8 @@ class StructuralGroup(BaseModel):
         if method == InterpolationMethod.FINITE_DIFFERENCES:
             return default_fdi_params(ctx)
 
-        if method == InterpolationMethod.PIECEWISE_LINEAR:
-            return default_pli_params(ctx)
+        # if method == InterpolationMethod.PIECEWISE_LINEAR:  # excluded pending parameter tuning
+        #     return default_pli_params(ctx)
 
         if method == InterpolationMethod.UNIVERSAL_KRIGING:
             return default_uk_params(ctx)

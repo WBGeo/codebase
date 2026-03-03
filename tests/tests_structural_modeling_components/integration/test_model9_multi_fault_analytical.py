@@ -198,7 +198,6 @@ ALL_METHODS = [
     if m not in {
         InterpolationMethod.GEOINR,            # non-deterministic
         InterpolationMethod.ORDINARY_KRIGING,  # singular matrix risk with small cropped domains
-        InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
     }
 ]
 

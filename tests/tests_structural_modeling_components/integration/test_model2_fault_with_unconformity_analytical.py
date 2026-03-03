@@ -179,7 +179,6 @@ ALL_METHODS = [
     m for m in InterpolationMethod
     if m not in {
         InterpolationMethod.GEOINR,            # non-deterministic
-        InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
     }
 ]
 

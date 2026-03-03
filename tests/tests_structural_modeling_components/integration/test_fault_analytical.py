@@ -148,7 +148,6 @@ ALL_GROUP_METHODS = [
     if m not in {
         InterpolationMethod.GEOINR,            # non-deterministic
         InterpolationMethod.ORDINARY_KRIGING,  # singular matrix with small cropped fault domains
-        InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
     }
 ]
 
