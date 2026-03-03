@@ -4,6 +4,9 @@ import os
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
+from core.loading_components.geo_input_data import load_mapping
+
+
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D)
@@ -28,11 +31,7 @@ grid = RegularGrid(
 
 # Create input data for the structural elements
 data_elements = InputData_StructuralElements(name='Model_6',
-                                             mapping_object={
-                                              "Shallow_Strat": ('shallow_rock3', 'shallow_rock2', 'shallow_rock1'),
-                                              "Medium_Strat": ('medium_rock3', 'medium_rock2', 'medium_rock1'),
-                                              "Deep_Strat": ('deep_rock4', 'deep_rock3', 'deep_rock2', 'deep_rock1')
-                                             },
+                                             mapping_object=load_mapping(cwd + "/examples/input_data/model6_mapping.json"),
                                              surface_points=pd.read_csv(
                                                  cwd + "/examples/input_data/model6_surface_points_df.csv"),
                                              orientations=pd.read_csv(

@@ -6,7 +6,7 @@ import pyvista
 import typing
 import numpy as np
 from pydantic.dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
 import pandas as pd
 from typing import TypeVar, Dict, List
@@ -64,7 +64,7 @@ class InputData_StructuralElements:
             orientations (Optional[pd.DataFrame]): DataFrame containing orientations.
     """
     name: str
-    mapping_object: Dict
+    mapping_object: Dict[str, Tuple[str, ...]]
     surface_points: PandasDataFrame
     orientations: Optional[PandasDataFrame] = None
 
