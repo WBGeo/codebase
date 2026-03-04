@@ -276,6 +276,7 @@ class GeoINRParams(BaseModel):
         ),
     )
 
+    # TODO: Special parameters excluded for now to keep the default configuration simple and stable
     # activation: GeoINRActivation = Field(
     #     "Softplus",
     #     description=(
@@ -387,6 +388,7 @@ def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
     # Mild regularization for larger problems
     weight_decay = 0.0 if n < 3000 else 1e-4
 
+    # TODO: Special parameters excluded for now to keep the default configuration simple and stable
     return GeoINRParams(
         beta=beta,
         alpha=alpha,
