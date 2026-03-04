@@ -59,15 +59,16 @@ RemoteMappingFileType = typing.Annotated[
                            controlled='RemoteFile|endswith=mapping.json')]
 
 
-@wbgeo_component(description='load_mapping',
-                 title='load_mapping',  # The title shown in the GUI
-                 color='#8cb369',  # the color of the components
-                 border_color='#000000',  # and its border color
-                 group='Inputs',
-                 identifier='wbgeo::load_mapping',  # a unique identifier
-                 return_name='grid',  # the name for the returned-port
-                 is_object_type=True,
-                 )  # inputs are handled via the method signature
+# the mapping is not provided as a interface-type? Should we do so?
+# @wbgeo_component(description='load_mapping',
+#                  title='load_mapping',  # The title shown in the GUI
+#                  color='#8cb369',  # the color of the components
+#                  border_color='#000000',  # and its border color
+#                  group='Inputs',
+#                  identifier='wbgeo::load_mapping',  # a unique identifier
+#                  return_name='grid',  # the name for the returned-port
+#                  is_object_type=True,
+#                  )  # inputs are handled via the method signature
 def load_mapping(path: RemoteMappingFileType):
   with open(path, "r") as fd:
     return {k: tuple(v) for k, v in json.load(fd).items()}
