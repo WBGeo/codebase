@@ -54,7 +54,7 @@ def adjust_z_values(all_points_array, n_gx, n_gy, z_threshold=0.2, tolerance=0.5
 def create_hexahedral_elements_with_nodes(adjusted_array, n_gx, n_gy):
     """
     Creates hexahedral elements and renumbers the nodes for consistency.
-    Saves both elements and nodes data.
+    Saves both elements and nodes input_data.
 
     Args:
         - adjusted_array (np.array): Array of points with shape (n_layers, 3 * n_gx * n_gy + 1).
@@ -107,7 +107,7 @@ def create_hexahedral_elements_with_nodes(adjusted_array, n_gx, n_gy):
                         node_surface_id = adjusted_array[layer_id, within_layer_index + 3 * num_nodes_per_layer]
                         # Get always the surface_id of the nodes in the lowest layer
                         elem_surf = adjusted_array[layer_id - 1, within_layer_index + 3 * num_nodes_per_layer]
-                        # Append node data and map old to new
+                        # Append node input_data and map old to new
                         nodes.append([new_node_id, x, y, z, node_surface_id])
                         node_mapping[old_index] = new_node_id
                         new_node_id += 1

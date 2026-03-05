@@ -54,14 +54,14 @@ def create_surfaces_with_grids_for_bottom_and_top(min_x, max_x, min_y, max_y, mi
 
 def read_refinement_file(file_path, expected_surfaces):
     """
-    Reads refinement data from a file and checks if the number of data entries matches the expected number of surfaces + 1.
+    Reads refinement input_data from a file and checks if the number of input_data entries matches the expected number of surfaces + 1.
 
     Args:
-        - file_path (str): The path to the file containing the data.
+        - file_path (str): The path to the file containing the input_data.
         - expected_surfaces (int): The expected number of surfaces.
 
     Returns:
-        List of refinement data if valid, else prints an error.
+        List of refinement input_data if valid, else prints an error.
     """
     if not os.path.exists(file_path):
         print("Error: Please provide a refinement file that contains the number of divisions between surfaces.")
@@ -71,12 +71,12 @@ def read_refinement_file(file_path, expected_surfaces):
         with open(file_path, 'r') as file:
             data = file.readlines()
 
-        # Check if the number of data entries is correct
+        # Check if the number of input_data entries is correct
         if len(data) != expected_surfaces + 1:
-            print(f"Error: Expected {expected_surfaces + 1} data entries, but got {len(data)}.")
+            print(f"Error: Expected {expected_surfaces + 1} input_data entries, but got {len(data)}.")
             return None
 
-        # Convert the data to a list (assuming each line represents a surface's data)
+        # Convert the input_data to a list (assuming each line represents a surface's input_data)
         refinement_data = [int(line.strip()) for line in data]
 
         return refinement_data
@@ -89,13 +89,13 @@ def read_refinement_file(file_path, expected_surfaces):
 
 def create_intermediate_layers(bottom_top_surfaces, output_array, refinement_data, n_gx, n_gy):
     """
-    Creates intermediate layers of points between the bottom and top surfaces based on refinement data.
+    Creates intermediate layers of points between the bottom and top surfaces based on refinement input_data.
 
     Args:
         - bottom_top_surfaces (np.array): Array containing two rows. The first row is the bottom surface, and
                                         the second row is the top surface.
         - output_array (np.array): Array of shape (n_surfaces, 3 * n_gx * n_gy), containing multiple surfaces.
-        - refinement_data (list): List of refinement data to scale z-differences between layers.
+        - refinement_data (list): List of refinement input_data to scale z-differences between layers.
         - n_gx (int): Grid size in x direction.
         - n_gy (int): Grid size in y direction.
 
@@ -111,10 +111,10 @@ def create_intermediate_layers(bottom_top_surfaces, output_array, refinement_dat
 
     # Check the number of refinement_data is correctly given
     if len(refinement_data) < (len(output_array)+1):
-        print("\033[91mError: Number of refinement data should be number of surfaces + 1. You have given fewer numbers.\033[0m")
+        print("\033[91mError: Number of refinement input_data should be number of surfaces + 1. You have given fewer numbers.\033[0m")
         sys.exit(1)
     elif len(refinement_data) > (len(output_array)+1):
-        print("\033[91mError: Number of refinement data should be number of surfaces + 1. You have given more numbers.\033[0m")
+        print("\033[91mError: Number of refinement input_data should be number of surfaces + 1. You have given more numbers.\033[0m")
         sys.exit(1)
 
     # Initialize the updated output array. The size is (sum of number of refinements +number of layers + 2(bottom+top)* 4*n_gx*n_gy

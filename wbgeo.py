@@ -2,16 +2,7 @@ from typing import Optional
 
 from py_api_wbgeo import apitypes
 
-from core.object_components import InputData, GeomodelResults
-from core.loading_components.geo_input_data import geo_input_data_fix
-from core.interpolator_components.ordinary_kriging import ordinary_kriging_interpolator
-from core.interpolator_components.universal_cokriging import universal_cokriging_interpolator
-from core.interpolator_components.rbf_interpolation import rbf_interpolator
-# from core.interpolator_components.geo_inr import geo_inr_interpolator # removed until updated
-# from core.interpolator_components.loopstructural_old import loop_structural_interpolator # removed until updated
-from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-from core.liquidEarth.le_push_data import push_geosolution_to_le
+from core.object_components import InputData_StructuralElements, StructuralModelResults
 
 ####################################################################################################
 # This file registers the various core components to be used with the visual DSL
@@ -48,24 +39,24 @@ PMType: apitypes.ScriptType = {"id": "PMTypePlaceHolder",
                                "real_type": BoolDataType,
                                "name": "ProcessSimResult", "color": 'blue'}
 
-InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData,
-                                      "name": 'Input data for a geological model', "color": 'orange'}
+InputDataType: apitypes.ScriptType = {"id": "InputData", "real_type": InputData_StructuralElements,
+                                      "name": 'Input input_data for a geological model', "color": 'orange'}
 
-GeomodelResultsType: apitypes.ScriptType = {"id": "GeomodelResults", "real_type": GeomodelResults, "name": 'Geo Result',
+GeomodelResultsType: apitypes.ScriptType = {"id": "StructuralModelResults", "real_type": StructuralModelResults, "name": 'Geo Result',
                                             "color": '#f4a259'}
 
 
 #
 # Define some pre-conditions (guards)
 # Return None if they match, otherwise return a human readable error text
-def does_not_have_faults(input: InputData) -> Optional[str]:
+def does_not_have_faults(input: InputData_StructuralElements) -> Optional[str]:
     if input.faults is not None:
         # raising an error (or returning a string) gives the information about fails
         return "Faults are not supported"
     return None
 
 
-def does_have_orientations(input: InputData) -> Optional[str]:
+def does_have_orientations(input: InputData_StructuralElements) -> Optional[str]:
     if input.orientations is None:
         # raising an error (or returning a string) gives the information about fails
         return "Orientations are required"
@@ -73,8 +64,6 @@ def does_have_orientations(input: InputData) -> Optional[str]:
 
 
 # Register the various components
-
-from py_api_wbgeo import nodesapi
 
 
 # The following is to be replaced with the @wbgeo_type and @wbgeo_component annotations
@@ -98,11 +87,11 @@ from py_api_wbgeo import nodesapi
 #                                    }, {
 #                                        'param': 'surface_points_file',
 #                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-#                                        'default': 'model12_surface_points_df.csv',  # a default value
+#                                        'default': 'model5_surface_points_df.csv',  # a default value
 #                                    }, {
 #                                        'param': 'orientations_file',
 #                                        'type': CSVFileDataType,  # the ports type (as in ScriptType)
-#                                        'default': 'model12_orientations_df.csv',  # a default value
+#                                        'default': 'model5_orientations_df.csv',  # a default value
 #                                    }, {
 #                                        'param': 'mapping_file',
 #                                        'type': JSONFileDataType,  # the ports type (as in ScriptType)
@@ -120,7 +109,7 @@ from py_api_wbgeo import nodesapi
 #                                group='Inputs',
 #                                # the method which actually performs the calculation
 #                                outputs=[{  # the output ports
-#                                    'param': 'data', 'type': InputDataType,
+#                                    'param': 'input_data', 'type': InputDataType,
 #                                }])
 
 # nodesapi.register_script_block(identifier='loop_structural_interpolator',  # unique identifier
@@ -133,7 +122,7 @@ from py_api_wbgeo import nodesapi
 #                                    },
 #                                ],
 #                                execute=nodesapi.create_geo_execute(loop_structural_interpolator),
-#                                description='Compute a model based on input data using LoopStructural interpolation',
+#                                description='Compute a model based on input input_data using LoopStructural interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -157,7 +146,7 @@ from py_api_wbgeo import nodesapi
 #                                    }
 #                                ],
 #                                execute=nodesapi.create_geo_execute(geo_inr_interpolator),
-#                                description='Compute a model based on input data using GeoINR interpolation',
+#                                description='Compute a model based on input input_data using GeoINR interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -196,7 +185,7 @@ from py_api_wbgeo import nodesapi
 #                                    }
 #                                ],
 #                                execute=nodesapi.create_geo_execute(rbf_interpolator),
-#                                description='Compute a model based on input data using RBF interpolation',
+#                                description='Compute a model based on input input_data using RBF interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -247,7 +236,7 @@ from py_api_wbgeo import nodesapi
 #
 #                                ],
 #                                execute=nodesapi.create_geo_execute(ordinary_kriging_interpolator),
-#                                description='Compute a model based on input data using kriging interpolation',
+#                                description='Compute a model based on input input_data using kriging interpolation',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',
@@ -265,7 +254,7 @@ from py_api_wbgeo import nodesapi
 #                                        'data_requirements': [does_have_orientations]
 #                                    }],
 #                                execute=nodesapi.create_geo_execute(universal_cokriging_interpolator),
-#                                description='Compute a model based on input data using universal co-kriging interpolation (gempy)',
+#                                description='Compute a model based on input input_data using universal co-kriging interpolation (gempy)',
 #                                color='#f4a259',
 #                                border_color='#000000',
 #                                group='Interpolation',

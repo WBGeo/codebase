@@ -12,13 +12,19 @@ from scipy.interpolate import Rbf
 from sklearn.cluster import HDBSCAN
 
 
-def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
+def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5, extent=None):
     """
     Sort the surface vertices into a grid and interpolate the z values
     based on the sorted grid.
 
     Args:
         cleaned_surfaces (list): List of tuples where the second element contains surface points.
+        buffer_dist (float): Extra margin added beyond the data extent in x/y.
+        smooth (float): RBF smoothing factor.
+        extent (tuple, optional): Model bounding box (xmin, xmax, ymin, ymax, zmin, zmax).
+            When provided the surface grid is guaranteed to cover at least this XY footprint
+            (plus a small margin) so that the B-spline surfaces fully intersect the GMSH
+            bounding box and produce separate volumes after fragmentation.
 
     Returns:
         interpolated_surfaces: A list of arrays containing interpolated grids for each surface.
@@ -34,13 +40,17 @@ def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
         y_cleaned = df['y'].values
         z_cleaned = df['z'].values
 
-        #x_min, x_max = np.min(x_cleaned), np.max(x_cleaned)
-        #y_min, y_max = np.min(y_cleaned), np.max(y_cleaned)
-        # Extend grid bounds by 20 units in all directions
-
-
         x_min, x_max = np.min(x_cleaned) - buffer_dist, np.max(x_cleaned) + buffer_dist
         y_min, y_max = np.min(y_cleaned) - buffer_dist, np.max(y_cleaned) + buffer_dist
+
+        # If the model extent is provided, ensure the surface grid covers the full XY
+        # footprint of the model (plus a small margin so the B-spline crosses the box walls).
+        if extent is not None:
+            margin = max(extent[1] - extent[0], extent[3] - extent[2]) * 0.02
+            x_min = min(x_min, extent[0] - margin)
+            x_max = max(x_max, extent[1] + margin)
+            y_min = min(y_min, extent[2] - margin)
+            y_max = max(y_max, extent[3] + margin)
 
 
         # Ensure grid size constraints
@@ -53,6 +63,11 @@ def create_surface_grid(cleaned_surfaces, buffer_dist = 0, smooth= 1e-5):
           n_gx = max_n_gx
         if n_gy > max_n_gy:
           n_gy = max_n_gy
+        # OpenCASCADE B-splines require at least degree+1 = 4 control points in each
+        # direction. Clusters from HDBSCAN can produce surfaces with very few unique
+        # x or y values (e.g. thin slivers), so enforce a minimum of 4.
+        n_gx = max(n_gx, 4)
+        n_gy = max(n_gy, 4)
         print(n_gx,n_gy,'n_gx, n_gy')
 
         # Create grid
@@ -387,8 +402,8 @@ def fragment_surfaces(surfaces, extent, ref_surface_indices, wells, extra_planes
         gmsh.model.mesh.removeDuplicateNodes()
         gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
         gmsh.model.mesh.generate(2)
-        mesh_file = "mesh.msh"
-        gmsh.write(mesh_file)
+        # mesh_file = "mesh.msh"
+        # gmsh.write(mesh_file)
         gmsh.model.occ.synchronize()
         ######## gmsh.fltk.initialize()
         ######## while gmsh.fltk.isAvailable():

@@ -1,15 +1,13 @@
 import pandas as pd
-import glob
-import pyvista as pv
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import colorcet as cc
-
-from core.object_components import GeomodelResults
-from core.utility import surface_mesh_gradients
+from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+from core.object_components import StructuralModelResults
+from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
 from sklearn.cluster import HDBSCAN
-from scipy.spatial import cKDTree, KDTree
+from scipy.spatial import cKDTree
 
 
 def get_normals(near_points, points, normal_vec):
@@ -274,7 +272,7 @@ def plot_surfaces_with_extrusions(cleaned_surfaces, extruded_points, intersectio
 def data_prepration(geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHOLD = 60, EXTRUSION_FACTOR = 100, z_threshold = 10):
 
     """
-    Prepares geological surface data by cleaning overlapping points, identifying faults,
+    Prepares geological surface input_data by cleaning overlapping points, identifying faults,
     clustering remaining surfaces, and computing extrusion based on proximity to reference (fault) surfaces.
 
     Args:
@@ -290,58 +288,42 @@ def data_prepration(geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHO
         grid_litho (np.ndarray): Structured lithology grid that represents the geological model domain — used for assigning physical groups in simulations or meshing.
     """
 
-    # Fault information
-    faults= geomodel_result.faults
-    # Mapping rocks in different layers
-    mapping=geomodel_result.mapping_object
-    # Ensure all values are tuples
-    # todo: Why do we do this here instead of define it in the interface?
-    # x: [("a", "b")], ... was a possible result with the old code
-    maping = {
-      k: v if isinstance(v, tuple) else ( tuple(v) if isinstance(v, list) else (v, ) ) for k, v in mapping.items()
-    }
-    # Getting fault information for each layer and sublayers
-    fault_dict = {}
-    for fault_status, key in zip(faults, maping):
-        for component in maping[key]:
-            fault_dict[component] = fault_status
+    frame = geomodel_result.structural_frame
+    fault_frame = frame.fault_frame
+    has_faults = fault_frame is not None and len(fault_frame.fault_elements) > 0
 
-    result = list(fault_dict.values())
-    print(result)
-    # If there is any fault in the model: use interpolated points and their normals
-    if any(faults):
-        points_list, vectors_list = surface_mesh_gradients.get_surface_mesh_gradients(geomodel_result, mesh_type="unmasked")
+    # Build grid_litho from the evaluated lithology block and grid coordinates.
+    # grid_coordinates is (N, 3); lith_block is (nx, ny, nz) — flatten to (N,).
+    grid_litho = pd.concat([
+        pd.DataFrame(frame.grid.grid_coordinates, columns=["x", "y", "z"]),
+        pd.DataFrame(frame.lith_block.flatten(), columns=["lithology"]),
+    ], axis=1)
 
-        # Save the surfaces points of each surface stored in points_list
-        surfaces = [(i, points) for i, points in enumerate(points_list)]
-        # Save the normal vectors in vectors_list
-        normal_surfaces = [(i, norms) for i, norms in enumerate(vectors_list)]
+    # If there are faults: use interpolated surface points and their normals.
+    # Geological surfaces come first (result=False), fault surfaces last (result=True).
+    if has_faults:
+        # get_surface_mesh_gradients returns two dicts: geological and fault elements,
+        # each mapping element_name → {"points": (N,3), "vectors": (N,3)}.
+        geo_grads, fault_grads = surface_mesh_gradients.get_surface_mesh_gradients(
+            geomodel_result, mesh_type="unmasked"
+        )
 
-        # Import geological grid, containing coordinates of grids
-        grid_file=geomodel_result.grid
-        # Import lithological data related to each grid points
-        lith_block_file=geomodel_result.lith_block
-        # Merge grids and their lithological data
+        all_entries = list(geo_grads.values()) + list(fault_grads.values())
+        surfaces = [(i, entry["points"]) for i, entry in enumerate(all_entries)]
+        normal_surfaces = [(i, entry["vectors"]) for i, entry in enumerate(all_entries)]
+        result = [False] * len(geo_grads) + [True] * len(fault_grads)
+        print(result)
 
-        grid_litho = pd.concat([pd.DataFrame(grid_file), pd.DataFrame(lith_block_file)], axis=1)
-
-
-    # if there is no fault: use the surface vertices
+    # If there are no faults: collect unmasked surface vertices from structural elements.
     else:
-        # get all surfaces
-        surfaces = geomodel_result.surface_meshes_vertices[1]
-        surfaces = [(i, surface) for i, surface in enumerate(surfaces)]
-
-        # Import geological grid, containing coordinates of grids
-        grid_file=geomodel_result.grid
-        # Import lithological data related to each grid points
-        lith_block_file=geomodel_result.lith_block
-        # Convert to DataFrame
-        grid_df = pd.DataFrame(grid_file, columns=["x", "y", "z"])
-        lith_df = pd.DataFrame(lith_block_file, columns=["lithology"])
-
-        # Merge them
-        grid_litho = pd.concat([grid_df, lith_df], axis=1)
+        raw_surfaces = []
+        for group in frame.structural_groups:
+            for elem in group.structural_elements:
+                verts, _ = elem.get_mesh("unmasked")
+                if verts is not None and len(verts) > 0:
+                    raw_surfaces.append(verts)
+        surfaces = [(i, surface) for i, surface in enumerate(raw_surfaces)]
+        result = [False] * len(surfaces)
 
     # Save fault surfaces in ref_surfaces
     ref_surfaces = [surfaces[i] for i, is_fault in enumerate(result) if is_fault]
@@ -463,13 +445,14 @@ def data_prepration(geomodel_result, DISTANCE_THRESHOLD = 50, PROJECTION_THRESHO
                             filtered.append(filtered_in)
 
 
-                    if len(filtered) > 0:
-                        filtered_array = np.vstack(filtered)
-                        filtered_array = np.unique(filtered_array, axis=0)
+                    if len(filtered) == 0:
+                        # Nothing to remove — keep the surface intact
+                        cleaned_surfaces.append((file, points))
+                        cleaned_normals.append((file, normal_surfaces[file][1]))
+                        continue
 
-                    # Ensure both arrays are numpy arrays
+                    filtered_array = np.unique(np.vstack(filtered), axis=0)
                     points = np.array(points)
-                    filtered_array = np.array(filtered_array)
 
                     ## Create a mask to keep only points NOT in filtered_array
                     mask = ~np.any(np.all(points[:, None, :] == filtered_array, axis=2), axis=1)

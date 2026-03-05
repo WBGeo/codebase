@@ -1,14 +1,12 @@
 import collections
-import io
 import os
 
 import pydantic
 import pyvista
 import typing
 import numpy as np
-#from py_api_wbgeo.nodesapi import wbgeo_type, AnnotatedScriptType
 from pydantic.dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
 import pandas as pd
 from typing import TypeVar, Dict, List
@@ -31,52 +29,44 @@ from core.meshing_components.mesh_format.ANSYS.Ansys_format import AnsysInputs
 
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, \
-  PlainValidator, Field, ConfigDict
+from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator, Field, ConfigDict
 
+from core.structural_modeling_components.structural_objects.structural_objects import StructuralFrame, FaultFrame
 
 # Pydantic adapter for panda DataFrame
 def df_serializer(df: pd.DataFrame) -> list[dict]:
-  return df.to_dict(orient="records")
+    return df.to_dict(orient="records")
 
 
 def df_validator(value) -> pd.DataFrame:
-  if isinstance(value, pd.DataFrame):
-    return value
-  elif isinstance(value, list):
-    return pd.DataFrame(value)
-  raise TypeError("Expected a pandas DataFrame or a list of dictionaries.")
+    if isinstance(value, pd.DataFrame):
+        return value
+    elif isinstance(value, list):
+        return pd.DataFrame(value)
+    raise TypeError("Expected a pandas DataFrame or a list of dictionaries.")
 
 
 PandasDataFrame = typing.Annotated[
     pd.DataFrame, PlainSerializer(df_serializer), BeforeValidator(df_validator)]
 
-
-@wbgeo_type(name='Input data for a geological model', color='orange', identifier='InputData')
+@wbgeo_type(name='Input input_data for the rock elements of a structural geological model',
+            color='orange',
+            identifier='InputData_StructuralElements')
 @dataclass(config={"arbitrary_types_allowed": True})
-class InputData:
+class InputData_StructuralElements:
     """
-    A class to represent the input data for a geological model.
+    A class to represent the input input_data for a geological model.
 
         Attributes:
             name (str): The name of the model.
-            extent (np.ndarray): The extent of the model.
-            resolution (np.ndarray): The resolution of the model.
             mapping_object (dict): Mapping of structural groups to structural elements.
             surface_points (pd.DataFrame): DataFrame containing surface points.
             orientations (Optional[pd.DataFrame]): DataFrame containing orientations.
-            mapping_object (dict): Mapping of structural groups to structural elements.
-            faults (Optional[List[bool]]): List of groups that are faults.
-            fault_relations (Optional[np.ndarray]): Array of fault relations.
     """
     name: str
-    extent: NpNDArrayInt64
-    resolution: NpNDArrayInt64
-    mapping_object: Dict
+    mapping_object: Dict[str, Tuple[str, ...]]
     surface_points: PandasDataFrame
     orientations: Optional[PandasDataFrame] = None
-    faults: Optional[List[bool]] = None
-    fault_relations: Optional[NpNDArrayInt64] = None
 
     def __post_init__(self):
         # reorder surface_points DataFrame by formation column for colormaps
@@ -87,42 +77,94 @@ class InputData:
         self.surface_points = self.surface_points.sort_values(by='formation').reset_index(drop=True)
         self.surface_points['formation'] = self.surface_points['formation'].astype(str)
 
+        # Remove duplicate surface points (same X, Y, Z, formation)
+        _before = len(self.surface_points)
+        self.surface_points = self.surface_points.drop_duplicates(
+            subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+        _removed = _before - len(self.surface_points)
+        if _removed > 0:
+            print(f"[InputData_StructuralElements '{self.name}'] "
+                  f"Removed {_removed} duplicate surface point(s) (identical X, Y, Z, formation).")
 
-@wbgeo_type(name='Result os structural geological model', color='blue', identifier='GeomodelResults')
+        # Remove duplicate orientations (same X, Y, Z, formation)
+        if self.orientations is not None and not self.orientations.empty:
+            _before = len(self.orientations)
+            self.orientations = self.orientations.drop_duplicates(
+                subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+            _removed = _before - len(self.orientations)
+            if _removed > 0:
+                print(f"[InputData_StructuralElements '{self.name}'] "
+                      f"Removed {_removed} duplicate orientation(s) (identical X, Y, Z, formation).")
+
+
+@wbgeo_type(name='Input input_data for the fault elements of a structural geological model',
+            color='orange',
+            identifier='InputData_FaultElements')
 @dataclass(config={"arbitrary_types_allowed": True})
-class GeomodelResults:
+class InputData_FaultElements:
+    """
+    A class to represent the input input_data for a geological model.
+
+        Attributes:
+            name (str): The name of the model.
+            fault_surface_points (pd.DataFrame): DataFrame containing surface points.
+            fault_orientations (pd.DataFrame): DataFrame containing orientations.
+    """
+    name: str
+    fault_surface_points: PandasDataFrame
+    fault_orientations: PandasDataFrame  # Might be optional in future when not only UCK is used here
+    fault_names: List[str]  # This allows us to use one input data file
+
+    def __post_init__(self):
+        # Remove duplicate fault surface points (same X, Y, Z, formation)
+        _before = len(self.fault_surface_points)
+        self.fault_surface_points = self.fault_surface_points.drop_duplicates(
+            subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+        _removed = _before - len(self.fault_surface_points)
+        if _removed > 0:
+            print(f"[InputData_FaultElements '{self.name}'] "
+                  f"Removed {_removed} duplicate fault surface point(s) (identical X, Y, Z, formation).")
+
+        # Remove duplicate fault orientations (same X, Y, Z, formation)
+        _before = len(self.fault_orientations)
+        self.fault_orientations = self.fault_orientations.drop_duplicates(
+            subset=['X', 'Y', 'Z', 'formation']).reset_index(drop=True)
+        _removed = _before - len(self.fault_orientations)
+        if _removed > 0:
+            print(f"[InputData_FaultElements '{self.name}'] "
+                  f"Removed {_removed} duplicate fault orientation(s) (identical X, Y, Z, formation).")
+
+
+@wbgeo_type(name='Result of a structural geological model', color='blue', identifier='StructuralModelResults')
+@dataclass(config={"arbitrary_types_allowed": True})
+class StructuralModelResults:
     """
     A class to represent the results of a geological model.
 
         Attributes:.
-            name (str): The name of the model.
-            lith_block (np.ndarray): The lithology block of the model.
-            surface_meshes_vertices (list): The vertices of the surface meshes of the model.
-            surface_meshes_edges (list): The edges of the surface meshes of the model.
-            grid (np.ndarray): The grid of the model.
-            extent (np.ndarray): The extent of the model.
-            resolution (np.ndarray): The resolution of the model.
-            mapping_object (dict): Mapping of structural groups to structural elements.
-            scalar_fields (Optional[List[np.ndarray]]): List of scalar fields.
-            faults (Optional[List[bool]]): List of groups that are faults.
+            structural_frame (StructuralFrame): The structural frame of the model.
     """
-    name: str
-    lith_block: NpNDArrayInt64
-    surface_meshes_vertices: List[List[NpNDArrayFp64]]
-    surface_meshes_edges: List[List[NpNDArrayInt64]]
-    grid: NpNDArrayFp64
-    extent: NpNDArrayInt64
-    resolution: NpNDArrayInt64
-    mapping_object: Dict
-    scalar_fields: Optional[List[NpNDArrayFp64]] = None
-    faults: Optional[List[bool]] = None
+    # TODO: ALEX: This is the simplest version I could think of - does this work for you
+    structural_frame: StructuralFrame  # this is a deepcopy of the structural frame object
+
+
+@wbgeo_type(name='Result of a structural fault model', color='blue', identifier='FaultModelResults')
+@dataclass(config={"arbitrary_types_allowed": True})
+class FaultModelResults:
+    """
+    A class to represent the results of a fault model.
+
+        Attributes:.
+            fault_frame (FaultFrame): The fault frame of the model.
+    """
+    # TODO: ALEX: This is the simplest version I could think of - does this work for you
+    fault_frame: FaultFrame  # this is a deepcopy of the structural frame object
 
 # todo: Move into common class?
 def cellblock_encoder(obj: meshio.CellBlock):
   import pickle
   import codecs
   return codecs.encode(pickle.dumps(obj), "base64").decode()
-
 
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True, "json_encoders" : {meshio.CellBlock: cellblock_encoder}})
@@ -168,10 +210,9 @@ class MeshResults:
             self.nodes_obj = Nodes(node_array=self.nodes)
             self.elements_obj = Elements(element_array=self.get_union_elems(), node_array=self.nodes)
 
-
     def export_vtu(self, filename: typing.Union[str|os.PathLike]):
         """
-        Export the mesh data to a VTU file.
+        Export the mesh input_data to a VTU file.
         Args:
             filename (str): The name of the VTU file to export.
         """
@@ -186,7 +227,7 @@ class MeshResults:
 
     def export_exodus(self, filename: typing.Union[str, os.PathLike]):
         """
-        Export the mesh data to an Exodus file.
+        Export the mesh input_data to an Exodus file.
         Args:
             filename (str): The name of the Exodus file to export.
         """
@@ -300,21 +341,17 @@ class MeshResults:
         mesh.write(filename, file_format="ansys")
         print(f"Ansys file '{filename}' created successfully!")
 
-    def export_gmsh(self, filename: str):
+    def export_gmsh(self, filename: typing.Union[str, os.PathLike]):
         """
-        Export the mesh data to an GMSH file.
+        Export the mesh data to a GMSH file.
+        Supports both structured (hexahedral) and unstructured meshes.
         Args:
-            filename (str): The name of the GMSH file to export.
+            filename: Path to the output .msh file.
         """
         gmsh_in = GMSHInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
-        # Create mesh
         mesh = gmsh_in.create_mesh()
-        if mesh is None:
-           print('GMSH cannot be created for structure mesh')
-        else:
-            # Write the mesh to an Exodus file
-            mesh.write(filename, file_format="gmsh22")
-            print(f"GMSH file '{filename}' created successfully!")
+        mesh.write(filename, file_format="gmsh22")
+        print(f"GMSH file '{filename}' created successfully!")
 
     def export_stl(self, filename: str):
         """
@@ -329,7 +366,7 @@ class MeshResults:
 
     def export_vtm(self, filename: str):
         """
-        Export the mesh data to a VTM file.
+        Export the mesh input_data to a VTM file.
         Args:
             filename (str): The name of the VTM file to export.
         """

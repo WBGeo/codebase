@@ -1,3 +1,4 @@
+import os
 import typing
 
 import gmsh
@@ -7,7 +8,7 @@ from collections import defaultdict
 from scipy.spatial import cKDTree
 
 from typing import List, Tuple, Union, Mapping
-from core.object_components import InputData, GeomodelResults
+from core.object_components import StructuralModelResults
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces, plot_surfaces_individually
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
@@ -104,8 +105,9 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
   # Save the mesh
   mesh_file = "generated_mesh.msh"
   gmsh.write(mesh_file)
-  # Read the mesh and get nodes and elements information
+  # Read the mesh and get nodes and elements information, then clean up the file
   mesh_model=meshio.read(mesh_file)
+  os.remove(mesh_file)
   nodes = mesh_model.points  # Coordinates of the nodes
   cells = mesh_model.cells  # Elements (cells)
 
@@ -207,14 +209,14 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
   for block_index, (lith, block) in enumerate(zip(lithology_numbers, tetra_blocks)):
     litho_to_blocks[lith].append(block_index)
 
-  # Merge blocks per lithology
+  # Merge blocks per lithology, sorted by lith ID so the MultiBlock ordering
+  # matches the convention expected by plot_mesh_3d:
+  #   block 0 = lith 0 (basement), block 1 = lith 1 (oldest), ..., block N = lith N (youngest)
   merged_tetra_blocks = []
-  for lith, block_indices in litho_to_blocks.items():
+  for lith in sorted(litho_to_blocks.keys()):
+    block_indices = litho_to_blocks[lith]
     merged_nodes = np.concatenate([tetra_blocks[idx].data for idx in block_indices])
     merged_tetra_blocks.append(meshio.CellBlock(cell_type="tetra", data=merged_nodes))
-
-  print("Number of merged lithology blocks:", len(merged_tetra_blocks))
-
 
 
 
@@ -347,7 +349,7 @@ def mesh_generator(ov, tagsss,  wells, well_tags, source_tag, shaft_tags,shaft_t
             if len(line_points) > 0:  # skip empty
                 new_cells.append(meshio.CellBlock(cell_type="line", data=np.vstack(line_points)))
 
-          #new_cells.append(meshio.CellBlock(cell_type="line", data=points_by_well))
+          #new_cells.append(meshio.CellBlock(cell_type="line", input_data=points_by_well))
 
 
   if source_tag:
@@ -422,7 +424,7 @@ def load_wells_from_csv(well_file: WellCSVDataType) -> WellData:
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited amount of inputs
-    geomodel_result: GeomodelResults,
+    geomodel_result: StructuralModelResults,
     wells: WellData = [],
     tolerance: float = 50,
     mesh_size: float = 30,
@@ -436,7 +438,7 @@ def create_unstructured_mesh_data_showcase( # for the demo: Only show a limited 
   return create_unstructured_mesh_data(**locals())
 
 def create_unstructured_mesh_data(
-    geomodel_result: GeomodelResults,
+    geomodel_result: StructuralModelResults,
     wells: WellData = [],
     sources: SourcesData = [],
     centers: CenterData = [],
@@ -459,7 +461,7 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        input_data (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
+        input_data (InputData_StructuralElements): Input data object containing surface points, orientations, mapping, faults, and extent.
         geomodel_result (object): Output object from the geomodel interpolation, e.g. from `universal_cokriging_interpolator`.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
@@ -533,11 +535,21 @@ def create_unstructured_mesh_data(
     cleaned_surfaces, ref_surface_indices , grid_litho = data_prepration(geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
                                                                                                                 EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold)
 
-    interpolated_s = create_surface_grid(cleaned_surfaces, buffer_dist = buffer_dist, smooth=smooth)
+    # Resolve the model extent before surface interpolation so we can guarantee
+    # the B-spline surfaces extend to (and slightly past) the bounding-box walls.
+    # Without this the GMSH fragment produces only 1 volume instead of N+1.
+    model_extent = (
+        geomodel_result.structural_frame.grid.extent
+        if extent == []
+        else tuple(extent)
+    )
+    interpolated_s = create_surface_grid(
+        cleaned_surfaces, buffer_dist=buffer_dist, smooth=smooth, extent=model_extent
+    )
 
     # fragment
     if extent ==[]:
-        extent = geomodel_result.extent
+        extent = geomodel_result.structural_frame.grid.extent
     else:
         extent= np.array(extent)
 

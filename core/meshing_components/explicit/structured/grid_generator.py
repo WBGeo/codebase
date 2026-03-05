@@ -9,7 +9,7 @@ def create_surface_grid(results_instance):
     Also ensures the extent values from the results_instance are included in the grid.
 
     Args:
-        results_instance (GeomodelResults): Geological model results containing surfaces.
+        results_instance (StructuralModelResults): Geological model results containing surfaces.
 
     Returns:
         tuple: A tuple containing:
