@@ -95,7 +95,7 @@ plot_structural_model_3D(frame)
 # Set interpolation methods for each stratigraphic series
 
 # Set another interpolation method per group
-frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
+# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
 # frame["Strat_Series2"].set_interpolation_method("Universal Co-Kriging")
 
 # Configure interpolation parameters if needed (available parameters depend on the interpolation method)

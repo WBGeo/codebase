@@ -30,6 +30,7 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
     plot_structural_model_2D,
     plot_structural_model_3D,
+    plot_fault_model_2D,
     plot_fault_model_3D,
 )
 from core.structural_modeling_components import general, general_faults
@@ -90,6 +91,7 @@ plot_fault_model_3D(fault_frame)
 #%%
 
 fault_model_result = general_faults.compute_fault_domains(fault_frame)
+plot_fault_model_2D(fault_model_result.fault_frame, show_input_data=False, axis="y")
 plot_fault_model_3D(fault_model_result.fault_frame)
 
 #%%
@@ -153,7 +155,7 @@ structural_model_result = general.compute_structural_model(
 #%%
 
 # ── Visualize results ──────────────────────────────────────────────────────────
-plot_structural_model_2D(structural_model_result.structural_frame)
+plot_structural_model_2D(structural_model_result.structural_frame, show_input_data=False, axis="y")
 plot_structural_model_3D(
     structural_model_result.structural_frame,
     show_surface_meshes=True,
