@@ -159,7 +159,7 @@ def plot_structural_model_2D(
 
     assert axis in ('x', 'y', 'z'), "Axis must be 'x', 'y', or 'z'."
 
-    dim = {'z': 0, 'y': 1, 'x': 2}[axis]
+    dim = {'x': 0, 'y': 1, 'z': 2}[axis]
 
     x = frame.grid.gridx
     y = frame.grid.gridy
@@ -239,9 +239,7 @@ def plot_structural_model_2D(
                 # this mask is the age mask defined by youngest group affected by this fault
                 group_index = frame.fault_activity_verbose[fault.name]["youngest_group_index"] - 1
                 if group_index >= 0:
-                    fault_mask = (
-                        np.take(frame.structural_groups[group_index].get_mask().T, index, axis=dim)
-                    )
+                    fault_mask = np.take(frame.structural_groups[group_index].get_mask(), index, axis=dim).T
                 else:
                     fault_mask = np.zeros_like(f_slice, dtype=bool)
 
@@ -552,7 +550,7 @@ def plot_fault_model_2D(
     dz = (z[-1] - z[0]) / (len(z) - 1) if len(z) > 1 else 1.0
 
     # mapping to np.take axis (same as your inspiration)
-    dim = {"z": 0, "y": 1, "x": 2}[axis]
+    dim = {"x": 0, "y": 1, "z": 2}[axis]
 
     if axis == "x":
         extent = (y[0] - dy / 2, y[-1] + dy / 2, z[0] - dz / 2, z[-1] + dz / 2)

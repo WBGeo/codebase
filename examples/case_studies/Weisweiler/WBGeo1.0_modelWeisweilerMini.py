@@ -35,9 +35,9 @@ data_elements = InputData_StructuralElements(name='Model_9',
                                                      'MittlererKohlenkalkGP',
                                                      'CondrozGP')},
                                              surface_points=pd.read_csv(
-                                                 cwd + "/examples/input_data/modelWeisweilerMini_surface_points_df.csv"),
+                                                 cwd + "/examples/case_studies/Weisweiler/input_data/modelWeisweilerMini_surface_points_df.csv"),
                                              orientations=pd.read_csv(
-                                                 cwd + "/examples/input_data/modelWeisweilerMini_orientations_df.csv")
+                                                 cwd + "/examples/case_studies/Weisweiler/input_data/modelWeisweilerMini_orientations_df.csv")
                                              )
 
 # Create a StructuralFrame and include the fault frame

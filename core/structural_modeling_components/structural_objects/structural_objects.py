@@ -583,27 +583,18 @@ class StructuralFrame(BaseModel):
             )
 
         # --- Extract slice and extent ---
+        xmin, xmax, ymin, ymax, zmin, zmax = self._grid.extent
         if axis == "y":
             data_slice = group.scalar_field[:, index, :].T
-            extent = self._grid.extent[:4]
+            extent = (xmin, xmax, zmin, zmax)
             xlabel, ylabel = "X", "Z"
         elif axis == "x":
             data_slice = group.scalar_field[index, :, :].T
-            extent = (
-                self._grid.extent[0],
-                self._grid.extent[2],
-                self._grid.extent[4],
-                self._grid.extent[1],
-            )
+            extent = (ymin, ymax, zmin, zmax)
             xlabel, ylabel = "Y", "Z"
         elif axis == "z":
             data_slice = group.scalar_field[:, :, index].T
-            extent = (
-                self._grid.extent[0],
-                self._grid.extent[2],
-                self._grid.extent[1],
-                self._grid.extent[3],
-            )
+            extent = (xmin, xmax, ymin, ymax)
             xlabel, ylabel = "X", "Y"
         else:
             raise ValueError("Axis must be 'x', 'y', or 'z'.")
