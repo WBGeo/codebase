@@ -2,7 +2,7 @@
 
 
 ## Adding new components
-See the [developers guide](DevelopersGuide.md) for a description 
+See the [developers guide](docs/developers/) for a description 
 on how components can be defined and what rules are to be followed.
 
 TOOD: Description on the idea/design-vision of the workbench (accessibility)
@@ -16,7 +16,7 @@ For each component (added):
    * Use pydocs explaining your component and its inputs
    * Add a unit test of the execution 
       * use a small input to keep it fast
-      * See the [test_rbf_interpolation.py](test/interpolator_components/test_rbf_interpolation.py) unit test for an example of this
+      * See the [tests](https://git.rwth-aachen.de/wbgeo/codebase/-/tree/main/tests/tests_structural_modeling_components?ref_type=heads) unit tests for an example of this
    * Consider invalid inputs/limitations and define pre-checks for them
      * Add unit tests for each pre-check
        * Each pre-check MUST be tested
@@ -25,7 +25,7 @@ For each component (added):
 
 
 ## Adding new types
-See the [developers guide](DevelopersGuide.md) for a description
+See the [developers guide](docs/developers/) for a description
 on how types can be defined and what rules are to be followed.
 
 For each type (added):
@@ -39,7 +39,7 @@ For each type (added):
 Note: pydantic does not support some types, such as numpy arrays, without annotated
  information on how to (de)serialize them.
 For numpy types, please use [pydantic_numpy](https://pypi.org/project/pydantic_numpy/) 
- and see the MeshResults [here](core/object_components.py) for additional 
- examples and here (TODO) for the pydantic docs on that topic.
+ and see the MeshResults [here](https://git.rwth-aachen.de/wbgeo/codebase/-/blob/main/core/object_components.py?ref_type=heads#L178) for additional 
+ examples and [here](https://docs.pydantic.dev/latest/api/config/#pydantic.config.ConfigDict.json_schema_extra) for the pydantic docs on that topic.
 
 

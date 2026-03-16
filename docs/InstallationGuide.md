@@ -1,7 +1,7 @@
 # Codebase Installation
 
 This document outlines an installation guide for using the workbench.
-See [DevelopersGuide.md](DevelopersGuide.md) for how to install the development
+See the [developer's guide](developers/index.md) for how to install the development
 dependencies.
 
 ### Step 0: Install Docker
@@ -13,7 +13,7 @@ recommend [Docker Desktop](https://docs.docker.com/desktop/) to you.
    1) right-click the Docker Desktop icon in your status bar
    2) click the _Switch to linux containers_ button
 
-   * ![window_docker.png](docs%2Fimg%2Fwindow_docker.png)
+   * ![Windows: Switch to linux containers](img/windows_docker.png)
 
 ### Step 1: Create a personal access token:
 
@@ -39,7 +39,7 @@ You should see a `Login succeeded` message.
 
 ### Step 3: Download the docker-compose.yml
 
-Download the [docker-compose.yml](docker-compose.yml) file to your machine to a
+Download the [docker-compose.yml](https://git.rwth-aachen.de/wbgeo/codebase/-/blob/main/docker-compose.yml?ref_type=heads) file to your machine to a
 location of your choice.
 
 This file tells docker how to orchestrate the containers required to run the
