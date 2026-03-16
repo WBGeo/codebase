@@ -34,17 +34,23 @@ test:
   variables: # Change pip's cache directory to be inside the project directory because we can only cache local items.
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
-# deploy coverage report
+# deploy coverage report & pages
 pages:
   image: python:3.12
   stage: deploy
   rules:
     - when: always
-      if: $CI_COMMIT_BRANCH == "main"
+      if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   dependencies:
     - test
   script:
-    - mv htmlcov/ public/
+    - mv htmlcov/ public/coverage
+    - pip install mkdocs-material
+    - mkdocs build --site-dir public
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - ~/.cache/
   artifacts:
     paths:
       - public/

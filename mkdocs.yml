@@ -1,0 +1,43 @@
+# This file is used to define the website
+site_name: WBGeo
+site_url: https://wbgeo.pages.rwth-aachen.de/codebase
+repo_url: https://git.rwth-aachen.de/wbgeo
+theme:
+  name: material
+  logo: 'fontawesome/solid/desktop'
+  features:
+    - navigation.instant
+    - search.highlight
+    - search.suggest
+    - navigation.indexes
+    - navigation.footer
+markdown_extensions:
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+plugins:
+  - search
+nav:
+  - index.md
+  - Installation Guide: InstallationGuide.md
+  - Components:
+      - components/index.md
+      - Data Loading: components/todo.md
+      - Interpolation: components/todo.md
+      - Meshing: components/todo.md
+      - Process Simulation: components/todo.md
+      - Visualization: components/todo.md
+  - Developer's Guide:
+      - developers/index.md
+      - Installation: developers/installation.md
+      - Components: developers/components.md
+      - Types: developers/types.md
+      - Local execution: developers/local.md
+  - Publications: Publications.md
+
+copyright: '(c) https://git.rwth-aachen.de/wbgeo/'

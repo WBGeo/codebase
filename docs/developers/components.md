@@ -1,33 +1,6 @@
-# Codebase
+# Components
 
-This document outlines the functionality of the internal,
-decorator-based DSL for component definitions.
-
-The DSL is available as a decorator-based API via pip at
-`pip install py_api_wbgeo`
-
-The decorators can be imported using:
-
-`````python
-from py_api_wbgeo.nodesapi import *
-`````
-
-Currently, the packages is deployed
-to a private [GitLab registry](https://git.rwth-aachen.de/wbgeo/proof-of-concept-backend/-/packages).
-
-* Create
-  a [personal access token (PAT)](https://git.rwth-aachen.de/-/user_settings/personal_access_tokens)
-  with `read_api` permissions (`read_registry` is not sufficient) on the
-  git.rwth-aachen.de instance
-* Install the package via
-  `pip install py_api_wbgeo --index-url https://gitlab-ci-token:<your_personal_token>@git.rwth-aachen.de/api/v4/projects/102532/packages/pypi/simple`
-
-As an alternative: download the latest package as a wheel-file
-from [GitLab's package registry](https://git.rwth-aachen.de/wbgeo/proof-of-concept-backend/-/packages)
-and install it manually via `pip install py_api_wbgeo...whl`
-
-### Components
-
+## Components
 A component is the building block of the workbench.
 They represent functions, turning inputs into one output.
 (In the UI, they are represented by the rounded corner blocks.
@@ -54,7 +27,7 @@ The second, `end`, parameter is optional (with a default value of 100).
 The function's signature MUST be explicit, i.e., contain a returned type and
 the type-hints of parameters.
 
-![createRandomNumber.png](docs/img/createRandomNumber.png)
+![createRandomNumber.png](../img/createRandomNumber.png)
 
 The picture shows the visualization of this component.
 
@@ -79,19 +52,19 @@ To be able to uniquely identify each component, you MUST follow the following na
 For example, `identifier="wbgeo::interpolation_rbf", tags=["Interpolation"]`
 
 The `is_object_type` parameter can be used to display the component like a result,
- which is just loaded.
+which is just loaded.
 Like in the following example, the number 42 is loaded:
 
-![load42.png](docs/img/load42.png)
+![load42.png](../img/load42.png)
 
 Similarly, when using non-`controlled` inputs, the input ports are always rendered:
 
-![create2List.png](docs/img/create2List.png)
+![create2List.png](../img/create2List.png)
 
 #### User-Feedback
 
 To provide feedback to a user,
- any output to the standard error stream results in the job completing with a warning.
+any output to the standard error stream results in the job completing with a warning.
 
 ````python
 import sys
@@ -111,10 +84,10 @@ faults must not be present in the data, etc.) should also be checked via pre-che
 #### Pre-checks
 
 Unlike errors during execution,
- pre-checks indicate incompatibilities before execution.
+pre-checks indicate incompatibilities before execution.
 
 In case a component that has been executed (and thus, has a value present)
- is connected as an input to your component,
+is connected as an input to your component,
 all pre-checks are run.
 Pre-checks are functions referenced via the `input_checks` parameter of the components decorator.
 Their parameters must be a matching subset of the inputs of the function.
@@ -136,85 +109,6 @@ def my_example_interpolator(data: MyDataType, treshold: int) -> MyResultType:
 (Note: Only those pre-checks are run whose inputs have already been computed/are present.
 This requires the invocation of the checks during the execution again.)
 
-> ! the following
-
-### Types
-
-The workbench, by default, supports various built-in types.
-In the following table, the existing
-
-| Python-Type | Description                                                                                             |
-|-------------|---------------------------------------------------------------------------------------------------------|
-| `bool`      | A boolean value, represented as a checkbox in the UI                                                    
-| `int`       | A numeric, integer value, represented as a number field in the UI                                       
-| `float`     | A floating point numeric value, represented as an number field allowing floating point values in the UI 
-| `str`       | A text value, represented as a text field in the UI                                                     
-| `List[?]`   | A list of values, without an input representation in the UI                                             
-
-TODO: file input ("upload")
-
-
-#### Annotating existing types
-
-To help users by giving a type a semantic meaning,
-we can annotate types using `AnnotatedScriptType`, like in the following exmaple
-
-````python
-MyListOfNumbers = typing.Annotated[
-   typing.List[int], AnnotatedScriptType(name='numbers', color='aqua',
-                                         identifier='MyListOfNumbers')]
-````
-
-The UI will handle them like their own type (due to the unique identifier),
-yet they are handled like their original type during the execution.
-For example, a special type for file paths could be added.
-
-TOOD: identifier
-
-The `AnnotatedScriptType` accepts the following parameters:
-
-| parameter  | required   | description                                   |
-|------------|------------|-----------------------------------------------|
-| identifier | required   | todo                                          |
-| name       | required   | The human-readable name of this type          |
-| color      | (optional) | The color of this type                        |
-| controlled | (optional) | If present, a value can be entered via the UI |
-
-
-The UI additionally supports special input controls via the `controlled` parameter.
-By default, a parameters default value is used.
-
-| Controlled=        | Description                             |
-|--------------------|-----------------------------------------|
-| text               | A generic text input                    |
-| number             | A numeric text input                    |
-| boolean            | A boolean input (                       |
-| password           | A generic text input with masked inputs |
-| Table\|C1\|...\|Cn | NYI                                     |
-| file               | NYI                                     |
-
-To add support for additional input types, 
- they have to be added to the UI (feel free to ask Alex for this).
-
-
-#### Defining more complex types
-
-For more complex types,
-
-````python
-@wbgeo_type(name='Input data for a geological model', color='orange',
-            identifier='wbgeo::my_complex_data_type')
-@dataclass
-class MyComplexDataType:
-   name: str
-   numbers: MyListOfNumbers
-
-````
-
-TODO: controls
-
-TODO: Refer to other `wbgeo_type` objects as fields
-
 ### Inspection components
 
 To enable users to inspect a result,
@@ -224,13 +118,13 @@ as well as pyvista plotter output is rendered on the UI.
 Unlike normal components,
 inspection components do not specify a return type.
 (By default, they also receive the `__visualizer` tag,
- hiding them from the default list of components.)
+hiding them from the default list of components.)
 
 Note regarding the identifier:
- The semantic group of inspectors MUST BE `inspect`,
-   followed by the identifier of the type,
-   optionally followed by a suffix denoting the specific visualization used.
-Examples can be `wbgeo::inspect_my_complex_data_type` or 
+The semantic group of inspectors MUST BE `inspect`,
+followed by the identifier of the type,
+optionally followed by a suffix denoting the specific visualization used.
+Examples can be `wbgeo::inspect_my_complex_data_type` or
 `wbgeo::inspect_my_complex_data_type_2d`.
 
 They can use an optional `_inspector` helper,
@@ -278,14 +172,14 @@ async def _visualize_complex(i: MyComplexDataType, _inspector: InspectorHelper):
 `````
 
 ### Import / Export components
-While each computation's result is stored by the workbench, 
+While each computation's result is stored by the workbench,
 some workflows require interaction outside the workbench.
 
 By using the `nodesapi.BasicallyABufferedFile` type as an input or as the resulting type,
- users can upload/import files to a workflow or download an export of data.
+users can upload/import files to a workflow or download an export of data.
 
 The following component exports data to a `io.BytesIO` buffer,
- when is then downloadable by a user:
+when is then downloadable by a user:
 
 ```python
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
@@ -306,10 +200,10 @@ def export_to_file(mln: MyListOfNumbers) -> BasicallyABufferedFile:
 
 The component is visible on the left side of the following picture.
 
-![importExport.png](docs/img/importExport.png)
+![importExport.png](../img/importExport.png)
 
 An example of an import is shown to the right and below:
-Here the import is 
+Here the import is
 
 
 ```python
@@ -328,23 +222,7 @@ def import_mesh_results_to_vtu(file: BasicallyABufferedFile) -> MyListOfNumbers:
   return ret
 ```
 
+## Dependant Inputs
 
-## Running the examples locally
-
-You can either use Intellij with its python console to run the examples,
-or modify your `PYTHONPATH` environment variable:
-
-````bash
-# linux
-cd codebase
-export PYTHONPATH="$PWD:$PYTHONPATH"
-python examples/WBGeo123.py
-````
-
-````powershell
-# powershell
-cd codebase
-$env:PYTHONPATH = "$PWD;" + $env:PYTHONPATH
-python examples/WBGeo123.py
-````
+TODO
 
