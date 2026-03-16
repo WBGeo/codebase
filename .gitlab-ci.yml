@@ -44,9 +44,9 @@ pages:
   dependencies:
     - test
   script:
-    - mv htmlcov/ public/coverage
     - pip install mkdocs-material
     - mkdocs build --site-dir public
+    - mv htmlcov/ public/coverage
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     paths:
