@@ -572,7 +572,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
   gmsh.model.occ.synchronize()
   #gmsh.option.setNumber("Geometry.Tolerance", 1e-4)  # default is 1e-6
   gmsh.model.mesh.generate(3)
-  gmsh.write("mesh.msh")       # save to file
+  #gmsh.write("mesh.msh")       # save to file
 
   gmsh.model.occ.synchronize()
 # NODES
@@ -1064,48 +1064,57 @@ def load_wells_from_csv(well_file, key_hierarchical: bool = False):
         If key_hierarchical=True:
             Dict[int, List[Tuple]] → {1: [...], 2: [...]}
     """
+
     named_well_data = {}
+
     with open(well_file, "r") as f:
         for line in f:
             if line.startswith("#") or not line.strip():
                 continue
+
             parts = [s.strip() for s in line.split(",")]
+
             if key_hierarchical:
                 if len(parts) != 5:
-                    raise ValueError(f"Expected 5 columns: {line}")
+                    raise ValueError("Invalid well line (expected 5 columns: id,x,y,z,key)")
                 well_id, x, y, z, key = parts
                 key = int(key)
-                well_key_id = (well_id, key)  # composite ID
+                well_key_id = (well_id, key)
             else:
                 if len(parts) != 4:
-                    raise ValueError(f"Expected 4 columns: {line}")
+                    if len(parts) != 4:
+                        raise ValueError("Invalid well line (expected 4 columns: id,x,y,z)")
                 well_id, x, y, z = parts
                 well_key_id = well_id
                 key = None
-            # convert to float
+
             try:
                 x = float(x)
                 y = float(y)
                 z = float(z)
             except ValueError:
-                raise ValueError(f"Non-numeric value: {line.strip()}")
-            # store points
+                raise ValueError("Non-numeric value in well definition")
+
             if well_key_id not in named_well_data:
                 named_well_data[well_key_id] = []
+
             named_well_data[well_key_id].append((x, y, z))
 
-    # check wells have >=2 points
-    incorrect = [wid for wid, pts in named_well_data.items() if len(pts) < 2]
-    if incorrect:
-        raise ValueError(f"Wells missing second point: {incorrect}")
+    # Massages
+    incorrect = [str(wid) if not isinstance(wid, str) else wid
+                 for wid, pts in named_well_data.items() if len(pts) < 2]
 
-    # flatten
-    flattened_wells = {wid: tuple(c for pt in pts for c in pt) for wid, pts in named_well_data.items()}
+    if incorrect:
+        raise ValueError(f"Some well(s) {incorrect} are missing their second point")
+
+    flattened_wells = {
+        wid: tuple(c for pt in pts for c in pt)
+        for wid, pts in named_well_data.items()
+    }
 
     if not key_hierarchical:
         return list(flattened_wells.values())
 
-    # group by key
     wells_by_key = {1: [], 2: []}
     for (wid, k), coords in flattened_wells.items():
         wells_by_key[k].append(coords)

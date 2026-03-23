@@ -57,7 +57,7 @@ class ExosInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_exodus",
 )
-def export_mesh_results_to_exodus(mesh: "MeshResults"):
+def export_mesh_results_to_exodus(mesh: "MeshResults") -> io.BytesIO:
     """
     Export a WBGeo MeshResults object to an Exodus (.exo) file.
 
