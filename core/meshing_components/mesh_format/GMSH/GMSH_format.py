@@ -1,161 +1,189 @@
-import meshio
-import pyvista as pv
-from typing import Union, List, Optional
 import numpy as np
-from core.meshing_components.geometry.Elements import Elements
-from core.meshing_components.geometry.Nodes import Nodes
-
-
+import meshio
+from collections import defaultdict
+from typing import Dict, List, Tuple, Set
+from numpy.typing import NDArray
+import io
+import os
+from py_api_wbgeo.nodesapi import wbgeo_component
+import tempfile
 
 class GMSHInputs:
-    def __init__(self, nodes_array, elements_array):
-        self.nodes_array = np.array(nodes_array)
-        self.elements_block = elements_array
-        self.cell_data = self._generate_cell_data()
+    """
+    Class to construct a Gmsh compatible `meshio.Mesh`
+    from raw nodes and meshio CellBlocks.
 
-        self.output_filename = None # You can set this later as well
+    The class:
+    - Groups elements into Gmsh entities per topological dimension
+      (points, curves, surfaces, volumes)
+    - Assigns gmsh:physical and gmsh:geometrical tags
+    - Constructs gmsh:dim_tags for nodes
 
-    @classmethod
-    def from_msh(cls, filename):
+    """
+
+    #: Mapping from meshio cell types to Gmsh topological dimensions
+    CELL_DIM = {
+        "vertex": 0,
+        "line": 1,
+        "line3": 1,
+        "triangle": 2,
+        "quad": 2,
+        "tetra": 3,
+        "hexahedron": 3,
+    }
+
+    def __init__(
+        self,
+        nodes,
+        elements: List[meshio.CellBlock],
+    ) -> None:
+
+        # Normalize nodes to NumPy
+        self.points: NDArray[np.float64] = np.asarray(nodes, dtype=float)
+        self.blocks: List[meshio.CellBlock] = elements  # List[meshio.CellBlock]
+
+        self.cells, self.cell_data, self.node_entities = self._build_entities()
+        self.point_data = self._build_point_dim_tags()
+
+    # Build entities correctly (PER DIMENSION)
+
+    def _build_entities(self) -> Tuple[List[Tuple[str, NDArray[np.int64]]], Dict[str, List[NDArray[np.int64]]],
+                                       Dict[int, Set[Tuple[int, int]]]]:
         """
-        Create a GMSHInputs object by reading a GMSH .msh file.
+        Build Gmsh entities per topological dimension.
 
-        Args:
-            filename (str): Path to the .msh file
+        Each meshio CellBlock is treated as exactly one Gmsh entity.
+        Entity numbering is independent per dimension, as required by Gmsh.
 
         Returns:
-            GMSHInputs: Instance populated with mesh data
+        cells (list): List of (cell_type, connectivity) tuples for meshio.
+        cell_data (dict): Dictionary with keys:
+              - "gmsh:physical"
+              - "gmsh:geometrical"
+        node_entities (dict): Mapping: node_index → set of (dimension, entity_tag).
         """
-        mesh = meshio.read(filename)
+        cells: List[Tuple[str, NDArray[np.int64]]] = []
+        physical: List[NDArray[np.int64]] = []
+        geometrical: List[NDArray[np.int64]] = []
 
-        # mesh.cell_data is a dict: { "gmsh:physical": [...], "gmsh:geometrical": [...] }
-        physical = mesh.cell_data.get("gmsh:physical", [])
-        geometrical = mesh.cell_data.get("gmsh:geometrical", [])
+        entity_counter: Dict[int, int] = defaultdict(int)
+        node_entities: Dict[int, Set[Tuple[int, int]]] = defaultdict(set)
 
-        cell_data = {
+        for cb in self.blocks:
+            if cb.type not in self.CELL_DIM:
+                continue
+            if len(cb.data) == 0:
+                continue
+
+            dim: int = self.CELL_DIM[cb.type]
+            entity_counter[dim] += 1
+            tag: int = entity_counter[dim]
+
+            cells.append((cb.type, cb.data))
+
+            n: int = len(cb.data)
+            physical.append(np.full(n, tag, dtype=np.int64))
+            geometrical.append(np.full(n, tag, dtype=np.int64))
+
+            # REGISTER NODE → ENTITY RELATION
+            for nid in np.unique(cb.data):
+                node_entities[nid].add((dim, tag))
+
+        cell_data: Dict[str, List[NDArray[np.int64]]] = {
             "gmsh:physical": physical,
-            "gmsh:geometrical": geometrical
+            "gmsh:geometrical": geometrical,
         }
 
-        return cls(
-            nodes_array=mesh.nodes_array,
-            elements_blocks=mesh.elements_block,
-            output_filename=filename,
-            cell_data=cell_data
+        return cells, cell_data, node_entities
+
+    # gmsh:dim_tags — MUST MATCH ELEMENT ENTITIES
+    def _build_point_dim_tags(self) -> Dict[str, NDArray[np.int64]]:
+        """
+        Construct gmsh:dim_tags for all nodes.
+
+        Each node must belong to exactly one (dimension, entity_tag).
+        If a node belongs to multiple entities, the entity with the
+        lowest dimension is selected (curve < surface < volume),
+        which is Gmsh-safe.
+
+        Returns:
+        point_data (dict): Dictionary containing "gmsh:dim_tags".
+        """
+        n_points: int = self.points.shape[0]
+        dim_tags: NDArray[np.int64] = np.zeros((n_points, 2), dtype=np.int64)
+
+        for nid in range(n_points):
+            ents = self.node_entities.get(nid)
+
+            if not ents:
+                # orphan → assign to volume 1
+                dim_tags[nid] = (3, 1)
+            else:
+                # choose LOWEST dimension entity (Gmsh-safe)
+                dim, tag = sorted(ents, key=lambda x: x[0])[0]
+                dim_tags[nid] = (dim, tag)
+
+        return {"gmsh:dim_tags": dim_tags}
+
+    # Create mesh
+    def create_mesh(self) -> meshio.Mesh:
+        """
+        Create a fully Gmsh 4.x compatible meshio.Mesh.
+
+        Returns:
+        mesh (meshio.Mesh):  Mesh ready for export using meshio.write(..., format="gmsh").
+        """
+        mesh: meshio.Mesh = meshio.Mesh(
+            points=self.points,
+            cells=self.cells,
+            cell_data=self.cell_data,
+            point_data=self.point_data,
         )
-
-    def _generate_cell_data(self):
-        """
-        Assigns physical group tags and returns a dict with 'gmsh:physical' and
-        'gmsh:geometrical'.
-
-        For unstructured meshes (elements_block is a list of CellBlock): each block
-        gets a sequential tag (1-based).
-        For structured meshes (elements_block is an ndarray): elements are grouped by
-        surface_id (last column) and each group's tag is surface_id + 1.
-        """
-        if isinstance(self.elements_block, np.ndarray):
-            # Structured mesh: group by surface_id stored in the last column
-            surface_ids = self.elements_block[:, -1].astype(int)
-            physical_tags = []
-            for sid in np.unique(surface_ids):
-                n_cells = int((surface_ids == sid).sum())
-                physical_tags.append(np.full(n_cells, sid + 1, dtype=int))
-        else:
-            # Unstructured mesh: one CellBlock per group
-            physical_tags = []
-            for i, cell_block in enumerate(self.elements_block):
-                num_cells = len(cell_block.data)
-                physical_tags.append(np.full(num_cells, i + 1, dtype=int))
-
-        return {
-            "gmsh:physical": physical_tags,
-            "gmsh:geometrical": physical_tags,
-        }
-
-    def create_mesh(self):
-        """
-        Creates a meshio Mesh ready to be written in GMSH format.
-
-        Supports two mesh types determined by nodes_array shape:
-          - shape (M, 3): unstructured mesh; elements_block is a list of CellBlock.
-          - shape (M, 4): structured hexahedral mesh; elements_block is an ndarray
-            with columns [elem_id, n0..n7, surface_id].
-        """
-        if self.nodes_array.shape[1] == 3:
-            # ── Unstructured path ─────────────────────────────────────────────
-            n_points = self.nodes_array.shape[0]
-            dim_tags = np.zeros((n_points, 2), dtype=int)
-            gmsh_element_dimensions = {
-                "vertex": 0,
-                "line": 1,
-                "triangle": 2,
-                "quad": 2,
-                "tetra": 3,
-                "hexahedron": 3,
-            }
-
-            for cell_block_index, cell_block in enumerate(self.elements_block):
-                tag = self.cell_data['gmsh:physical'][cell_block_index][0]
-                element_type = cell_block.type
-                dim = gmsh_element_dimensions.get(element_type)
-
-                if dim is None:
-                    raise ValueError(f"Unsupported element type: {element_type}")
-
-                node_indices = np.unique(cell_block.data.flatten())
-                for node_id in node_indices:
-                    dim_tags[node_id] = [dim, tag]
-
-            return meshio.Mesh(
-                points=self.nodes_array,
-                cells=[(cb.type, cb.data) for cb in self.elements_block],
-                cell_data=self.cell_data,
-                point_data={"gmsh:dim_tags": dim_tags},
-            )
-
-        else:
-            # ── Structured hexahedral path ────────────────────────────────────
-            # nodes_array: (M, 4) — [node_id, x, y, z]
-            # elements_block: (N, 10) — [elem_id, n0..n7, surface_id]
-            xyz = self.nodes_array[:, 1:4]                        # (M, 3)
-            conn = self.elements_block[:, 1:-1].astype(int)       # (N, 8)
-            surface_ids = self.elements_block[:, -1].astype(int)  # (N,)
-
-            cells = []
-            cell_data_physical = []
-            for sid in np.unique(surface_ids):
-                mask = surface_ids == sid
-                block_data = conn[mask]
-                cells.append(("hexahedron", block_data))
-                cell_data_physical.append(
-                    np.full(block_data.shape[0], sid + 1, dtype=int)
-                )
-
-            # All nodes belong to 3-D hexahedral entities
-            dim_tags = np.full((xyz.shape[0], 2), [3, 1], dtype=int)
-
-            return meshio.Mesh(
-                points=xyz,
-                cells=cells,
-                cell_data={
-                    "gmsh:physical": cell_data_physical,
-                    "gmsh:geometrical": cell_data_physical,
-                },
-                point_data={"gmsh:dim_tags": dim_tags},
-            )
+        return mesh
 
 
 
+@wbgeo_component(
+    title="Download Mesh as Gmsh",
+    description="Export Mesh to Gmsh",
+    group="Export",
+    identifier="wbgeo::expert_mesh_results_gmsh",
+)
+def export_mesh_results_to_gmsh(mesh: "MeshResults"):
+    """
+    Export the given MeshResults object to a Gmsh file.
+    The mesh is first written to a temporary file using the WBGeo
+    Exporters interface (required by Gmsh), then read back into memory
+    and returned as a downloadable file.
 
-    def plot_mesh(self):
-        """
-        Visualizes the VTU mesh using PyVista.
+    Notes
+    -----
+    - Only unstructured meshes are supported.
+    - Structured meshes are not supported and may lead to invalid output.
 
-        This method reads the VTU file and visualizes the nodes and elements of the mesh.
-        """
-        # Load the VTU file using PyVista
-        vtu_mesh = pv.read(self.output_filename)
-        # Plot the mesh
-        vtu_mesh.plot(show_edges=True, color=True)
+    Args:
+    mesh (MeshResults): WBGeo mesh object containing nodes, elements, and metadata to be exported.
+
+    Returrns:
+    io.BytesIO: In-memory buffer containing the Gmsh `.msh` file, ready for download.
+    """
+    from core.object_components import Exporters
+
+    # Create exporters from MeshResults
+    exporters = Exporters(**mesh.__dict__)
+
+    # Write to a real temporary file (REQUIRED for Gmsh)
+    with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
+        tmp_path = tmp.name
+        exporters.export_gmsh(tmp_path)
+
+    # Read back into memory
+    with open(tmp_path, "rb") as f:
+        buf = io.BytesIO(f.read())
+
+    # Name for WBGeo download
+    buf.filename = "mesh_export_gmsh.msh"
+    # Remove the temporary file immediately
+    os.remove(tmp_path)
+    return buf
 

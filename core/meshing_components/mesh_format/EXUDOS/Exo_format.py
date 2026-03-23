@@ -1,87 +1,92 @@
 import meshio
-from typing import Union, List, Optional
+from typing import Union, List, Dict
+from numpy.typing import NDArray
 import numpy as np
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 import pyvista as pv
+import io
+import os
+from py_api_wbgeo.nodesapi import wbgeo_component
+import tempfile
 
 
 class ExosInputs:
+    """
+    Class for exporting unstructured volumetric meshes to ExodusL format.
+    """
     def __init__(
-    self,
-    nodes_array: Union[np.ndarray, List[List[float]]],
-    elements_array: Union[np.ndarray, List[meshio.CellBlock]],
-    ):
+        self,
+        nodes,
+        elements: List[meshio.CellBlock],
+    ) -> None:
 
-        """
-        Initializes the VTMInputs class.
+        # Normalize nodes to NumPy
+        self.nodes = np.asarray(nodes, dtype=float)
 
-        Args:
-            nodes_array: Array of node coordinates.
-            elements_block: Either an array of elements with columns
-                            [element_id, node_id_1, ..., node_id_n, surface_id]
-                            or a list of meshio.CellBlock.
-            output_filename: Optional filename for saving/plotting.
-        """
-        self.nodes_array = np.array(nodes_array, dtype=float)
-        self.elements_block = elements_array
-        if self.nodes_array.shape[1]  != 3:
-            self.nodes = Nodes(node_array=nodes_array)
-            self.elements = Elements(element_array=elements_array, node_array=nodes_array)
+        if self.nodes.ndim != 2 or self.nodes.shape[1] != 3:
+            raise ValueError("nodes must be Nx3 coordinates.")
 
-    def create_mesh(self):
+        if not isinstance(elements, list):
+            raise TypeError("elements_array must be List[meshio.CellBlock]")
+
+        self.elements = elements
+
+
+
+    def create_mesh(self) -> meshio.Mesh:
         """
-        Creates a mesh using the meshio library and saves it to the specified output file.
+        Create a meshio Mesh object suitable for Exodus export.
+
 
         Returns:
-            meshio.Mesh: The mesh object.
+        meshio.Mesh: Mesh object containing points, cell connectivity, and optional point sets for boundary conditions.
         """
-        if self.nodes_array.shape[1]  == 3:
-            # Create the meshio.Mesh object
-            mesh = meshio.Mesh(
-                points=self.nodes_array,
-                cells=self.elements_block
-            )
-
-
-        else:
-            # Get the formatted nodes (excluding the first and last columns)
-            formatted_nodes = self.nodes.get_coordinates().astype(float)
-
-            # Get elements by surface ID
-            elements_by_surface_id = self.elements.element_by_surface_id()
-
-            # Create cells list
-            if self.elements.element_array.shape[1] == 10:
-                cells = [("hexahedron", elements.tolist()) for elements in elements_by_surface_id.values()]
-            else:
-                cells = [("tetra", elements.tolist()) for elements in elements_by_surface_id.values()]
-
-            # Get boundary nodes
-            nodes_on_boundaries = self.nodes.nodes_on_boundaries()
-
-            # Create the meshio.Mesh object
-            mesh = meshio.Mesh(
-                points=formatted_nodes,
-                cells=cells,
-                point_sets=nodes_on_boundaries
-            )
-
-        # Write the mesh to an Exodus file
-        #mesh.write(self.output_filename, file_format="exodus")
-        #print(f"Exodus file '{self.output_filename}' created successfully!")
-
+        # Create the meshio.Mesh object
+        mesh = meshio.Mesh(
+            points=self.nodes,
+            cells=self.elements
+        )
         return mesh
 
 
-    def plot_mesh(self):
-        """
-        Plots the 3D mesh using PyVista.
 
-        This method reads the Exodus file and visualizes the nodes and elements of the mesh.
+@wbgeo_component(
+    title="Download Mesh as Exodus",
+    description="Export Mesh to Exodus",
+    group="Export",
+    identifier="wbgeo::expert_mesh_results_exodus",
+)
+def export_mesh_results_to_exodus(mesh: "MeshResults"):
+    """
+    Export a WBGeo MeshResults object to an Exodus (.exo) file.
 
-        """
-        # Get node coordinates and elements from the mesh
-        mesh = pv.read(self.output_filename)
-        # Plot the mesh
-        mesh.plot(show_edges=True, color=True)
+    The mesh is written to a temporary Exodus file using the internal
+    exporter and then returned as an in-memory buffer for download
+    through the WBGeo interface.
+
+    Args:
+    mesh: MeshResults object containing the mesh to be exported.
+
+    Returns:
+    io.BytesIO: In-memory buffer containing the Exodus `.exo` file.
+    """
+    from core.object_components import Exporters
+
+    # Create exporters from MeshResults
+    exporters = Exporters(**mesh.__dict__)
+
+    # Write to a real temporary file (REQUIRED for Exodus)
+    with tempfile.NamedTemporaryFile(suffix=".exo", delete=False) as tmp:
+        tmp_path = tmp.name
+        exporters.export_exodus(tmp_path)
+
+    # Read back into memory
+    with open(tmp_path, "rb") as f:
+        buf = io.BytesIO(f.read())
+
+    # Name for WBGeo download
+    buf.filename = "mesh_export_exodus.exo"
+    # Remove the temporary file immediately
+    os.remove(tmp_path)
+    return buf

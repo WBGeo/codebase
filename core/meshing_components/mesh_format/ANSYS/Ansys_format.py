@@ -1,85 +1,114 @@
 import meshio
-from typing import Union, List, Optional
+from typing import Union, List
 import numpy as np
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 import pyvista as pv
-
+from numpy.typing import NDArray
+import io
+import os
+from py_api_wbgeo.nodesapi import wbgeo_component
+import tempfile
 
 class AnsysInputs:
+    """
+    Class for exporting meshes to ANSYS-compatible format.
+
+    This class converts WBGeo mesh data into a `meshio.Mesh`
+    suitable for export to ANSYS (.msh) format.
+    Supported element types include: triangle, quad, tetra, hexahedron, pyramid and wedge
+    Both unstructured and structured meshes are supported.
+
+    Notes
+    -----
+    - Only element types supported by ANSYS are exported.
+    - Unsupported element types are skipped with a warning.
+
+    """
     def __init__(
-    self,
-    nodes_array: Union[np.ndarray, List[List[float]]],
-    elements_array: Union[np.ndarray, List[meshio.CellBlock]],
-    ):
+        self,
+        nodes,
+        elements: List[meshio.CellBlock],
+    ) -> None:
 
-        """
-        Initializes the VTMInputs class.
+        # Normalize nodes to NumPy
+        self.nodes = np.asarray(nodes, dtype=float)
 
-        Args:
-            nodes_array: Array of node coordinates.
-            elements_block: Either an array of elements with columns
-                            [element_id, node_id_1, ..., node_id_n, surface_id]
-                            or a list of meshio.CellBlock.
-            output_filename: Optional filename for saving/plotting.
-        """
-        self.nodes_array = np.array(nodes_array, dtype=float)
-        self.elements_block = elements_array
-        if self.nodes_array.shape[1]  != 3:
-            self.nodes = Nodes(node_array=nodes_array)
-            self.elements = Elements(element_array=elements_array, node_array=nodes_array)
+        if self.nodes.ndim != 2 or self.nodes.shape[1] != 3:
+            raise ValueError("nodes must be Nx3 coordinates.")
 
-    def create_mesh(self):
+        if not isinstance(elements, list):
+            raise TypeError("elements_array must be List[meshio.CellBlock]")
+        self.elements_block: List[meshio.CellBlock] = elements
+
+        self.elements = elements
+
+    def create_mesh(self) -> meshio.Mesh:
         """
-        Creates a mesh using the meshio library and saves it to the specified output file.
+        Create a meshio Mesh object compatible with ANSYS.
 
         Returns:
-            meshio.Mesh: The mesh object.
+        meshio.Mesh: Mesh object ready for export to ANSYS format.
+
+        Raises:
+        ValueError: If no supported element types are found for export.
         """
 
-        if self.nodes_array.shape[1] == 3:
 
-            points = self.nodes_array
+        points : NDArray[np.float64]= self.nodes
 
-            supported_types = {"triangle", "quad", "tetra", "hexahedron", "pyramid", "wedge"}
+        supported_types: str[str] = {"triangle", "quad", "tetra", "hexahedron", "pyramid", "wedge"}
 
-            cells = []
-            for block in self.elements_block:
-                if block.type in supported_types:
-                    cells.append((block.type, block.data))
-                else:
-                    print(f"⚠️ Skipping unsupported ANSYS cell type: {block.type}")
-
-            if not cells:
-                raise ValueError("No valid element types for ANSYS export")
-
-        else:
-            # Get the formatted nodes (excluding the first and last columns)
-            points = self.nodes.get_coordinates().astype(float)
-
-            # Get elements by surface ID
-            elements_by_surface_id = self.elements.element_by_surface_id()
-
-            # Create cells list
-            if self.elements.element_array.shape[1] == 10:
-                cells = [("hexahedron", elements.tolist()) for elements in elements_by_surface_id.values()]
+        cells: List[tuple[str, : NDArray[np.intt64]]] = []
+        for block in self.elements_block:
+            if block.type in supported_types:
+                cells.append((block.type, block.data))
             else:
-                cells = [("tetra", elements.tolist()) for elements in elements_by_surface_id.values()]
+                print(f"⚠️ Skipping unsupported ANSYS cell type: {block.type}")
 
-        mesh = meshio.Mesh(points=points, cells=cells)
+        if not cells:
+            raise ValueError("No valid element types for ANSYS export")
+
+        mesh: meshio.Mesh = meshio.Mesh(points=points, cells=cells)
 
         return mesh
 
 
+@wbgeo_component(
+    title="Download Mesh as Ansys",
+    description="Export Mesh to Ansys",
+    group="Export",
+    identifier="wbgeo::expert_mesh_results_ansys",
+)
+def export_mesh_results_to_ansys(mesh: "MeshResults"):
+    from core.object_components import Exporters
+    """
+    Export the mesh to ANSYS (.msh) format.
 
-    def plot_mesh(self):
-        """
-        Plots the 3D mesh using PyVista.
+    The mesh is written to a temporary file using the WBGeo
+    exporter pipeline and returned as an in-memory file
+    for download.
 
-        This method reads the Exodus file and visualizes the nodes and elements of the mesh.
+    Args:
+    mesh (MeshResults): WBGeo mesh object containing structured or unstructured mesh data.
 
-        """
-        # Get node coordinates and elements from the mesh
-        mesh = pv.read(self.output_filename)
-        # Plot the mesh
-        mesh.plot(show_edges=True, color=True)
+    Returns:
+    io.BytesIO: ANSYS-compatible `.msh` file.
+    """
+    # Create exporters from MeshResults
+    exporters = Exporters(**mesh.__dict__)
+
+    # Write to a real temporary file (REQUIRED for Ansys)
+    with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
+        tmp_path = tmp.name
+        exporters.export_ansys(tmp_path)
+
+    # Read back into memory
+    with open(tmp_path, "rb") as f:
+        buf = io.BytesIO(f.read())
+
+    # Name for WBGeo download
+    buf.filename = "mesh_export_ansys.msh"
+    # Remove the temporary file immediately
+    os.remove(tmp_path)
+    return buf

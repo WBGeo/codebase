@@ -1,85 +1,194 @@
 import meshio
-from typing import Union, List, Optional
+from typing import Union, List
+from numpy.typing import NDArray
 import numpy as np
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-import pyvista as pv
-
+import io
+import os
+from py_api_wbgeo.nodesapi import wbgeo_component
+import tempfile
 
 class AbaqusInputs:
+    """
+    Class to construct and export Abaqus-compatible meshes.
+
+    It converts node and element data into a meshio.Mesh object and
+    provides functionality to write the mesh to an Abaqus `.inp` file.
+    """
     def __init__(
-    self,
-    nodes_array: Union[np.ndarray, List[List[float]]],
-    elements_array: Union[np.ndarray, List[meshio.CellBlock]],
-    ):
+        self,
+        nodes,
+        elements: List[meshio.CellBlock],
+    ) -> None:
 
-        """
-        Initializes the VTMInputs class.
+        # Normalize nodes to NumPy
+        self.nodes = np.asarray(nodes, dtype=float)
 
-        Args:
-            nodes_array: Array of node coordinates.
-            elements_block: Either an array of elements with columns
-                            [element_id, node_id_1, ..., node_id_n, surface_id]
-                            or a list of meshio.CellBlock.
-            output_filename: Optional filename for saving/plotting.
-        """
-        self.nodes_array = np.array(nodes_array, dtype=float)
-        self.elements_block = elements_array
-        if self.nodes_array.shape[1]  != 3:
-            self.nodes = Nodes(node_array=nodes_array)
-            self.elements = Elements(element_array=elements_array, node_array=nodes_array)
+        if self.nodes.ndim != 2 or self.nodes.shape[1] != 3:
+            raise ValueError("nodes must be Nx3 coordinates.")
 
-    def create_mesh(self):
+        if not isinstance(elements, list):
+            raise TypeError("elements_array must be List[meshio.CellBlock]")
+        self.elements_block: List[meshio.CellBlock] = elements
+
+        self.elements = elements
+
+
+    def create_mesh(self) -> meshio.Mesh:
         """
-        Creates a mesh using the meshio library and saves it to the specified output file.
+        Create a meshio Mesh object suitable for Abaqus export.
 
         Returns:
-            meshio.Mesh: The mesh object.
+        meshio.Mesh: Mesh object containing points and cell connectivity.
         """
-        if self.nodes_array.shape[1]  == 3:
 
-            points = self.nodes_array
-
-
-            if points.shape[1] < 3:
-                raise ValueError("Node coordinates must be 3D for Abaqus")
-
-            # Filter supported Abaqus types
-            cells = []
-            for block in self.elements_block:
-                if block.type in {"line", "triangle", "quad", "tetra", "hexahedron"}:
-                    cells.append((block.type, block.data))
-                else:
-                    print(f"⚠️ Skipping unsupported Abaqus cell type: {block.type}")
+        points: NDArray[np.float64] = self.nodes
 
 
-        else:
-            # Get the formatted nodes (excluding the first and last columns)
-            points = self.nodes.get_coordinates().astype(float)
+        if points.shape[1] < 3:
+            raise ValueError("Node coordinates must be 3D for Abaqus")
 
-            # Get elements by surface ID
-            elements_by_surface_id = self.elements.element_by_surface_id()
-
-            # Create cells list
-            if self.elements.element_array.shape[1] == 10:
-                cells = [("hexahedron", elements.tolist()) for elements in elements_by_surface_id.values()]
+        # Filter supported Abaqus types
+        cells: List[tuple[str, NDArray[np.int64]]] = []
+        for block in self.elements_block:
+            if block.type in {"line", "triangle", "quad", "tetra", "hexahedron"}:
+                cells.append((block.type, block.data))
             else:
-                cells = [("tetra", elements.tolist()) for elements in elements_by_surface_id.values()]
+                print(f"Skipping unsupported Abaqus cell type: {block.type}")
 
             # Create mesh and write
-        mesh = meshio.Mesh(points=points, cells=cells)
+        mesh: meshio.Mesh = meshio.Mesh(points=points, cells=cells)
 
         return mesh
 
-
-    def plot_mesh(self):
+    def write(self, filename: str):
         """
-        Plots the 3D mesh using PyVista.
+        Write the mesh to an Abaqus `.inp` file.
 
-        This method reads the Exodus file and visualizes the nodes and elements of the mesh.
+        This method:
+        - writes nodes and elements in Abaqus format,
+        - groups elements into ELSETs by cell block,
+        - assigns default materials and section definitions.
 
+        Args:
+        filename: Path to the output Abaqus `.inp` file.
         """
-        # Get node coordinates and elements from the mesh
-        mesh = pv.read(self.output_filename)
-        # Plot the mesh
-        mesh.plot(show_edges=True, color=True)
+        mesh = self.create_mesh()
+        node_array = mesh.points
+        elements = mesh.cells
+
+        element_type_map = {
+            "line": "T3D2",
+            "tetra": "C3D4",
+            "triangle": "S3R",
+            "hexahedron": "C3D8",
+            "quad": "S4R",
+        }
+
+        with open(filename, "w") as f:
+            f.write("*" * 37 + "\n")
+            f.write("*HEADING\n")
+            f.write("WBGeo Abaqus Export\n")
+            f.write("*" * 37 + "\n")
+
+            # Nodes
+            f.write("*NODE, NSET=All\n")
+            for i, coord in enumerate(node_array, start=1):
+                x, y, z = coord
+                f.write(f"{i}, {x:.8E}, {y:.8E}, {z:.8E}\n")
+
+            # Track ELSETs
+            solid_elsets = []
+            tus_elsets = []
+            shel_elsets = []
+
+            # Write elements
+            element_id = 1
+            for i, block in enumerate(elements):
+                abaqus_type = element_type_map.get(block.type)
+                if abaqus_type is None:
+                    print(f"⚠️ Skipping unsupported element type: {block.type}")
+                    continue
+
+                elset_name = f"ELSET{i+1}"
+                f.write(f"*ELEMENT,TYPE={abaqus_type},ELSET={elset_name}\n")
+                for conn in block.data:
+                    conn_str = ", ".join(str(int(n) + 1) for n in conn)
+                    f.write(f"{element_id}, {conn_str}\n")
+                    element_id += 1
+
+                if abaqus_type == "C3D4" or abaqus_type == "C3D8":
+                    solid_elsets.append(elset_name)
+                elif abaqus_type == "T3D2":
+                    tus_elsets.append(elset_name)
+                elif abaqus_type == "S3":
+                    shel_elsets.append(elset_name)
+
+            # Hardcoded material block (no input)
+            # For tetras or hexas
+            f.write("*MATERIAL, NAME=DefaultMaterial\n")
+            f.write("*ELASTIC\n")
+            f.write("2.100000E+05, 0.300000\n")  # Young's modulus, Poisson's ratio
+
+            for elset in solid_elsets:
+                f.write(f"*SOLID SECTION, ELSET={elset}, MATERIAL=DefaultMaterial\n")
+
+            # For triangles
+            f.write("*MATERIAL, NAME=myrock\n")
+            f.write("*ELASTIC\n")
+            f.write("2.100000E+05, 0.300000\n")
+            for elset in shel_elsets:
+                f.write(f"*SHELL SECTION, ELSET={elset}, MATERIAL=myrock\n")
+                f.write("0.01\n")
+
+            # For lines
+            f.write("*MATERIAL, NAME=STEEL\n")
+            f.write("*ELASTIC\n")
+            f.write("2.100000E+05, 0.300000\n")
+            for elset in tus_elsets:
+                f.write(f"*SOLID SECTION, ELSET={elset}, MATERIAL=STEEL\n")
+                f.write("0.01\n")
+
+        print(f"[INFO] Abaqus file written: {filename}")
+
+
+@wbgeo_component(
+    title="Download Mesh as Abaqus",
+    description="Export Mesh to Abaqus",
+    group="Export",
+    identifier="wbgeo::expert_mesh_results_abaqus",
+)
+def export_mesh_results_to_abaqus(mesh: "MeshResults"):
+    """
+    Export a WBGeo MeshResults object to an Abaqus `.inp` file.
+
+    The mesh is written to a temporary file using the internal Abaqus
+    exporter and then returned as an in-memory buffer for download.
+
+    Args:
+    mesh: MeshResults object containing the mesh to be exported.
+
+    Returns:
+    io.BytesIO: In-memory buffer containing the Abaqus `.inp` file.
+
+    """
+    from core.object_components import Exporters
+
+    # Create exporters from MeshResults
+    exporters = Exporters(**mesh.__dict__)
+
+    # Write to a real temporary file (REQUIRED for Abaqus)
+    with tempfile.NamedTemporaryFile(suffix=".inp", delete=False) as tmp:
+        tmp_path = tmp.name
+        exporters.export_abaqus(tmp_path)
+
+    # Read back into memory
+    with open(tmp_path, "rb") as f:
+        buf = io.BytesIO(f.read())
+
+    # Name for WBGeo download
+    buf.filename = "mesh_export_abaqus.inp"
+    # Remove the temporary file immediately
+    os.remove(tmp_path)
+    return buf

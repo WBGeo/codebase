@@ -32,6 +32,10 @@ from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator, Field, ConfigDict
 
 from core.structural_modeling_components.structural_objects.structural_objects import StructuralFrame, FaultFrame
+from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, \
+  PlainValidator, Field, ConfigDict
+from pydantic.dataclasses import dataclass
+from dataclasses import field
 
 # Pydantic adapter for panda DataFrame
 def df_serializer(df: pd.DataFrame) -> list[dict]:
@@ -67,6 +71,13 @@ class InputData_StructuralElements:
     mapping_object: Dict[str, Tuple[str, ...]]
     surface_points: PandasDataFrame
     orientations: Optional[PandasDataFrame] = None
+
+    @field_validator('mapping_object', mode='before')
+    @classmethod
+    def coerce_mapping_values_to_tuples(cls, v):
+        if isinstance(v, dict):
+            return {k: (val,) if isinstance(val, str) else tuple(val) for k, val in v.items()}
+        return v
 
     def __post_init__(self):
         # reorder surface_points DataFrame by formation column for colormaps
@@ -166,355 +177,270 @@ def cellblock_encoder(obj: meshio.CellBlock):
   import codecs
   return codecs.encode(pickle.dumps(obj), "base64").decode()
 
+
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 @dataclass(config={"arbitrary_types_allowed": True, "json_encoders" : {meshio.CellBlock: cellblock_encoder}})
 class MeshResults:
-    nodes: NpNDArrayFp64 # TODO: int or FP array?
-    # mesh is a transient/derived field
-    mesh : Optional[pyvista.MultiBlock]  = Field(default=None, exclude = True) #  exclude this field from serialization
+    """
+    Container class holding unstructured mesh results.
 
-    elements_structured: typing.Optional[NpNDArrayFp64] = None
-    elements_unstructured: typing.Optional[List[meshio.CellBlock]] = None # todo: NpNDArrayFp64 for structured, CellBlock for unstructured - union not possible!
+    Attributes
+    ----------
+    nodes : np.ndarray
+        Array of node coordinates with shape (N, 3)
 
+    elements : list[meshio.CellBlock]
+        Mesh elements stored as MeshIO CellBlocks.
 
-    # todo: Move into common class?
-    @pydantic.field_validator('elements_unstructured', mode="before")
+    cell_data : dict[str, list[np.ndarray]], optional
+        Per-cell data arrays associated with the mesh.
+    """
+
+    nodes: NpNDArrayFp64
+    elements: List[meshio.CellBlock]
+    cell_data: Optional[Dict[str, List[np.ndarray]]] = None
+
+    # transient / derived
+    mesh: Optional[pyvista.MultiBlock] = Field(default=None, exclude=True)
+
+    # -----------------------------
+    # Decode serialized CellBlocks
+    # -----------------------------
+    @pydantic.field_validator("elements", mode="before")
     @classmethod
     def decode_cellblock(cls, v):
-      if v is None:
-        return None
-      if isinstance(v, typing.List) or isinstance(v, list) or isinstance(v, collections.abc.Iterable) or True:
+        if v is None:
+            return None
+
         import pickle
         import codecs
+
         return [
-            e if isinstance(e, meshio.CellBlock) or e is None else pickle.loads(codecs.decode(e.encode(), "base64")) for e in v
-          ]
-      raise ValueError("Unhandled cellblock", type(v))
+            e if isinstance(e, meshio.CellBlock) or e is None
+            else pickle.loads(codecs.decode(e.encode(), "base64"))
+            for e in v
+        ]
 
-    def get_union_elems(self):
-      if self.elements_structured is not None:
-        return self.elements_structured
-      elif self.elements_unstructured is not None:
-        return self.elements_unstructured
-      else:
-        raise Exception("Elements not initialized")
-
+    # -----------------------------
+    # Post init
+    # -----------------------------
     def __post_init__(self):
-        self.vtm_in = VTMInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
-        print('[INFO] VTMInputs initialized successfully.')
+        self.vtm_in = VTMInputs(
+            self.nodes,
+            self.elements
+        )
 
         self.mesh = self.vtm_in.create_mesh()
 
-        # initialize node/element objects only for ndarray elements
-        if isinstance(self.get_union_elems(), np.ndarray):
-            self.nodes_obj = Nodes(node_array=self.nodes)
-            self.elements_obj = Elements(element_array=self.get_union_elems(), node_array=self.nodes)
+@wbgeo_type(name='Exporters', color='grey', identifier='Exporters')
+@dataclass(config={"arbitrary_types_allowed": True})
+class Exporters(MeshResults):
+    """
+    Export utility class for MeshResults.
 
-    def export_vtu(self, filename: typing.Union[str|os.PathLike]):
+    This class extends `MeshResults` and provides methods to export
+    the mesh into various standard geoscientific and engineering formats.
+
+    Supported mesh types depend on the export format:
+    - Structured meshes: VTU, VTK, VTM, Exodus, Ansys
+    - Unstructured meshes: STL, Abaqus, Gmsh, FeFlow, VTU, VTK, VTM, Exodus, Ansys
+
+    """
+
+    def export_vtu(self, filename: str):
         """
-        Export the mesh input_data to a VTU file.
+        Export the mesh to a VTU (VTK Unstructured Grid) file.
+
         Args:
-            filename (str): The name of the VTU file to export.
-        """
-        vtu_in = VTUInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
+        filename: Output filename ending with `.vtu`.
 
+        Supported Mesh Types:
+        - Structured meshes
+        - Unstructured meshes
+        """
+        vtu_in = VTUInputs(self.nodes, self.elements )
         # Create the VTU mesh
         mesh = vtu_in.create_mesh()
-
         # Write the mesh to a VTU file
         mesh.write(filename, file_format="vtu")
         print(f"VTU file '{filename}' created successfully!")
 
-    def export_exodus(self, filename: typing.Union[str, os.PathLike]):
+
+    def export_stl(self, filename: str):
         """
-        Export the mesh input_data to an Exodus file.
+        Export the mesh surface to STL format.
+
         Args:
-            filename (str): The name of the Exodus file to export.
+        filename: Output STL filename.
+
+        Supported Mesh Types:
+        - Unstructured meshes ONLY
         """
-        exo_in = ExosInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
+        stl_in = STLInputs(self.nodes, self.elements)
+        stl_in.output_filename = filename
+        stl_in.create_mesh()
+        print(f"Stl files '{filename}' created successfully!")
+
+
+    def export_exodus(self, filename: str):
+        """
+        Export the mesh to an Exodus (.exo) file.
+
+        Args:
+        filename: Output filename ending with `.exo`.
+
+        Supported Mesh Types:
+        - Structured meshes
+        - Unstructured meshes
+        """
+        exo_in = ExosInputs(self.nodes, self.elements)
         # Create mesh
         mesh = exo_in.create_mesh()
-
         # Write the mesh to an Exodus file
         mesh.write(filename, file_format="exodus")
         print(f"Exodus file '{filename}' created successfully!")
 
 
-
     def export_abaqus(self, filename: str):
         """
-        Export mesh data to an Abaqus .inp file with nodes, tetrahedral (C3D4),
-        and triangular (CP3S) elements, including a valid material and section definition.
+        Export the mesh to an Abaqus input (.inp) file.
+
+        Args:
+        filename:Output Abaqus input filename.
+
+        Supported Mesh Types:
+        --------------------
+        - Unstructured meshes ONLY
         """
-        abq_in = AbaqusInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
-        mesh = abq_in.create_mesh()
-        node_array = mesh.points
-        elements = mesh.cells
-
-        element_type_map = {
-            "line": "T3D2",
-            "tetra": "C3D4",
-            "triangle": "S3R",
-            "hexahedron": "C3D8"
-        }
-
-        with open(filename, 'w') as f:
-            # Write header
-            f.write("*" * 37 + "\n")
-            f.write("*HEADING\n")
-            f.write("ICEM - ABAQUS INTERFACES VERSION 4.3.1\n")
-            f.write("*" * 37 + "\n")
-
-            # Write nodes
-            f.write("*NODE, NSET=All\n")
-            for i, coord in enumerate(node_array, start=1):
-                x, y, z = coord
-                f.write(f"{i}, {x:.8E}, {y:.8E}, {z:.8E}\n")
-
-            # Track ELSETs
-            solid_elsets = []
-            tus_elsets = []
-            shel_elsets = []
-
-            # Write elements
-            element_id = 1
-            for i, block in enumerate(elements):
-                abaqus_type = element_type_map.get(block.type)
-                if abaqus_type is None:
-                    print(f"⚠️ Skipping unsupported element type: {block.type}")
-                    continue
-
-                elset_name = f"ELSET{i+1}"
-                f.write(f"*ELEMENT,TYPE={abaqus_type},ELSET={elset_name}\n")
-                for conn in block.data:
-                    conn_str = ", ".join(str(int(n) + 1) for n in conn)
-                    f.write(f"{element_id}, {conn_str}\n")
-                    element_id += 1
-
-                if abaqus_type == "C3D4" or abaqus_type == "C3D8":
-                    solid_elsets.append(elset_name)
-                elif abaqus_type == "T3D2":
-                    tus_elsets.append(elset_name)
-                elif abaqus_type == "S3":
-                    shel_elsets.append(elset_name)
-
-            # Hardcoded material block (no input)
-            # For tetras or hexas
-            f.write("*MATERIAL, NAME=DefaultMaterial\n")
-            f.write("*ELASTIC\n")
-            f.write("2.100000E+05, 0.300000\n")  # Young's modulus, Poisson's ratio
-
-            for elset in solid_elsets:
-                f.write(f"*SOLID SECTION, ELSET={elset}, MATERIAL=DefaultMaterial\n")
-
-            # For triangles
-            f.write("*MATERIAL, NAME=myrock\n")
-            f.write("*ELASTIC\n")
-            f.write("2.100000E+05, 0.300000\n")
-            for elset in shel_elsets:
-                f.write(f"*SHELL SECTION, ELSET={elset}, MATERIAL=myrock\n")
-                f.write("0.01\n")
-
-            # For lines
-            f.write("*MATERIAL, NAME=STEEL\n")
-            f.write("*ELASTIC\n")
-            f.write("2.100000E+05, 0.300000\n")
-            for elset in tus_elsets:
-                f.write(f"*SOLID SECTION, ELSET={elset}, MATERIAL=STEEL\n")
-                f.write("0.01\n")
-
-        print(f"✅ Abaqus .inp file '{filename}' written successfully.")
+        abq = AbaqusInputs(self.nodes,self.elements)
+        abq.write(filename)
+        print(f"Abaqus file '{filename}' created successfully!")
 
 
 
     def export_ansys(self, filename: str):
         """
-        Export the mesh data to an Ansys file.
+        Export the mesh to an Ansys-compatible format.
+
         Args:
-            filename (str): The name of the Ansys file to export.
+        filename:Output filename.
+
+        Supported Mesh Types:
+        - Structured meshes
+        - Unstructured meshes
         """
-        Ansys_in = AnsysInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
+        Ansys_in = AnsysInputs(self.nodes, self.elements)
         # Create mesh
         mesh = Ansys_in.create_mesh()
-
         # Write the mesh to an Exodus file
         mesh.write(filename, file_format="ansys")
         print(f"Ansys file '{filename}' created successfully!")
 
-    def export_gmsh(self, filename: typing.Union[str, os.PathLike]):
+
+
+    def export_gmsh(self, filename: str):
         """
-        Export the mesh data to a GMSH file.
-        Supports both structured (hexahedral) and unstructured meshes.
+        Export the mesh to Gmsh (.msh) format.
+
         Args:
-            filename: Path to the output .msh file.
+        filename: Output filename ending with `.msh`.
+
+        Supported Mesh Types:
+        --------------------
+        - Unstructured meshes ONLY
         """
-        gmsh_in = GMSHInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
+        elements =self.elements
+        if not isinstance(elements, list):
+            raise TypeError("Gmsh export requires unstructured CellBlocks. You can try " \
+            "exporting to structured formats like VTU, Exodus, VTM, VTK, ...")
+        gmsh_in = GMSHInputs(self.nodes, elements,)
         mesh = gmsh_in.create_mesh()
-        mesh.write(filename, file_format="gmsh22")
+        meshio.write(filename, mesh, file_format="gmsh")
         print(f"GMSH file '{filename}' created successfully!")
 
-    def export_stl(self, filename: str):
+
+
+    def export_vtk(self, filename: str):
         """
-        Export the mesh data to STL files.
+        Export the mesh to a legacy VTK file.
+
         Args:
-            filename (str): The name of the STL files to export.
+        ----------
+        filename: Output filename ending with `.vtk`.
+
+        Supported Mesh Types:
+        --------------------
+        - Structured meshes
+        - Unstructured meshes
         """
-        stl_in = STLInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
-        stl_in.output_filename = filename  # <--- REQUIRED!
-        stl_in.create_mesh()
+        self.mesh.save(filename)
+        print(f"VTK file '{filename}' with created successfully!")
+
 
 
     def export_vtm(self, filename: str):
         """
-        Export the mesh input_data to a VTM file.
+        Export the mesh to a VTM (VTK MultiBlock) file.
+
         Args:
-            filename (str): The name of the VTM file to export.
+        filename: Output filename ending with `.vtm`.
+
+        Supported Mesh Types:
+        - Structured meshes
+        - Unstructured meshes
         """
         self.mesh.save(filename)
-        print(f"VTM file '{filename}' with multiple blocks created successfully!")
+        print(f"VTM files '{filename}' created successfully!")
+
+
 
     def export_feflow(self, filename: str):
         """
-        Export mesh data to an Feflow.fem file with nodes, tetrahedral,
-        and triangular and line elements.
+        Export the mesh to a FeFlow (.fem) file.
+
+        Args:
+        filename: Output filename ending with `.fem`.
+
+        Supported Mesh Types:
+        - Unstructured meshes ONLY
         """
-        feflow_in = FeflowInputs(nodes_array=self.nodes, elements_array=self.get_union_elems())
-        mesh = feflow_in.create_mesh()
-        node_array = mesh.points
-        elements = mesh.cells
+        elements = self.elements
+        # Reject structured meshes
+        if not isinstance(elements, list):
+            raise TypeError("FeFlow export supports ONLY unstructured meshes.\n"
+            "You can export a structured mesh using other formats (e.g., VTU, VTK, VTM, Exodus,..).")
 
-        # Gather all tetra, triangle, and line elements, and assign group-based markers
-        tetra_all = []
-        tetra_markers = []
-        triangle_all = []
-        triangle_markers = []
-        edge_all = []
-        edge_markers = []
-
-        for idx, block in enumerate(elements):
-            if block.type == "tetra":
-                tetra_all.append(block.data)
-                tetra_markers.append(np.full(len(block.data), idx + 1))  # use idx+1 as region ID
-            elif block.type == "triangle":
-                triangle_all.append(block.data)
-                triangle_markers.append(np.full(len(block.data), idx + 1))  # same logic
-            elif block.type == "line":
-                edge_all.append(block.data)
-                edge_markers.append(np.full(len(block.data), idx + 1))
-
-        # Concatenate all
-        tetra = np.vstack(tetra_all) if tetra_all else np.empty((0, 4), dtype=int)
-        tetra_markers = np.concatenate(tetra_markers) if tetra_markers else None
-
-        triangles = np.vstack(triangle_all) if triangle_all else np.empty((0, 3), dtype=int)
-        triangle_markers = np.concatenate(triangle_markers) if triangle_markers else None
-
-        edges = np.vstack(edge_all) if edge_all else np.empty((0, 2), dtype=int)
-        edge_markers = np.concatenate(edge_markers) if edge_markers else None
-
-        # Start writing FeFlow file
-        with open(filename, 'w') as f:
-            num_points = len(node_array)
-            num_tetra = len(tetra)
-            f.write("PROBLEM:\n")
-            f.write("CLASS (v.7)\n")
-            f.write("   2    1    0    3    0    0    8    8    0    0\n")
-            f.write("DIMENS\n")
-            f.write(f"   {num_points}     {num_tetra}     0      1      0      0      0      0      0      2     0      0      1      0      0      0      0\n")
-
-            f.write("SCALE\n")
-            f.write("   1.0, 1.0, 1.0, 1.0, 0.0, 0.0\n")
-            f.write("VARNODE\n")
-            f.write(f"   {num_tetra}     4     4\n")
-
-            # Write tetrahedra connectivity (1-based)
-            for t in range(num_tetra):
-                tet_nodes = tetra[t] + 1
-                f.write(f"   6     {tet_nodes[0]}     {tet_nodes[1]}     {tet_nodes[2]}     {tet_nodes[3]}\n")
-
-            f.write("XYZCOOR\n")
-            for x, y, z in node_array:
-                f.write(f"     {x}, {y}, {z}\n")
-
-            # ELEMENTALSETS
-            if tetra_markers is not None:
-                f.write("ELEMENTALSETS\n")
-                for m in sorted(set(tetra_markers)):
-                    f.write(f"     \"Region: Name: R{m}\"")
-                    havewritten = 0
-                    for t, mark in enumerate(tetra_markers):
-                        if mark == m:
-                            if (havewritten % 10) == 0:
-                                f.write("\n\t\t")
-                            f.write(f"{t + 1} ")
-                            havewritten += 1
-                    f.write("\n")
-
-            # Create all unique triangles from tets
-            FeFlowObj =C_FeFlow()
-            print(tetra)
-            FeFlowObj.generateAllTriangles(tetra)
-            print('done')
-
-            if triangle_markers is not None and len(triangle_markers) > 0:
-                f.write("FACESETS\n")
-                minMat = int(np.min(triangle_markers))
-                maxMat = int(np.max(triangle_markers))
-
-                for m in range(minMat, maxMat + 1):
-                    mask = triangle_markers == m
-                    triangles_with_marker = triangles[mask]
-
-                    # Reuse FeFlowObj (already has all unique triangles from tets)
-                    FeFlowObj.generateUndefinedTriangles(
-                        marker=m,
-                        triangle_markers=triangle_markers,
-                        triangle_list=triangles
-                    )
-                    FeFlowObj.generateDefinedTriangles()
-
-                    marker_triangle_indices = [tri.index for tri in FeFlowObj.definedTriangles]
-
-                    f.write(f'     "Surface: Name: S{m}"')
-                    havewritten = 0
-                    for tri in marker_triangle_indices:
-                        if (havewritten % 10) == 0:
-                            f.write("\n\t\t")
-                        f.write(f"{tri + 1} ")
-                        havewritten += 1
-                    f.write("\n")
+        feflow = FeflowInputs(self.nodes, elements)
+        feflow.write(filename)
+        print(f"Feflow file '{filename}' created successfully!")
 
 
+@wbgeo_type(name='SimulationResults', color='pink', identifier='SimulationResults')
+@dataclass(config={"arbitrary_types_allowed": True})
 
-            # EDGESETS (Lines)
-            # Create all unique edges from lines
-            FeFlowObj.generateAllEdges(tetra)
+class SimulationResults:
+    """
+    Container class for all simulation results timesteps.
 
-            if edge_markers is not None and len(edge_markers) > 0:
-                f.write("EDGESETS\n")
-                minEdgeMat = int(np.min(edge_markers))
-                maxEdgeMat = int(np.max(edge_markers))
+    Attributes
+    ----------
+    nodes_by_time : Dict[float, np.ndarray]
+        Node coordinates for each timestep.
 
-                for m in range(minEdgeMat, maxEdgeMat + 1):
-                    marker_to_extract = m
+    cells_by_time : Dict[float, np.ndarray]
+        Cell connectivity for each timestep.
 
-                    # Boolean mask for edges with the desired marker
-                    mask = edge_markers == marker_to_extract
+    celltypes_by_time : Dict[float, np.ndarray]
+        Cell types for each timestep.
 
-                    # Apply mask to get edges block
-                    edges_with_marker = edges[mask]
-                    marker_edge_indices = FeFlowObj.generateMarkerEdges(edges_with_marker)
+    node_data_by_time : Dict[float, Dict[str, np.ndarray]]
+        Node-based data arrays for each timestep.
 
-                    f.write(f'     "Polyline: Name: P{m}"')
-                    havewritten = 0
-                    for edge in marker_edge_indices:
-                        if (havewritten % 10) == 0:
-                            f.write("\n\t\t")
-                        f.write(f"{edge + 1} ")
-                        havewritten += 1
-                    f.write("\n")
-
-
-            f.write("END\n")
-
-        print(f"✅ Feflow file '{filename}' written successfully.")
+    cell_data_by_time : Dict[float, Dict[str, np.ndarray]]
+        Cell-based data arrays for each timestep.
+    """
+    nodes_by_time: Dict[float, np.ndarray] = field(default_factory=dict)
+    cells_by_time: Dict[float, np.ndarray] = field(default_factory=dict)
+    celltypes_by_time: Dict[float, np.ndarray] = field(default_factory=dict)
+    node_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
+    cell_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
