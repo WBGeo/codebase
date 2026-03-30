@@ -334,7 +334,7 @@ def run_interpolation_with_fault_domains(
                 scalar_field = scalar_field_sub
 
             comp_vox_mask = np.isin(domain_map, comp_ids_arr)
-            group._scalar_field = np.where(comp_vox_mask, scalar_field, group.get_scalar_field())
+            group.scalar_field = np.where(comp_vox_mask, scalar_field, group.get_scalar_field())
 
             # Store scalar values per element
             for elem in group.structural_elements:
@@ -717,7 +717,7 @@ def compute_structural_model(
     # 3) final lithology block combining domains
     if verbose:
         print("③ Building final lithology block ...")
-    frame._lith_block = compute_lithology_block_with_domains(frame)
+    frame.lith_block = compute_lithology_block_with_domains(frame)
 
     # 4) per-domain meshes (optional)
     if extract_meshes:
@@ -930,7 +930,7 @@ def build_structural_frame(
 
         group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
-        group._scalar_field = np.zeros(grid.resolution, dtype=float)
+        group.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     # Generate colors AFTER groups exist
     color_map = generate_grouped_colors_per_element(group_objects)
@@ -943,9 +943,9 @@ def build_structural_frame(
             element_objects[elem.name] = elem
 
     frame = StructuralFrame(structural_groups=group_objects)
-    frame._grid = grid
-    frame._surface_points = surface_points
-    frame._orientations = orientations
+    frame.grid = grid
+    frame.surface_points = surface_points
+    frame.orientations = orientations
 
     if fault_model_results is not None:
         frame.set_fault_frame(fault_model_results.fault_frame)

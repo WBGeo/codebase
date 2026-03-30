@@ -31,19 +31,19 @@ def make_frame_one_group(grid: RegularGrid) -> StructuralFrame:
     g = StructuralGroup(name="G1", structural_elements=[e1, e2])
     frame = StructuralFrame(structural_groups=[g])
 
-    frame._grid = grid
-    frame._surface_points = pd.DataFrame(
+    frame.grid = grid
+    frame.surface_points = pd.DataFrame(
         {"X": [0.5, 1.5], "Y": [0.5, 1.5], "Z": [0.5, 0.5], "formation": ["e1", "e2"]}
     )
-    frame._orientations = None
+    frame.orientations = None
 
     # Make sure interpolation context is initialized before set_interpolation_method
-    pts = frame._surface_points[["X", "Y", "Z"]].to_numpy()
+    pts = frame.surface_points[["X", "Y", "Z"]].to_numpy()
     g.update_interpolation_context(pts)
     g.set_interpolation_method(InterpolationMethod.RADIAL_BASIS_FUNCTION)
 
     # Preallocate scalar field (same convention as your code)
-    g._scalar_field = np.zeros(grid.resolution, dtype=float)
+    g.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     return frame
 
@@ -236,7 +236,7 @@ def test_run_interpolation_with_fault_domains_calls_interpolator_and_sets_scalar
     monkeypatch.setitem(mod.interpolate_dispatch, InterpolationMethod.RADIAL_BASIS_FUNCTION, fake_interp)
 
     # Pre-existing scalar field used as "background"
-    group._scalar_field = np.zeros(grid.resolution, dtype=float)
+    group.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     mod.run_interpolation_with_fault_domains(frame=frame, fault_frame=TmpFF(), crop_to_domain=False)
 
@@ -287,7 +287,7 @@ def _lin_sf(n: int = 5) -> np.ndarray:
 def test_set_scalar_masks_raises_when_no_groups():
     grid = _make_1d_grid()
     frame = StructuralFrame(structural_groups=[])
-    frame._grid = grid
+    frame.grid = grid
     with pytest.raises(ValueError, match="no groups"):
         mod.set_scalar_masks_per_domain(frame)
 
@@ -297,7 +297,7 @@ def test_set_scalar_masks_raises_when_group_has_no_scalar_field():
     e1 = StructuralElement(name="e1")
     g = StructuralGroup(name="G1", structural_elements=[e1])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
     # scalar field intentionally NOT set
     with pytest.raises(ValueError, match="no scalar field"):
         mod.set_scalar_masks_per_domain(frame)
@@ -311,7 +311,7 @@ def test_set_scalar_masks_raises_when_oldest_element_has_no_scalar_value():
     g0 = StructuralGroup(name="G0", structural_elements=[e_young, e_old])
     g1 = StructuralGroup(name="G1", structural_elements=[StructuralElement(name="base")])
     frame = StructuralFrame(structural_groups=[g0, g1])
-    frame._grid = grid
+    frame.grid = grid
     g0.set_scalar_field(_lin_sf())
     g1.set_scalar_field(_lin_sf())
     # e_old (structural_elements[-1]) has no scalar value
@@ -325,7 +325,7 @@ def test_set_scalar_masks_single_group_gets_all_true_mask():
     e1 = StructuralElement(name="e1")
     g = StructuralGroup(name="G1", structural_elements=[e1])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
     g.set_scalar_field(_lin_sf())
 
     mod.set_scalar_masks_per_domain(frame)
@@ -345,7 +345,7 @@ def test_set_scalar_masks_non_last_group_thresholds_at_oldest_element():
     g0 = StructuralGroup(name="G0", structural_elements=[e_young, e_old])
     g1 = StructuralGroup(name="G1", structural_elements=[StructuralElement(name="base")])
     frame = StructuralFrame(structural_groups=[g0, g1])
-    frame._grid = grid
+    frame.grid = grid
 
     sf = _lin_sf()  # [1, 2, 3, 4, 5]
     g0.set_scalar_field(sf)
@@ -369,7 +369,7 @@ def test_compute_lithology_returns_correct_shape():
     e1 = StructuralElement(name="e1")
     g = StructuralGroup(name="G1", structural_elements=[e1])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
     g.set_scalar_field(np.ones((4, 3, 2)))
     g.set_mask(np.ones((4, 3, 2), dtype=bool))
     e1.set_scalar_value(0.5)
@@ -383,7 +383,7 @@ def test_compute_lithology_assigns_element_ids_automatically():
     e1 = StructuralElement(name="e1")
     g = StructuralGroup(name="G1", structural_elements=[e1])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
     g.set_scalar_field(np.ones((5, 1, 1)))
     g.set_mask(np.ones((5, 1, 1), dtype=bool))
     e1.set_scalar_value(0.5)
@@ -399,7 +399,7 @@ def test_compute_lithology_single_element_fills_above_threshold():
     e1 = StructuralElement(name="e1")
     g = StructuralGroup(name="G1", structural_elements=[e1])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
     g.set_scalar_field(_lin_sf())          # [1, 2, 3, 4, 5]
     g.set_mask(np.ones((5, 1, 1), dtype=bool))
     e1.set_scalar_value(3.0)
@@ -418,7 +418,7 @@ def test_compute_lithology_two_elements_partition_correctly():
     e_old = StructuralElement(name="e_old")       # sval=2 → fills remaining sf >= 2
     g = StructuralGroup(name="G1", structural_elements=[e_young, e_old])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
     g.set_scalar_field(_lin_sf())          # [1, 2, 3, 4, 5]
     g.set_mask(np.ones((5, 1, 1), dtype=bool))
     e_young.set_scalar_value(4.0)
@@ -441,7 +441,7 @@ def test_compute_lithology_younger_group_overwrites_older():
     g_youngest = StructuralGroup(name="G_youngest", structural_elements=[e_young])
     g_oldest = StructuralGroup(name="G_oldest", structural_elements=[e_old])
     frame = StructuralFrame(structural_groups=[g_youngest, g_oldest])
-    frame._grid = grid
+    frame.grid = grid
 
     sf = _lin_sf()  # [1, 2, 3, 4, 5]
     g_oldest.set_scalar_field(sf)
@@ -468,7 +468,7 @@ def test_compute_lithology_age_mask_limits_fill():
     e1 = StructuralElement(name="e1")
     g = StructuralGroup(name="G1", structural_elements=[e1])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
     g.set_scalar_field(_lin_sf())
     e1.set_scalar_value(1.0)  # would fill entire grid without mask
     # Only first 3 voxels are inside the group's age mask
@@ -489,7 +489,7 @@ def test_compute_lithology_skips_group_with_no_scalar_field():
     g_skip = StructuralGroup(name="G_skip", structural_elements=[e_skip])
     g_fill = StructuralGroup(name="G_fill", structural_elements=[e_fill])
     frame = StructuralFrame(structural_groups=[g_skip, g_fill])
-    frame._grid = grid
+    frame.grid = grid
     # g_skip: no scalar field set
     g_fill.set_scalar_field(np.ones((5, 1, 1)))
     g_fill.set_mask(np.ones((5, 1, 1), dtype=bool))
@@ -522,7 +522,7 @@ def _make_mesh_frame(grid: RegularGrid, n_groups: int = 1):
         groups.append(g)
         elems.append(e)
     frame = StructuralFrame(structural_groups=groups)
-    frame._grid = grid
+    frame.grid = grid
     return frame, groups, elems
 
 
@@ -616,7 +616,7 @@ def test_extract_meshes_group_without_scalar_field_is_skipped(monkeypatch):
     g_ok.set_mask(np.ones(grid.resolution, dtype=bool))
 
     frame = StructuralFrame(structural_groups=[g_no_sf, g_ok])
-    frame._grid = grid
+    frame.grid = grid
 
     call_count = [0]
 
@@ -646,7 +646,7 @@ def test_extract_meshes_element_without_scalar_value_is_skipped(monkeypatch):
     g.set_scalar_field(np.ones(grid.resolution, dtype=float))
     g.set_mask(np.ones(grid.resolution, dtype=bool))
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
 
     called_with_svals = []
 
@@ -698,7 +698,7 @@ def test_extract_meshes_multidomain_vertices_are_offset(monkeypatch):
     # Two-domain map: left half = domain 0, right half = domain 1
     dom_map = np.zeros(grid.resolution, dtype=int)
     dom_map[2:, :, :] = 1
-    frame._fault_frame = _FakeFaultFrame(dom_map)
+    frame.fault_frame = _FakeFaultFrame(dom_map)
 
     domain_call_idx = [0]
     V0 = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])   # 2 verts for domain 0
@@ -734,7 +734,7 @@ def test_extract_meshes_combined_not_set_without_lith_block(monkeypatch):
     """Combined meshes must not be set when the frame has no lith block."""
     grid = make_grid((3, 2, 2))
     frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
-    # frame._lith_block is None by default
+    # frame.lith_block is None by default
 
     monkeypatch.setattr(mod, "marching_cubes_per_element", lambda *a, **kw: (
         np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
@@ -750,12 +750,12 @@ def test_extract_meshes_combined_not_set_without_lith_block(monkeypatch):
 
 
 def test_extract_meshes_combined_set_when_lith_block_present(monkeypatch):
-    """Combined meshes are stored from lith block when frame._lith_block is available."""
+    """Combined meshes are stored from lith block when frame.lith_block is available."""
     grid = make_grid((3, 2, 2))
     frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
 
     elems[0].set_id(1)
-    frame._lith_block = np.ones(grid.resolution, dtype=int)
+    frame.lith_block = np.ones(grid.resolution, dtype=int)
 
     sentinel_verts = np.array([[9.0, 9.0, 9.0]])
     sentinel_faces = np.array([[0, 0, 0]], dtype=int)
@@ -807,11 +807,11 @@ def _make_validate_frame(
     elements = [StructuralElement(name=f"e{i}") for i in range(n_elements)]
     g = StructuralGroup(name="G1", structural_elements=elements)
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
 
     sp_rows = max(n_elements, 1)
     formations = [e.name for e in elements] if n_elements > 0 else ["orphan"]
-    frame._surface_points = pd.DataFrame({
+    frame.surface_points = pd.DataFrame({
         "X": np.linspace(0.5, 1.5, sp_rows),
         "Y": [0.5] * sp_rows,
         "Z": [0.5] * sp_rows,
@@ -819,19 +819,19 @@ def _make_validate_frame(
     })
 
     if has_orientations and n_elements > 0:
-        frame._orientations = pd.DataFrame({
+        frame.orientations = pd.DataFrame({
             "X": [1.0], "Y": [0.5], "Z": [0.5],
             "G_x": [0.0], "G_y": [0.0], "G_z": [1.0],
             "formation": [elements[0].name],
         })
     else:
-        frame._orientations = None
+        frame.orientations = None
 
     # update_interpolation_context requires ≥2 points; provide dummy points when needed
     ctx_pts = np.array([[0.5, 0.5, 0.5], [1.5, 0.5, 0.5]])
     g.update_interpolation_context(ctx_pts)
     g.set_interpolation_method(method)
-    g._scalar_field = np.zeros(grid.resolution, dtype=float)
+    g.scalar_field = np.zeros(grid.resolution, dtype=float)
     return frame
 
 
@@ -881,22 +881,22 @@ def test_validate_collects_multiple_violations():
     g1 = StructuralGroup(name="G1", structural_elements=[e1])
     g1.update_interpolation_context(_ctx)
     g1.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
-    g1._scalar_field = np.zeros(grid.resolution, dtype=float)
+    g1.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     # Group 2: FDI, no orientations (PLI excluded pending parameter tuning)
     e2 = StructuralElement(name="b")
     g2 = StructuralGroup(name="G2", structural_elements=[e2])
     g2.update_interpolation_context(_ctx)
     g2.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
-    g2._scalar_field = np.zeros(grid.resolution, dtype=float)
+    g2.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     frame = StructuralFrame(structural_groups=[g1, g2])
-    frame._grid = grid
-    frame._surface_points = pd.DataFrame({
+    frame.grid = grid
+    frame.surface_points = pd.DataFrame({
         "X": [0.5, 1.5], "Y": [0.5, 0.5], "Z": [0.5, 0.5],
         "formation": ["a", "b"],
     })
-    frame._orientations = None
+    frame.orientations = None
 
     with pytest.raises(ValueError) as exc_info:
         mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
@@ -919,14 +919,14 @@ def test_validate_fails_when_orientations_absent_in_active_fault_domain():
     e = StructuralElement(name="layer")
     g = StructuralGroup(name="G", structural_elements=[e])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
 
     # Surface points in domain 1 (x=2.5 and x=3.5)
-    frame._surface_points = pd.DataFrame({
+    frame.surface_points = pd.DataFrame({
         "X": [2.5, 3.5], "Y": [0.5, 0.5], "Z": [0.5, 0.5], "formation": ["layer", "layer"],
     })
     # Orientation in domain 0 (x=0.5) — wrong domain
-    frame._orientations = pd.DataFrame({
+    frame.orientations = pd.DataFrame({
         "X": [0.5], "Y": [0.5], "Z": [0.5],
         "G_x": [0.0], "G_y": [0.0], "G_z": [1.0],
         "formation": ["layer"],
@@ -934,12 +934,12 @@ def test_validate_fails_when_orientations_absent_in_active_fault_domain():
 
     g.update_interpolation_context(np.array([[2.5, 0.5, 0.5], [3.5, 0.5, 0.5]]))
     g.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
-    g._scalar_field = np.zeros(grid.resolution, dtype=float)
+    g.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     # Fault active for this group (youngest_idx=0, group_idx=0 → active → domains stay separate)
     fault_elem = _FakeFaultElem("F1", {(0, 1)})
     fake_ff = _FakeFaultFrameWithFaults(dom_map, [fault_elem])
-    frame._fault_activity = {"F1": 0}
+    frame.fault_activity = {"F1": 0}
 
     with pytest.raises(ValueError, match="orientation"):
         mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)
@@ -956,13 +956,13 @@ def test_validate_passes_when_orientations_present_in_correct_domain():
     e = StructuralElement(name="layer")
     g = StructuralGroup(name="G", structural_elements=[e])
     frame = StructuralFrame(structural_groups=[g])
-    frame._grid = grid
+    frame.grid = grid
 
-    frame._surface_points = pd.DataFrame({
+    frame.surface_points = pd.DataFrame({
         "X": [2.5, 3.5], "Y": [0.5, 0.5], "Z": [0.5, 0.5], "formation": ["layer", "layer"],
     })
     # Orientation also in domain 1 (x=3.5) — correct domain
-    frame._orientations = pd.DataFrame({
+    frame.orientations = pd.DataFrame({
         "X": [3.5], "Y": [0.5], "Z": [0.5],
         "G_x": [0.0], "G_y": [0.0], "G_z": [1.0],
         "formation": ["layer"],
@@ -970,10 +970,10 @@ def test_validate_passes_when_orientations_present_in_correct_domain():
 
     g.update_interpolation_context(np.array([[2.5, 0.5, 0.5], [3.5, 0.5, 0.5]]))
     g.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
-    g._scalar_field = np.zeros(grid.resolution, dtype=float)
+    g.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     fault_elem = _FakeFaultElem("F1", {(0, 1)})
     fake_ff = _FakeFaultFrameWithFaults(dom_map, [fault_elem])
-    frame._fault_activity = {"F1": 0}
+    frame.fault_activity = {"F1": 0}
 
     mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)  # must not raise

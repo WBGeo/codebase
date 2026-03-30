@@ -287,7 +287,7 @@ def test_structural_frame_set_fault_frame_validations_and_activity_mapping():
 
     # set required private state for tests
     grid = make_grid()
-    sf._grid = grid  # the class has no setter; OK for unit tests
+    sf.grid = grid  # the class has no setter; OK for unit tests
 
     fault = FaultElement("F1")
     ff = FaultFrame([fault])
@@ -337,14 +337,14 @@ def test_structural_frame_set_fault_frame_validations_and_activity_mapping():
 
 def test_structural_frame_set_fault_frame_allows_equal_grid_values():
     sf = StructuralFrame(structural_groups=[StructuralGroup(name="G", structural_elements=[])])
-    sf._grid = make_grid()
+    sf.grid = make_grid()
 
     ff = FaultFrame([FaultElement("F1")])
     ff.set_grid(make_grid())  # different instance, same values
     ff.set_domain_map(np.zeros((2, 2, 2), dtype=float))
 
-    assert ff.grid is not sf._grid
-    assert ff.grid == sf._grid
+    assert ff.grid is not sf.grid
+    assert ff.grid == sf.grid
 
     # should NOT raise
     sf.set_fault_frame(ff)
@@ -353,11 +353,11 @@ def test_structural_frame_set_fault_frame_allows_equal_grid_values():
 
 def test_structural_frame_detach_fault_frame_clears_state():
     sf = StructuralFrame(structural_groups=[StructuralGroup(name="G1", structural_elements=[])])
-    sf._grid = make_grid()
+    sf.grid = make_grid()
 
     ff = FaultFrame([FaultElement("F1")])
-    ff.set_grid(sf._grid)
-    ff.set_domain_map(np.zeros(sf._grid.resolution, dtype=float))
+    ff.set_grid(sf.grid)
+    ff.set_domain_map(np.zeros(sf.grid.resolution, dtype=float))
     sf.set_fault_frame(ff)
 
     assert sf.fault_frame is not None

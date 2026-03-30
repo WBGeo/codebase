@@ -9,10 +9,7 @@ from pydantic.dataclasses import dataclass
 from typing import Optional, Tuple
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayInt64
 import pandas as pd
-from typing import TypeVar, Dict, List
 from typing import Dict, List, Any
-import pyvista as pv
-import meshio
 from typing import Optional, Union, List
 from pydantic_numpy.typing import NpNDArrayInt64, NpNDArrayFp64
 from py_api_wbgeo.nodesapi import wbgeo_type
@@ -29,30 +26,17 @@ from core.meshing_components.mesh_format.ANSYS.Ansys_format import AnsysInputs
 
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, PlainValidator, Field, ConfigDict
+from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, \
+  PlainValidator, Field, ConfigDict, PrivateAttr
 
 from core.structural_modeling_components.structural_objects.structural_objects import StructuralFrame, FaultFrame
+from core.utility.pydantic_bridge import PandasDataFrame, MeshIOCellBlock
 
-# Pydantic adapter for panda DataFrame
-def df_serializer(df: pd.DataFrame) -> list[dict]:
-    return df.to_dict(orient="records")
-
-
-def df_validator(value) -> pd.DataFrame:
-    if isinstance(value, pd.DataFrame):
-        return value
-    elif isinstance(value, list):
-        return pd.DataFrame(value)
-    raise TypeError("Expected a pandas DataFrame or a list of dictionaries.")
-
-
-PandasDataFrame = typing.Annotated[
-    pd.DataFrame, PlainSerializer(df_serializer), BeforeValidator(df_validator)]
 
 @wbgeo_type(name='Input input_data for the rock elements of a structural geological model',
-            color='orange',
+            color='#b0dfa9',
             identifier='InputData_StructuralElements')
-@dataclass(config={"arbitrary_types_allowed": True})
+@dataclass
 class InputData_StructuralElements:
     """
     A class to represent the input input_data for a geological model.
@@ -107,7 +91,7 @@ class InputData_StructuralElements:
 @wbgeo_type(name='Input input_data for the fault elements of a structural geological model',
             color='orange',
             identifier='InputData_FaultElements')
-@dataclass(config={"arbitrary_types_allowed": True})
+@dataclass
 class InputData_FaultElements:
     """
     A class to represent the input input_data for a geological model.
@@ -142,8 +126,8 @@ class InputData_FaultElements:
                   f"Removed {_removed} duplicate fault orientation(s) (identical X, Y, Z, formation).")
 
 
-@wbgeo_type(name='Result of a structural geological model', color='blue', identifier='StructuralModelResults')
-@dataclass(config={"arbitrary_types_allowed": True})
+@wbgeo_type(name='Result of a structural geological model', color='#8cb369', identifier='StructuralModelResults')
+@dataclass
 class StructuralModelResults:
     """
     A class to represent the results of a geological model.
@@ -156,7 +140,7 @@ class StructuralModelResults:
 
 
 @wbgeo_type(name='Result of a structural fault model', color='blue', identifier='FaultModelResults')
-@dataclass(config={"arbitrary_types_allowed": True})
+@dataclass
 class FaultModelResults:
     """
     A class to represent the results of a fault model.
@@ -167,36 +151,23 @@ class FaultModelResults:
     # TODO: ALEX: This is the simplest version I could think of - does this work for you
     fault_frame: FaultFrame  # this is a deepcopy of the structural frame object
 
-# todo: Move into common class?
-def cellblock_encoder(obj: meshio.CellBlock):
-  import pickle
-  import codecs
-  return codecs.encode(pickle.dumps(obj), "base64").decode()
-
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
-@dataclass(config={"arbitrary_types_allowed": True, "json_encoders" : {meshio.CellBlock: cellblock_encoder}})
-class MeshResults:
+class MeshResults(BaseModel):
     nodes: NpNDArrayFp64 # TODO: int or FP array?
     # mesh is a transient/derived field
-    mesh : Optional[pyvista.MultiBlock]  = Field(default=None, exclude = True) #  exclude this field from serialization
+    _mesh : Optional[pyvista.MultiBlock]  = PrivateAttr(default=None) #  exclude this field from serialization
 
     elements_structured: typing.Optional[NpNDArrayFp64] = None
-    elements_unstructured: typing.Optional[List[meshio.CellBlock]] = None # todo: NpNDArrayFp64 for structured, CellBlock for unstructured - union not possible!
+    elements_unstructured: typing.Optional[List[MeshIOCellBlock]] = None # todo: NpNDArrayFp64 for structured, CellBlock for unstructured - union not possible!
 
+    @property
+    def mesh(self): # getter/setter due to private/transient field
+      return self._mesh
 
-    # todo: Move into common class?
-    @pydantic.field_validator('elements_unstructured', mode="before")
-    @classmethod
-    def decode_cellblock(cls, v):
-      if v is None:
-        return None
-      if isinstance(v, typing.List) or isinstance(v, list) or isinstance(v, collections.abc.Iterable) or True:
-        import pickle
-        import codecs
-        return [
-            e if isinstance(e, meshio.CellBlock) or e is None else pickle.loads(codecs.decode(e.encode(), "base64")) for e in v
-          ]
-      raise ValueError("Unhandled cellblock", type(v))
+    @mesh.setter
+    def mesh(self, m): # getter/setter due to private/transient field
+      self._mesh = m
+
 
     def get_union_elems(self):
       if self.elements_structured is not None:

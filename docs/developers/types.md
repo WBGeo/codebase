@@ -57,7 +57,6 @@ By default, a parameters default value is used.
 To add support for additional input types,
 they have to be added to the UI (feel free to ask Alex for this).
 
-
 #### Defining more complex types
 
 For more complex types,
@@ -71,6 +70,9 @@ class MyComplexDataType:
    numbers: MyListOfNumbers
 
 ````
+
+You must not use pydantics 'arbitrary_types' config option.
+Take a look at the pydantic_bridge adapters instead.
 
 TODO: controls
 

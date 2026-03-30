@@ -262,7 +262,7 @@ def test_model2_fault_with_unconformity(method, plot_mode):
         g.set_interpolation_method(method)
 
     res = general.compute_structural_model(frame, extract_meshes=False, verbose=False)
-    lith = res.structural_frame._lith_block
+    lith = res.structural_frame.lith_block
 
     assert lith is not None
     assert lith.shape == tuple(grid.resolution)
