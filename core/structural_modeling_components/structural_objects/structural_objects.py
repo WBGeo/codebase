@@ -8,7 +8,10 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from matplotlib.colors import BoundaryNorm, ListedColormap
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field
+from pydantic_numpy import NpNDArrayFp64, NpNDArrayBool, NpNDArrayInt32
+
+from core.utility.pydantic_bridge import PandasDataFrame
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     RegularGrid,
@@ -30,13 +33,13 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
-FloatArray = npt.NDArray[np.floating]
-IntArray = npt.NDArray[np.integer]
-BoolArray = npt.NDArray[np.bool_]
+FloatArray = NpNDArrayFp64
+IntArray = npt.NDArray[np.integer] #todo: unused & bad pydantic
+BoolArray = NpNDArrayBool
 
 MeshType3 = str  # expected: "masked" | "unmasked" | "combined"
 MeshType2 = str  # expected: "masked" | "unmasked"
-MeshDict = Dict[str, npt.NDArray[np.generic]]
+MeshDict = Dict[str, NpNDArrayFp64]
 
 
 class StructuralElement(BaseModel):
@@ -54,46 +57,23 @@ class StructuralElement(BaseModel):
     name: str
 
     # Computed / assigned later (kept private; accessed via properties)
-    _scalar_value: Optional[float] = PrivateAttr(default=None)
-    _id: Optional[int] = PrivateAttr(default=None)
-    _color: Optional[str] = PrivateAttr(default=None)
-    _vertices: Dict[str, npt.NDArray[np.generic]] = PrivateAttr(default_factory=dict)
-    _edges: Dict[str, npt.NDArray[np.generic]] = PrivateAttr(default_factory=dict)
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    @property
-    def scalar_value(self) -> Optional[float]:
-        return self._scalar_value
-
-    @property
-    def id(self) -> Optional[int]:
-        return self._id
-
-    @property
-    def color(self) -> Optional[str]:
-        return self._color
-
-    @property
-    def vertices(self) -> Dict[str, npt.NDArray[np.generic]]:
-        return self._vertices
-
-    @property
-    def edges(self) -> Dict[str, npt.NDArray[np.generic]]:
-        return self._edges
+    scalar_value: Optional[float] = Field(default=None)
+    id: Optional[int] = Field(default=None)
+    color: Optional[str] = Field(default=None)
+    vertices: Dict[str, NpNDArrayFp64] = Field(default_factory=dict)
+    edges: Dict[str, NpNDArrayInt32] = Field(default_factory=dict)
 
     def set_scalar_value(self, value: float) -> None:
-        self._scalar_value = value
+        self.scalar_value = value
 
     def get_scalar_value(self) -> Optional[float]:
-        return self._scalar_value
+        return self.scalar_value
 
     def set_id(self, element_id: int) -> None:
-        self._id = element_id
+        self.id = element_id
 
     def set_color(self, hex_color: str) -> None:
-        self._color = hex_color
+        self.color = hex_color
 
     def set_mesh(
             self,
@@ -117,8 +97,8 @@ class StructuralElement(BaseModel):
                 f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined."
             )
 
-        self._vertices[mesh_type] = vertices
-        self._edges[mesh_type] = edges
+        self.vertices[mesh_type] = vertices
+        self.edges[mesh_type] = edges
 
     def get_mesh(
             self, mesh_type: MeshType3
@@ -130,7 +110,7 @@ class StructuralElement(BaseModel):
             KeyError: If the mesh type does not exist.
         """
         try:
-            return self._vertices[mesh_type], self._edges[mesh_type]
+            return self.vertices[mesh_type], self.edges[mesh_type]
         except KeyError:
             raise KeyError(f"Mesh '{mesh_type}' not found in element '{self.name}'.")
 
@@ -147,14 +127,12 @@ class StructuralGroup(BaseModel):
     name: str
     structural_elements: List["StructuralElement"] = Field(default_factory=list)
 
-    _interpolation_method: Optional[InterpolationMethod] = PrivateAttr(default=None)
-    _scalar_field: Optional[npt.NDArray[np.floating]] = PrivateAttr(default=None)
-    _interpolation_params: Optional[InterpolationParameterSet] = PrivateAttr(default=None)
-    _mask: Optional[npt.NDArray[np.bool_]] = PrivateAttr(default=None)
-    _context: Optional[InterpolationContext] = PrivateAttr(default=None)
+    interpolation_method: Optional[InterpolationMethod] = Field(default=None)
+    scalar_field: Optional[NpNDArrayFp64] = Field(default=None)
+    interpolation_params: Optional[InterpolationParameterSet] = Field(default=None)
+    mask: Optional[NpNDArrayBool] = Field(default=None)
+    context: Optional[InterpolationContext] = Field(default=None)
 
-    class Config:
-        arbitrary_types_allowed = True
 
     def __getitem__(self, element_name: str) -> "StructuralElement":
         for elem in self.structural_elements:
@@ -164,29 +142,18 @@ class StructuralGroup(BaseModel):
             f"Structural element '{element_name}' not found in group '{self.name}'."
         )
 
-    @property
-    def scalar_field(self) -> Optional[npt.NDArray[np.floating]]:
-        return self._scalar_field
 
-    def set_scalar_field(self, field: npt.NDArray[np.floating]) -> None:
-        self._scalar_field = field
+    def set_scalar_field(self, field: NpNDArrayFp64) -> None:
+        self.scalar_field = field
 
-    def get_scalar_field(self) -> Optional[npt.NDArray[np.floating]]:
-        return self._scalar_field
+    def get_scalar_field(self) -> Optional[NpNDArrayFp64]:
+        return self.scalar_field
 
-    @property
-    def mask(self) -> Optional[npt.NDArray[np.bool_]]:
-        return self._mask
+    def set_mask(self, mask: NpNDArrayBool) -> None:
+        self.mask = mask
 
-    def set_mask(self, mask: npt.NDArray[np.bool_]) -> None:
-        self._mask = mask
-
-    def get_mask(self) -> Optional[npt.NDArray[np.bool_]]:
-        return self._mask
-
-    @property
-    def interpolation_method(self) -> Optional[InterpolationMethod]:
-        return self._interpolation_method
+    def get_mask(self) -> Optional[NpNDArrayBool]:
+        return self.mask
 
     def set_interpolation_method(self, method: Union[str, InterpolationMethod]) -> None:
         """
@@ -211,20 +178,20 @@ class StructuralGroup(BaseModel):
                 f"Interpolation method must be a string or InterpolationMethod enum, got {type(method)}"
             )
 
-        if self._context is None:
+        if self.context is None:
             raise RuntimeError(
                 "Interpolation context not initialized. "
                 "Call update_interpolation_context() first."
             )
 
-        self._interpolation_method = method
-        self._interpolation_params = self._default_params_for_method(method, self._context)
+        self.interpolation_method = method
+        self.interpolation_params = self._default_params_for_method(method, self.context)
 
     def set_interpolation_params(self, params: InterpolationParameterSet) -> None:
-        self._interpolation_params = params
+        self.interpolation_params = params
 
     def get_interpolation_params(self) -> Optional[InterpolationParameterSet]:
-        return self._interpolation_params
+        return self.interpolation_params
 
     def configure_interpolation_params(self, **kwargs) -> None:
         """
@@ -234,18 +201,18 @@ class StructuralGroup(BaseModel):
             ValueError: If parameters have not been initialized.
             AttributeError: If any provided key is not a parameter field.
         """
-        if self._interpolation_params is None:
+        if self.interpolation_params is None:
             raise ValueError(
                 "Interpolation parameters have not been initialized. "
                 "Make sure to call set_interpolation_method() first."
             )
 
         for key, value in kwargs.items():
-            if not hasattr(self._interpolation_params, key):
+            if not hasattr(self.interpolation_params, key):
                 raise AttributeError(
-                    f"'{key}' is not a valid parameter for {type(self._interpolation_params).__name__}."
+                    f"'{key}' is not a valid parameter for {type(self.interpolation_params).__name__}."
                 )
-            setattr(self._interpolation_params, key, value)
+            setattr(self.interpolation_params, key, value)
 
     def _default_params_for_method(
             self, method: InterpolationMethod, ctx: InterpolationContext
@@ -275,9 +242,9 @@ class StructuralGroup(BaseModel):
         return None
 
     def set_interpolation_context(self, ctx: InterpolationContext) -> None:
-        self._context = ctx
+        self.context = ctx
 
-    def update_interpolation_context(self, points: npt.NDArray[np.floating]) -> None:
+    def update_interpolation_context(self, points: NpNDArrayFp64) -> None:
         """
         Build/update the interpolation context from explicit group point data.
 
@@ -305,7 +272,7 @@ class StructuralGroup(BaseModel):
         dists, _ = tree.query(points, k=2)
         mean_nn_distance = float(np.median(dists[:, 1]))
 
-        self._context = InterpolationContext(
+        self.context = InterpolationContext(
             data_scale=data_scale,
             n_points=int(points.shape[0]),
             mean_nn_distance=mean_nn_distance,
@@ -330,35 +297,12 @@ class StructuralFrame(BaseModel):
 
     structural_groups: List[StructuralGroup] = Field(default_factory=list)
 
-    _grid: Optional[RegularGrid] = PrivateAttr(default=None)
-    _surface_points: Optional[pd.DataFrame] = PrivateAttr(default=None)
-    _orientations: Optional[pd.DataFrame] = PrivateAttr(default=None)
-    _lith_block: Optional[npt.NDArray[np.generic]] = PrivateAttr(default=None)
-    _fault_frame: Optional["FaultFrame"] = PrivateAttr(default=None)
-    _fault_activity: Optional[dict[str, int]] = PrivateAttr(default=None)
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    @property
-    def grid(self) -> RegularGrid:
-        return self._grid
-
-    @property
-    def surface_points(self) -> pd.DataFrame:
-        return self._surface_points
-
-    @property
-    def orientations(self) -> Optional[pd.DataFrame]:
-        return self._orientations
-
-    @property
-    def lith_block(self) -> Optional[npt.NDArray[np.generic]]:
-        return self._lith_block
-
-    @property
-    def fault_frame(self) -> Optional["FaultFrame"]:
-        return self._fault_frame
+    grid: Optional[RegularGrid] = Field(default=None)
+    surface_points: Optional[PandasDataFrame] = Field(default=None)
+    orientations: Optional[PandasDataFrame] = Field(default=None)
+    lith_block: Optional[NpNDArrayFp64] = Field(default=None)
+    fault_frame: Optional["FaultFrame"] = Field(default=None)
+    fault_activity: Optional[dict[str, int]] = Field(default=None)
 
     def set_fault_frame(self, fault_frame: Optional["FaultFrame"]) -> None:
         """
@@ -369,11 +313,11 @@ class StructuralFrame(BaseModel):
             instance and that the fault frame has a computed domain map.
         """
         if fault_frame is None:
-            self._fault_frame = None
-            self._fault_activity = None
+            self.fault_frame = None
+            self.fault_activity = None
             return
 
-        if self._grid is None:
+        if self.grid is None:
             raise ValueError(
                 "StructuralFrame grid must be set before assigning a FaultFrame."
             )
@@ -383,8 +327,11 @@ class StructuralFrame(BaseModel):
                 "FaultFrame grid must be set before being assigned to a StructuralFrame."
             )
 
-        if fault_frame.grid != self._grid:
-            raise ValueError("FaultFrame and StructuralFrame must share the same grid.")
+        if fault_frame.grid != self.grid:
+            raise ValueError("FaultFrame and StructuralFrame must share the same grid.",
+                             fault_frame.grid,
+                             self.grid,
+                             self.grid != fault_frame.grid)
 
         # Check that the fault frame has a computed solution
         if fault_frame.domain_map is None:
@@ -393,20 +340,20 @@ class StructuralFrame(BaseModel):
                 "Please run `compute_fault_domains(fault_frame)` first."
             )
 
-        self._fault_frame = fault_frame
+        self.fault_frame = fault_frame
 
         # Initialize fault activity to default (all groups affected)
-        self._fault_activity = {fault.name: 0 for fault in fault_frame.fault_elements}
+        self.fault_activity = {fault.name: 0 for fault in fault_frame.fault_elements}
 
-    @property
-    def fault_activity(self) -> Optional[dict[str, int]]:
-        if self._fault_activity is None:
-            return None
-        return dict(self._fault_activity)  # defensive copy
+    # @property
+    # def fault_activity(self) -> Optional[dict[str, int]]:
+    #     if self._fault_activity is None:
+    #         return None
+    #     return dict(self._fault_activity)  # defensive copy # todo
 
     @property
     def fault_activity_verbose(self) -> Optional[dict[str, dict[str, int | str]]]:
-        if self._fault_activity is None:
+        if self.fault_activity is None:
             return None
 
         return {
@@ -414,14 +361,14 @@ class StructuralFrame(BaseModel):
                 "youngest_group_index": idx,
                 "youngest_group_name": self.structural_groups[idx].name,
             }
-            for fault, idx in self._fault_activity.items()
+            for fault, idx in self.fault_activity.items()
         }
 
     def set_fault_activity_by_index(self, fault_name: str, youngest_group_idx: int) -> None:
-        if self._fault_frame is None or self._fault_activity is None:
+        if self.fault_frame is None or self.fault_activity is None:
             raise RuntimeError("Cannot set fault activity without a FaultFrame attached.")
 
-        if fault_name not in self._fault_activity:
+        if fault_name not in self.fault_activity:
             raise KeyError(f"Fault '{fault_name}' not found in fault frame.")
 
         if youngest_group_idx < 0 or youngest_group_idx >= len(self.structural_groups):
@@ -429,7 +376,7 @@ class StructuralFrame(BaseModel):
                 f"max_group_idx must be in range [0, {len(self.structural_groups) - 1}]."
             )
 
-        self._fault_activity[fault_name] = youngest_group_idx
+        self.fault_activity[fault_name] = youngest_group_idx
 
     def set_fault_activity_by_group(self, fault_name: str, group_name: str) -> None:
         for idx, group in enumerate(self.structural_groups):
@@ -440,27 +387,27 @@ class StructuralFrame(BaseModel):
         raise KeyError(f"Structural group '{group_name}' not found.")
 
     def get_surface_points_for_element(self, element_name: str) -> pd.DataFrame:
-        return self._surface_points[self._surface_points["formation"] == element_name]
+        return self.surface_points[self.surface_points["formation"] == element_name]
 
     def get_orientations_for_element(self, element_name: str) -> Optional[pd.DataFrame]:
-        if self._orientations is None:
+        if self.orientations is None:
             return None
-        return self._orientations[self._orientations["formation"] == element_name]
+        return self.orientations[self.orientations["formation"] == element_name]
 
     def get_surface_points_for_group(self, group_name: str) -> pd.DataFrame:
         group = self[group_name]
         element_names = [e.name for e in group.structural_elements]
-        return self._surface_points[self._surface_points["formation"].isin(element_names)]
+        return self.surface_points[self.surface_points["formation"].isin(element_names)]
 
     def get_orientations_for_group(self, group_name: str) -> Optional[pd.DataFrame]:
-        if self._orientations is None:
+        if self.orientations is None:
             return None
         group = self[group_name]
         element_names = [e.name for e in group.structural_elements]
-        return self._orientations[self._orientations["formation"].isin(element_names)]
+        return self.orientations[self.orientations["formation"].isin(element_names)]
 
     def get_LithBlock(self) -> Optional[npt.NDArray[np.generic]]:
-        return self._lith_block
+        return self.lith_block
 
     def __getitem__(self, group_name: str) -> StructuralGroup:
         for group in self.structural_groups:
@@ -548,15 +495,15 @@ class StructuralFrame(BaseModel):
                 print(f"  └─ Per-element orientations: N/A\n")
 
         # --- Fault frame report ---
-        if self._fault_frame is not None:
+        if self.fault_frame is not None:
             print("⚡ Fault Frame Present")
-            num_faults = len(self._fault_frame.fault_elements)
+            num_faults = len(self.fault_frame.fault_elements)
             print(f"• Number of faults: {num_faults}")
 
             if self.fault_activity_verbose is not None:
                 print("• Fault activity (max group affected):")
                 for fault_name, group_name in self.fault_activity_verbose.items():
-                    idx = self._fault_activity[fault_name]
+                    idx = self.fault_activity[fault_name]
                     print(f"  ├─ {fault_name}: group index {idx} → {group_name}")
             else:
                 print("• Fault activity: default (all groups affected)")
@@ -583,27 +530,18 @@ class StructuralFrame(BaseModel):
             )
 
         # --- Extract slice and extent ---
+        xmin, xmax, ymin, ymax, zmin, zmax = self.grid.extent
         if axis == "y":
             data_slice = group.scalar_field[:, index, :].T
-            extent = self._grid.extent[:4]
+            extent = (xmin, xmax, zmin, zmax)
             xlabel, ylabel = "X", "Z"
         elif axis == "x":
             data_slice = group.scalar_field[index, :, :].T
-            extent = (
-                self._grid.extent[0],
-                self._grid.extent[2],
-                self._grid.extent[4],
-                self._grid.extent[1],
-            )
+            extent = (ymin, ymax, zmin, zmax)
             xlabel, ylabel = "Y", "Z"
         elif axis == "z":
             data_slice = group.scalar_field[:, :, index].T
-            extent = (
-                self._grid.extent[0],
-                self._grid.extent[2],
-                self._grid.extent[1],
-                self._grid.extent[3],
-            )
+            extent = (xmin, xmax, ymin, ymax)
             xlabel, ylabel = "X", "Y"
         else:
             raise ValueError("Axis must be 'x', 'y', or 'z'.")
@@ -657,7 +595,7 @@ class StructuralFrame(BaseModel):
         if mask is None:
             raise ValueError(f"Structural group at index {group_nr} has no age mask computed.")
 
-        xmin, xmax, ymin, ymax, zmin, zmax = self._grid.extent
+        xmin, xmax, ymin, ymax, zmin, zmax = self.grid.extent
 
         if axis == "y":
             # X-Z at fixed Y=index
@@ -709,70 +647,48 @@ class FaultElement(BaseModel):
     Publicly exposed properties provide read-only access.
     """
 
-    _name: str = PrivateAttr()
-    _scalar_value: Optional[float] = PrivateAttr(default=None)
-    _scalar_field: Optional[npt.NDArray[np.floating]] = PrivateAttr(default=None)
-    _color: str = PrivateAttr(default="#AAAAAA")  # Default color in hex format
-    _separated_domains: Optional[Tuple[FrozenSet[int], FrozenSet[int]]] = PrivateAttr(
+    name: str = Field()
+    scalar_value: Optional[float] = Field(default=None)
+    scalar_field: Optional[NpNDArrayFp64] = Field(default=None)
+    color: str = Field(default="#AAAAAA")  # Default color in hex format
+    separated_domains: Optional[Tuple[FrozenSet[int], FrozenSet[int]]] = Field(
         default=None
     )
-    _domain_pairs: Optional[FrozenSet[Tuple[int, int]]] = PrivateAttr(default=None)
-    _vertices: Dict[str, npt.NDArray[np.generic]] = PrivateAttr(default_factory=dict)
-    _edges: Dict[str, npt.NDArray[np.generic]] = PrivateAttr(default_factory=dict)
-    _mask: Optional[npt.NDArray[np.bool_]] = PrivateAttr(default=None)
+    domain_pairs: Optional[FrozenSet[Tuple[int, int]]] = Field(default=None)
+    vertices: Dict[str, NpNDArrayFp64] = Field(default_factory=dict)
+    edges: Dict[str, NpNDArrayFp64] = Field(default_factory=dict)
+    mask: Optional[NpNDArrayBool] = Field(default=None)
 
-    def __init__(self, name: str, scalar_value: Optional[float] = None):
-        super().__init__()
-        self._name = name
-        self._scalar_value = scalar_value
+    def __init__(self, *args, **kwargs):
+        # shortcut definition - not sure if I like this
+        if args:
+          if len(args) == 1 or len(args) == 2:
+            kwargs["name"] = args[0]
+          else:
+            raise TypeError("Unsupported shortcut, name:str, scalar_value: Optional[float] = None ")
+          if len(args) == 2:
+            kwargs["scalar_value"] = args[1]
+        super().__init__(**kwargs)
 
     def __repr__(self) -> str:
         return f"FaultElement(name='{self.name}')"
 
-    @property
-    def name(self) -> str:
-        return self._name
 
-    @property
-    def scalar_value(self) -> Optional[float]:
-        return self._scalar_value
-
-    @property
-    def color(self) -> str:
-        return self._color
-
-    @property
-    def vertices(self) -> Dict[str, npt.NDArray[np.generic]]:
-        return self._vertices
-
-    @property
-    def edges(self) -> Dict[str, npt.NDArray[np.generic]]:
-        return self._edges
-
-    @property
-    def mask(self) -> Optional[npt.NDArray[np.bool_]]:
-        return self._mask
-
-    @property
-    def scalar_field(self) -> Optional[npt.NDArray[np.floating]]:
-        """Get the interpolated scalar field values on the fault surface."""
-        return self._scalar_field
-
-    def set_scalar_field(self, scalar_field: npt.NDArray[np.floating]) -> None:
+    def set_scalar_field(self, scalar_field: NpNDArrayFp64) -> None:
         """Assign the interpolated scalar field values on the fault surface."""
         if not isinstance(scalar_field, np.ndarray):
             raise ValueError("Scalar field must be a numpy array.")
-        self._scalar_field = scalar_field
+        self.scalar_field = scalar_field
 
     def set_scalar_value(self, value: float) -> None:
         """Assign scalar value used for interpolation."""
-        self._scalar_value = value
+        self.scalar_value = value
 
     def set_color(self, color: str) -> None:
         """Set the display color for this fault in hex format."""
         if not isinstance(color, str) or not color.startswith("#") or len(color) != 7:
             raise ValueError("Color must be a valid hex string (e.g., '#RRGGBB').")
-        self._color = color
+        self.color = color
 
     def set_mesh(
             self,
@@ -796,8 +712,8 @@ class FaultElement(BaseModel):
                 f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined."
             )
 
-        self._vertices[mesh_type] = vertices
-        self._edges[mesh_type] = edges
+        self.vertices[mesh_type] = vertices
+        self.edges[mesh_type] = edges
 
     def get_mesh(
             self, mesh_type: MeshType2
@@ -809,30 +725,30 @@ class FaultElement(BaseModel):
             KeyError: If the mesh type does not exist.
         """
         try:
-            return self._vertices[mesh_type], self._edges[mesh_type]
+            return self.vertices[mesh_type], self.edges[mesh_type]
         except KeyError:
             raise KeyError(f"Mesh '{mesh_type}' not found in element '{self.name}'.")
 
-    def set_domain_mask(self, mask: npt.NDArray[np.bool_]) -> None:
+    def set_domain_mask(self, mask: NpNDArrayBool) -> None:
         """
         Store the boolean mask (True/False) separating two fault blocks.
         """
         if not isinstance(mask, np.ndarray) or mask.dtype != bool:
             raise ValueError("Mask must be a boolean NumPy array.")
-        self._mask = mask
+        self.mask = mask
 
-    def get_domain_mask(self) -> npt.NDArray[np.bool_]:
+    def get_domain_mask(self) -> NpNDArrayBool:
         """
         Retrieve the fault mask (True = one block, False = other).
 
         Raises:
             ValueError: If no mask has been set.
         """
-        if self._mask is None:
+        if self.mask is None:
             raise ValueError(f"No mask set for fault '{self.name}'.")
-        return self._mask
+        return self.mask
 
-    def get_inverse_domain_mask(self) -> npt.NDArray[np.bool_]:
+    def get_inverse_domain_mask(self) -> NpNDArrayBool:
         """
         Get the inverse of the fault mask (opposite block).
         """
@@ -840,17 +756,17 @@ class FaultElement(BaseModel):
 
     def get_separated_domains(self) -> Optional[Tuple[FrozenSet[int], FrozenSet[int]]]:
         """Get the tuple of separated domain IDs, if any."""
-        return self._separated_domains
+        return self.separated_domains
 
     def set_separated_domains(
             self, domain_ids: Tuple[FrozenSet[int], FrozenSet[int]]
     ) -> None:
         """Set the tuple of separated domain IDs."""
-        self._separated_domains = domain_ids
+        self.separated_domains = domain_ids
 
     def get_domain_pairs(self) -> Optional[FrozenSet[Tuple[int, int]]]:
         """Return adjacent domain-id pairs across this fault surface."""
-        return self._domain_pairs
+        return self.domain_pairs
 
     def set_domain_pairs(self, pairs: FrozenSet[Tuple[int, int]]) -> None:
         """
@@ -859,7 +775,7 @@ class FaultElement(BaseModel):
         Each pair must be (a, b) with a != b. Order will be normalized to (min, max).
         """
         if pairs is None:
-            self._domain_pairs = None
+            self.domain_pairs = None
             return
 
         if not isinstance(pairs, frozenset):
@@ -879,114 +795,100 @@ class FaultElement(BaseModel):
                 f"Fault '{self.name}' domain_pairs is empty after normalization."
             )
 
-        self._domain_pairs = frozenset(norm)
+        self.domain_pairs = frozenset(norm)
 
     def domain_pairs_flat(self) -> set[int]:
         """Return all domain IDs touched by this fault's adjacency pairs."""
-        if self._domain_pairs is None:
+        if self.domain_pairs is None:
             return set()
         out: set[int] = set()
-        for a, b in self._domain_pairs:
+        for a, b in self.domain_pairs:
             out.add(a)
             out.add(b)
         return out
 
     def separated_domains_flat(self) -> set[int]:
         """Return all domain IDs this fault splits (from separated_domains)."""
-        if self._separated_domains is None:
+        if self.separated_domains is None:
             return set()
-        return set().union(*self._separated_domains)
+        return set().union(*self.separated_domains)
 
 
 class FaultFrame(BaseModel):
     """
     Container for managing fault elements and their relationships.
 
-    Private attributes are used for numpy arrays / large data objects.
+    attributes are used for numpy arrays / large data objects.
     """
 
-    _fault_elements: List[FaultElement] = PrivateAttr()
-    _fault_relations: Optional[npt.NDArray[np.bool_]] = PrivateAttr(default=None)
-    _grid: Optional[RegularGrid] = PrivateAttr(default=None)
-    _fault_surface_points_df: Optional[pd.DataFrame] = PrivateAttr(default=None)
-    _fault_orientations_df: Optional[pd.DataFrame] = PrivateAttr(default=None)
-    _domain_map: Optional[npt.NDArray[np.floating]] = PrivateAttr(default=None)
-    _domain_masks: dict[int, npt.NDArray[np.bool_]] = PrivateAttr(default_factory=dict)
+    fault_elements: List[FaultElement]
+    fault_relations: Optional[NpNDArrayBool] = Field(default=None)
+    grid: Optional[RegularGrid] = Field(default=None)
+    fault_surface_points_df: Optional[PandasDataFrame] = Field(default=None)
+    fault_orientations_df: Optional[PandasDataFrame] = Field(default=None)
+    domain_map: Optional[NpNDArrayFp64] = Field(default=None)
+    domain_masks: dict[int, NpNDArrayBool] = Field(default_factory=dict)
 
-    def __init__(
-            self,
-            fault_elements: List[FaultElement],
-            fault_relations: Optional[npt.NDArray[np.bool_]] = None,
-    ):
-        super().__init__()
-        self._fault_elements = fault_elements
-        self._fault_relations = fault_relations
+    def __init__(self, *args, **kwargs):
+        # shortcut definition - not sure if I like this
+        if args:
+          if len(args) == 1 or len(args) == 2:
+            kwargs["fault_elements"] = args[0]
+          else:
+            raise TypeError("Unsupported shortcut, fault_elements: List[FaultElement], fault_relations: Optional[NpNDArrayBool] = None ")
+          if len(args) == 2:
+            kwargs["fault_relations"] = args[1]
+        super().__init__(**kwargs)
+    # def __init__(
+    #         self,
+    #         fault_elements: List[FaultElement],
+    #         fault_relations: Optional[NpNDArrayBool] = None,
+    # ):
+    #     super().__init__()
+    #     self.fault_elements = fault_elements
+    #     self.fault_relations = fault_relations
 
-    @property
-    def fault_elements(self) -> List[FaultElement]:
-        return self._fault_elements
-
-    @property
-    def grid(self) -> Optional[RegularGrid]:
-        return self._grid
-
-    @property
-    def fault_surface_points_df(self) -> Optional[pd.DataFrame]:
-        return self._fault_surface_points_df
-
-    @property
-    def fault_orientations_df(self) -> Optional[pd.DataFrame]:
-        return self._fault_orientations_df
-
-    @property
-    def domain_map(self) -> Optional[npt.NDArray[np.floating]]:
-        return self._domain_map
-
-    @property
-    def domain_masks(self) -> dict[int, npt.NDArray[np.bool_]]:
-        """Boolean masks for each final domain ID."""
-        return self._domain_masks
 
     def get_element_by_name(self, name: str) -> Optional[FaultElement]:
         """Retrieve a fault element by its name."""
-        return next((f for f in self._fault_elements if f.name == name), None)
+        return next((f for f in self.fault_elements if f.name == name), None)
 
     def set_surface_points_df(self, df: pd.DataFrame) -> None:
-        self._fault_surface_points_df = df
+        self.fault_surface_points_df = df
 
     def set_orientations_df(self, df: pd.DataFrame) -> None:
-        self._fault_orientations_df = df
+        self.fault_orientations_df = df
 
     def get_surface_points_df(self) -> Optional[pd.DataFrame]:
         """Get the DataFrame containing all fault surface points."""
-        return self._fault_surface_points_df
+        return self.fault_surface_points_df
 
     def get_orientations_df(self) -> Optional[pd.DataFrame]:
         """Get the DataFrame containing all fault surface orientations."""
-        return self._fault_orientations_df
+        return self.fault_orientations_df
 
     def get_surface_points_for_element(self, name: str) -> pd.DataFrame:
-        if self._fault_surface_points_df is not None:
-            return self._fault_surface_points_df[
-                self._fault_surface_points_df["formation"] == name
-                ]
+        if self.fault_surface_points_df is not None:
+            return self.fault_surface_points_df[
+              self.fault_surface_points_df["formation"] == name
+              ]
         return pd.DataFrame()
 
     def get_orientations_for_element(self, name: str) -> pd.DataFrame:
-        if self._fault_orientations_df is not None:
-            return self._fault_orientations_df[
-                self._fault_orientations_df["formation"] == name
-                ]
+        if self.fault_orientations_df is not None:
+            return self.fault_orientations_df[
+              self.fault_orientations_df["formation"] == name
+              ]
         return pd.DataFrame()
 
-    def set_domain_map(self, domain_map: npt.NDArray[np.floating]) -> None:
-        self._domain_map = domain_map
+    def set_domain_map(self, domain_map: NpNDArrayFp64) -> None:
+        self.domain_map = domain_map
 
     def set_grid(self, grid: RegularGrid) -> None:
         """Set the grid for spatial context."""
         if not isinstance(grid, RegularGrid):
             raise ValueError("Grid must be an instance of RegularGrid.")
-        self._grid = grid
+        self.grid = grid
 
     def detailed_report(self) -> None:
         """Print a human-readable report of the fault frame state."""
@@ -994,19 +896,19 @@ class FaultFrame(BaseModel):
         print("────────────────────────────────")
         print(f"• Number of faults: {len(self.fault_elements)}")
 
-        if self._grid:
-            print(f"• Grid extent: {self._grid.extent}")
-            print(f"• Grid resolution: {self._grid.resolution}")
+        if self.grid:
+            print(f"• Grid extent: {self.grid.extent}")
+            print(f"• Grid resolution: {self.grid.resolution}")
         else:
             print("• Grid: Not set")
 
-        if self._fault_surface_points_df is not None:
-            print(f"• Surface points: {len(self._fault_surface_points_df)} entries")
+        if self.fault_surface_points_df is not None:
+            print(f"• Surface points: {len(self.fault_surface_points_df)} entries")
         else:
             print("• Surface points: None")
 
-        if self._fault_orientations_df is not None:
-            print(f"• Orientations: {len(self._fault_orientations_df)} entries\n")
+        if self.fault_orientations_df is not None:
+            print(f"• Orientations: {len(self.fault_orientations_df)} entries\n")
         else:
             print("• Orientations: None\n")
 

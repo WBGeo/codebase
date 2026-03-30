@@ -68,7 +68,7 @@ print(f"Fault-1 : {len(fault1_sp)} surface pts  "
 _sp_all, _ = picks_to_dataframes()
 
 # True dip derived from apparent dip on Profile B
-APPARENT_DIP_B = 60.0
+APPARENT_DIP_B = 65.0
 _s  = BOREHOLES['MO1'][:2] - BOREHOLES['MP1'][:2];  _s  /= np.linalg.norm(_s)
 _pB = BOREHOLES['O3'][:2]  - BOREHOLES['O4'][:2];   _pB /= np.linalg.norm(_pB)
 _beta     = np.arccos(np.clip(abs(np.dot(_s, _pB)), 0.0, 1.0))

@@ -1,8 +1,8 @@
 # Codebase
 
-First repository in WBgeo to organize the codebase.
+First repository in WBGeo to organize the codebase.
 
-See [InstallationGuide.md](InstallationGuide.md) for how to install 
+See [InstallationGuide.md](docs/InstallationGuide.md) for how to install 
  the workbench.
 
 ## Structure
@@ -15,7 +15,7 @@ See [InstallationGuide.md](InstallationGuide.md) for how to install
 
 ## Developing
 
-See [DevelopersGuide.md](DevelopersGuide.md) for how to install the development dependencies
+See [DevelopersGuide.md](docs/developers) for how to install the development dependencies
 and how to define custom components, types, etc.
 
 

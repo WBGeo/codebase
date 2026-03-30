@@ -58,8 +58,8 @@ def plot_structural_model_3D(
                     if mesh_type not in getattr(mesh_elem, "vertices", {}) or mesh_type not in getattr(mesh_elem, "edges", {}):
                         continue  # skip if requested mesh type not present
                     plotter.add_mesh(
-                        pv.PolyData(mesh_elem._vertices[mesh_type],
-                                    np.insert(mesh_elem._edges[mesh_type], 0, 3, axis=1).ravel()),
+                        pv.PolyData(mesh_elem.vertices[mesh_type],
+                                    np.insert(mesh_elem.edges[mesh_type], 0, 3, axis=1).ravel()),
                         color=mesh_elem.color, opacity=1.0, label=f"{group.name} | {mesh_elem.name}")
 
             # surface points
@@ -84,7 +84,7 @@ def plot_structural_model_3D(
         legend_entries.append((group.name, group_entries))
 
     # ---------- plot fault meshes ----------
-    if frame._fault_frame is not None:
+    if frame.fault_frame is not None:
         # add a "Faults" header in legend (bold/black achievable only approximately in pyvista legend)
         faults_header = ("Faults", "black")
         # we'll append "Faults" header at the top with the flatten stage below
@@ -159,7 +159,7 @@ def plot_structural_model_2D(
 
     assert axis in ('x', 'y', 'z'), "Axis must be 'x', 'y', or 'z'."
 
-    dim = {'z': 0, 'y': 1, 'x': 2}[axis]
+    dim = {'x': 0, 'y': 1, 'z': 2}[axis]
 
     x = frame.grid.gridx
     y = frame.grid.gridy
@@ -197,8 +197,8 @@ def plot_structural_model_2D(
     # ---- lithology (optional) ----
     if show_result:
         has_result = (
-                frame.lith_block is not None
-                and np.size(frame.lith_block) > 0
+            frame.lith_block is not None
+            and np.size(frame.lith_block) > 0
         )
         if has_result is False:
             warnings.warn(
@@ -239,9 +239,7 @@ def plot_structural_model_2D(
                 # this mask is the age mask defined by youngest group affected by this fault
                 group_index = frame.fault_activity_verbose[fault.name]["youngest_group_index"] - 1
                 if group_index >= 0:
-                    fault_mask = (
-                        np.take(frame.structural_groups[group_index].get_mask().T, index, axis=dim)
-                    )
+                    fault_mask = np.take(frame.structural_groups[group_index].get_mask(), index, axis=dim).T
                 else:
                     fault_mask = np.zeros_like(f_slice, dtype=bool)
 
@@ -291,9 +289,9 @@ def plot_structural_model_2D(
             legend_handles.append(plt.Line2D([0], [0], color=elem.color, lw=3, label=f"{elem.name}"))
 
     # add faults header + lines
-    if frame._fault_frame is not None and getattr(frame._fault_frame, "fault_elements", []):
+    if frame.fault_frame is not None and getattr(frame.fault_frame, "fault_elements", []):
         legend_handles.append(plt.Line2D([0], [0], color='black', lw=0, label=rf"$\bf{{Faults}}$"))
-        for fault in frame._fault_frame.fault_elements:
+        for fault in frame.fault_frame.fault_elements:
             fcol = getattr(fault, "color", None) or "black"
             legend_handles.append(plt.Line2D([0], [0], color=fcol, lw=3, label=fault.name))
 
@@ -552,7 +550,7 @@ def plot_fault_model_2D(
     dz = (z[-1] - z[0]) / (len(z) - 1) if len(z) > 1 else 1.0
 
     # mapping to np.take axis (same as your inspiration)
-    dim = {"z": 0, "y": 1, "x": 2}[axis]
+    dim = {"x": 0, "y": 1, "z": 2}[axis]
 
     if axis == "x":
         extent = (y[0] - dy / 2, y[-1] + dy / 2, z[0] - dz / 2, z[-1] + dz / 2)

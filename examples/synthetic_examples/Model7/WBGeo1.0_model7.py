@@ -1,3 +1,7 @@
+# Simulate the nodesapi at runtime to also check that (de)serialization is set up correctly
+from examples.pydantic_nodesapi_simulation import register_as_test_nodes_api
+register_as_test_nodes_api()
+
 # Importing necessary libraries
 import pandas as pd
 import os
