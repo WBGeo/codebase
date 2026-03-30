@@ -296,8 +296,8 @@ def compute_fault_domains(
     remapped_xyz = np.vectorize(remap.get)(domain_map_xyz)
 
     # Store final domain map and masks in XYZ
-    fault_frame._domain_map = remapped_xyz
-    fault_frame._domain_masks = {int(uid): (remapped_xyz == uid) for uid in np.unique(remapped_xyz)}
+    fault_frame.domain_map = remapped_xyz
+    fault_frame.domain_masks = {int(uid): (remapped_xyz == uid) for uid in np.unique(remapped_xyz)}
 
     valid_ids = set(map(int, np.unique(remapped_xyz)))
 
@@ -366,6 +366,7 @@ def compute_fault_domains(
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
 
     # Return a FaultModelResults object
+    print("Creating copy of ", type(fault_frame))
     result = FaultModelResults(
         fault_frame=copy.deepcopy(fault_frame),
     )

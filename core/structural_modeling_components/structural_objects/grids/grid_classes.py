@@ -21,10 +21,10 @@ Resolution3 = Tuple[int, int, int]
 
 @wbgeo_type(
     name="Grid for discretization of a structural geological model",
-    color="orange",
+    color="#b0dfa9",
     identifier="RegularGrid",
 )
-@dataclass(config={"arbitrary_types_allowed": True})
+@dataclass
 class RegularGrid:
     """
     Regular (axis-aligned) grid defined by an extent and a 3D resolution.

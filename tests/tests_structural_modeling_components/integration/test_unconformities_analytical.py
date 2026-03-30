@@ -162,7 +162,7 @@ def test_unconformity_lithology_and_masks(method, plot_mode):
     res = general.compute_structural_model(frame, extract_meshes=False, verbose=False)
     out_frame = res.structural_frame
 
-    lith = out_frame._lith_block
+    lith = out_frame.lith_block
     assert lith is not None
     assert lith.shape == tuple(grid.resolution)
 

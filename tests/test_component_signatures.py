@@ -10,6 +10,7 @@ from py_api_wbgeo.apitypes import ComponentDecoratorParams, RegisterScriptBlockP
     APIScriptBlockDefinition, \
     RegisterVisualizerParams, GeoExecuteAPI, ScriptTypeParams
 from py_api_wbgeo.nodesapi import AnnotatedScriptType
+from pydantic import TypeAdapter
 
 
 class TestComponentSignatures(unittest.TestCase):
@@ -78,8 +79,15 @@ class TestComponentSignatures(unittest.TestCase):
 
     def test_load_components(self):
         import importlib
-        for py_file in self.py_files:
-            importlib.import_module(py_file)
+        try:
+          for py_file in self.py_files:
+            try:
+              importlib.import_module(py_file)
+            except Exception as e:
+              MockBackendInstance.errors.append(e)
+        finally:
+          if MockBackendInstance.errors:
+            raise AssertionError("Failures occurred: \n" + '\n'.join([str(e) for e in  MockBackendInstance.errors]))
 
 
 def get_location(x):
@@ -102,6 +110,12 @@ class MockBackendInstance:
 
         def h(c):
             import typing
+            # load core schema of the type
+            try:
+              TypeAdapter(c).core_schema
+            except Exception as e:
+              MockBackendInstance.errors.append(e)
+
             return typing.Annotated[c, AnnotatedScriptType(**kwargs)]
 
         return h
@@ -145,22 +159,22 @@ class MockBackendInstance:
             sig = signature(f)
             if sig.return_annotation == Signature.empty:
                 if not is_visualizer:
-                    raise ValueError(
+                  MockBackendInstance.errors.append(ValueError(
                         "@GeoComponent requires a declared return type, e.g. @GeoComponent def {fname}() -> str: \n{floc}".format(
-                            fname=str(f.__name__), floc=get_location(f)))
+                            fname=str(f.__name__), floc=get_location(f))))
             elif sig.return_annotation in [str, bool, int, float]:
                 pass
             elif not hasattr(sig.return_annotation, '__metadata__'):
-                raise ValueError(
+              MockBackendInstance.errors.append(ValueError(
                     "GeoComponent must return a built-in type or a type annotated with AnnotatedScriptType, instead it returned `{t}`, {typel} / {floc}".format(
                         t=str(sig.return_annotation), typel=get_location(sig.return_annotation),
-                        floc=get_location(f)))
+                        floc=get_location(f))))
             else:
                 ret_v = gwt_ast(sig.return_annotation.__metadata__)
 
                 if ret_v is None:
-                    raise ValueError(
-                        "Unsupported return type " + sig.return_annotation + str(sig) + get_location(f))
+                  MockBackendInstance.errors.append(ValueError(
+                        "Unsupported return type " + sig.return_annotation + str(sig) + get_location(f)))
                 else:
                     pass
 
@@ -169,9 +183,9 @@ class MockBackendInstance:
                 # t = sig.parameters[param].annotation
                 origin = typing.get_origin(t)
                 if t is None or t == inspect.Parameter.empty:
-                    raise ValueError(
+                  MockBackendInstance.errors.append(ValueError(
                         "Parameter `{param}` must be annotated, e.g. `{param}: str` or `{param}: str = 1` \n {loc}".format(
-                            param=param, loc=get_location(t)))
+                            param=param, loc=get_location(t))))
                 if not hasattr(t, '__metadata__') or gwt_ast(t.__metadata__) is None:
                     if origin is typing.Union:
                         u_args = typing.get_args(t)
@@ -182,9 +196,9 @@ class MockBackendInstance:
                     elif is_vis and str(t) == '<class \'py_api_wbgeo.nodesapi.InspectorHelper\'>':
                         pass
                     else:
-                        raise ValueError(
+                      MockBackendInstance.errors.append(ValueError(
                             "@GeoComponent parameter `{param}` must be a built-in type or its type `{type}` be annotated with AnnotatedScriptType at {loc}".format(
-                                param=param, type=str(t), loc=get_location(loc)))
+                                param=param, type=str(t), loc=get_location(loc))))
                 else:
                     pass
 
@@ -195,6 +209,7 @@ class MockBackendInstance:
 
         return decorate_func
 
+MockBackendInstance.errors = list()
 
 class ComponentMethod():
     def __init__(self, identifier: str):
