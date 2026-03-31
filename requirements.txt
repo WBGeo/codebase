@@ -57,7 +57,7 @@ vtk==9.4.0
 trame==3.6.5
 trame-vtk==2.8.10
 trame-vuetify==2.7.1
-py_api_wbgeo>=0.7
+py_api_wbgeo>=0.8
 LoopStructural==1.6.3
 meshio==5.3.5
 gmsh==4.13.1
