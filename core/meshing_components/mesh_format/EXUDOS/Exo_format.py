@@ -7,8 +7,9 @@ from core.meshing_components.geometry.Nodes import Nodes
 import pyvista as pv
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
 
 
 class ExosInputs:
@@ -57,7 +58,7 @@ class ExosInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_exodus",
 )
-def export_mesh_results_to_exodus(mesh: "MeshResults") -> io.BytesIO:
+def export_mesh_results_to_exodus(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to an Exodus (.exo) file.
 

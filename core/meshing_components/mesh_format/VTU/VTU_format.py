@@ -7,8 +7,10 @@ import os
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 import io
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
+
 
 class VTUInputs:
     """
@@ -59,7 +61,7 @@ class VTUInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_vtu",
 )
-def export_mesh_results_to_vtu(mesh: "MeshResults"):
+def export_mesh_results_to_vtu(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object to a VTU (.vtu) file.
 
