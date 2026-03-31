@@ -530,6 +530,7 @@ class Exporters(MeshResults):
 
 
 @wbgeo_type(name='SimulationResults', color='pink', identifier='SimulationResults')
+@dataclass
 class SimulationResults:
     """
     Container class for all simulation results timesteps.
