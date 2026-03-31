@@ -12,6 +12,9 @@ from core.object_components import StructuralModelResults
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
+  InspectorHelper
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 
@@ -1676,3 +1679,12 @@ def create_unstructured_mesh_data(
     return MeshResults(elements=cells,
                        nodes=nodes,
                        )
+
+
+@wbgeo_component(identifier='wbgeo::inspect_mesh_3d',
+                 title='Plot Mesh Results in 3D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_structural_model_result_plot_structural_model_2D(
+    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
+  plot_mesh_3d(MeshResults,StructuralModelResults,  "surface",  True,)

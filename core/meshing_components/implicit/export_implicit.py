@@ -5,6 +5,9 @@ import meshio
 from core.object_components import MeshResults, StructuralModelResults
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from numpy.typing import NDArray
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
+  InspectorHelper
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 
 ExtentData = typing.Annotated[
     List[float],
@@ -107,3 +110,11 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
         elements=cells,
         cell_data=cell_data
     )
+
+@wbgeo_component(identifier='wbgeo::inspect_mesh_3d',
+                 title='Plot Mesh Results in 3D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_structural_model_result_plot_structural_model_2D(
+    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
+  plot_mesh_3d(MeshResults,StructuralModelResults,  "surface",  True,)

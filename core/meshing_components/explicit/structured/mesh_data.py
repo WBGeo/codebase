@@ -15,7 +15,9 @@ from scipy.spatial import cKDTree
 from numpy.typing import NDArray
 import meshio
 from types import SimpleNamespace
-
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
+  InspectorHelper
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 
 # Rsample while preserving Z
 def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, extent: List[float]) -> NDArray[np.floating]:
@@ -262,3 +264,10 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinem
         cell_data=cell_data
     )
 
+@wbgeo_component(identifier='wbgeo::inspect_mesh_3d',
+                 title='Plot Mesh Results in 3D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_structural_model_result_plot_structural_model_2D(
+    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
+  plot_mesh_3d(MeshResults,StructuralModelResults,  "surface",  True,)
