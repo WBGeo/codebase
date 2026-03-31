@@ -6,8 +6,9 @@ import numpy as np
 
 from collections import defaultdict
 import io
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
 
 class STLInputs:
     """
@@ -171,7 +172,7 @@ class STLInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_stl",
 )
-def export_mesh_results_to_stl(mesh: "MeshResults"):
+def export_mesh_results_to_stl(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export an unstructured mesh to STL format.
 

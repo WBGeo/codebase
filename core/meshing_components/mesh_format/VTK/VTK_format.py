@@ -7,8 +7,9 @@ from numpy.typing import NDArray
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 import io
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
 
 # meshio → PyVista cell type mapping
 MESHIO_TO_VTK = {
@@ -92,7 +93,7 @@ class VTKInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_vtk",
 )
-def export_mesh_results_to_vtk(mesh: "MeshResults"):
+def export_mesh_results_to_vtk(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export the mesh to a single legacy VTK (.vtk) file.
 

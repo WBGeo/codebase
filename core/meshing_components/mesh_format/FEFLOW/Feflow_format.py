@@ -12,8 +12,9 @@ from dataclasses import dataclass
 from typing import List
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
 
 @dataclass
 class C_FeFlowTri:
@@ -499,7 +500,7 @@ class FeflowInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_feflow",
 )
-def export_mesh_results_to_feflow(mesh: "MeshResults"):
+def export_mesh_results_to_feflow(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a FEFLOW (.fem) file.
 

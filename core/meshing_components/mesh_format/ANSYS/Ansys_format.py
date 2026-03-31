@@ -7,8 +7,9 @@ import pyvista as pv
 from numpy.typing import NDArray
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
 
 class AnsysInputs:
     """
@@ -80,7 +81,7 @@ class AnsysInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_ansys",
 )
-def export_mesh_results_to_ansys(mesh: "MeshResults"):
+def export_mesh_results_to_ansys(mesh: MeshResults) -> BasicallyABufferedFile:
     from core.object_components import Exporters
     """
     Export the mesh to ANSYS (.msh) format.

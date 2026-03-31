@@ -5,8 +5,9 @@ from typing import Dict, List, Tuple, Set
 from numpy.typing import NDArray
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
 
 class GMSHInputs:
     """
@@ -149,7 +150,7 @@ class GMSHInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_gmsh",
 )
-def export_mesh_results_to_gmsh(mesh: "MeshResults"):
+def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object to a Gmsh file.
     The mesh is first written to a temporary file using the WBGeo

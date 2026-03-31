@@ -6,8 +6,9 @@ from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
+from core.object_components import MeshResults
 
 class AbaqusInputs:
     """
@@ -159,7 +160,7 @@ class AbaqusInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_abaqus",
 )
-def export_mesh_results_to_abaqus(mesh: "MeshResults"):
+def export_mesh_results_to_abaqus(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to an Abaqus `.inp` file.
 
