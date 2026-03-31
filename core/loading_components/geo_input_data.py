@@ -133,12 +133,12 @@ class StructuralFrameInputOptions(pydantic.BaseModel):
   # data_per_number: typing.Dict[int, ComplexNumberOption]
 
 
-from py_api_wbgeo.smartcontrols import CtrlLabel, CtrlSelect, CtrlInt, CtrlIf, CtrlText, \
+from py_api_wbgeo.smartcontrols import CtrlLabel, CtrlSelect, CtrlInt, CtrlFloat, CtrlIf, CtrlText, \
   CtrlFromType, CtrlGroup, SmartInput, SmartInputFormData, ASmartControl
 
 
 def group_from_type(type: type[pydantic.BaseModel]) -> list[
-  CtrlLabel | CtrlSelect | CtrlInt | CtrlIf | CtrlGroup | CtrlFromType]:
+  ASmartControl]:
   ret = []
 
   for name, field in type.model_fields.items():
@@ -148,7 +148,7 @@ def group_from_type(type: type[pydantic.BaseModel]) -> list[
     if field_type == int:
       ret.append(CtrlInt(id=name, label=description, defaultValue=default_value))
     elif field_type == float:
-      ret.append(CtrlInt(id=name, label=description, defaultValue=default_value))
+      ret.append(CtrlFloat(id=name, label=description, defaultValue=default_value))
     elif field_type == str:
       ret.append(CtrlText(id=name, label=description, defaultValue=default_value))
     else:
@@ -224,8 +224,8 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
-    options: SmartStructuralFrameInputOptions,
     grid: grid_classes.RegularGrid,
+    options: SmartStructuralFrameInputOptions = None,
 ) -> StructuralModelResults:
   frame = general.build_structural_frame(input_data_elements=elements,
                                          grid=grid,
