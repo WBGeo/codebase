@@ -7,9 +7,10 @@ import pyvista as pv
 from numpy.typing import NDArray
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+import importlib
 import tempfile
-from core.object_components import MeshResults
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+
 
 class AnsysInputs:
     """
@@ -75,14 +76,15 @@ class AnsysInputs:
         return mesh
 
 
+
+
 @wbgeo_component(
     title="Download Mesh as Ansys",
     description="Export Mesh to Ansys",
     group="Export",
     identifier="wbgeo::expert_mesh_results_ansys",
 )
-def export_mesh_results_to_ansys(mesh: MeshResults) -> BasicallyABufferedFile:
-    from core.object_components import Exporters
+def export_mesh_results_to_ansys(mesh) -> BasicallyABufferedFile:
     """
     Export the mesh to ANSYS (.msh) format.
 
@@ -91,15 +93,23 @@ def export_mesh_results_to_ansys(mesh: MeshResults) -> BasicallyABufferedFile:
     for download.
 
     Args:
-    mesh (MeshResults): WBGeo mesh object containing structured or unstructured mesh data.
+    mesh: WBGeo mesh object containing structured or unstructured mesh data.
 
     Returns:
     io.BytesIO: ANSYS-compatible `.msh` file.
     """
+    # Dynamically import MeshResults and Exporters at runtime
+    obj_module = importlib.import_module("core.object_components")
+    MeshResults = getattr(obj_module, "MeshResults")
+    Exporters = getattr(obj_module, "Exporters")
+
+    if not isinstance(mesh, MeshResults):
+        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
+
     # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Write to a real temporary file (REQUIRED for Ansys)
+    # Write to a temporary file (required for ANSYS)
     with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
         tmp_path = tmp.name
         exporters.export_ansys(tmp_path)
@@ -108,8 +118,10 @@ def export_mesh_results_to_ansys(mesh: MeshResults) -> BasicallyABufferedFile:
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Name for WBGeo download
+    # Assign filename for WBGeo download
     buf.filename = "mesh_export_ansys.msh"
-    # Remove the temporary file immediately
+
+    # Clean up temporary file
     os.remove(tmp_path)
+
     return buf

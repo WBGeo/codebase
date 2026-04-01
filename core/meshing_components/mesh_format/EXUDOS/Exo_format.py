@@ -9,7 +9,7 @@ import io
 import os
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
-from core.object_components import MeshResults
+import importlib
 
 
 class ExosInputs:
@@ -52,27 +52,24 @@ class ExosInputs:
 
 
 
+
 @wbgeo_component(
     title="Download Mesh as Exodus",
     description="Export Mesh to Exodus",
     group="Export",
     identifier="wbgeo::expert_mesh_results_exodus",
 )
-def export_mesh_results_to_exodus(mesh: MeshResults) -> BasicallyABufferedFile:
+def export_mesh_results_to_exodus(mesh) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to an Exodus (.exo) file.
-
-    The mesh is written to a temporary Exodus file using the internal
-    exporter and then returned as an in-memory buffer for download
-    through the WBGeo interface.
-
-    Args:
-    mesh: MeshResults object containing the mesh to be exported.
-
-    Returns:
-    io.BytesIO: In-memory buffer containing the Exodus `.exo` file.
     """
-    from core.object_components import Exporters
+    # Dynamically import MeshResults and Exporters at runtime
+    obj_module = importlib.import_module("core.object_components")
+    MeshResults = getattr(obj_module, "MeshResults")
+    Exporters = getattr(obj_module, "Exporters")
+
+    if not isinstance(mesh, MeshResults):
+        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
     # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
@@ -86,8 +83,6 @@ def export_mesh_results_to_exodus(mesh: MeshResults) -> BasicallyABufferedFile:
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Name for WBGeo download
     buf.filename = "mesh_export_exodus.exo"
-    # Remove the temporary file immediately
     os.remove(tmp_path)
     return buf

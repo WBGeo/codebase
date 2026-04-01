@@ -3,11 +3,12 @@ import meshio
 from collections import defaultdict
 from typing import Dict, List, Tuple, Set
 from numpy.typing import NDArray
+
+import importlib
+import tempfile
 import io
 import os
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
-import tempfile
-from core.object_components import MeshResults
 
 class GMSHInputs:
     """
@@ -144,15 +145,17 @@ class GMSHInputs:
 
 
 
+
 @wbgeo_component(
     title="Download Mesh as Gmsh",
     description="Export Mesh to Gmsh",
     group="Export",
     identifier="wbgeo::expert_mesh_results_gmsh",
 )
-def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
+def export_mesh_results_to_gmsh(mesh) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object to a Gmsh file.
+
     The mesh is first written to a temporary file using the WBGeo
     Exporters interface (required by Gmsh), then read back into memory
     and returned as a downloadable file.
@@ -163,17 +166,24 @@ def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
     - Structured meshes are not supported and may lead to invalid output.
 
     Args:
-    mesh (MeshResults): WBGeo mesh object containing nodes, elements, and metadata to be exported.
+    mesh: WBGeo mesh object containing nodes, elements, and metadata to be exported.
 
-    Returrns:
+    Returns:
     io.BytesIO: In-memory buffer containing the Gmsh `.msh` file, ready for download.
     """
-    from core.object_components import Exporters
+    # Dynamically import Exporters and MeshResults
+    obj_module = importlib.import_module("core.object_components")
+    MeshResults = getattr(obj_module, "MeshResults")
+    Exporters = getattr(obj_module, "Exporters")
+
+    # Optional runtime type check
+    if not isinstance(mesh, MeshResults):
+        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
     # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Write to a real temporary file (REQUIRED for Gmsh)
+    # Write to a temporary file (required for Gmsh)
     with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
         tmp_path = tmp.name
         exporters.export_gmsh(tmp_path)
@@ -184,7 +194,8 @@ def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
 
     # Name for WBGeo download
     buf.filename = "mesh_export_gmsh.msh"
-    # Remove the temporary file immediately
-    os.remove(tmp_path)
-    return buf
 
+    # Remove temporary file
+    os.remove(tmp_path)
+
+    return buf

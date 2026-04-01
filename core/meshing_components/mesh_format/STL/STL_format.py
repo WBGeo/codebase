@@ -6,10 +6,14 @@ import numpy as np
 
 from collections import defaultdict
 import io
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
-import tempfile
-from core.object_components import MeshResults
+from typing import TYPE_CHECKING
 
+import importlib
+import tempfile
+import zipfile
+import io
+import os
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 class STLInputs:
     """
     Class for exporting unstructured volumetric meshes to STL format.
@@ -166,42 +170,32 @@ class STLInputs:
                 print(f"Interface faces between group {phys1} and {phys2} written to {filename}")
 
 
+
+
+
 @wbgeo_component(
     title="Download Mesh as STL",
-    description="Export selected mesh to STL",
+    description="Export Mesh to STL",
     group="Export",
     identifier="wbgeo::expert_mesh_results_stl",
 )
-def export_mesh_results_to_stl(mesh: MeshResults) -> BasicallyABufferedFile:
+def export_mesh_results_to_stl(mesh) -> BasicallyABufferedFile:
     """
     Export an unstructured mesh to STL format.
 
     The mesh is written to a temporary directory and all generated
     STL files (surfaces and interfaces) are packaged into a ZIP
     archive for download.
-
-    Args:
-    mesh (MeshResults): WBGeo mesh object containing unstructured mesh data.
-
-    Returns:
-    io.BytesIO: ZIP archive containing STL files, or None if the mesh is structured.
-
-    Notes
-    -----
-    - Structured meshes are NOT supported by STL.
-    - For structured meshes, an error message is printed and
-      no file is created.
-    - STL output is suitable for visualization and CAD-style
-      workflows, not numerical simulation.
     """
-    from core.object_components import Exporters
-    import tempfile
-    import zipfile
-    import io
-    import os
+    # Dynamically import MeshResults and Exporters at runtime
+    obj_module = importlib.import_module("core.object_components")
+    MeshResults = getattr(obj_module, "MeshResults")
+    Exporters = getattr(obj_module, "Exporters")
 
+    if not isinstance(mesh, MeshResults):
+        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
-
+    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
     mesh_name = getattr(mesh, "name", "mesh").replace(" ", "_")
@@ -210,6 +204,7 @@ def export_mesh_results_to_stl(mesh: MeshResults) -> BasicallyABufferedFile:
         stl_path = os.path.join(tmp_dir, f"{mesh_name}.stl")
         exporters.export_stl(stl_path)
 
+        # Package all files in tmp_dir into a ZIP
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(tmp_dir):

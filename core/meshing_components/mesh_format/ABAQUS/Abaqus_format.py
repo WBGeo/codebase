@@ -4,11 +4,11 @@ from numpy.typing import NDArray
 import numpy as np
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
+import importlib
+import tempfile
 import io
 import os
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
-import tempfile
-from core.object_components import MeshResults
 
 class AbaqusInputs:
     """
@@ -154,32 +154,39 @@ class AbaqusInputs:
         print(f"[INFO] Abaqus file written: {filename}")
 
 
+
+
 @wbgeo_component(
     title="Download Mesh as Abaqus",
     description="Export Mesh to Abaqus",
     group="Export",
     identifier="wbgeo::expert_mesh_results_abaqus",
 )
-def export_mesh_results_to_abaqus(mesh: MeshResults) -> BasicallyABufferedFile:
+def export_mesh_results_to_abaqus(mesh) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to an Abaqus `.inp` file.
 
     The mesh is written to a temporary file using the internal Abaqus
-    exporter and then returned as an in-memory buffer for download.
+    exporter and returned as an in-memory buffer for download.
 
     Args:
     mesh: MeshResults object containing the mesh to be exported.
 
     Returns:
     io.BytesIO: In-memory buffer containing the Abaqus `.inp` file.
-
     """
-    from core.object_components import Exporters
+    # Dynamically import MeshResults and Exporters
+    obj_module = importlib.import_module("core.object_components")
+    MeshResults = getattr(obj_module, "MeshResults")
+    Exporters = getattr(obj_module, "Exporters")
+
+    if not isinstance(mesh, MeshResults):
+        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
     # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Write to a real temporary file (REQUIRED for Abaqus)
+    # Write to a temporary file (required for Abaqus)
     with tempfile.NamedTemporaryFile(suffix=".inp", delete=False) as tmp:
         tmp_path = tmp.name
         exporters.export_abaqus(tmp_path)
@@ -188,8 +195,10 @@ def export_mesh_results_to_abaqus(mesh: MeshResults) -> BasicallyABufferedFile:
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Name for WBGeo download
+    # Assign filename for WBGeo download
     buf.filename = "mesh_export_abaqus.inp"
-    # Remove the temporary file immediately
+
+    # Remove temporary file
     os.remove(tmp_path)
+
     return buf

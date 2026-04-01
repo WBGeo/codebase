@@ -5,11 +5,13 @@ from typing import Union, List, Optional, Dict
 from numpy.typing import NDArray
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-import io
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
-import tempfile
-from core.object_components import MeshResults
 
+import importlib
+import tempfile
+import zipfile
+import io
+import os
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 class VTMInputs:
     """
     Class for constructing and exporting VTK MultiBlock (.vtm) meshes.
@@ -120,13 +122,14 @@ class VTMInputs:
 
 
 
+
 @wbgeo_component(
     title="Download Mesh as VTM",
     description="Export selected mesh to VTM",
     group="Export",
     identifier="wbgeo::expert_mesh_results_vtm",
 )
-def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
+def export_mesh_results_to_vtm(mesh) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object as a VTK MultiBlock (.vtm) dataset.
 
@@ -136,7 +139,7 @@ def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
     and returned as a downloadable file.
 
     Args:
-    mesh (MeshResults): WBGeo mesh object containing nodes, elements, and metadata to be exported.
+    mesh: WBGeo mesh object containing nodes, elements, and metadata to be exported.
 
     Returns:
     io.BytesIO: In-memory ZIP archive containing the `.vtm` file and all associated sub-files.
@@ -147,22 +150,27 @@ def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
       additional files stored alongside the main VTM file.
     - The output is compatible with ParaView and PyVista.
     """
-    from core.object_components import Exporters
-    import tempfile
-    import zipfile
-    import io
-    import os
+    # Dynamically import Exporters and MeshResults
+    obj_module = importlib.import_module("core.object_components")
+    MeshResults = getattr(obj_module, "MeshResults")
+    Exporters = getattr(obj_module, "Exporters")
 
+    # Optional runtime type check
+    if not isinstance(mesh, MeshResults):
+        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
+
+    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Try to build a meaningful name
-    mesh_name = getattr(mesh, "name", "mesh")
-    mesh_name = mesh_name.replace(" ", "_")
+    # Build a safe mesh name
+    mesh_name = getattr(mesh, "name", "mesh").replace(" ", "_")
 
+    # Write to a temporary directory
     with tempfile.TemporaryDirectory() as tmp_dir:
         vtm_path = os.path.join(tmp_dir, f"{mesh_name}.vtm")
         exporters.export_vtm(vtm_path)
 
+        # Package all files into a ZIP
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for root, dirs, files in os.walk(tmp_dir):
@@ -171,8 +179,6 @@ def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
                     arcname = os.path.relpath(full_path, tmp_dir)
                     zf.write(full_path, arcname)
 
-
     buf.seek(0)
     buf.filename = f"{mesh_name}.vtm.zip"
     return buf
-

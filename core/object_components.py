@@ -37,7 +37,7 @@ from core.utility.pydantic_bridge import PandasDataFrame, MeshIOCellBlock
 @wbgeo_type(name='Input input_data for the rock elements of a structural geological model',
             color='#b0dfa9',
             identifier='InputData_StructuralElements')
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class InputData_StructuralElements:
     """
     A class to represent the input input_data for a geological model.
@@ -92,7 +92,7 @@ class InputData_StructuralElements:
 @wbgeo_type(name='Input input_data for the fault elements of a structural geological model',
             color='orange',
             identifier='InputData_FaultElements')
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class InputData_FaultElements:
     """
     A class to represent the input input_data for a geological model.
@@ -128,7 +128,7 @@ class InputData_FaultElements:
 
 
 @wbgeo_type(name='Result of a structural geological model', color='#8cb369', identifier='StructuralModelResults')
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class StructuralModelResults:
     """
     A class to represent the results of a geological model.
@@ -141,7 +141,7 @@ class StructuralModelResults:
 
 
 @wbgeo_type(name='Result of a structural fault model', color='blue', identifier='FaultModelResults')
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class FaultModelResults:
     """
     A class to represent the results of a fault model.
@@ -173,6 +173,7 @@ class MeshResults(BaseModel):
     nodes: NpNDArrayFp64
     elements: List[MeshIOCellBlock]
     cell_data: Optional[Dict[str, List[NpNDArrayFp64]]] = None
+    model_config = ConfigDict(arbitrary_types_allowed=True)  # <--- add this
 
     # transient / derived
     _mesh : Optional[pyvista.MultiBlock]  = PrivateAttr(default=None) #  exclude this field from serialization
@@ -183,7 +184,7 @@ class MeshResults(BaseModel):
     @mesh.setter
     def mesh(self, m): # getter/setter due to private/transient field
       self._mesh = m
-      
+
     # -----------------------------
     # Post init
     # -----------------------------
@@ -530,7 +531,7 @@ class Exporters(MeshResults):
 
 
 @wbgeo_type(name='SimulationResults', color='pink', identifier='SimulationResults')
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class SimulationResults:
     """
     Container class for all simulation results timesteps.

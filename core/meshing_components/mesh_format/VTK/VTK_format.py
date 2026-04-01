@@ -6,10 +6,14 @@ from numpy.typing import NDArray
 
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
-import io
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+import importlib
 import tempfile
-from core.object_components import MeshResults
+import io
+import os
+import numpy as np
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+import pyvista as pv
+
 
 # meshio → PyVista cell type mapping
 MESHIO_TO_VTK = {
@@ -87,33 +91,35 @@ class VTKInputs:
 
 
 
+
 @wbgeo_component(
     title="Download Mesh as VTK",
     description="Export Mesh to single VTK",
     group="Export",
     identifier="wbgeo::expert_mesh_results_vtk",
 )
-def export_mesh_results_to_vtk(mesh: MeshResults) -> BasicallyABufferedFile:
+def export_mesh_results_to_vtk(mesh) -> BasicallyABufferedFile:
     """
     Export the mesh to a single legacy VTK (.vtk) file.
 
-    This exporter Collects all mesh blocks from the WBGeo mesh and ensures each block has a `RegionId` cell array.
-    It also afely merges all blocks into one UnstructuredGrid and returns the result as a downloadable VTK file
+    Collects all mesh blocks from the WBGeo mesh and ensures each block has a `RegionId` cell array.
+    Safely merges all blocks into one UnstructuredGrid and returns as a downloadable VTK file.
 
     Args:
-    mesh (MeshResults):
-        WBGeo mesh object containing one or more mesh blocks.
+    mesh: WBGeo MeshResults object containing one or more mesh blocks.
 
     Returns:
     io.BytesIO: In-memory `.vtk` file ready for download.
     """
-    from core.object_components import Exporters
-    import pyvista as pv
-    import tempfile
-    import io
-    import os
-    import numpy as np
+    # Dynamically import MeshResults and Exporters
+    obj_module = importlib.import_module("core.object_components")
+    MeshResults = getattr(obj_module, "MeshResults")
+    Exporters = getattr(obj_module, "Exporters")
 
+    if not isinstance(mesh, MeshResults):
+        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
+
+    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
     multiblock = exporters.mesh
 
@@ -123,11 +129,10 @@ def export_mesh_results_to_vtk(mesh: MeshResults) -> BasicallyABufferedFile:
     grids = []
 
     for block_id, block in enumerate(multiblock, start=1):
-
         if block is None or block.n_cells == 0:
             continue
 
-        # 🔑 Ensure RegionId exists
+        # Ensure RegionId exists
         if "RegionId" not in block.cell_data:
             block = block.copy()
             block.cell_data["RegionId"] = np.full(
@@ -139,20 +144,24 @@ def export_mesh_results_to_vtk(mesh: MeshResults) -> BasicallyABufferedFile:
     if not grids:
         raise RuntimeError("No valid mesh blocks found")
 
-    # 🔥 SAFE merge (keeps cell data)
+    # SAFE merge (keeps cell data)
     grid = grids[0].copy()
     for g in grids[1:]:
         grid = grid.merge(g, merge_points=False)
 
+    # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".vtk", delete=False) as tmp:
         tmp_path = tmp.name
         grid.save(tmp_path)
 
+    # Read back into memory
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
+    # Assign filename for WBGeo download
     buf.filename = "mesh_export.vtk"
+
+    # Remove temporary file
     os.remove(tmp_path)
 
     return buf
-
