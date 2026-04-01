@@ -155,35 +155,23 @@ class GMSHInputs:
 def export_mesh_results_to_gmsh(mesh) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object to a Gmsh file.
-
-    The mesh is first written to a temporary file using the WBGeo
-    Exporters interface (required by Gmsh), then read back into memory
-    and returned as a downloadable file.
-
-    Notes
-    -----
-    - Only unstructured meshes are supported.
-    - Structured meshes are not supported and may lead to invalid output.
-
-    Args:
-    mesh: WBGeo mesh object containing nodes, elements, and metadata to be exported.
-
-    Returns:
-    io.BytesIO: In-memory buffer containing the Gmsh `.msh` file, ready for download.
     """
-    # Dynamically import Exporters and MeshResults
+    import importlib
+    import tempfile
+    import io
+    import os
+
+    # Lazy import to avoid circular dependency
     obj_module = importlib.import_module("core.object_components")
     MeshResults = getattr(obj_module, "MeshResults")
     Exporters = getattr(obj_module, "Exporters")
 
-    # Optional runtime type check
     if not isinstance(mesh, MeshResults):
         raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
-    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Write to a temporary file (required for Gmsh)
+    # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
         tmp_path = tmp.name
         exporters.export_gmsh(tmp_path)
@@ -192,10 +180,9 @@ def export_mesh_results_to_gmsh(mesh) -> BasicallyABufferedFile:
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Name for WBGeo download
     buf.filename = "mesh_export_gmsh.msh"
 
-    # Remove temporary file
+    # Cleanup
     os.remove(tmp_path)
 
     return buf

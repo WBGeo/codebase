@@ -504,22 +504,13 @@ class FeflowInputs:
 def export_mesh_results_to_feflow(mesh) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a FEFLOW (.fem) file.
-
-    The mesh is written to a temporary FEFLOW file using the
-    internal exporter and returned as an in-memory buffer
-    for download through the WBGeo interface.
-
-    Args:
-    mesh: WBGeo MeshResults object containing the mesh to be exported.
-
-    Returns:
-    io.BytesIO: In-memory buffer containing the FEFLOW `.fem` file.
-
-    Notes
-    -----
-    - Only unstructured meshes are supported.
     """
-    # Dynamically import MeshResults and Exporters
+    import importlib
+    import tempfile
+    import io
+    import os
+
+    # Lazy import to avoid circular dependency
     obj_module = importlib.import_module("core.object_components")
     MeshResults = getattr(obj_module, "MeshResults")
     Exporters = getattr(obj_module, "Exporters")
@@ -527,10 +518,9 @@ def export_mesh_results_to_feflow(mesh) -> BasicallyABufferedFile:
     if not isinstance(mesh, MeshResults):
         raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
-    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Write to a temporary file (required for FEFLOW)
+    # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".fem", delete=False) as tmp:
         tmp_path = tmp.name
         exporters.export_feflow(tmp_path)
@@ -539,10 +529,9 @@ def export_mesh_results_to_feflow(mesh) -> BasicallyABufferedFile:
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Assign filename for WBGeo download
     buf.filename = "mesh_export_feflow.fem"
 
-    # Remove the temporary file
+    # Cleanup
     os.remove(tmp_path)
 
     return buf

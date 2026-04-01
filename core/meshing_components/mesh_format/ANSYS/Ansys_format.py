@@ -10,6 +10,7 @@ import os
 import importlib
 import tempfile
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from typing import Annotated
 
 
 class AnsysInputs:
@@ -77,7 +78,6 @@ class AnsysInputs:
 
 
 
-
 @wbgeo_component(
     title="Download Mesh as Ansys",
     description="Export Mesh to Ansys",
@@ -87,18 +87,13 @@ class AnsysInputs:
 def export_mesh_results_to_ansys(mesh) -> BasicallyABufferedFile:
     """
     Export the mesh to ANSYS (.msh) format.
-
-    The mesh is written to a temporary file using the WBGeo
-    exporter pipeline and returned as an in-memory file
-    for download.
-
-    Args:
-    mesh: WBGeo mesh object containing structured or unstructured mesh data.
-
-    Returns:
-    io.BytesIO: ANSYS-compatible `.msh` file.
     """
-    # Dynamically import MeshResults and Exporters at runtime
+    import importlib
+    import tempfile
+    import io
+    import os
+
+    # Lazy import to avoid circular dependency
     obj_module = importlib.import_module("core.object_components")
     MeshResults = getattr(obj_module, "MeshResults")
     Exporters = getattr(obj_module, "Exporters")
@@ -106,22 +101,20 @@ def export_mesh_results_to_ansys(mesh) -> BasicallyABufferedFile:
     if not isinstance(mesh, MeshResults):
         raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
-    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Write to a temporary file (required for ANSYS)
+    # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
         tmp_path = tmp.name
         exporters.export_ansys(tmp_path)
 
-    # Read back into memory
+    # Read into memory
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Assign filename for WBGeo download
     buf.filename = "mesh_export_ansys.msh"
 
-    # Clean up temporary file
+    # Cleanup
     os.remove(tmp_path)
 
     return buf

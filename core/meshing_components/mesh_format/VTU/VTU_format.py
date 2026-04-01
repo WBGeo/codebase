@@ -56,7 +56,6 @@ class VTUInputs:
 
 
 
-
 @wbgeo_component(
     title="Download Mesh as VTU",
     description="Export Mesh to VTU",
@@ -66,23 +65,13 @@ class VTUInputs:
 def export_mesh_results_to_vtu(mesh) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object to a VTU (.vtu) file.
-
-    The mesh is written to a temporary file using the WBGeo Exporters
-    interface (required by VTU), then read back into memory and returned
-    as a downloadable file.
-
-    Args:
-    mesh: WBGeo mesh object containing nodes, elements, and metadata to be exported.
-
-    Returns:
-    io.BytesIO: In-memory buffer containing the VTU file, ready for download.
-
-    Notes
-    -----
-    - Supports both structured and unstructured meshes.
-    - The exported VTU file is suitable for visualization in ParaView and PyVista.
     """
-    # Dynamically import MeshResults and Exporters
+    import importlib
+    import tempfile
+    import io
+    import os
+
+    # Lazy import to avoid circular dependency
     obj_module = importlib.import_module("core.object_components")
     MeshResults = getattr(obj_module, "MeshResults")
     Exporters = getattr(obj_module, "Exporters")
@@ -90,22 +79,20 @@ def export_mesh_results_to_vtu(mesh) -> BasicallyABufferedFile:
     if not isinstance(mesh, MeshResults):
         raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
-    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
-    # Write to a temporary file (required for VTU)
+    # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".vtu", delete=False) as tmp:
         tmp_path = tmp.name
         exporters.export_vtu(tmp_path)
 
-    # Read back into memory
+    # Read into memory
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Assign filename for WBGeo download
     buf.filename = "mesh_export_vtu.vtu"
 
-    # Clean up temporary file
+    # Cleanup
     os.remove(tmp_path)
 
     return buf

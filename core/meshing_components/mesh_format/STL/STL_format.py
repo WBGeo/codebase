@@ -7,6 +7,7 @@ import numpy as np
 from collections import defaultdict
 import io
 from typing import TYPE_CHECKING
+from typing import Annotated
 
 import importlib
 import tempfile
@@ -173,6 +174,7 @@ class STLInputs:
 
 
 
+
 @wbgeo_component(
     title="Download Mesh as STL",
     description="Export Mesh to STL",
@@ -182,12 +184,14 @@ class STLInputs:
 def export_mesh_results_to_stl(mesh) -> BasicallyABufferedFile:
     """
     Export an unstructured mesh to STL format.
-
-    The mesh is written to a temporary directory and all generated
-    STL files (surfaces and interfaces) are packaged into a ZIP
-    archive for download.
     """
-    # Dynamically import MeshResults and Exporters at runtime
+    import importlib
+    import tempfile
+    import zipfile
+    import io
+    import os
+
+    # Lazy import to avoid circular dependency
     obj_module = importlib.import_module("core.object_components")
     MeshResults = getattr(obj_module, "MeshResults")
     Exporters = getattr(obj_module, "Exporters")
@@ -195,16 +199,15 @@ def export_mesh_results_to_stl(mesh) -> BasicallyABufferedFile:
     if not isinstance(mesh, MeshResults):
         raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
-    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
 
     mesh_name = getattr(mesh, "name", "mesh").replace(" ", "_")
 
+    # Export STL into temp directory and zip it
     with tempfile.TemporaryDirectory() as tmp_dir:
         stl_path = os.path.join(tmp_dir, f"{mesh_name}.stl")
         exporters.export_stl(stl_path)
 
-        # Package all files in tmp_dir into a ZIP
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(tmp_dir):

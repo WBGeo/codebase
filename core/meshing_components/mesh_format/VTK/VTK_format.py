@@ -13,6 +13,7 @@ import os
 import numpy as np
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import pyvista as pv
+from typing import Annotated
 
 
 # meshio → PyVista cell type mapping
@@ -101,17 +102,15 @@ class VTKInputs:
 def export_mesh_results_to_vtk(mesh) -> BasicallyABufferedFile:
     """
     Export the mesh to a single legacy VTK (.vtk) file.
-
-    Collects all mesh blocks from the WBGeo mesh and ensures each block has a `RegionId` cell array.
-    Safely merges all blocks into one UnstructuredGrid and returns as a downloadable VTK file.
-
-    Args:
-    mesh: WBGeo MeshResults object containing one or more mesh blocks.
-
-    Returns:
-    io.BytesIO: In-memory `.vtk` file ready for download.
     """
-    # Dynamically import MeshResults and Exporters
+    import importlib
+    import tempfile
+    import io
+    import os
+    import pyvista as pv
+    import numpy as np
+
+    # Lazy import to avoid circular dependency
     obj_module = importlib.import_module("core.object_components")
     MeshResults = getattr(obj_module, "MeshResults")
     Exporters = getattr(obj_module, "Exporters")
@@ -119,7 +118,6 @@ def export_mesh_results_to_vtk(mesh) -> BasicallyABufferedFile:
     if not isinstance(mesh, MeshResults):
         raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
 
-    # Create exporters from MeshResults
     exporters = Exporters(**mesh.__dict__)
     multiblock = exporters.mesh
 
@@ -144,7 +142,7 @@ def export_mesh_results_to_vtk(mesh) -> BasicallyABufferedFile:
     if not grids:
         raise RuntimeError("No valid mesh blocks found")
 
-    # SAFE merge (keeps cell data)
+    # Merge all blocks safely
     grid = grids[0].copy()
     for g in grids[1:]:
         grid = grid.merge(g, merge_points=False)
@@ -158,10 +156,7 @@ def export_mesh_results_to_vtk(mesh) -> BasicallyABufferedFile:
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
-    # Assign filename for WBGeo download
     buf.filename = "mesh_export.vtk"
 
-    # Remove temporary file
     os.remove(tmp_path)
-
     return buf
