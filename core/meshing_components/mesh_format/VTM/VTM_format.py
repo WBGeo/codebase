@@ -6,12 +6,10 @@ from numpy.typing import NDArray
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 from typing import Annotated
-
-import importlib
-import tempfile
-import zipfile
+from core.object_components import MeshResults
 import io
-import os
+
+
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 class VTMInputs:
     """
@@ -79,28 +77,28 @@ class VTMInputs:
         Construct a PyVista MultiBlock mesh from the input nodes and elements.
 
         Returns:
-        pv.MultiBlock: MultiBlock dataset containing one UnstructuredGrid per block.
+            pv.MultiBlock: MultiBlock dataset containing one UnstructuredGrid per block.
         """
         multi_block: pv.MultiBlock = pv.MultiBlock()
 
         for idx, cell_block in enumerate(self.elements_block):
-                vtk_cell_type: int = self._cell_block_type_to_vtk(cell_block.type)
-                cells_flat: List[int] = []
-                cell_types: List[int] = []
+            vtk_cell_type: int = self._cell_block_type_to_vtk(cell_block.type)
+            cells_flat: List[int] = []
+            cell_types: List[int] = []
 
-                for cell in cell_block.data:
-                    cells_flat.append(len(cell))
-                    cells_flat.extend(cell)
-                    cell_types.append(vtk_cell_type)
+            for cell in cell_block.data:
+                cells_flat.append(len(cell))
+                cells_flat.extend(cell)
+                cell_types.append(vtk_cell_type)
 
-                cells_flat: NDArray[np.int32] = np.array(cells_flat, dtype=np.int32)
-                cell_types: NDArray[np.unit8] = np.array(cell_types, dtype=np.uint8)
-                grid: pv.UnstructuredGrid = pv.UnstructuredGrid(cells_flat, cell_types, self.nodes)
-                multi_block[f"Block_{idx}_{cell_block.type}"] = grid
+            cells_flat: NDArray[np.int32] = np.array(cells_flat, dtype=np.int32)
+            cell_types: NDArray[np.uint8] = np.array(cell_types, dtype=np.uint8)
+            grid: pv.UnstructuredGrid = pv.UnstructuredGrid(cells_flat, cell_types, self.nodes)
+            multi_block[f"Block_{idx}_{cell_block.type}"] = grid
 
-        # Save the MultiBlock to disk correctly
+        # Save MultiBlock properly (this writes .vtm + referenced .vtu files)
         if self.output_filename:
-            pv.save_meshio(self.output_filename, multi_block)  # saves .vtm and .vtm sub-files
+            multi_block.save(self.output_filename)  # ✅ correct for MultiBlock
 
         return multi_block
 
@@ -121,50 +119,50 @@ class VTMInputs:
         mesh: pv.MultiBlock = pv.read(self.output_filename)
         mesh.plot(show_edges=True)
 
-
-
-
-
-
 @wbgeo_component(
-    title="Download Mesh as VTM",
-    description="Export selected mesh to VTM",
+    title="Download Mesh as VTM ZIP",
+    description="Export Mesh to VTM inside a ZIP (like Exporters.export_vtm)",
     group="Export",
-    identifier="wbgeo::expert_mesh_results_vtm",
+    identifier="wbgeo::expert_mesh_results_vtm_zip",
 )
-def export_mesh_results_to_vtm(mesh) -> BasicallyABufferedFile:
+def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
     """
-    Export the given MeshResults object as a VTK MultiBlock (.vtm) dataset.
+    Export the given MeshResults object as a VTK MultiBlock (.vtm) dataset
+    and package it in a ZIP archive, saving exactly like Exporters.export_vtm.
+
+    Args:
+        mesh (MeshResults): WBGeo mesh object containing 'nodes' and 'elements'.
+
+    Returns:
+        io.BytesIO: In-memory ZIP archive containing the `.vtm` file and all sub-files.
     """
-    import importlib
     import tempfile
     import zipfile
-    import io
     import os
 
-    # Lazy import to avoid circular dependency
-    obj_module = importlib.import_module("core.object_components")
-    MeshResults = getattr(obj_module, "MeshResults")
-    Exporters = getattr(obj_module, "Exporters")
+    if not hasattr(mesh, "nodes") or not hasattr(mesh, "elements"):
+        raise ValueError("MeshResults must have 'nodes' and 'elements' attributes.")
 
-    if not isinstance(mesh, MeshResults):
-        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
-
-    exporters = Exporters(**mesh.__dict__)
+    # Build a meaningful filename
     mesh_name = getattr(mesh, "name", "mesh").replace(" ", "_")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
+        # Full path for the .vtm file
         vtm_path = os.path.join(tmp_dir, f"{mesh_name}.vtm")
-        exporters.export_vtm(vtm_path)
 
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Create MultiBlock and save to disk (this will save .vtm + referenced .vtu files automatically)
+        vtm_mesh = VTMInputs(mesh.nodes, mesh.elements, output_filename=vtm_path)
+        vtm_mesh.create_mesh()  # ✅ saves .vtm + sub-files automatically
+
+        # Create ZIP archive of the entire temporary folder
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(tmp_dir):
                 for file in files:
                     full_path = os.path.join(root, file)
                     arcname = os.path.relpath(full_path, tmp_dir)
                     zf.write(full_path, arcname)
 
-    buf.seek(0)
-    buf.filename = f"{mesh_name}.vtm.zip"
-    return buf
+        zip_buffer.seek(0)
+        zip_buffer.filename = f"{mesh_name}.vtm.zip"
+        return zip_buffer

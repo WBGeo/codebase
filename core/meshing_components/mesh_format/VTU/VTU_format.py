@@ -1,15 +1,11 @@
 import meshio
-import pyvista as pv
-from typing import Union, List, Optional, Dict, Any
 import numpy as np
-from numpy.typing import NDArray
-import os
-from core.meshing_components.geometry.Elements import Elements
-from core.meshing_components.geometry.Nodes import Nodes
-import io
-import importlib
 import tempfile
+import io
+import os
+from typing import List
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from core.object_components import MeshResults
 
 
 class VTUInputs:
@@ -55,44 +51,33 @@ class VTUInputs:
         return mesh
 
 
-
 @wbgeo_component(
     title="Download Mesh as VTU",
     description="Export Mesh to VTU",
     group="Export",
     identifier="wbgeo::expert_mesh_results_vtu",
 )
-def export_mesh_results_to_vtu(mesh) -> BasicallyABufferedFile:
+def export_mesh_results_to_vtu(mesh: MeshResults) -> BasicallyABufferedFile:
     """
-    Export the given MeshResults object to a VTU (.vtu) file.
+    Export a MeshResults object to a VTU (.vtu) file.
     """
-    import importlib
-    import tempfile
-    import io
-    import os
+    if not hasattr(mesh, "nodes") or not hasattr(mesh, "elements"):
+        raise ValueError("MeshResults must have 'nodes' and 'elements'")
 
-    # Lazy import to avoid circular dependency
-    obj_module = importlib.import_module("core.object_components")
-    MeshResults = getattr(obj_module, "MeshResults")
-    Exporters = getattr(obj_module, "Exporters")
-
-    if not isinstance(mesh, MeshResults):
-        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
-
-    exporters = Exporters(**mesh.__dict__)
+    # Create meshio.Mesh from VTUInputs
+    vtu_mesh = VTUInputs(mesh.nodes, mesh.elements)
+    meshio_mesh = vtu_mesh.create_mesh()
 
     # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".vtu", delete=False) as tmp:
         tmp_path = tmp.name
-        exporters.export_vtu(tmp_path)
+        meshio_mesh.write(tmp_path)
 
-    # Read into memory
+    # Read back into memory
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
-
-    buf.filename = "mesh_export_vtu.vtu"
+    buf.filename = "mesh_export.vtu"
 
     # Cleanup
     os.remove(tmp_path)
-
     return buf

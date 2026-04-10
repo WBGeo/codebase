@@ -1,28 +1,22 @@
 import meshio
-from typing import Union, List, Dict
-from numpy.typing import NDArray
+from typing import List
 import numpy as np
-from core.meshing_components.geometry.Elements import Elements
-from core.meshing_components.geometry.Nodes import Nodes
-import pyvista as pv
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import tempfile
-import importlib
-from typing import Annotated
+
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from core.object_components import MeshResults
+# ⚠️ Avoid top-level import if it creates cycles
+# from core.object_components import MeshResults
 
 
 class ExosInputs:
     """
-    Class for exporting unstructured volumetric meshes to ExodusL format.
+    Class for exporting unstructured volumetric meshes to Exodus format.
     """
-    def __init__(
-        self,
-        nodes,
-        elements: List[meshio.CellBlock],
-    ) -> None:
 
+    def __init__(self, nodes, elements: List[meshio.CellBlock]) -> None:
         # Normalize nodes to NumPy
         self.nodes = np.asarray(nodes, dtype=float)
 
@@ -30,59 +24,49 @@ class ExosInputs:
             raise ValueError("nodes must be Nx3 coordinates.")
 
         if not isinstance(elements, list):
-            raise TypeError("elements_array must be List[meshio.CellBlock]")
+            raise TypeError("elements must be List[meshio.CellBlock]")
 
         self.elements = elements
-
-
 
     def create_mesh(self) -> meshio.Mesh:
         """
         Create a meshio Mesh object suitable for Exodus export.
-
-
-        Returns:
-        meshio.Mesh: Mesh object containing points, cell connectivity, and optional point sets for boundary conditions.
         """
-        # Create the meshio.Mesh object
-        mesh = meshio.Mesh(
+        return meshio.Mesh(
             points=self.nodes,
             cells=self.elements
         )
-        return mesh
 
 
-
-
-
-
-
-def export_mesh_results_to_exodus(mesh) -> BasicallyABufferedFile:
+@wbgeo_component(
+    title="Download Mesh as Exodus",
+    description="Export Mesh to Exodus",
+    group="Export",
+    identifier="wbgeo::expert_mesh_results_exodus",
+)
+def export_mesh_results_to_exodus(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to an Exodus (.exo) file.
+
+    The mesh is written to a temporary Exodus file and returned
+    as an in-memory buffer for download.
     """
-    import importlib
-    import tempfile
-    import io
-    import os
 
-    # Lazy import to avoid circular dependency
-    obj_module = importlib.import_module("core.object_components")
-    MeshResults = getattr(obj_module, "MeshResults")
-    Exporters = getattr(obj_module, "Exporters")
+    exo_in = ExosInputs(mesh.nodes, mesh.elements)
+    meshio_mesh = exo_in.create_mesh()
 
-    if not isinstance(mesh, MeshResults):
-        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
-
-    exporters = Exporters(**mesh.__dict__)
-
+    # Write to temporary file (Exodus requires real file)
     with tempfile.NamedTemporaryFile(suffix=".exo", delete=False) as tmp:
         tmp_path = tmp.name
-        exporters.export_exodus(tmp_path)
+        meshio_mesh.write(tmp_path, file_format="exodus")
 
+    # Read file into memory buffer
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
     buf.filename = "mesh_export_exodus.exo"
+
+    # Clean up temporary file
     os.remove(tmp_path)
+
     return buf

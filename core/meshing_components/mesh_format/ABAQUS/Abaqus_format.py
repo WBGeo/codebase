@@ -9,6 +9,7 @@ import tempfile
 import io
 import os
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from core.object_components import MeshResults
 
 class AbaqusInputs:
     """
@@ -161,37 +162,33 @@ class AbaqusInputs:
     group="Export",
     identifier="wbgeo::expert_mesh_results_abaqus",
 )
-def export_mesh_results_to_abaqus(mesh) -> BasicallyABufferedFile:
+def export_mesh_results_to_abaqus(mesh: MeshResults) -> BasicallyABufferedFile:
     """
-    Export a WBGeo MeshResults object to an Abaqus `.inp` file.
+    Export a WBGeo MeshResults object to an Abaqus `.inp` file
+    using the AbaqusInputs class.
+
+    The mesh is written to a temporary Abaqus file and returned
+    as an in-memory buffer for download.
     """
-    import importlib
-    import tempfile
-    import io
-    import os
 
-    # Lazy import to avoid circular dependency
-    obj_module = importlib.import_module("core.object_components")
-    MeshResults = getattr(obj_module, "MeshResults")
-    Exporters = getattr(obj_module, "Exporters")
-
-    if not isinstance(mesh, MeshResults):
-        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
-
-    exporters = Exporters(**mesh.__dict__)
+    # ✅ Use AbaqusInputs to prepare the mesh
+    abaqus_in = AbaqusInputs(mesh.nodes, mesh.elements)
+    # The mesh object is only needed internally for AbaqusInputs
+    # writing, so no need to call create_mesh here unless for inspection
 
     # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".inp", delete=False) as tmp:
         tmp_path = tmp.name
-        exporters.export_abaqus(tmp_path)
+        abaqus_in.write(tmp_path)
 
-    # Read into memory
+    # Read file into memory buffer
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
 
+    # Name for WBGeo download
     buf.filename = "mesh_export_abaqus.inp"
 
-    # Cleanup
+    # Cleanup temporary file
     os.remove(tmp_path)
 
     return buf

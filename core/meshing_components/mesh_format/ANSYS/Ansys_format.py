@@ -11,6 +11,7 @@ import importlib
 import tempfile
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 from typing import Annotated
+from core.object_components import MeshResults
 
 
 class AnsysInputs:
@@ -78,43 +79,85 @@ class AnsysInputs:
 
 
 
+import meshio
+from typing import List
+import numpy as np
+from numpy.typing import NDArray
+from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+import importlib
+import tempfile
+import io
+import os
+
+class AnsysInputs:
+    """
+    Class for exporting meshes to ANSYS-compatible format.
+
+    Notes
+    -----
+    - Supported element types: triangle, quad, tetra, hexahedron, pyramid, wedge.
+    - Unsupported element types are skipped with a warning.
+    """
+    def __init__(self, nodes, elements: List[meshio.CellBlock]) -> None:
+        # Normalize nodes to NumPy
+        self.nodes = np.asarray(nodes, dtype=float)
+        if self.nodes.ndim != 2 or self.nodes.shape[1] != 3:
+            raise ValueError("nodes must be Nx3 coordinates.")
+
+        if not isinstance(elements, list):
+            raise TypeError("elements must be List[meshio.CellBlock]")
+
+        self.elements_block: List[meshio.CellBlock] = elements
+
+    def create_mesh(self) -> meshio.Mesh:
+        """
+        Create a meshio Mesh object compatible with ANSYS.
+        """
+        points: NDArray[np.float64] = self.nodes
+
+        supported_types: set[str] = {"triangle", "quad", "tetra", "hexahedron", "pyramid", "wedge"}
+
+        cells: List[tuple[str, NDArray[np.int64]]] = []
+        for block in self.elements_block:
+            if block.type in supported_types:
+                cells.append((block.type, block.data))
+            else:
+                print(f"⚠️ Skipping unsupported ANSYS cell type: {block.type}")
+
+        if not cells:
+            raise ValueError("No valid element types for ANSYS export")
+
+        return meshio.Mesh(points=points, cells=cells)
+
+
 @wbgeo_component(
-    title="Download Mesh as Ansys",
-    description="Export Mesh to Ansys",
+    title="Download Mesh as ANSYS",
+    description="Export WBGeo MeshResults to ANSYS (.msh) format",
     group="Export",
     identifier="wbgeo::expert_mesh_results_ansys",
 )
-def export_mesh_results_to_ansys(mesh) -> BasicallyABufferedFile:
+def export_mesh_results_to_ansys(mesh: MeshResults) -> BasicallyABufferedFile:
     """
-    Export the mesh to ANSYS (.msh) format.
+    Export a WBGeo MeshResults object to ANSYS (.msh) format using AnsysInputs.
     """
-    import importlib
-    import tempfile
-    import io
-    import os
+    # Ensure the mesh has nodes and elements
+    if not hasattr(mesh, "nodes") or not hasattr(mesh, "elements"):
+        raise ValueError("MeshResults must have 'nodes' and 'elements' attributes.")
 
-    # Lazy import to avoid circular dependency
-    obj_module = importlib.import_module("core.object_components")
-    MeshResults = getattr(obj_module, "MeshResults")
-    Exporters = getattr(obj_module, "Exporters")
-
-    if not isinstance(mesh, MeshResults):
-        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
-
-    exporters = Exporters(**mesh.__dict__)
+    # Create ANSYS mesh
+    ansys_mesh = AnsysInputs(mesh.nodes, mesh.elements).create_mesh()
 
     # Write to temporary file
     with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
         tmp_path = tmp.name
-        exporters.export_ansys(tmp_path)
+        ansys_mesh.write(tmp_path)
 
-    # Read into memory
+    # Read into memory buffer
     with open(tmp_path, "rb") as f:
         buf = io.BytesIO(f.read())
-
     buf.filename = "mesh_export_ansys.msh"
 
-    # Cleanup
+    # Cleanup temporary file
     os.remove(tmp_path)
 
     return buf

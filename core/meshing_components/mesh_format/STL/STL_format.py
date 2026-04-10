@@ -15,6 +15,8 @@ import zipfile
 import io
 import os
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from core.object_components import MeshResults
+
 class STLInputs:
     """
     Class for exporting unstructured volumetric meshes to STL format.
@@ -173,41 +175,34 @@ class STLInputs:
 
 
 
-
-
 @wbgeo_component(
     title="Download Mesh as STL",
     description="Export Mesh to STL",
     group="Export",
     identifier="wbgeo::expert_mesh_results_stl",
 )
-def export_mesh_results_to_stl(mesh) -> BasicallyABufferedFile:
+def export_mesh_results_to_stl(mesh: MeshResults) -> BasicallyABufferedFile:
     """
-    Export an unstructured mesh to STL format.
+    Export a WBGeo MeshResults object to STL format.
+
+    The mesh is written to separate STL files for surfaces and interfaces,
+    then zipped into a single in-memory archive for download.
     """
-    import importlib
     import tempfile
     import zipfile
     import io
     import os
 
-    # Lazy import to avoid circular dependency
-    obj_module = importlib.import_module("core.object_components")
-    MeshResults = getattr(obj_module, "MeshResults")
-    Exporters = getattr(obj_module, "Exporters")
-
-    if not isinstance(mesh, MeshResults):
-        raise TypeError(f"Expected a MeshResults instance, got {type(mesh)}")
-
-    exporters = Exporters(**mesh.__dict__)
-
+    # Create STLInputs object
+    stl_in = STLInputs(nodes=mesh.nodes, elements=mesh.elements)
     mesh_name = getattr(mesh, "name", "mesh").replace(" ", "_")
 
-    # Export STL into temp directory and zip it
+    # Use temporary directory for STL files
     with tempfile.TemporaryDirectory() as tmp_dir:
-        stl_path = os.path.join(tmp_dir, f"{mesh_name}.stl")
-        exporters.export_stl(stl_path)
+        stl_in.output_filename = os.path.join(tmp_dir, f"{mesh_name}.stl")
+        stl_in.create_mesh()  # generates STL files in tmp_dir
 
+        # Zip all STL files
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(tmp_dir):

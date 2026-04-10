@@ -17,15 +17,6 @@ from pydantic_numpy.typing import NpNDArrayInt64, NpNDArrayFp64
 from py_api_wbgeo.nodesapi import wbgeo_type
 
 
-from core.meshing_components.mesh_format.EXUDOS.Exo_format import ExosInputs
-from core.meshing_components.mesh_format.VTU.VTU_format import VTUInputs
-from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
-from core.meshing_components.mesh_format.STL.STL_format import STLInputs
-from core.meshing_components.mesh_format.GMSH.GMSH_format import GMSHInputs
-from core.meshing_components.mesh_format.ABAQUS.Abaqus_format import AbaqusInputs
-from core.meshing_components.mesh_format.FEFLOW.Feflow_format import FeflowInputs, C_FeFlow
-from core.meshing_components.mesh_format.ANSYS.Ansys_format import AnsysInputs
-
 from core.meshing_components.geometry.Elements import Elements
 from core.meshing_components.geometry.Nodes import Nodes
 from pydantic import BaseModel, field_serializer, field_validator, BeforeValidator, PlainSerializer, \
@@ -196,165 +187,6 @@ class MeshResults(BaseModel):
 
         self.mesh = self.vtm_in.create_mesh()
 
-@wbgeo_type(name='Exporters', color='grey', identifier='Exporters')
-class Exporters(MeshResults):
-    """
-    Export utility class for MeshResults.
-
-    This class extends `MeshResults` and provides methods to export
-    the mesh into various standard geoscientific and engineering formats.
-
-    Supported mesh types depend on the export format:
-    - Structured meshes: VTU, VTK, VTM, Exodus, Ansys
-    - Unstructured meshes: STL, Abaqus, Gmsh, FeFlow, VTU, VTK, VTM, Exodus, Ansys
-
-    """
-
-    def export_vtu(self, filename: str):
-        """
-        Export the mesh to a VTU (VTK Unstructured Grid) file.
-
-        Args:
-        filename: Output filename ending with `.vtu`.
-
-        Supported Mesh Types:
-        - Structured meshes
-        - Unstructured meshes
-        """
-        vtu_in = VTUInputs(self.nodes, self.elements )
-        # Create the VTU mesh
-        mesh = vtu_in.create_mesh()
-        # Write the mesh to a VTU file
-        mesh.write(filename, file_format="vtu")
-        print(f"VTU file '{filename}' created successfully!")
-
-
-    def export_stl(self, filename: str):
-        """
-        Export the mesh surface to STL format.
-
-        Args:
-        filename: Output STL filename.
-
-        Supported Mesh Types:
-        - Unstructured meshes ONLY
-        """
-        stl_in = STLInputs(self.nodes, self.elements)
-        stl_in.output_filename = filename
-        stl_in.create_mesh()
-        print(f"Stl files '{filename}' created successfully!")
-
-
-    def export_exodus(self, filename: str):
-        """
-        Export the mesh to an Exodus (.exo) file.
-
-        Args:
-        filename: Output filename ending with `.exo`.
-
-        Supported Mesh Types:
-        - Structured meshes
-        - Unstructured meshes
-        """
-        exo_in = ExosInputs(self.nodes, self.elements)
-        # Create mesh
-        mesh = exo_in.create_mesh()
-        # Write the mesh to an Exodus file
-        mesh.write(filename, file_format="exodus")
-        print(f"Exodus file '{filename}' created successfully!")
-
-
-    def export_abaqus(self, filename: str):
-        """
-        Export the mesh to an Abaqus input (.inp) file.
-
-        Args:
-        filename:Output Abaqus input filename.
-
-        Supported Mesh Types:
-        --------------------
-        - Unstructured meshes ONLY
-        """
-        abq = AbaqusInputs(self.nodes,self.elements)
-        abq.write(filename)
-        print(f"Abaqus file '{filename}' created successfully!")
-
-
-
-    def export_ansys(self, filename: str):
-        """
-        Export the mesh to an Ansys-compatible format.
-
-        Args:
-        filename:Output filename.
-
-        Supported Mesh Types:
-        - Structured meshes
-        - Unstructured meshes
-        """
-        Ansys_in = AnsysInputs(self.nodes, self.elements)
-        # Create mesh
-        mesh = Ansys_in.create_mesh()
-        # Write the mesh to an Exodus file
-        mesh.write(filename, file_format="ansys")
-        print(f"Ansys file '{filename}' created successfully!")
-
-
-
-    def export_gmsh(self, filename: str):
-        """
-        Export the mesh to Gmsh (.msh) format.
-
-        Args:
-        filename: Output filename ending with `.msh`.
-
-        Supported Mesh Types:
-        --------------------
-        - Unstructured meshes ONLY
-        """
-        elements =self.elements
-        if not isinstance(elements, list):
-            raise TypeError("Gmsh export requires unstructured CellBlocks. You can try " \
-            "exporting to structured formats like VTU, Exodus, VTM, VTK, ...")
-        gmsh_in = GMSHInputs(self.nodes, elements,)
-        mesh = gmsh_in.create_mesh()
-        meshio.write(filename, mesh, file_format="gmsh")
-        print(f"GMSH file '{filename}' created successfully!")
-
-
-
-    def export_vtk(self, filename: str):
-        """
-        Export the mesh to a legacy VTK file.
-
-        Args:
-        ----------
-        filename: Output filename ending with `.vtk`.
-
-        Supported Mesh Types:
-        --------------------
-        - Structured meshes
-        - Unstructured meshes
-        """
-        self.mesh.save(filename)
-        print(f"VTK file '{filename}' with created successfully!")
-
-
-
-    def export_vtm(self, filename: str):
-        """
-        Export the mesh to a VTM (VTK MultiBlock) file.
-
-        Args:
-        filename: Output filename ending with `.vtm`.
-
-        Supported Mesh Types:
-        - Structured meshes
-        - Unstructured meshes
-        """
-        self.mesh.save(filename)
-        print(f"VTM files '{filename}' created successfully!")
-
 
 
     # TODO: export_resqml is not yet fully working (Petrel/CMG compatibility issues
@@ -509,25 +341,6 @@ class Exporters(MeshResults):
     #
     #     print(f"[export_resqml] RESQML model saved to {filename}")
 
-    def export_feflow(self, filename: str):
-        """
-        Export the mesh to a FeFlow (.fem) file.
-
-        Args:
-        filename: Output filename ending with `.fem`.
-
-        Supported Mesh Types:
-        - Unstructured meshes ONLY
-        """
-        elements = self.elements
-        # Reject structured meshes
-        if not isinstance(elements, list):
-            raise TypeError("FeFlow export supports ONLY unstructured meshes.\n"
-            "You can export a structured mesh using other formats (e.g., VTU, VTK, VTM, Exodus,..).")
-
-        feflow = FeflowInputs(self.nodes, elements)
-        feflow.write(filename)
-        print(f"Feflow file '{filename}' created successfully!")
 
 
 @wbgeo_type(name='SimulationResults', color='pink', identifier='SimulationResults')
