@@ -1498,7 +1498,7 @@ TriangulationsPlanesData = typing.Annotated[str, AnnotatedScriptType(name='path'
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
 )
-def load_triangulations_planes_from_csv(csv_file: str) -> np.ndarray:
+def load_triangulations_planes_from_csv(csv_file: str) -> TriangulationsPlanesData:
     """
     Load plane coordinates from a CSV file for triangulations.
 
