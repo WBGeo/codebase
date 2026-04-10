@@ -1043,7 +1043,8 @@ ShaftData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='
 PlaneData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData', controlled='Table|x12')]
 ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 EllipseData = typing.Annotated[List[Dict[str, typing.Any]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
-
+TriangulationData= TriangulationData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType( name='triangulation', color='aqua',
+        identifier='mesh::TriangulationData',controlled='Table|3|X|Y|Z')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
 WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
@@ -1057,7 +1058,7 @@ WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='
                  return_name='Wells',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 
-def load_wells_from_csv(well_file, key_hierarchical: bool = False) ->  WellData:
+def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
     """
     Load well trajectories from a CSV file.
 
@@ -1209,7 +1210,7 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
 )
-def load_ellipses_from_csv(ellipse_file: str) -> EllipseData:
+def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType) -> EllipseData:
     """
     Load ellipses from a CSV file and return them as a list of dictionaries.
 
@@ -1498,7 +1499,7 @@ TriangulationsPlanesData = typing.Annotated[str, AnnotatedScriptType(name='path'
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
 )
-def load_triangulations_planes_from_csv(csv_file: str) -> TriangulationsPlanesData:
+def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData) -> TriangulationData:
     """
     Load plane coordinates from a CSV file for triangulations.
 
