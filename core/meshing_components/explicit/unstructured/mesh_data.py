@@ -1057,7 +1057,7 @@ WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='
                  return_name='Wells',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 
-def load_wells_from_csv(well_file, key_hierarchical: bool = False):
+def load_wells_from_csv(well_file, key_hierarchical: bool = False) ->  WellData:
     """
     Load well trajectories from a CSV file.
 
