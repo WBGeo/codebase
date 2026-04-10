@@ -1043,7 +1043,7 @@ ShaftData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='
 PlaneData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData', controlled='Table|x12')]
 ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 EllipseData = typing.Annotated[List[Dict[str, typing.Any]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
-TriangulationData= TriangulationData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType( name='triangulation', color='aqua',
+TriangulationData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType( name='triangulation', color='aqua',
         identifier='mesh::TriangulationData',controlled='Table|3|X|Y|Z')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
