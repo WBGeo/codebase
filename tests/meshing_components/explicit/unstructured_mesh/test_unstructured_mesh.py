@@ -28,10 +28,10 @@ base_dir = os.path.dirname(__file__)
 
 data_dir = os.path.join(
     base_dir,
-    "../../../../examples/synthetic_examples/Model1/input_data/Geological_data/"
+    "../../loading_engineering_objects/data/Geological_data/"
 )
 
-engineering_dir = os.path.join(data_dir, "../Engineering_objects/")
+engineering_dir = os.path.join(base_dir, "../../loading_engineering_objects/data/Engineering_objects/")
 
 pkl_file = os.path.join(base_dir, "mesh_test.pkl.gz")
 
