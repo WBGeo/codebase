@@ -1,36 +1,30 @@
 import unittest
-import pickle
-import gzip
-import os
 import numpy as np
 import pandas as pd
+import os
+import gzip
+import pickle
 
 from core.object_components import InputData_StructuralElements
+from core.object_components import MeshResults  # (important for type consistency)
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
-
-from core.meshing_components.explicit.structured.mesh_data import (
-    create_structured_mesh_data,
-)
-
-# ------------------------
-# Wrapper (match PKL structure)
-# ------------------------
-class MeshResults:
-    def __init__(self, nodes, elements):
-        self.nodes = nodes
-        self.elements_structured = elements
+from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 
 
 # ------------------------
 # Paths
 # ------------------------
-data_dir = os.path.dirname(__file__) + "/../../../../examples/synthetic_examples/Model1/input_data/Geological_data/"
+data_dir = os.path.join(
+    os.path.dirname(__file__),
+    "../../../../examples/synthetic_examples/Model1/input_data/Geological_data/"
+)
+
 pkl_file = os.path.join(os.path.dirname(__file__), "structured_mesh.pkl.gz")
 
 
 # ------------------------
-# Helper loader (supports gz + pkl)
+# SAFE PICKLE LOADER
 # ------------------------
 def load_pickle(path):
     if path.endswith(".gz"):
@@ -41,22 +35,56 @@ def load_pickle(path):
             return pickle.load(f)
 
 
+# ------------------------
+# SAFE EXTRACTORS
+# ------------------------
+def get_nodes(mesh):
+    """
+    Supports:
+    - MeshResults from core.object_components
+    - fallback dict-like objects
+    """
+    if hasattr(mesh, "nodes"):
+        return np.asarray(mesh.nodes)
+
+    if hasattr(mesh, "__dict__") and "nodes" in mesh.__dict__:
+        return np.asarray(mesh.__dict__["nodes"])
+
+    raise AttributeError(f"No nodes found in {type(mesh)}")
+
+
+def get_elements(mesh):
+    """
+    Supports meshio-style or wrapped storage
+    """
+    if hasattr(mesh, "elements"):
+        return mesh.elements
+
+    if hasattr(mesh, "elements_structured"):
+        return mesh.elements_structured
+
+    if hasattr(mesh, "__dict__"):
+        if "elements" in mesh.__dict__:
+            return mesh.__dict__["elements"]
+        if "elements_structured" in mesh.__dict__:
+            return mesh.__dict__["elements_structured"]
+
+    raise AttributeError(f"No elements found in {type(mesh)}")
+
+
+# ------------------------
+# TEST CASE
+# ------------------------
 class StructuredMeshTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
 
-        # -----------------------------
-        # Grid
-        # -----------------------------
         cls.grid = RegularGrid(
             extent=(0, 1000, 0, 1000, 0, 1000),
             resolution=(50, 50, 50)
         )
 
-        # -----------------------------
-        # Input data
-        # -----------------------------
         cls.input_data = InputData_StructuralElements(
             name="Model_1",
             mapping_object={"Strat_Series": ("rock2", "rock1")},
@@ -64,9 +92,6 @@ class StructuredMeshTestCase(unittest.TestCase):
             orientations=pd.read_csv(os.path.join(data_dir, "model1_orientations_df.csv")),
         )
 
-        # -----------------------------
-        # Build model
-        # -----------------------------
         frame = general.build_structural_frame(
             input_data_elements=cls.input_data,
             grid=cls.grid
@@ -78,9 +103,6 @@ class StructuredMeshTestCase(unittest.TestCase):
             verbose=False
         )
 
-        # -----------------------------
-        # Load PKL
-        # -----------------------------
         cls.mesh_pkl = load_pickle(pkl_file)
 
     def test_structured_mesh_matches_pkl(self):
@@ -93,57 +115,33 @@ class StructuredMeshTestCase(unittest.TestCase):
             tolerance=1
         )
 
-        # -----------------------------
-        # Wrap result
-        # -----------------------------
+        # ------------------------
+        # Wrap generated mesh to match PKL EXACTLY
+        # ------------------------
         mesh_gen_wrapped = MeshResults(
             nodes=mesh_generated.nodes,
             elements=mesh_generated.elements
         )
 
-        # -----------------------------
-        # Nodes check
-        # -----------------------------
-        self.assertEqual(
-            mesh_gen_wrapped.nodes.shape,
-            self.mesh_pkl.nodes.shape,
-            "Node count mismatch"
-        )
+        # ------------------------
+        # Extract safely
+        # ------------------------
+        gen_nodes = get_nodes(mesh_gen_wrapped)
+        ref_nodes = get_nodes(self.mesh_pkl)
 
-        self.assertTrue(
-            np.allclose(mesh_gen_wrapped.nodes, self.mesh_pkl.nodes, atol=1e-6),
-            "Node coordinates mismatch"
-        )
+        self.assertEqual(gen_nodes.shape, ref_nodes.shape)
+        self.assertTrue(np.allclose(gen_nodes, ref_nodes, atol=1e-6))
 
-        # -----------------------------
-        # Elements check
-        # -----------------------------
-        self.assertEqual(
-            len(mesh_gen_wrapped.elements_structured),
-            len(self.mesh_pkl.elements_structured),
-            "Number of element blocks mismatch"
-        )
+        gen_elems = get_elements(mesh_gen_wrapped)
+        ref_elems = get_elements(self.mesh_pkl)
 
-        for i, (cb_gen, cb_pkl) in enumerate(
-            zip(mesh_gen_wrapped.elements_structured,
-                self.mesh_pkl.elements_structured)
-        ):
+        self.assertEqual(len(gen_elems), len(ref_elems))
 
-            self.assertEqual(
-                cb_gen.type,
-                cb_pkl.type,
-                f"Element type mismatch in block {i}"
-            )
-
-            self.assertEqual(
-                len(cb_gen.data),
-                len(cb_pkl.data),
-                f"Element count mismatch in block {i}"
-            )
-
+        for i, (a, b) in enumerate(zip(gen_elems, ref_elems)):
+            self.assertEqual(a.type, b.type)
             self.assertTrue(
-                np.array_equal(cb_gen.data, cb_pkl.data),
-                f"Element connectivity mismatch in block {i}"
+                np.array_equal(a.data, b.data),
+                msg=f"Connectivity mismatch in block {i}"
             )
 
 

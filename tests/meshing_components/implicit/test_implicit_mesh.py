@@ -5,20 +5,11 @@ import os
 import numpy as np
 import pandas as pd
 
-from core.object_components import InputData_StructuralElements
+from core.object_components import InputData_StructuralElements, MeshResults
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
-
-
-# ------------------------
-# Wrapper (must match PKL)
-# ------------------------
-class MeshResults:
-    def __init__(self, nodes, elements):
-        self.nodes = nodes
-        self.elements_structured = elements
 
 
 # ------------------------
@@ -54,17 +45,13 @@ class ImplicitStructuredMeshTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
 
-        # -----------------------------
         # Grid
-        # -----------------------------
         cls.grid = RegularGrid(
             extent=(0, 1000, 0, 1000, 0, 1000),
             resolution=(50, 50, 50)
         )
 
-        # -----------------------------
         # Input data
-        # -----------------------------
         cls.input_data = InputData_StructuralElements(
             name='Model_1',
             mapping_object={"Strat_Series1": ('rock2', 'rock1')},
@@ -76,9 +63,7 @@ class ImplicitStructuredMeshTestCase(unittest.TestCase):
             )
         )
 
-        # -----------------------------
         # Build model
-        # -----------------------------
         frame = general.build_structural_frame(
             input_data_elements=cls.input_data,
             grid=cls.grid
@@ -90,28 +75,26 @@ class ImplicitStructuredMeshTestCase(unittest.TestCase):
             verbose=False
         )
 
-        # -----------------------------
-        # Load PKL reference
-        # -----------------------------
+        # Load reference PKL (CORE MeshResults)
         cls.mesh_pkl = load_pickle(pkl_file)
 
-    # -----------------------------
-    # TEST
-    # -----------------------------
     def test_implicit_structured_mesh_matches_pkl(self):
 
         mesh_generated = create_implicit_structured_mesh(
             geomodel_result=self.structural_model_result
         )
 
+        # ------------------------
+        # CORE MeshResults wrapper
+        # ------------------------
         mesh_gen_wrapped = MeshResults(
             nodes=mesh_generated.nodes,
             elements=mesh_generated.elements
         )
 
-        # -----------------------------
+        # ------------------------
         # Nodes
-        # -----------------------------
+        # ------------------------
         self.assertEqual(
             mesh_gen_wrapped.nodes.shape,
             self.mesh_pkl.nodes.shape,
@@ -123,18 +106,18 @@ class ImplicitStructuredMeshTestCase(unittest.TestCase):
             "Node coordinates mismatch"
         )
 
-        # -----------------------------
-        # Elements
-        # -----------------------------
+        # ------------------------
+        # Elements (IMPORTANT: use SAME field name)
+        # ------------------------
         self.assertEqual(
-            len(mesh_gen_wrapped.elements_structured),
-            len(self.mesh_pkl.elements_implicit),
+            len(mesh_gen_wrapped.elements),
+            len(self.mesh_pkl.elements),
             "Number of element blocks mismatch"
         )
 
         for i, (cb_gen, cb_pkl) in enumerate(
-            zip(mesh_gen_wrapped.elements_structured,
-                self.mesh_pkl.elements_implicit)
+            zip(mesh_gen_wrapped.elements,
+                self.mesh_pkl.elements)
         ):
             self.assertEqual(
                 cb_gen.type,

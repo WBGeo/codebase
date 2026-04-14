@@ -5,6 +5,7 @@ import os
 import numpy as np
 import pandas as pd
 
+from core.object_components import MeshResults
 from core.object_components import InputData_StructuralElements
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -19,14 +20,6 @@ from core.meshing_components.explicit.unstructured.mesh_data import (
     load_triangulations_planes_from_csv,
 )
 
-# -----------------------------
-# Minimal wrapper for PKL
-# -----------------------------
-class MeshResults:
-    def __init__(self, nodes, elements):
-        self.nodes = nodes
-        self.elements_unstructured = elements
-
 
 # -----------------------------
 # Paths
@@ -37,37 +30,33 @@ data_dir = os.path.join(
     base_dir,
     "../../../../examples/synthetic_examples/Model1/input_data/Geological_data/"
 )
-print(data_dir)
+
 engineering_dir = os.path.join(data_dir, "../Engineering_objects/")
 
-# 🔥 IMPORTANT: gz file
 pkl_file = os.path.join(base_dir, "mesh_test.pkl.gz")
 
 
 # -----------------------------
-# Helper loader (supports gz)
+# Loader
 # -----------------------------
 def load_pickle(path):
     with gzip.open(path, "rb") as f:
         return pickle.load(f)
 
 
+# -----------------------------
+# TEST CASE
+# -----------------------------
 class UnstructuredMeshTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
 
-        # -----------------------------
-        # Grid
-        # -----------------------------
         cls.grid = RegularGrid(
             extent=(0, 1000, 0, 1000, 0, 1000),
             resolution=(50, 50, 50)
         )
 
-        # -----------------------------
-        # Input data
-        # -----------------------------
         cls.input_data = InputData_StructuralElements(
             name='Model_1',
             mapping_object={"Strat_Series": ('rock2', 'rock1')},
@@ -75,9 +64,6 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             orientations=pd.read_csv(os.path.join(data_dir, "model1_orientations_df.csv"))
         )
 
-        # -----------------------------
-        # Build structural model
-        # -----------------------------
         frame = general.build_structural_frame(
             input_data_elements=cls.input_data,
             grid=cls.grid
@@ -101,9 +87,6 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             os.path.join(engineering_dir, "seismic_plane_new_offset.csv")
         )
 
-        # -----------------------------
-        # Load PKL (compressed)
-        # -----------------------------
         cls.mesh_pkl = load_pickle(pkl_file)
 
     def test_unstructured_mesh_matches_pkl(self):
@@ -120,48 +103,48 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             curve_mesh_size=5
         )
 
-        mesh_gen_wrapped = MeshResults(
+        # -----------------------------
+        # Wrap generated result using CORE MeshResults
+        # -----------------------------
+        mesh_gen = MeshResults(
             nodes=mesh_generated.nodes,
             elements=mesh_generated.elements
         )
 
+        mesh_ref = self.mesh_pkl
+
         # -----------------------------
-        # Nodes (shape only — safe for unstructured mesh)
+        # Nodes
         # -----------------------------
-        self.assertEqual(
-            mesh_gen_wrapped.nodes.shape,
-            self.mesh_pkl.nodes.shape,
-            "Node count mismatch"
-        )
+        self.assertEqual(mesh_gen.nodes.shape, mesh_ref.nodes.shape)
 
         self.assertTrue(
-            np.allclose(mesh_gen_wrapped.nodes, self.mesh_pkl.nodes, atol=1e-6),
+            np.allclose(mesh_gen.nodes, mesh_ref.nodes, atol=1e-6),
             "Node coordinates mismatch"
         )
 
         # -----------------------------
-        # Elements
+        # Elements (meshio CellBlocks)
         # -----------------------------
         self.assertEqual(
-            len(mesh_gen_wrapped.elements_unstructured),
-            len(self.mesh_pkl.elements_unstructured),
+            len(mesh_gen.elements),
+            len(mesh_ref.elements),
             "Number of element blocks mismatch"
         )
 
-        for i, (cb_gen, cb_pkl) in enumerate(
-            zip(mesh_gen_wrapped.elements_unstructured,
-                self.mesh_pkl.elements_unstructured)
-        ):
+        for i, (a, b) in enumerate(zip(mesh_gen.elements, mesh_ref.elements)):
 
-            self.assertEqual(cb_gen.type, cb_pkl.type,
-                             f"Element type mismatch in block {i}")
+            self.assertEqual(a.type, b.type, f"Block {i}: type mismatch")
 
-            self.assertEqual(len(cb_gen.data), len(cb_pkl.data),
-                             f"Element count mismatch in block {i}")
+            self.assertEqual(
+                len(a.data),
+                len(b.data),
+                f"Block {i}: element count mismatch"
+            )
 
             self.assertTrue(
-                np.array_equal(cb_gen.data, cb_pkl.data),
-                f"Element connectivity mismatch in block {i}"
+                np.array_equal(a.data, b.data),
+                f"Block {i}: connectivity mismatch"
             )
 
 
