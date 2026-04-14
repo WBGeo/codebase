@@ -681,7 +681,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                         # Skip empty surfaces (when no nodes are present)
                         if len(coords) < 3:
                             filtered_surfaces.append(surface)
-                            break
+                            continue
 
                         # Convert flattened list to (x, y, z) tuples
                         node_coords = np.array(coords).reshape(-1, 3)  # shape (n_nodes, 3)
