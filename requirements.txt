@@ -44,8 +44,8 @@ ruamel.yaml.clib==0.2.8
 scikit-image==0.24.0
 scipy==1.13.0
 semver==3.0.2
-setuptools==75.5.
-sfepy==2025.40
+setuptools==75.5.0
+sfepy==2025.4
 six>=1.16.0
 sympy==1.13.1
 tifffile==2024.8.24
