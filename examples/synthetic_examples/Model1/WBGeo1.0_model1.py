@@ -120,13 +120,13 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #################################
 #  Explicit Structured meshing. #
 #################################
-#mesh_str = create_structured_mesh_data(
-#    geomodel_result=structural_model_result,
-#    refinement_data=(10,10,10),
-#    mesh_devision=(30,30),
-#    z_threshold=0.1,
-#    tolerance=1
-#)
+mesh_str = create_structured_mesh_data(
+    geomodel_result=structural_model_result,
+    refinement_data=(10,10,10),
+    mesh_devision=(30,30),
+    z_threshold=0.1,
+    tolerance=1
+)
 #################################
 # ImplicitStructured meshing.   #
 #################################
@@ -155,7 +155,7 @@ mesh_unstr = create_unstructured_mesh_data(
     triangulations = triangulations,
     extra_planes= planes,
     ellipses = ellipses,
-    mesh_size=30,
+    mesh_size=75,
     curve_mesh_size=5
 )
 
@@ -174,113 +174,113 @@ mesh_unstr = create_unstructured_mesh_data(
 # Export mesh to exodus #
 #########################
 # Structured mesh
-#buf = export_mesh_results_to_exodus(mesh_str)
-#with open("filename_str1.exo", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_str)
+with open("filename_str1.exo", "wb") as f:
+    f.write(buf.getvalue())
 # Implicit structured mesh
-#buf = export_mesh_results_to_exodus(mesh_implicit)
-#with open("filename_implic2.exo", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_implicit)
+with open("filename_implic2.exo", "wb") as f:
+    f.write(buf.getvalue())
 # Unstructured mesh
-#buf = export_mesh_results_to_exodus(mesh_unstr)
-#with open("filename.exo", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_unstr)
+with open("filename.exo", "wb") as f:
+    f.write(buf.getvalue())
 #######################
 # Export mesh to vtu  #
 #######################
 # Structured mesh
-#buf = export_mesh_results_to_vtu(mesh_str)
-#with open("filename_str2.vtu", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtu(mesh_str)
+with open("filename_str2.vtu", "wb") as f:
+    f.write(buf.getvalue())
 # Implicit structured mesh
-#buf = export_mesh_results_to_vtu(mesh_implicit)
-#with open("filename_implic2.vtu", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtu(mesh_implicit)
+with open("filename_implic2.vtu", "wb") as f:
+    f.write(buf.getvalue())
 # Unstructured mesh
-#buf = export_mesh_results_to_vtu(mesh_unstr)
-#with open("filename.vtu", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtu(mesh_unstr)
+with open("filename.vtu", "wb") as f:
+    f.write(buf.getvalue())
 ######################
 # Export mesh to vtk #
 ######################
 # Structured mesh
-#buf = export_mesh_results_to_vtk(mesh_str)
-#with open("filename_str2.vtk", "wb") as f:
-#   f.write(buf.getvalue())
+buf = export_mesh_results_to_vtk(mesh_str)
+with open("filename_str2.vtk", "wb") as f:
+   f.write(buf.getvalue())
 # Implicit structured mesh
-#buf = export_mesh_results_to_vtk(mesh_implicit)
-#with open("filename_implic2.vtk", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtk(mesh_implicit)
+with open("filename_implic2.vtk", "wb") as f:
+    f.write(buf.getvalue())
 # Unstructured mesh
-#buf = export_mesh_results_to_vtk(mesh_unstr)
-#with open("filename.vtk", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtk(mesh_unstr)
+with open("filename.vtk", "wb") as f:
+    f.write(buf.getvalue())
 #######################
 # Export mesh to vtm  #
 #######################
 # Structured mesh
-#buf = export_mesh_results_to_vtm(mesh_str)
-#with open("filename_str2.vtm.zip", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtm(mesh_str)
+with open("filename_str2.vtm.zip", "wb") as f:
+    f.write(buf.getvalue())
 # Implicit structured mesh
-#buf = export_mesh_results_to_vtm(mesh_implicit)
-#with open("filename_implic2.vtm.zip", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtm(mesh_implicit)
+with open("filename_implic2.vtm.zip", "wb") as f:
+    f.write(buf.getvalue())
 # Unstructured mesh
-#buf = export_mesh_results_to_vtm(mesh_unstr)
-#with open("filename.vtm.zip", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtm(mesh_unstr)
+with open("filename.vtm.zip", "wb") as f:
+    f.write(buf.getvalue())
 #########################################################
 ## Export mesh to stl (only unstructured is supported). #
 #########################################################
 # Unstructured mesh
-#buf = export_mesh_results_to_stl(mesh_unstr)
-#with open("filename.stl.zip", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_stl(mesh_unstr)
+with open("filename.stl.zip", "wb") as f:
+    f.write(buf.getvalue())
 #########################################################
 # Export mesh to gmsh (only unstructured is supported)  #
 #########################################################
 # Unstructured mesh
-#buf = export_mesh_results_to_gmsh(mesh_unstr)
-#with open("filename.msh", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_gmsh(mesh_unstr)
+with open("filename.msh", "wb") as f:
+    f.write(buf.getvalue())
 ##########################################################
 # Export mesh to feflow (only unstructured is supported) #
 ##########################################################
 # Unstructured mesh
-#buf = export_mesh_results_to_feflow(mesh_unstr)
-#with open("filename.fem", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_feflow(mesh_unstr)
+with open("filename.fem", "wb") as f:
+    f.write(buf.getvalue())
 ########################
 # Export mesh to ansys #
 ########################
 ## Structured mesh
-#buf = export_mesh_results_to_ansys(mesh_str)
-#with open("filename_str2_ansys.msh", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_ansys(mesh_str)
+with open("filename_str2_ansys.msh", "wb") as f:
+    f.write(buf.getvalue())
 # Implicit structured mesh
-#buf = export_mesh_results_to_vtm(mesh_implicit)
-#with open("filename_implic2_ansys.msh", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_vtm(mesh_implicit)
+with open("filename_implic2_ansys.msh", "wb") as f:
+    f.write(buf.getvalue())
 # Unstructured mesh
-#buf = export_mesh_results_to_ansys(mesh_unstr)
-#with open("filename_ansys.msh", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_ansys(mesh_unstr)
+with open("filename_ansys.msh", "wb") as f:
+    f.write(buf.getvalue())
 #########################
 # Export mesh to abaqus #
 #########################
 # Unstructured mesh
-#buf = export_mesh_results_to_abaqus(mesh_unstr)
-#with open("filename.inp", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_abaqus(mesh_unstr)
+with open("filename.inp", "wb") as f:
+    f.write(buf.getvalue())
 # Structured mesh
-#buf = export_mesh_results_to_abaqus(mesh_str)
-#with open("filename_st.inp", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_abaqus(mesh_str)
+with open("filename_st.inp", "wb") as f:
+    f.write(buf.getvalue())
 # Implicit mesh
-#buf = export_mesh_results_to_abaqus(mesh_implicit)
-#with open("filename_imp.inp", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_abaqus(mesh_implicit)
+with open("filename_imp.inp", "wb") as f:
+    f.write(buf.getvalue())
 
 ###############################################################
 #                       Export Hierarchical meshes
@@ -400,8 +400,12 @@ mesh_unstr = create_unstructured_mesh_data(
 ################################
 # Implicit structured mesh.  #
 ################################
-mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
-Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py', mesh_implicit, 'results')
+mesh_unstr1 = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    mesh_size=150,
+    curve_mesh_size=5
+)
+Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py', mesh_unstr1, 'results')
 ###########################################################################################################################
 #                                                   Visualization of Simulation results
 ###########################################################################################################################
