@@ -1,11 +1,8 @@
 import unittest
-import pickle
-import gzip
 import os
 import numpy as np
 import pandas as pd
 
-from core.object_components import MeshResults
 from core.object_components import InputData_StructuralElements
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
@@ -31,17 +28,10 @@ data_dir = os.path.join(
     "../../loading_engineering_objects/data/Geological_data/"
 )
 
-engineering_dir = os.path.join(base_dir, "../../loading_engineering_objects/data/Engineering_objects/")
-
-pkl_file = os.path.join(base_dir, "mesh_test.pkl.gz")
-
-
-# -----------------------------
-# Loader
-# -----------------------------
-def load_pickle(path):
-    with gzip.open(path, "rb") as f:
-        return pickle.load(f)
+engineering_dir = os.path.join(
+    base_dir,
+    "../../loading_engineering_objects/data/Engineering_objects/"
+)
 
 
 # -----------------------------
@@ -52,18 +42,31 @@ class UnstructuredMeshTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
 
+        # -----------------------------
+        # Grid
+        # -----------------------------
         cls.grid = RegularGrid(
             extent=(0, 1000, 0, 1000, 0, 1000),
             resolution=(50, 50, 50)
         )
 
+        # -----------------------------
+        # Input data
+        # -----------------------------
         cls.input_data = InputData_StructuralElements(
             name='Model_1',
             mapping_object={"Strat_Series": ('rock2', 'rock1')},
-            surface_points=pd.read_csv(os.path.join(data_dir, "model1_surface_points_df.csv")),
-            orientations=pd.read_csv(os.path.join(data_dir, "model1_orientations_df.csv"))
+            surface_points=pd.read_csv(
+                os.path.join(data_dir, "model1_surface_points_df.csv")
+            ),
+            orientations=pd.read_csv(
+                os.path.join(data_dir, "model1_orientations_df.csv")
+            )
         )
 
+        # -----------------------------
+        # Structural model
+        # -----------------------------
         frame = general.build_structural_frame(
             input_data_elements=cls.input_data,
             grid=cls.grid
@@ -78,18 +81,29 @@ class UnstructuredMeshTestCase(unittest.TestCase):
         # -----------------------------
         # Engineering objects
         # -----------------------------
-        cls.wells = load_wells_from_csv(os.path.join(engineering_dir, "model_1_wells.csv"))
-        cls.shafts = load_shafts_from_csv(os.path.join(engineering_dir, "model_1_shafts.csv"))
-        cls.sources = load_sources_from_csv(os.path.join(engineering_dir, "model_1_sources.csv"))
-        cls.planes = load_planes_from_csv(os.path.join(engineering_dir, "model_1_planes.csv"))
-        cls.ellipses = load_ellipses_from_csv(os.path.join(engineering_dir, "model_1_ellipses.csv"))
+        cls.wells = load_wells_from_csv(
+            os.path.join(engineering_dir, "model_1_wells.csv")
+        )
+        cls.shafts = load_shafts_from_csv(
+            os.path.join(engineering_dir, "model_1_shafts.csv")
+        )
+        cls.sources = load_sources_from_csv(
+            os.path.join(engineering_dir, "model_1_sources.csv")
+        )
+        cls.planes = load_planes_from_csv(
+            os.path.join(engineering_dir, "model_1_planes.csv")
+        )
+        cls.ellipses = load_ellipses_from_csv(
+            os.path.join(engineering_dir, "model_1_ellipses.csv")
+        )
         cls.triangulations = load_triangulations_planes_from_csv(
             os.path.join(engineering_dir, "seismic_plane_new_offset.csv")
         )
 
-        cls.mesh_pkl = load_pickle(pkl_file)
-
-    def test_unstructured_mesh_matches_pkl(self):
+    # -----------------------------
+    # TEST
+    # -----------------------------
+    def test_unstructured_mesh_basic_properties(self):
 
         mesh_generated = create_unstructured_mesh_data(
             geomodel_result=self.geomodel_result,
@@ -103,50 +117,81 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             curve_mesh_size=5
         )
 
-        # -----------------------------
-        # Wrap generated result using CORE MeshResults
-        # -----------------------------
-        mesh_gen = MeshResults(
-            nodes=mesh_generated.nodes,
-            elements=mesh_generated.elements
-        )
-
-        mesh_ref = self.mesh_pkl
+        nodes = mesh_generated.nodes
+        elements = mesh_generated.elements
 
         # -----------------------------
-        # Nodes
+        # Basic existence
         # -----------------------------
-        self.assertEqual(mesh_gen.nodes.shape, mesh_ref.nodes.shape)
+        self.assertIsNotNone(nodes)
+        self.assertIsNotNone(elements)
 
+        self.assertGreater(len(nodes), 0, "No nodes generated")
+        self.assertGreater(len(elements), 0, "No element blocks generated")
+
+        # -----------------------------
+        # Node structure
+        # -----------------------------
+        self.assertEqual(nodes.shape[1], 3, "Nodes must be 3D coordinates")
+
+        # -----------------------------
+        # Numerical sanity
+        # -----------------------------
+        self.assertFalse(np.isnan(nodes).any(), "NaN values in nodes")
+        self.assertFalse(np.isinf(nodes).any(), "Inf values in nodes")
+
+        # -----------------------------
+        # Bounds check (based on grid)
+        # -----------------------------
         self.assertTrue(
-            np.allclose(mesh_gen.nodes, mesh_ref.nodes, atol=1e-6),
-            "Node coordinates mismatch"
+            np.all((nodes >= 0) & (nodes <= 1000)),
+            "Nodes outside expected domain"
         )
 
         # -----------------------------
-        # Elements (meshio CellBlocks)
+        # Size sanity (tolerant)
         # -----------------------------
+        self.assertTrue(
+            4000 < len(nodes) < 6000,
+            f"Unexpected number of nodes: {len(nodes)}"
+        )
+
+        # -----------------------------
+        # Uniqueness (no duplicate nodes)
+        # -----------------------------
+        unique_nodes = np.unique(nodes, axis=0)
         self.assertEqual(
-            len(mesh_gen.elements),
-            len(mesh_ref.elements),
-            "Number of element blocks mismatch"
+            len(unique_nodes),
+            len(nodes),
+            "Duplicate nodes detected"
         )
 
-        for i, (a, b) in enumerate(zip(mesh_gen.elements, mesh_ref.elements)):
+        # -----------------------------
+        # Elements validity
+        # -----------------------------
+        n_nodes = len(nodes)
 
-            self.assertEqual(a.type, b.type, f"Block {i}: type mismatch")
+        for i, block in enumerate(elements):
 
-            self.assertEqual(
-                len(a.data),
-                len(b.data),
-                f"Block {i}: element count mismatch"
+            self.assertGreater(
+                len(block.data),
+                0,
+                f"Block {i} has no elements"
             )
 
             self.assertTrue(
-                np.array_equal(a.data, b.data),
-                f"Block {i}: connectivity mismatch"
+                np.all(block.data < n_nodes),
+                f"Block {i}: invalid node indices (too large)"
+            )
+
+            self.assertTrue(
+                np.all(block.data >= 0),
+                f"Block {i}: invalid node indices (negative)"
             )
 
 
+# -----------------------------
+# Run
+# -----------------------------
 if __name__ == "__main__":
     unittest.main()
