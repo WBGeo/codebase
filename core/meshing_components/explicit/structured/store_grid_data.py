@@ -110,12 +110,8 @@ def create_intermediate_layers(bottom_top_surfaces, output_array, refinement_dat
     z_top = bottom_top_surfaces[1, 2 * n_gx * n_gy:]
 
     # Check the number of refinement_data is correctly given
-    if len(refinement_data) < (len(output_array)+1):
-        print("\033[91mError: Number of refinement input_data should be number of surfaces + 1. You have given fewer numbers.\033[0m")
-        sys.exit(1)
-    elif len(refinement_data) > (len(output_array)+1):
-        print("\033[91mError: Number of refinement input_data should be number of surfaces + 1. You have given more numbers.\033[0m")
-        sys.exit(1)
+    if len(refinement_data) != (len(output_array)+1):
+        raise ValueError(f"\033[91mError: Number of refinement input_data should be number of surfaces + 1. You have given {len(refinement_data)} instead of {len(output_array)+1}.\033[0m")
 
     # Initialize the updated output array. The size is (sum of number of refinements +number of layers + 2(bottom+top)* 4*n_gx*n_gy
     sum_rf=sum(refinement_data)+len(output_array)+2
