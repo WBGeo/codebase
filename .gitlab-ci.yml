@@ -7,7 +7,8 @@ test:
     - virtualenv venv
     - source venv/bin/activate
     # libblas-dev liblapack-dev are dependencies of petsc
-    - apt update && apt install -y  musl-dev libc-dev  libgl1 ffmpeg  libgl1 libglx-mesa0 xvfb  libglu1-mesa libxi-dev libxmu-dev libglu1-mesa-dev libxinerama-dev libblas-dev liblapack-dev
+    # openmpi-bin libopenmpi-dev are for openmpi
+    - apt update && apt install -y  musl-dev libc-dev  libgl1 ffmpeg  libgl1 libglx-mesa0 xvfb  libglu1-mesa libxi-dev libxmu-dev libglu1-mesa-dev libxinerama-dev libblas-dev liblapack-dev openmpi-bin libopenmpi-dev
     - pip install -r requirements.txt --extra-index-url https://gitlab-ci-token:${CI_JOB_TOKEN}@git.rwth-aachen.de/api/v4/projects/102532/packages/pypi/simple
     - pip install pytest coverage
   script:
