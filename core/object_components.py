@@ -168,24 +168,28 @@ class MeshResults(BaseModel):
 
     # transient / derived
     _mesh : Optional[pyvista.MultiBlock]  = PrivateAttr(default=None) #  exclude this field from serialization
+    _vtm_in = PrivateAttr(default=None)
     @property
     def mesh(self): # getter/setter due to private/transient field
+      if self._mesh is None:
+        self._mesh = self.vtm_in.create_mesh()
       return self._mesh
 
     @mesh.setter
     def mesh(self, m): # getter/setter due to private/transient field
       self._mesh = m
 
-    # -----------------------------
-    # Post init
-    # -----------------------------
-    def __post_init__(self):
-        self.vtm_in = VTMInputs(
-            self.nodes,
-            self.elements
+    @property
+    def vtm_in(self):
+      if self._vtm_in is None:
+        from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
+        self._vtm_in = VTMInputs(
+          self.nodes,
+          self.elements
         )
-
-        self.mesh = self.vtm_in.create_mesh()
+        if self.mesh is None:
+          raise ValueError("failed to load mesh during")
+      return self._vtm_in
 
 
 
