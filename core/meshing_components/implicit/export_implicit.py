@@ -115,9 +115,9 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
                  title='Plot Implicit Mesh in 3D',
                  description='...')
 @wbgeo_inspector()
-def inspect_implicit_mesh_3d(
-    structural_model_result: StructuralModelResults,
-    mesh: MeshResults,
-    _inspector: InspectorHelper):
-
-  plot_mesh_3d(mesh, structural_model_result, "surface", True)
+async def inspect_implicit_mesh_3d(
+    mesh_results: MeshResults, _inspector: InspectorHelper):
+  # load structural_model_result from the execution trace
+  structural_model_result = await (await _inspector.trace(StructuralModelResults)).get_value()
+  # and call the render function with both the mesh_results and the object from our trace
+  plot_mesh_3d(mesh_results, structural_model_result, "surface", True)
