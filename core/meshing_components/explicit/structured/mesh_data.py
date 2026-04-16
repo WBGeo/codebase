@@ -269,6 +269,6 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinem
                  title='Plot Structured Mesh in 3D',
                  description='...')
 @wbgeo_inspector()
-def inspect_structural_model_result_plot_structural_model_2D(
-    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
-  plot_mesh_3d(MeshResults,StructuralModelResults,  "surface",  True,)
+def inspect_structured_mesh_3d(
+    structural_model_result: StructuralModelResults, mesh: MeshResults, _inspector: InspectorHelper):
+  plot_mesh_3d(mesh, structural_model_result, "surface", True,)
