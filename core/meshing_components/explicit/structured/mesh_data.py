@@ -66,7 +66,7 @@ RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinemen
 
 MeshDev = typing.Annotated[
     Tuple[int, int],
-    AnnotatedScriptType(name='mesh_devision', color='pink', identifier='mesh::MeshDev')
+    AnnotatedScriptType(name='mesh_devision', color='pink', identifier='mesh::MeshDev', controlled='Table|M1|M2')
 ]
 
 # Prepare geological model's results to be used in creating structured meshing
