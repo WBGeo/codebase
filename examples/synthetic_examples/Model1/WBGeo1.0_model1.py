@@ -282,100 +282,8 @@ buf = export_mesh_results_to_abaqus(mesh_implicit)
 with open("filename_imp.inp", "wb") as f:
     f.write(buf.getvalue())
 
-###############################################################
-#                       Export Hierarchical meshes
-# ##############################################################
-#########################
-# Export mesh to exodus #
-#########################
-#export_meshes_exodus(
-#    mesh1_st,
-#    mesh2_st,
-#    closest_st,
-#    mesh1_filename="big_mesh_st.exo",
-#    mesh2_filename="small_mesh_st.exo",
-#    closest_nodes_filename="closest_nodes_st.csv"
-#)
-#######################
-# Export mesh to vtm  #
-#######################
-#export_meshes_vtm(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.vtm.zip",
-#    mesh2_filename="small_mesh_u.vtm.zip",
-#    closest_nodes_filename="closest_nodes_u_vtm.csv"
-#)
-#######################
-# Export mesh to vtu  #
-#######################
-#export_meshes_vtu(
-#    mesh1_im,
-#    mesh2_im,
-#    closest_im,
-#    mesh1_filename="big_mesh_im.vtu",
-#    mesh2_filename="small_mesh.vtu",
-#    closest_nodes_filename="closest_nodes_im_vtu.csv"
-#)
-#######################
-# Export mesh to vtk  #
-#######################
-#export_meshes_vtk(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.vtk",
-#    mesh2_filename="small_mesh_u.vtk",
-#    closest_nodes_filename="closest_nodes_u_vtk.csv"
-#)
-##########################
-# Export mesh to feflow  #
-##########################
-#export_meshes_feflow(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.fem",
-#    mesh2_filename="small_mesh_u.fem",
-#    closest_nodes_filename="closest_nodes_u_fem.csv"
-#)
-##########################
-# Export mesh to abaqus  #
-##########################
-#export_meshes_abaqus(
-#    mesh1_im,
-#    mesh2_im,
-#    closest_im,
-#    mesh1_filename="big_mesh_im.inp",
-#    mesh2_filename="small_mesh_im.inp",
-#    closest_nodes_filename="closest_nodes_im_abaqus.csv"
-#)
-##########################
-# Export mesh to ansys  #
-##########################
-#export_meshes_ansys(
-#    mesh1_im,
-#    mesh2_im,
-#    closest_im,
-#    mesh1_filename="big_mesh_im.mesh",
-#    mesh2_filename="small_mesh_im.mesh",
-#    closest_nodes_filename="closest_nodes_im_ansys.csv"
-#)
-########################
-# Export mesh to gmsh  #
-########################
-#export_meshes_gmsh(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.msh",
-#    mesh2_filename="small_mesh_u.msh",
-#    closest_nodes_filename="closest_nodes_u_gmsh.csv"
-#)
-
 ###########################################################################################################################
-#                                                   Simulation with Sfeepy
+#                                                   Simulation with Sfepy
 ###########################################################################################################################
 ################################
 # Explicit unstructured mesh.  #
@@ -400,12 +308,8 @@ with open("filename_imp.inp", "wb") as f:
 ################################
 # Implicit structured mesh.  #
 ################################
-mesh_unstr1 = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
-    mesh_size=150,
-    curve_mesh_size=5
-)
-Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py', mesh_unstr1, 'results')
+mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
+Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py', mesh_implicit, 'results')
 ###########################################################################################################################
 #                                                   Visualization of Simulation results
 ###########################################################################################################################
