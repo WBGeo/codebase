@@ -55,7 +55,7 @@ def _build_legacy_geomodel_adapter(geomodel_result: StructuralModelResults) -> S
                  )  # inputs are handled via the method signature
 
 
-def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinement_data: RefinementData =[25,21,16,5,6],
+def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinement_data: RefinementData =(25,21,16,5,6),
                                 z_threshold: float =0.1, tolerance: float =1) -> MeshResults:
     """
     Generates a geological mesh and returns a MeshData object.
