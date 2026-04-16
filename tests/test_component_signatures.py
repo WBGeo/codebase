@@ -183,6 +183,18 @@ class MockBackendInstance:
                 else:
                     pass
 
+            # check against duplicate identifiers
+            if params["identifier"] in MockBackendInstance.registered_components:
+              MockBackendInstance.errors.append(ValueError(
+                "GeoComponent `{id}` is defined in multiple locations. Identifiers MUST be unique: \n - {floc}\n - {floc2}".format(
+                  id=params["identifier"],
+                  fname=str(f.__name__),
+                  fname2=str(MockBackendInstance.registered_components[params["identifier"]].__name__),
+                  floc=get_location(f),
+                  floc2=get_location(MockBackendInstance.registered_components[params["identifier"]]),
+                )))
+            MockBackendInstance.registered_components[params["identifier"]] = f
+
             ### end return
             def get_type_from_param(t, param: str, loc, is_vis: bool):
                 # t = sig.parameters[param].annotation
@@ -215,6 +227,7 @@ class MockBackendInstance:
         return decorate_func
 
 MockBackendInstance.errors = list()
+MockBackendInstance.registered_components = dict()
 
 class ComponentMethod():
     def __init__(self, identifier: str):
