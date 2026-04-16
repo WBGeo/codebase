@@ -62,7 +62,7 @@ def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, 
 
 ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 
-RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='Table|1|R')]
+RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='Table|R')]
 
 MeshDev = typing.Annotated[
     Tuple[int, int],
@@ -127,7 +127,7 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
 
 
 
-def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinement_data: RefinementData =(25,21,16,5,6),
+def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinement_data: RefinementData = (25,21,16,5,6),
                                 z_threshold: float =0.1, mesh_devision: MeshDev =[], tolerance: float =1, extent: ExtentData = [] ) -> MeshResults:
     """
     Generates a geological mesh and returns a MeshData object.
