@@ -87,21 +87,9 @@ def create_intermediate_layers(bottom_top_surfaces: NDArray[np.floating], output
     # Check that the number of refinement levels is consistent with the number of surfaces
     n_surfaces: int = len(output_array)
 
-    if len(refinement_data) < (n_surfaces + 1):
-        print(
-            "\033[91mError: Number of refinement values must be equal to "
-            f"the number of surfaces ({n_surfaces}) + 1. "
-            "You have provided fewer values.\033[0m"
-        )
-        sys.exit(1)
+    if len(refinement_data) != (n_surfaces + 1):
+      raise ValueError(f"\033[91mError: Number of refinement input_data should be number of surfaces + 1. You have given {len(refinement_data)} instead of {len(output_array)+1}.\033[0m")
 
-    elif len(refinement_data) > (n_surfaces + 1):
-        print(
-            "\033[91mError: Number of refinement values must be equal to "
-            f"the number of surfaces ({n_surfaces}) + 1. "
-            "You have provided more values.\033[0m"
-        )
-        sys.exit(1)
 
     # Initialize the updated output array. The size is (sum of number of refinements +number of layers + 2(bottom+top)* 4*n_gx*n_gy
     sum_rf: int =sum(refinement_data)+len(output_array)+2

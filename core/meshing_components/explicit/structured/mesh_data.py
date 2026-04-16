@@ -62,7 +62,8 @@ def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, 
 
 ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 
-RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData')]
+RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='Table|1|R')]
+
 MeshDev = typing.Annotated[
     Tuple[int, int],
     AnnotatedScriptType(name='mesh_devision', color='pink', identifier='mesh::MeshDev')
