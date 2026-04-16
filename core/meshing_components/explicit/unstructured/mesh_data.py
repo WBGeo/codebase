@@ -1682,8 +1682,8 @@ def create_unstructured_mesh_data(
                        )
 
 
-@wbgeo_component(identifier='wbgeo::inspect_mesh_3d',
-                 title='Plot Mesh Results in 3D',
+@wbgeo_component(identifier='wbgeo::inspect_unstructure_mesh_3d',
+                 title='Plot Unstructured Mesh in 3D',
                  description='...')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_2D(

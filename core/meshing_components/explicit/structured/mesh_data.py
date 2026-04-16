@@ -265,8 +265,8 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinem
         cell_data=cell_data
     )
 
-@wbgeo_component(identifier='wbgeo::inspect_mesh_3d',
-                 title='Plot Mesh Results in 3D',
+@wbgeo_component(identifier='wbgeo::inspect_structured_mesh_3d',
+                 title='Plot Structured Mesh in 3D',
                  description='...')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_2D(
