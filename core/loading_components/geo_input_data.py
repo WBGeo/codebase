@@ -90,23 +90,23 @@ def load_mapping(path: RemoteMappingFileType):
                  )  # inputs are handled via the method signature
 def structural_input_data(
     name: str = 'Model 6',
-    surface_points_file: CSVFileDataType = 'model6_surface_points_df.csv',
-    orientations_file: typing.Optional[CSVFileDataType] = 'model6_orientations_df.csv',
-    mapping_file: JSONFileDataType = 'model6_mapping.json'
+    surface_points_file: CSVFileDataType = 'synthetic_examples/Model6/input_data/Geological_data/model6_surface_points_df.csv',
+    orientations_file: typing.Optional[CSVFileDataType] = 'synthetic_examples/Model6/input_data/Geological_data/model6_orientations_df.csv',
+    mapping_file: JSONFileDataType = 'synthetic_examples/Model6/input_data/Geological_data/model6_mapping.json'
 ) -> InputData_StructuralElements:
   import os
   import pathlib
 
   datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
 
-  surface_points = pd.read_csv(os.path.join(datadir, 'examples/input_data/', surface_points_file))
+  surface_points = pd.read_csv(os.path.join(datadir, 'examples/', surface_points_file))
   orientations = None
   if orientations_file is not None:
-    orientations = pd.read_csv(os.path.join(datadir, 'examples/input_data/', orientations_file))
+    orientations = pd.read_csv(os.path.join(datadir, 'examples/', orientations_file))
 
   mapping_object = {}
   if mapping_file is not None:
-    with open(os.path.join(datadir, 'examples/input_data/', mapping_file), 'r') as fd:
+    with open(os.path.join(datadir, 'examples/', mapping_file), 'r') as fd:
       import json
       mapping_object = {k: tuple(v) for k, v in json.load(fd).items()}
 
