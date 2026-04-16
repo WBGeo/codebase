@@ -1,5 +1,4 @@
 import numpy as np
-import sys
 from numpy.typing import NDArray
 from typing import List
 
