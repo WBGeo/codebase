@@ -13,7 +13,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 import typing
 
 
-RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData')]
+RefinementData = typing.Annotated[Tuple[int, ...], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='Table|1|R')]
 
 
 # TODO: HOTFIX — adapts StructuralModelResults to the legacy interface expected by
