@@ -89,10 +89,10 @@ def load_mapping(path: RemoteMappingFileType):
                  is_object_type=True,
                  )  # inputs are handled via the method signature
 def structural_input_data(
-    name: str = 'Model 6',
-    surface_points_file: CSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model6_surface_points_df.csv',
-    orientations_file: typing.Optional[CSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model6_orientations_df.csv',
-    mapping_file: JSONFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model6_mapping.json'
+    name: str = 'Model 1',
+    surface_points_file: CSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
+    orientations_file: typing.Optional[CSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
+    mapping_file: JSONFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_mapping.json'
 ) -> InputData_StructuralElements:
   import os
   import pathlib
