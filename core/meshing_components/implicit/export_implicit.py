@@ -16,7 +16,7 @@ ExtentData = typing.Annotated[
 
 @wbgeo_component(
     description='Provides structured implicit mesh as unstructured',
-    title='Create Structured Implicit Mesh (Meshio)',
+    title='Create Structured Implicit Mesh',
     color='#cc9999',
     border_color='#000000',
     group='Meshing',
