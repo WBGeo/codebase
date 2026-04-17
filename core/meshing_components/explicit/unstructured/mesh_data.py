@@ -1056,6 +1056,7 @@ WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='
                  group='Meshing',
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
                  return_name='Wells',  # the name for the returned-port
+                 is_object_type=True,
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
@@ -1136,6 +1137,7 @@ SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color
                  group='Meshing',
                  identifier='wbgeo::meshing_load_source_from_csv',  # a unique identifier
                  return_name='Sources',  # the name for the returned-port
+                 is_object_type=True,
                  )  # inputs are handled via the method signature
 def load_sources_from_csv(source_file: SourceCSVDataType) -> SourcesData:
   """
@@ -1209,6 +1211,7 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     group='Meshing',
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
+    is_object_type=True,
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType) -> EllipseData:
     """
@@ -1332,6 +1335,7 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group='Meshing',
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
                  return_name='Shafts',  # the name for the returned-port
+                 is_object_type=True,
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType) -> ShaftData:
     """
@@ -1424,6 +1428,7 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group='Meshing',
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
                  return_name='planes',  # the name for the returned-port
+                 is_object_type=True,
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType) -> PlaneData:
   """
@@ -1498,6 +1503,7 @@ TriangulationsPlanesData = typing.Annotated[str, AnnotatedScriptType(name='path'
     group='Meshing',
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
+    is_object_type=True,
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData) -> TriangulationData:
     """
