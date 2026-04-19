@@ -2,17 +2,12 @@ import numpy as np
 import typing
 from typing import List
 import meshio
-from core.object_components import MeshResults, StructuralModelResults
+from core.object_components import MeshResults, StructuralModelResults, ExtentData
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from numpy.typing import NDArray
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
   InspectorHelper
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
-
-ExtentData = typing.Annotated[
-    List[float],
-    AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')
-]
 
 @wbgeo_component(
     description='Provides structured implicit mesh as unstructured',

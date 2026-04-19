@@ -6,8 +6,7 @@ from core.meshing_components.explicit.structured.store_grid_data import create_s
 from core.meshing_components.explicit.structured.store_grid_data import create_intermediate_layers
 from core.meshing_components.explicit.structured.node_element_generator import adjust_z_values, \
     create_hexahedral_elements_with_nodes
-from core.object_components import MeshResults
-from core.object_components import StructuralModelResults
+from core.object_components import StructuralModelResults, MeshResults, ExtentData
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 import typing
 from typing import List, Tuple, Dict
@@ -60,7 +59,6 @@ def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, 
     return np.column_stack([grid_xy, Z])
 
 
-ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 
 RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='Table|R')]
 

@@ -59,7 +59,7 @@ def _regular_grid_constr(extent: AExtent6 = [(0, 1000, 0, 1000, 0, 1000)],
 
 
 RemoteMappingFileType = typing.Annotated[
-  str, AnnotatedScriptType(name='path', color='aqua', identifier='JSONFileDataType',
+  str, AnnotatedScriptType(name='path', color='aqua', identifier='RemoteMappingFileType',
                            controlled='RemoteFile|endswith=mapping.json')]
 
 

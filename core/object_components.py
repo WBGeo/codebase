@@ -14,7 +14,7 @@ import pandas as pd
 from typing import Dict, List, Any
 from typing import Optional, Union, List
 from pydantic_numpy.typing import NpNDArrayInt64, NpNDArrayFp64
-from py_api_wbgeo.nodesapi import wbgeo_type
+from py_api_wbgeo.nodesapi import wbgeo_type, AnnotatedScriptType
 
 
 from core.meshing_components.geometry.Elements import Elements
@@ -375,3 +375,9 @@ class SimulationResults:
     celltypes_by_time: Dict[float, np.ndarray] = field(default_factory=dict)
     node_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
     cell_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
+
+# TODO: This definition was in place in a bunch of locations - check if this is really the same type
+ExtentData = typing.Annotated[
+  List[float],
+  AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')
+]
