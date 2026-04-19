@@ -2,6 +2,7 @@ import inspect
 import sys
 import types
 import typing
+import traceback
 import unittest
 from typing import Unpack, Any, Optional
 
@@ -49,6 +50,19 @@ class TestComponentSignatures(unittest.TestCase):
             if py_file in sys.modules
         }
         nodesapi.set_instance(MockBackendInstance())
+        # monkey patch
+        def init_money_patch(self, **kwargs: Unpack[ScriptTypeParams]):
+          self.kwargs = kwargs
+          if kwargs["identifier"] in MockBackendInstance.registered_types:
+            MockBackendInstance.errors.append(ValueError(
+              "@GeoType `{id}` is defined in multiple locations. Identifiers MUST be unique: \n - {floc}\n - {floc2}".format(
+                id=kwargs["identifier"],
+                floc=traceback.format_stack()[-2],
+                floc2=MockBackendInstance.registered_types[kwargs["identifier"]],
+              )))
+          MockBackendInstance.registered_types[kwargs["identifier"]] = traceback.format_stack()[-2]
+        AnnotatedScriptType.__init__ = init_money_patch
+
         # force unload all py-files to allow decorators to actually work
         for py_file in cls.py_files:
             if py_file in sys.modules:
@@ -94,7 +108,7 @@ def get_location(x):
     try:
       return inspect.getfile(x) + ":" + str(inspect.getsourcelines(x)[1])
     except TypeError:
-      return str(x) # some types are just unhappy to report their locations, such as io.BytesIO
+      return str(x) + '(source missing?)' # some types are just unhappy to report their locations, such as io.BytesIO
     except OSError:
       return str(x) + '(source not available)'
 
@@ -217,7 +231,7 @@ class MockBackendInstance:
                             "@GeoComponent parameter `{param}` must be a built-in type or its type `{type}` be annotated with AnnotatedScriptType at {loc}".format(
                                 param=param, type=str(t), loc=get_location(loc))))
                 else:
-                    pass
+                  pass
 
             for param in sig.parameters:
                 t = sig.parameters[param].annotation
@@ -228,6 +242,7 @@ class MockBackendInstance:
 
 MockBackendInstance.errors = list()
 MockBackendInstance.registered_components = dict()
+MockBackendInstance.registered_types = dict()
 
 class ComponentMethod():
     def __init__(self, identifier: str):
