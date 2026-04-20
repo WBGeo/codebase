@@ -8,7 +8,8 @@ from collections import defaultdict
 from scipy.spatial import cKDTree
 from typing import Sequence, Tuple, List, Mapping, Optional, Dict, Set, Any
 from numpy.typing import NDArray
-from core.object_components import StructuralModelResults, ExtentData, MeshResults
+from core.object_components import StructuralModelResults
+from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
@@ -1040,6 +1041,7 @@ SourcesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScript
 ShaftData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='shaft_list', color='aqua', identifier='mesh::ShaftListData', controlled='Table|x7')]
 
 PlaneData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData', controlled='Table|x12')]
+ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 EllipseData = typing.Annotated[List[Dict[str, typing.Any]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
 TriangulationData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType( name='triangulation', color='aqua',
         identifier='mesh::TriangulationData',controlled='Table|3|X|Y|Z')]
@@ -1054,7 +1056,6 @@ WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='
                  group='Meshing',
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
                  return_name='Wells',  # the name for the returned-port
-                 is_object_type=True,
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
@@ -1135,7 +1136,6 @@ SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color
                  group='Meshing',
                  identifier='wbgeo::meshing_load_source_from_csv',  # a unique identifier
                  return_name='Sources',  # the name for the returned-port
-                 is_object_type=True,
                  )  # inputs are handled via the method signature
 def load_sources_from_csv(source_file: SourceCSVDataType) -> SourcesData:
   """
@@ -1209,7 +1209,6 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     group='Meshing',
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
-    is_object_type=True,
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType) -> EllipseData:
     """
@@ -1333,7 +1332,6 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group='Meshing',
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
                  return_name='Shafts',  # the name for the returned-port
-                 is_object_type=True,
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType) -> ShaftData:
     """
@@ -1426,7 +1424,6 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group='Meshing',
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
                  return_name='planes',  # the name for the returned-port
-                 is_object_type=True,
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType) -> PlaneData:
   """
@@ -1501,7 +1498,6 @@ TriangulationsPlanesData = typing.Annotated[str, AnnotatedScriptType(name='path'
     group='Meshing',
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
-    is_object_type=True,
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData) -> TriangulationData:
     """
@@ -1690,6 +1686,10 @@ def create_unstructured_mesh_data(
                  title='Plot Unstructured Mesh in 3D',
                  description='...')
 @wbgeo_inspector()
-def inspect_unstructured_mesh_3d(
-    structural_model_result: StructuralModelResults, mesh: MeshResults, _inspector: InspectorHelper):
-  plot_mesh_3d(mesh, structural_model_result, "surface", True,)
+async def inspect_unstructured_mesh_3d(
+    mesh_results: MeshResults, _inspector: InspectorHelper):
+  # load structural_model_result from the execution trace
+  structural_model_result = await (await _inspector.trace(StructuralModelResults)).get_value()
+  # and call the render function with both the mesh_results and the object from our trace
+  plot_mesh_3d(mesh_results, structural_model_result, "surface", True)
+
