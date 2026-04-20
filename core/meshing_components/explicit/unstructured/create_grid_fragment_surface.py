@@ -609,18 +609,15 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         for i, shaft in enumerate(mine_shafts):
 
             # ----------------------------
-            # original center + axis
+            # original geometry
             # ----------------------------
             x, y, z = shaft["center"]
             dx, dy, dz = shaft["axis"]
 
-            # ----------------------------
-            # endpoint of shaft
-            # ----------------------------
             x2, y2, z2 = x + dx, y + dy, z + dz
 
             # ----------------------------
-            # clamp both endpoints
+            # clamp endpoints
             # ----------------------------
             x = clamp_to_nearest_boundary(x, x_min, x_max)
             y = clamp_to_nearest_boundary(y, y_min, y_max)
@@ -631,51 +628,38 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             z2 = clamp_to_nearest_boundary(z2, z_min, z_max)
 
             # ----------------------------
-            # recompute axis after clamping
+            # recompute final vector
             # ----------------------------
             dx = x2 - x
             dy = y2 - y
             dz = z2 - z
 
+            axis_len = np.linalg.norm([dx, dy, dz])
+
             # ----------------------------
-            # safety check: avoid degenerate shaft
+            # skip degenerate shafts
             # ----------------------------
-            axis_len = np.sqrt(dx*dx + dy*dy + dz*dz)
             if axis_len < 1e-10:
                 print(f"Skipping degenerate shaft {i}")
                 continue
 
             # ----------------------------
-            # normalize direction (important for stability)
+            # DO NOT rescale back to original length ❗
+            # this is the key fix
             # ----------------------------
-            dx /= axis_len
-            dy /= axis_len
-            dz /= axis_len
 
-            # re-scale to original approximate length (optional but recommended)
-            original_len = np.linalg.norm(shaft["axis"])
-            dx *= original_len
-            dy *= original_len
-            dz *= original_len
-
-            # ----------------------------
-            # update shaft object
-            # ----------------------------
             shaft["center"] = (x, y, z)
             shaft["axis"] = (dx, dy, dz)
 
             r = shaft["radius"]
 
-            # ----------------------------
-            # create cylinder
-            # ----------------------------
             tag = gmsh.model.occ.addCylinder(
                 x, y, z, dx, dy, dz, r, 2500 + i + 1
             )
 
             mine_shaft_volumes.append(tag)
 
-        gmsh.model.occ.synchronize()
+    gmsh.model.occ.synchronize()
 
     #all_points = gmsh.model.getEntities(0)  # all 0D points
     #gmsh.model.mesh.setSize(all_points, mesh_size)
