@@ -376,8 +376,8 @@ class SimulationResults:
     node_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
     cell_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
 
-# TODO: This definition was in place in a bunch of locations - check if this is really the same type
 ExtentData = typing.Annotated[
-  List[float],
-  AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')
+  Tuple[float, float, float, float, float, float],
+  AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData',
+                      controlled='Table|xmin|xmax|ymin|ymax|zmin|zmax')
 ]
