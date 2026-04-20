@@ -407,50 +407,95 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         gmsh.model.occ.synchronize()
     # add wells as lines
     if wells:
-        well_lines: List[List[int]] = []  # This will be a list of lists: one list per well
+        well_lines: List[List[int]] = []
+
         for coords in wells:
             points: List[int] = []
+
+            # ----------------------------
+            # create clamped points
+            # ----------------------------
             for j in range(0, len(coords), 3):
                 x, y, z = coords[j], coords[j+1], coords[j+2]
-                # clamp coordinates to model domain
+
                 x = clamp_to_nearest_boundary(x, x_min, x_max)
                 y = clamp_to_nearest_boundary(y, y_min, y_max)
                 z = clamp_to_nearest_boundary(z, z_min, z_max)
-                p: int = gmsh.model.occ.addPoint(x, y, z)
+
+                p = gmsh.model.occ.addPoint(x, y, z)
                 points.append(p)
-            # connect points withline segments
-            lines: List[int] = []  # Lines for the current well
+
+            # ----------------------------
+            # skip invalid wells
+            # ----------------------------
+            if len(points) < 2:
+                print("Skipping degenerate well")
+                continue
+
+            # ----------------------------
+            # create lines
+            # ----------------------------
+            lines: List[int] = []
             for k in range(len(points) - 1):
-                line: int = gmsh.model.occ.addLine(points[k], points[k+1])
+                line = gmsh.model.occ.addLine(points[k], points[k+1])
                 lines.append(line)
 
-            well_lines.append(lines)  # Append the current well's line list
+            well_lines.append(lines)
 
         gmsh.model.occ.synchronize()
     # add extra planes
     if extra_planes:
         for i_layer in range(len(extra_planes)):
-          (x1_m, y1_m, z1_m, x2_m, y2_m, z2_m, x3_m, y3_m, z3_m, x4_m, y4_m, z4_m) = extra_planes[i_layer]
+            (x1_m, y1_m, z1_m,
+            x2_m, y2_m, z2_m,
+            x3_m, y3_m, z3_m,
+            x4_m, y4_m, z4_m) = extra_planes[i_layer]
 
-          # Add points (you don’t need tags in occ)
-          p1: int = gmsh.model.occ.addPoint(x1_m, y1_m, z1_m)
-          p2: int = gmsh.model.occ.addPoint(x2_m, y2_m, z2_m)
-          p3: int = gmsh.model.occ.addPoint(x3_m, y3_m, z3_m)
-          p4: int = gmsh.model.occ.addPoint(x4_m, y4_m, z4_m)
+            # ----------------------------
+            # Clamp ALL points to extent
+            # ----------------------------
+            x1_m = clamp_to_nearest_boundary(x1_m, x_min, x_max)
+            y1_m = clamp_to_nearest_boundary(y1_m, y_min, y_max)
+            z1_m = clamp_to_nearest_boundary(z1_m, z_min, z_max)
 
-          # Create lines
-          l1: int = gmsh.model.occ.addLine(p1, p2)
-          l2: int = gmsh.model.occ.addLine(p2, p3)
-          l3: int = gmsh.model.occ.addLine(p3, p4)
-          l4: int = gmsh.model.occ.addLine(p4, p1)
+            x2_m = clamp_to_nearest_boundary(x2_m, x_min, x_max)
+            y2_m = clamp_to_nearest_boundary(y2_m, y_min, y_max)
+            z2_m = clamp_to_nearest_boundary(z2_m, z_min, z_max)
 
-          # Create line loop and surface
-          loop: int = gmsh.model.occ.addCurveLoop([l1, l2, l3, l4])
-          surface_mine: int = gmsh.model.occ.addPlaneSurface([loop])
+            x3_m = clamp_to_nearest_boundary(x3_m, x_min, x_max)
+            y3_m = clamp_to_nearest_boundary(y3_m, y_min, y_max)
+            z3_m = clamp_to_nearest_boundary(z3_m, z_min, z_max)
 
-          surfaces.append(surface_mine)
-          ref_surface_indices[len(surfaces) - 1] = len(surfaces) - 1
-          gmsh.model.occ.synchronize()
+            x4_m = clamp_to_nearest_boundary(x4_m, x_min, x_max)
+            y4_m = clamp_to_nearest_boundary(y4_m, y_min, y_max)
+            z4_m = clamp_to_nearest_boundary(z4_m, z_min, z_max)
+
+            # ----------------------------
+            # Create OCC points
+            # ----------------------------
+            p1 = gmsh.model.occ.addPoint(x1_m, y1_m, z1_m)
+            p2 = gmsh.model.occ.addPoint(x2_m, y2_m, z2_m)
+            p3 = gmsh.model.occ.addPoint(x3_m, y3_m, z3_m)
+            p4 = gmsh.model.occ.addPoint(x4_m, y4_m, z4_m)
+
+            # ----------------------------
+            # Create lines
+            # ----------------------------
+            l1 = gmsh.model.occ.addLine(p1, p2)
+            l2 = gmsh.model.occ.addLine(p2, p3)
+            l3 = gmsh.model.occ.addLine(p3, p4)
+            l4 = gmsh.model.occ.addLine(p4, p1)
+
+            # ----------------------------
+            # Surface
+            # ----------------------------
+            loop = gmsh.model.occ.addCurveLoop([l1, l2, l3, l4])
+            surface_mine = gmsh.model.occ.addPlaneSurface([loop])
+
+            surfaces.append(surface_mine)
+            ref_surface_indices[len(surfaces) - 1] = len(surfaces) - 1
+
+        gmsh.model.occ.synchronize()
 
     # Add ellipse
     if ellipses:
@@ -558,33 +603,63 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
 
     # add mine shafts as cylindrical volumes
-    mine_shaft_volumes: List[int] = []  # NEW: store shaft volume tags
+    mine_shaft_volumes: List[int] = []
+
     if mine_shafts:
-        mine_shaft_volumes = []  # Ensure this list is defined
         for i, shaft in enumerate(mine_shafts):
-            # unpack and clamp shaft center and axis
+
+            # ----------------------------
+            # original geometry
+            # ----------------------------
             x, y, z = shaft["center"]
+            dx, dy, dz = shaft["axis"]
+
+            x2, y2, z2 = x + dx, y + dy, z + dz
+
+            # ----------------------------
+            # clamp endpoints
+            # ----------------------------
             x = clamp_to_nearest_boundary(x, x_min, x_max)
             y = clamp_to_nearest_boundary(y, y_min, y_max)
             z = clamp_to_nearest_boundary(z, z_min, z_max)
-            dx, dy, dz = shaft["axis"]
-            x2 = x + dx
-            y2 = y + dy
-            z2 = z + dz
+
             x2 = clamp_to_nearest_boundary(x2, x_min, x_max)
             y2 = clamp_to_nearest_boundary(y2, y_min, y_max)
             z2 = clamp_to_nearest_boundary(z2, z_min, z_max)
+
+            # ----------------------------
+            # recompute final vector
+            # ----------------------------
             dx = x2 - x
             dy = y2 - y
             dz = z2 - z
 
-            # Replace the original shaft center and axis with clamped values
+            axis_len = np.linalg.norm([dx, dy, dz])
+
+            # ----------------------------
+            # skip degenerate shafts
+            # ----------------------------
+            if axis_len < 1e-10:
+                print(f"Skipping degenerate shaft {i}")
+                continue
+
+            # ----------------------------
+            # DO NOT rescale back to original length ❗
+            # this is the key fix
+            # ----------------------------
+
             shaft["center"] = (x, y, z)
             shaft["axis"] = (dx, dy, dz)
-            r: float = shaft["radius"]
-            tag: int = gmsh.model.occ.addCylinder(x, y, z, dx, dy, dz, r, 2500 + i + 1)
+
+            r = shaft["radius"]
+
+            tag = gmsh.model.occ.addCylinder(
+                x, y, z, dx, dy, dz, r, 2500 + i + 1
+            )
+
             mine_shaft_volumes.append(tag)
-        gmsh.model.occ.synchronize()
+
+    gmsh.model.occ.synchronize()
 
     #all_points = gmsh.model.getEntities(0)  # all 0D points
     #gmsh.model.mesh.setSize(all_points, mesh_size)
@@ -679,9 +754,9 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
                         nodeTags, coords, _ = gmsh.model.mesh.getNodes(2, surface)
                         # Skip empty surfaces (when no nodes are present)
-                        if len(coords) < 3:
-                            filtered_surfaces.append(surface)
-                            continue
+                        #if len(coords) < 3:
+                        #    filtered_surfaces.append(surface)
+                        #    continue
 
                         # Convert flattened list to (x, y, z) tuples
                         node_coords = np.array(coords).reshape(-1, 3)  # shape (n_nodes, 3)
