@@ -426,21 +426,6 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                 points.append(p)
 
             # ----------------------------
-            # remove duplicate / degenerate points
-            # ----------------------------
-            filtered_points = [points[0]]
-            prev_coord = gmsh.model.occ.getValue(0, points[0], [])
-
-            for i in range(1, len(points)):
-                x1, y1, z1 = gmsh.model.occ.getValue(0, points[i], [])
-
-                if np.linalg.norm(np.array([x1, y1, z1]) - np.array(prev_coord)) > 1e-10:
-                    filtered_points.append(points[i])
-                    prev_coord = (x1, y1, z1)
-
-            points = filtered_points
-
-            # ----------------------------
             # skip invalid wells
             # ----------------------------
             if len(points) < 2:
