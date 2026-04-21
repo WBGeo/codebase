@@ -132,7 +132,7 @@ class StructuralModelResults:
 
 
 @wbgeo_type(name='Result of a structural fault model', color='blue', identifier='FaultModelResults')
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+@dataclass
 class FaultModelResults:
     """
     A class to represent the results of a fault model.

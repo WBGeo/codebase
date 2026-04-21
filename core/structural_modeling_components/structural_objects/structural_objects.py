@@ -886,8 +886,6 @@ class FaultFrame(BaseModel):
 
     def set_grid(self, grid: RegularGrid) -> None:
         """Set the grid for spatial context."""
-        if not isinstance(grid, RegularGrid):
-            raise ValueError("Grid must be an instance of RegularGrid.")
         self.grid = grid
 
     def detailed_report(self) -> None:
