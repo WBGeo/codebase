@@ -3,19 +3,20 @@ import json
 import pydantic
 from pydantic import BaseModel
 
-from core.object_components import InputData_StructuralElements, StructuralModelResults
+from core.object_components import InputData_StructuralElements, StructuralModelResults, \
+  InputData_FaultElements, FaultModelResults
 import pandas as pd
 
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
   InspectorHelper
 import typing
 
-from core.structural_modeling_components import general
+from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.general import build_structural_frame
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import \
   InterpolationMethod, OKParams, RBFParams, UCKParams, GeoINRParams, FDIParams, UKParams
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
-  plot_structural_model_2D, plot_structural_model_3D
+  plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_objects.structural_objects import \
@@ -42,6 +43,10 @@ AResolution3 = typing.Annotated[
                                                 identifier='grid_classes.Resolution3',
                                                 controlled='Table|x|y|z')]
 
+FaultNames = typing.Annotated[
+  typing.List[str], AnnotatedScriptType(name='Fault Names', color='aqua',
+                                                identifier='wbgeo::FaultNames',
+                                                controlled='Table|FaultName')]
 
 @wbgeo_component(description='Regular (axis-aligned) grid defined by an extent and a 3D resolution',
                  title='Regular Grid',  # The title shown in the GUI
@@ -225,11 +230,12 @@ SmartStructuralFrameInputOptions = typing.Annotated[
 def structural_modeling(
     elements: InputData_StructuralElements,
     grid: grid_classes.RegularGrid,
+    fault_model: typing.Optional[FaultModelResults] = None,
     options: SmartStructuralFrameInputOptions = None,
 ) -> StructuralModelResults:
   frame = general.build_structural_frame(input_data_elements=elements,
                                          grid=grid,
-                                         # fault_model_results=fault_model_result
+                                         fault_model_results=fault_model
                                          )
   # todo: Options
   print(options)
@@ -278,3 +284,96 @@ def inspect_structural_model_result_plot_structural_model_3D(
 def inspect_structural_model_result_plot_structural_model_3D_sf(
     structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
   plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
+
+### faults
+@wbgeo_component(description='Provides fault data',
+                 title='Input data for Fault Elements',
+                 color='#b0dfa9',
+                 border_color='#000000',
+                 group='Inputs',
+                 identifier='wbgeo::faults_input_data',
+                 return_name='faults_data',
+                 is_object_type=True,
+                 )
+def faults_input_data(
+    name: str = 'Faults Model 2',
+    fault_surface_points_file: CSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
+    fault_orientations_file: typing.Optional[CSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
+    fault_names: FaultNames = ['fault',]) -> InputData_FaultElements:
+  import os
+  import pathlib
+
+  datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
+
+  surface_points = pd.read_csv(os.path.join(datadir, fault_surface_points_file))
+  orientations = None
+  if fault_orientations_file is not None:
+    orientations = pd.read_csv(os.path.join(datadir, fault_orientations_file))
+
+
+  return InputData_FaultElements(
+    name=name,
+    fault_surface_points=surface_points,
+    fault_orientations=orientations,
+    fault_names=fault_names
+  )
+
+
+
+# Register this function as a component
+@wbgeo_component(description='fault_modeling',
+                 title='Compute Fault Model',  # The title shown in the GUI
+                 color='#8cb369',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Inputs',
+                 identifier='wbgeo::fault_modeling',  # a unique identifier
+                 return_name='fault_model',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
+def compute_fault_frame(
+    data_faults: InputData_FaultElements,
+    grid: grid_classes.RegularGrid,
+) -> FaultModelResults:
+  fault_frame = general_faults.build_fault_frame(
+    input_data_fault_elements=data_faults,
+    grid=grid
+  )
+  if grid is None:
+    raise ValueError("Missing grid?")
+  fault_model_result = general_faults.compute_fault_domains(fault_frame)
+
+  return fault_model_result
+
+@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_detailed_report',
+                 title='Detailed Fault Report',
+                 description='...')
+@wbgeo_inspector()
+def inspect_fault_model_result_detailed_report(fault_model_result: FaultModelResults,
+                                                    _inspector: InspectorHelper):
+  fault_model_result.fault_frame.detailed_report()
+
+
+@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_2D',
+                 title='Plot Fault Model Result 2D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_fault_model_result_plot_structural_model_2D(
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
+  plot_fault_model_2D(fault_model_result.fault_frame)
+
+
+@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_3D',
+                 title='Plot Fault Model Result 3D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_fault_model_result_plot_structural_model_3D(
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
+  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=False)
+
+
+@wbgeo_component(identifier='wbgeo::inspect_faull_model_result_plot_structural_model_3D_sf',
+                 title='Plot Fault Model Result 3D with Surface Meshes',
+                 description='...')
+@wbgeo_inspector()
+def inspect_faull_model_result_plot_structural_model_3D_sf(
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
+  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True)
