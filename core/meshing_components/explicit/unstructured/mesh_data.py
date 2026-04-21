@@ -8,7 +8,7 @@ from collections import defaultdict
 from scipy.spatial import cKDTree
 from typing import Sequence, Tuple, List, Mapping, Optional, Dict, Set, Any
 from numpy.typing import NDArray
-from core.object_components import StructuralModelResults
+from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
@@ -1041,7 +1041,6 @@ SourcesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScript
 ShaftData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='shaft_list', color='aqua', identifier='mesh::ShaftListData', controlled='Table|x7')]
 
 PlaneData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData', controlled='Table|x12')]
-ExtentData = typing.Annotated[List[float], AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData')]
 EllipseData = typing.Annotated[List[Dict[str, typing.Any]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
 TriangulationData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType( name='triangulation', color='aqua',
         identifier='mesh::TriangulationData',controlled='Table|3|X|Y|Z')]
