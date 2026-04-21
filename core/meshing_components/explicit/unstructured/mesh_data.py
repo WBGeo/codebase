@@ -1639,43 +1639,44 @@ def create_unstructured_mesh_data(
         triangulations = np.asarray(triangulations, dtype=np.float64)
         validate_triangulation(triangulations, extent_arr)
     # Initialize GMSH
-    gmsh.initialize()
-    # Surface preparation
-    cleaned_surfaces: List[NDArray[np.float64]]
-    ref_surface_indices: Dict[int, int]
-    grid_litho: pd.DataFrame
-    cleaned_surfaces, ref_surface_indices , grid_litho = data_prepration(geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
-                                                                                EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold)
+    try:
+      gmsh.initialize()
+      # Surface preparation
+      cleaned_surfaces: List[NDArray[np.float64]]
+      ref_surface_indices: Dict[int, int]
+      grid_litho: pd.DataFrame
+      cleaned_surfaces, ref_surface_indices , grid_litho = data_prepration(geomodel_result, DISTANCE_THRESHOLD = DISTANCE_THRESHOLD, PROJECTION_THRESHOLD = PROJECTION_THRESHOLD,
+                                                                                  EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold)
 
-     # Surface interpolation
-    interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth)
+       # Surface interpolation
+      interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth)
 
-    # Import surfaces
-    surfaces_original: List[int]
-    bounds: Tuple[float, float, float, float, float, float]
-    surfaces_orginal, bounds = import_surfaces(interpolated_s, extent_arr, tolerance=tolerance)
+      # Import surfaces
+      surfaces_original: List[int]
+      bounds: Tuple[float, float, float, float, float, float]
+      surfaces_orginal, bounds = import_surfaces(interpolated_s, extent_arr, tolerance=tolerance)
 
-    gmsh.model.occ.synchronize()
+      gmsh.model.occ.synchronize()
 
 
-    surfaces=surfaces_orginal.copy()
-    # fragmentation
-    ov: List[Tuple[int, int]]
-    tagssss: List[int]
-    well_tags: List[int]
-    shaft_tags: List[int]
-    shaft_to_child_fragments: Dict[int, List[int]]
-    source_tag: List[int]
-    ov,ovv, tagssss, well_tags, shaft_tags,shaft_to_child_fragments,  tri_surface_tags, tri_surface_to_child_fragments, source_tag = fragment_surfaces(surfaces, bounds, ref_surface_indices,wells,
-                                extra_planes, sources, mine_shafts,  ellipses=ellipses, triangulations = triangulations, mesh_size=mesh_size,curve_mesh_size=curve_mesh_size )
+      surfaces=surfaces_orginal.copy()
+      # fragmentation
+      ov: List[Tuple[int, int]]
+      tagssss: List[int]
+      well_tags: List[int]
+      shaft_tags: List[int]
+      shaft_to_child_fragments: Dict[int, List[int]]
+      source_tag: List[int]
+      ov,ovv, tagssss, well_tags, shaft_tags,shaft_to_child_fragments,  tri_surface_tags, tri_surface_to_child_fragments, source_tag = fragment_surfaces(surfaces, bounds, ref_surface_indices,wells,
+                                  extra_planes, sources, mine_shafts,  ellipses=ellipses, triangulations = triangulations, mesh_size=mesh_size,curve_mesh_size=curve_mesh_size )
 
-    # Mesh generation
-    nodes: NDArray[np.float64]
-    cells: List[meshio.CellBlock]
-    nodes, cells = mesh_generator(ov, tagssss, extent_arr , wells, well_tags, source_tag, shaft_tags, shaft_to_child_fragments,  tri_surface_tags, tri_surface_to_child_fragments, grid_litho, mesh_size= mesh_size, curve_mesh_size=curve_mesh_size )
-    print("\n[FINAL DEBUG] Line blocks in new_cells:")
-
-    gmsh.finalize()
+      # Mesh generation
+      nodes: NDArray[np.float64]
+      cells: List[meshio.CellBlock]
+      nodes, cells = mesh_generator(ov, tagssss, extent_arr , wells, well_tags, source_tag, shaft_tags, shaft_to_child_fragments,  tri_surface_tags, tri_surface_to_child_fragments, grid_litho, mesh_size= mesh_size, curve_mesh_size=curve_mesh_size )
+      print("\n[FINAL DEBUG] Line blocks in new_cells:")
+    finally:
+      gmsh.finalize()
     # return a MeshData instance
     return MeshResults(elements=cells,
                        nodes=nodes,
