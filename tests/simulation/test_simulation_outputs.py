@@ -1,9 +1,9 @@
-
 import unittest
 import os
 
 from core.Simulation.Output_format.VTK.unified_format_vtk import load_vtk_results
 from core.object_components import SimulationResults
+from core.Simulation.Simulation_packages.Sfepy.simulation_run import SfepySimulationOutput
 
 
 class TestLoadVTKResultsRealFolder(unittest.TestCase):
@@ -17,9 +17,16 @@ class TestLoadVTKResultsRealFolder(unittest.TestCase):
 
         assert os.path.exists(cls.output_dir), "sfepy_test_output directory does not exist"
 
+        # IMPORTANT: match new API contract
+        cls.sim_output = SfepySimulationOutput(
+            output_dir=cls.output_dir,
+            is_temp=False
+        )
+
     def test_load_vtk_results_real(self):
 
-        results = load_vtk_results(self.output_dir)
+        # FIX: pass SfepySimulationOutput instead of string
+        results = load_vtk_results(self.sim_output)
 
         # -----------------------------
         # Type check

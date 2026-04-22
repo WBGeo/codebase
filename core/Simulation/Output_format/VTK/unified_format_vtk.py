@@ -1,17 +1,16 @@
 import os
 import shutil
 import pyvista as pv
-from core.object_components import SimulationResults
 import numpy as np
-import tempfile
-from py_api_wbgeo.nodesapi import wbgeo_component
 import re
 
+from py_api_wbgeo.nodesapi import wbgeo_component
+from core.object_components import SimulationResults
 from core.Simulation.Simulation_packages.Sfepy.simulation_run import SfepySimulationOutput
 
 
 # -------------------------------------------------
-# SAFE TIME EXTRACTOR (CRITICAL FIX)
+# SAFE TIME EXTRACTOR (UNCHANGED)
 # -------------------------------------------------
 def extract_time(filename: str):
     nums = re.findall(r"\d+\.?\d*", filename)
@@ -19,7 +18,7 @@ def extract_time(filename: str):
 
 
 # =====================================================
-# LOAD VTK RESULTS (FIXED BUT SAME BEHAVIOR)
+# LOAD VTK RESULTS (FIXED + CONSISTENT CONTRACT)
 # =====================================================
 @wbgeo_component(
     description='load VTK results',
@@ -48,27 +47,50 @@ def load_vtk_results(sim_output: SfepySimulationOutput) -> SimulationResults:
 
     for file_path in vtk_files:
         mesh = pv.read(file_path)
-
         vtk_file = os.path.basename(file_path)
 
         time = extract_time(vtk_file)
 
         # -------------------------------------------------
-        # CRITICAL: enforce old behavior (must be numeric key)
+        # enforce old behavior: float time keys only
         # -------------------------------------------------
         if time is None:
             continue
 
-        time = float(time)   # FORCE consistency with old system
+        time = float(time)
 
+        # -------------------------------------------------
+        # NODE DATA (UNCHANGED)
+        # -------------------------------------------------
         results.nodes_by_time[time] = mesh.points.copy()
-        results.cells_by_time[time] = mesh.cells.copy()
-        results.celltypes_by_time[time] = mesh.celltypes.copy()
 
+        # -------------------------------------------------
+        # FIXED CELL ACCESS (IMPORTANT)
+        # PyVista compatibility: NOT all datasets have .cells
+        # -------------------------------------------------
+        if hasattr(mesh, "cells") and mesh.cells is not None:
+            cells = mesh.cells.copy()
+        else:
+            # fallback for PolyData
+            cells = mesh.faces.copy() if hasattr(mesh, "faces") else None
+
+        results.cells_by_time[time] = cells
+
+        # -------------------------------------------------
+        # CELL TYPES (SAFE)
+        # -------------------------------------------------
+        results.celltypes_by_time[time] = getattr(mesh, "celltypes", None)
+
+        # -------------------------------------------------
+        # POINT DATA (UNCHANGED)
+        # -------------------------------------------------
         results.node_data_by_time[time] = {
             k: np.array(v) for k, v in mesh.point_data.items()
         }
 
+        # -------------------------------------------------
+        # CELL DATA (UNCHANGED)
+        # -------------------------------------------------
         results.cell_data_by_time[time] = {
             k: np.array(v) for k, v in mesh.cell_data.items()
         }
