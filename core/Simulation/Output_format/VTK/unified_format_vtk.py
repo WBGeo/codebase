@@ -3,14 +3,26 @@ import shutil
 import pyvista as pv
 import numpy as np
 import re
+import typing
 
-from py_api_wbgeo.nodesapi import wbgeo_component
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.object_components import SimulationResults
-from core.Simulation.Simulation_packages.Sfepy.simulation_run import SfepySimulationOutput
+
+
+# =====================================================
+# WBGeo SAFE OUTPUT TYPE (REPLACES SfepySimulationOutput)
+# =====================================================
+SfepyOutputType = typing.Annotated[
+    dict,
+    AnnotatedScriptType(
+        name="SfepyOutput",
+        identifier="SfepyOutputType"
+    )
+]
 
 
 # -------------------------------------------------
-# SAFE TIME EXTRACTOR (UNCHANGED)
+# SAFE TIME EXTRACTOR
 # -------------------------------------------------
 def extract_time(filename: str):
     nums = re.findall(r"\d+\.?\d*", filename)
@@ -18,7 +30,7 @@ def extract_time(filename: str):
 
 
 # =====================================================
-# LOAD VTK RESULTS (FIXED + CONSISTENT CONTRACT)
+# LOAD VTK RESULTS (WBGeo + SAFE + CONSISTENT)
 # =====================================================
 @wbgeo_component(
     description='load VTK results',
@@ -29,9 +41,12 @@ def extract_time(filename: str):
     identifier='Load_VTK_results',
     return_name='Loaded VTK results',
 )
-def load_vtk_results(sim_output: SfepySimulationOutput) -> SimulationResults:
+def load_vtk_results(sim_output: SfepyOutputType) -> SimulationResults:
 
-    output_dir = sim_output.output_dir
+    # -------------------------------------------------
+    # ACCESS DICT (NEW STRUCTURE)
+    # -------------------------------------------------
+    output_dir = sim_output["output_dir"]
 
     vtk_files = []
     for root, _, files in os.walk(output_dir):
@@ -52,7 +67,7 @@ def load_vtk_results(sim_output: SfepySimulationOutput) -> SimulationResults:
         time = extract_time(vtk_file)
 
         # -------------------------------------------------
-        # enforce old behavior: float time keys only
+        # enforce numeric time keys (OLD BEHAVIOR)
         # -------------------------------------------------
         if time is None:
             continue
@@ -60,19 +75,25 @@ def load_vtk_results(sim_output: SfepySimulationOutput) -> SimulationResults:
         time = float(time)
 
         # -------------------------------------------------
-        # NODE DATA (UNCHANGED)
+        # NODE DATA
         # -------------------------------------------------
         results.nodes_by_time[time] = mesh.points.copy()
 
         # -------------------------------------------------
-        # FIXED CELL ACCESS (IMPORTANT)
-        # PyVista compatibility: NOT all datasets have .cells
+        # SAFE CELL HANDLING (PyVista robust)
         # -------------------------------------------------
         if hasattr(mesh, "cells") and mesh.cells is not None:
-            cells = mesh.cells.copy()
+            try:
+                cells = mesh.cells.copy()
+            except:
+                cells = np.array(mesh.cells)
+        elif hasattr(mesh, "faces") and mesh.faces is not None:
+            try:
+                cells = mesh.faces.copy()
+            except:
+                cells = np.array(mesh.faces)
         else:
-            # fallback for PolyData
-            cells = mesh.faces.copy() if hasattr(mesh, "faces") else None
+            cells = None
 
         results.cells_by_time[time] = cells
 
@@ -82,23 +103,23 @@ def load_vtk_results(sim_output: SfepySimulationOutput) -> SimulationResults:
         results.celltypes_by_time[time] = getattr(mesh, "celltypes", None)
 
         # -------------------------------------------------
-        # POINT DATA (UNCHANGED)
+        # POINT DATA
         # -------------------------------------------------
         results.node_data_by_time[time] = {
             k: np.array(v) for k, v in mesh.point_data.items()
         }
 
         # -------------------------------------------------
-        # CELL DATA (UNCHANGED)
+        # CELL DATA
         # -------------------------------------------------
         results.cell_data_by_time[time] = {
             k: np.array(v) for k, v in mesh.cell_data.items()
         }
 
     # -------------------------------------------------
-    # CLEANUP POLICY (UNCHANGED)
+    # CLEANUP POLICY
     # -------------------------------------------------
-    if sim_output.is_temp:
+    if sim_output.get("is_temp", False):
         try:
             shutil.rmtree(output_dir)
             print(f"[INFO] Removed temp output: {output_dir}")

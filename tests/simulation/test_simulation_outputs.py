@@ -3,7 +3,6 @@ import os
 
 from core.Simulation.Output_format.VTK.unified_format_vtk import load_vtk_results
 from core.object_components import SimulationResults
-from core.Simulation.Simulation_packages.Sfepy.simulation_run import SfepySimulationOutput
 
 
 class TestLoadVTKResultsRealFolder(unittest.TestCase):
@@ -12,20 +11,19 @@ class TestLoadVTKResultsRealFolder(unittest.TestCase):
     def setUpClass(cls):
         base_dir = os.path.dirname(__file__)
 
-        # 👇 your real output directory from SfePy run
+        # 👇 real output directory
         cls.output_dir = os.path.join(base_dir, "sfepy_test_output")
 
         assert os.path.exists(cls.output_dir), "sfepy_test_output directory does not exist"
 
-        # IMPORTANT: match new API contract
-        cls.sim_output = SfepySimulationOutput(
-            output_dir=cls.output_dir,
-            is_temp=False
-        )
+        # ✅ FIX: use dict instead of removed class
+        cls.sim_output = {
+            "output_dir": cls.output_dir,
+            "is_temp": False
+        }
 
     def test_load_vtk_results_real(self):
 
-        # FIX: pass SfepySimulationOutput instead of string
         results = load_vtk_results(self.sim_output)
 
         # -----------------------------

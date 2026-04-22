@@ -5,18 +5,30 @@ import tempfile
 import subprocess
 import numpy as np
 import meshio
-import shutil
-import pyvista as pv
 
-from pydantic import BaseModel
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
-from core.object_components import SimulationResults
 
 
 # =====================================================
-# INPUT TYPES
+# TYPES (WBGeo SAFE)
 # =====================================================
+SfepyInputType = typing.Annotated[
+    dict,
+    AnnotatedScriptType(
+        name="SfepyInput",
+        identifier="SfepyInputType"
+    )
+]
+
+SfepyOutputType = typing.Annotated[
+    dict,
+    AnnotatedScriptType(
+        name="SfepyOutput",
+        identifier="SfepyOutputType"
+    )
+]
+
 SfepyInputFileType = typing.Annotated[
     str,
     AnnotatedScriptType(
@@ -26,23 +38,6 @@ SfepyInputFileType = typing.Annotated[
         controlled='RemoteFile|endswith=.py'
     )
 ]
-
-
-# =====================================================
-# INPUT DATA
-# =====================================================
-class SfepySimulationInput(BaseModel):
-    name: str
-    input_file: str
-    output_dir: typing.Optional[str] = None
-
-
-# =====================================================
-# OUTPUT DATA (NEW IMPORTANT PIECE)
-# =====================================================
-class SfepySimulationOutput(BaseModel):
-    output_dir: str
-    is_temp: bool
 
 
 # =====================================================
@@ -56,23 +51,21 @@ class SfepySimulationOutput(BaseModel):
     group='Inputs',
     identifier='wbgeo::sfepy_input_data',
     return_name='sfepy_input',
-    is_object_type=True,
 )
 def sfepy_input_data(
     name: str = 'Hydrothermal Simulation',
-    input_file: SfepyInputFileType =
-        'examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py',
+    input_file: SfepyInputFileType = 'examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py',
     output_dir: typing.Optional[str] = None
-) -> SfepySimulationInput:
+) -> SfepyInputType:
 
     datadir = pathlib.Path(__file__).parent.parent.parent.resolve()
     full_input_path = os.path.join(datadir, input_file)
 
-    return SfepySimulationInput(
-        name=name,
-        input_file=full_input_path,
-        output_dir=output_dir
-    )
+    return {
+        "name": name,
+        "input_file": full_input_path,
+        "output_dir": output_dir
+    }
 
 
 # =====================================================
@@ -87,15 +80,19 @@ def sfepy_input_data(
     identifier='Simulate_with_sfepy',
     return_name='Simulation',
 )
-def run_sfepy(sfepy_input_or_file, mesh_test, output_dir=None) -> SfepySimulationOutput:
+def run_sfepy(
+    sfepy_input_or_file: typing.Union[SfepyInputType, str],
+    mesh_test: typing.Any,
+    output_dir: typing.Optional[str] = None
+) -> SfepyOutputType:
 
     # -------------------------------------------------
     # INPUT HANDLING
     # -------------------------------------------------
-    if isinstance(sfepy_input_or_file, SfepySimulationInput):
-        input_file = sfepy_input_or_file.input_file
+    if isinstance(sfepy_input_or_file, dict):
+        input_file = sfepy_input_or_file["input_file"]
         if output_dir is None:
-            output_dir = sfepy_input_or_file.output_dir
+            output_dir = sfepy_input_or_file.get("output_dir")
     else:
         input_file = sfepy_input_or_file
 
@@ -150,7 +147,7 @@ def run_sfepy(sfepy_input_or_file, mesh_test, output_dir=None) -> SfepySimulatio
     print("[INFO] SfePy finished.")
 
     # -------------------------------------------------
-    # CLEAN TEMP FILES ONLY
+    # CLEAN TEMP FILES
     # -------------------------------------------------
     for tmp_file in [tmp_exo_path, tmp_mesh_path]:
         try:
@@ -159,16 +156,16 @@ def run_sfepy(sfepy_input_or_file, mesh_test, output_dir=None) -> SfepySimulatio
             pass
 
     # -------------------------------------------------
-    # RETURN OUTPUT OBJECT (IMPORTANT)
+    # RETURN (WBGeo SAFE)
     # -------------------------------------------------
-    return SfepySimulationOutput(
-        output_dir=output_dir,
-        is_temp=is_temp
-    )
+    return {
+        "output_dir": output_dir,
+        "is_temp": is_temp
+    }
 
 
 # =====================================================
-# SAVE OUTPUTS COMPONENT (NEW - YOUR MISSING PIECE)
+# SAVE OUTPUT COMPONENT
 # =====================================================
 @wbgeo_component(
     title="Save outputs of simulation",
@@ -177,11 +174,5 @@ def run_sfepy(sfepy_input_or_file, mesh_test, output_dir=None) -> SfepySimulatio
     identifier="wbgeo::save_outputs",
     return_name="simulation_output",
 )
-def save_outputs(sim_output: SfepySimulationOutput) -> SfepySimulationOutput:
-    """
-    This component just passes through the output
-    and allows wbgeo to explicitly manage lifecycle.
-    """
+def save_outputs(sim_output: SfepyOutputType) -> SfepyOutputType:
     return sim_output
-
-
