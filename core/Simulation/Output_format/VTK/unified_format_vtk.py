@@ -4,21 +4,12 @@ import pyvista as pv
 import numpy as np
 import re
 import typing
-
+from core.Simulation.Simulation_packages.Sfepy.simulation_run import SfepyOutputType
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.object_components import SimulationResults
 
 
-# =====================================================
-# WBGeo SAFE OUTPUT TYPE (REPLACES SfepySimulationOutput)
-# =====================================================
-SfepyOutputType = typing.Annotated[
-    dict,
-    AnnotatedScriptType(
-        name="SfepyOutput",
-        identifier="SfepyOutputType"
-    )
-]
+
 
 
 # -------------------------------------------------
