@@ -8,26 +8,12 @@ import meshio
 
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
+from core.object_components import MeshResults
 
 
 # =====================================================
 # TYPES (WBGeo SAFE)
 # =====================================================
-SfepyInputType = typing.Annotated[
-    dict,
-    AnnotatedScriptType(
-        name="SfepyInput",
-        identifier="SfepyInputType"
-    )
-]
-
-SfepyOutputType = typing.Annotated[
-    dict,
-    AnnotatedScriptType(
-        name="SfepyOutput",
-        identifier="SfepyOutputType"
-    )
-]
 
 SfepyInputFileType = typing.Annotated[
     str,
@@ -36,6 +22,24 @@ SfepyInputFileType = typing.Annotated[
         color='aqua',
         identifier='SfepyInputFileType',
         controlled='RemoteFile|endswith=.py'
+    )
+]
+
+
+SfepyInputType = typing.Annotated[
+    dict,
+    AnnotatedScriptType(
+        name="SfepyInput",
+        identifier="SfepyInputType"
+    )
+]
+
+
+SfepyOutputType = typing.Annotated[
+    dict,
+    AnnotatedScriptType(
+        name="SfepyOutput",
+        identifier="SfepyOutputType"
     )
 ]
 
@@ -54,7 +58,8 @@ SfepyInputFileType = typing.Annotated[
 )
 def sfepy_input_data(
     name: str = 'Hydrothermal Simulation',
-    input_file: SfepyInputFileType = 'examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py',
+    input_file: SfepyInputFileType =
+        'examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py',
     output_dir: typing.Optional[str] = None
 ) -> SfepyInputType:
 
@@ -82,7 +87,7 @@ def sfepy_input_data(
 )
 def run_sfepy(
     sfepy_input_or_file: typing.Union[SfepyInputType, str],
-    mesh_test: typing.Any,
+    mesh_test: MeshResults,
     output_dir: typing.Optional[str] = None
 ) -> SfepyOutputType:
 
@@ -156,7 +161,7 @@ def run_sfepy(
             pass
 
     # -------------------------------------------------
-    # RETURN (WBGeo SAFE)
+    # RETURN (WBGeo SAFE DICT)
     # -------------------------------------------------
     return {
         "output_dir": output_dir,
