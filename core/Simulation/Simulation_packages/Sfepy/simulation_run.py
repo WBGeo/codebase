@@ -1,40 +1,121 @@
 import os
+import pathlib
+import typing
 import tempfile
 import subprocess
-import shutil
 import numpy as np
 import meshio
+import shutil
+import pyvista as pv
+
+from pydantic import BaseModel
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
+from core.object_components import SimulationResults
 
-def run_sfepy(input_file, mesh_test, output_dir=None):
-    """
-    Run SfePy on a mesh.
 
-    If output_dir is None:
-        → create temporary output directory
-        → remove it after execution
+# =====================================================
+# INPUT TYPES
+# =====================================================
+SfepyInputFileType = typing.Annotated[
+    str,
+    AnnotatedScriptType(
+        name='path',
+        color='aqua',
+        identifier='SfepyInputFileType',
+        controlled='RemoteFile|endswith=.py'
+    )
+]
 
-    If output_dir is provided:
-        → keep it permanently
-    """
+
+# =====================================================
+# INPUT DATA
+# =====================================================
+class SfepySimulationInput(BaseModel):
+    name: str
+    input_file: str
+    output_dir: typing.Optional[str] = None
+
+
+# =====================================================
+# OUTPUT DATA (NEW IMPORTANT PIECE)
+# =====================================================
+class SfepySimulationOutput(BaseModel):
+    output_dir: str
+    is_temp: bool
+
+
+# =====================================================
+# INPUT COMPONENT
+# =====================================================
+@wbgeo_component(
+    description='Input data for SfePy simulation',
+    title='SfePy Input',
+    color='#b0dfa9',
+    border_color='#000000',
+    group='Inputs',
+    identifier='wbgeo::sfepy_input_data',
+    return_name='sfepy_input',
+    is_object_type=True,
+)
+def sfepy_input_data(
+    name: str = 'Hydrothermal Simulation',
+    input_file: SfepyInputFileType =
+        'examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py',
+    output_dir: typing.Optional[str] = None
+) -> SfepySimulationInput:
+
+    datadir = pathlib.Path(__file__).parent.parent.parent.resolve()
+    full_input_path = os.path.join(datadir, input_file)
+
+    return SfepySimulationInput(
+        name=name,
+        input_file=full_input_path,
+        output_dir=output_dir
+    )
+
+
+# =====================================================
+# SIMULATION COMPONENT
+# =====================================================
+@wbgeo_component(
+    description='Simulation using Sfepy',
+    title='Simulating with Sfepy',
+    color="#74be9d",
+    border_color='#000000',
+    group='Meshing',
+    identifier='Simulate_with_sfepy',
+    return_name='Simulation',
+)
+def run_sfepy(sfepy_input_or_file, mesh_test, output_dir=None) -> SfepySimulationOutput:
 
     # -------------------------------------------------
-    # Handle output directory
+    # INPUT HANDLING
     # -------------------------------------------------
-    auto_output = False
+    if isinstance(sfepy_input_or_file, SfepySimulationInput):
+        input_file = sfepy_input_or_file.input_file
+        if output_dir is None:
+            output_dir = sfepy_input_or_file.output_dir
+    else:
+        input_file = sfepy_input_or_file
+
+    # -------------------------------------------------
+    # OUTPUT DIRECTORY
+    # -------------------------------------------------
+    is_temp = False
 
     if output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="sfepy_output_")
-        auto_output = True
-        print(f"[INFO] Using temporary output directory: {output_dir}")
+        is_temp = True
+        print(f"[INFO] Temp output: {output_dir}")
     else:
         os.makedirs(output_dir, exist_ok=True)
-        print(f"[INFO] Using user-defined output directory: {output_dir}")
+        print(f"[INFO] User output: {output_dir}")
 
     os.environ["SFEpy_OUTPUT_DIR"] = output_dir
 
     # -------------------------------------------------
-    # Export mesh to Exodus
+    # EXPORT MESH
     # -------------------------------------------------
     exo_buffer = export_mesh_results_to_exodus(mesh_test)
 
@@ -42,15 +123,12 @@ def run_sfepy(input_file, mesh_test, output_dir=None):
         tmp_exo_path = tmp_exo.name
         tmp_exo.write(exo_buffer.getbuffer())
 
-    print(f"[INFO] Temporary Exodus file created at: {tmp_exo_path}")
-
-    # -------------------------------------------------
-    # Convert to SfePy mesh
-    # -------------------------------------------------
     mesh = meshio.read(tmp_exo_path, file_format="exodus")
 
-    mat_ids = [np.full(len(cell_block.data), i, dtype=int)
-               for i, cell_block in enumerate(mesh.cells)]
+    mat_ids = [
+        np.full(len(cell_block.data), i, dtype=int)
+        for i, cell_block in enumerate(mesh.cells)
+    ]
     mesh.cell_data = {"mat_id": mat_ids}
 
     with tempfile.NamedTemporaryFile(suffix=".mesh", delete=False) as tmp_mesh:
@@ -59,46 +137,51 @@ def run_sfepy(input_file, mesh_test, output_dir=None):
     mesh.write(tmp_mesh_path, file_format="medit")
     os.environ["TEMP_MESH_FILE"] = tmp_mesh_path
 
-    print(f"[INFO] Temporary SfePy mesh created at: {tmp_mesh_path}")
-
     # -------------------------------------------------
-    # Run SfePy
+    # RUN SFEpy
     # -------------------------------------------------
-    print("[INFO] Start running SfePy...")
+    print("[INFO] Running SfePy...")
     process = subprocess.Popen(
         ["sfepy-run", input_file],
         env=os.environ,
         cwd=os.getcwd()
     )
     process.wait()
-    print("[INFO] SfePy run completed.")
+    print("[INFO] SfePy finished.")
 
     # -------------------------------------------------
-    # List output files
-    # -------------------------------------------------
-    print("[INFO] SfePy output files in:", output_dir)
-    for root, _, files in os.walk(output_dir):
-        for f in files:
-            print(os.path.join(root, f))
-
-    # -------------------------------------------------
-    # Cleanup ONLY temporary helper files
+    # CLEAN TEMP FILES ONLY
     # -------------------------------------------------
     for tmp_file in [tmp_exo_path, tmp_mesh_path]:
         try:
-            if os.path.exists(tmp_file):
-                os.remove(tmp_file)
-        except Exception as e:
-            print(f"[WARNING] Could not remove {tmp_file}: {e}")
+            os.remove(tmp_file)
+        except:
+            pass
 
     # -------------------------------------------------
-    # Remove output_dir ONLY if it was auto-created
-    for tmp_file in [tmp_exo_path, tmp_mesh_path]:
-        try:
-            if tmp_file and os.path.exists(tmp_file):
-                os.remove(tmp_file)
-                print(f"[INFO] Removed temporary file: {tmp_file}")
-        except Exception as e:
-            print(f"[WARNING] Could not remove {tmp_file}: {e}")
+    # RETURN OUTPUT OBJECT (IMPORTANT)
+    # -------------------------------------------------
+    return SfepySimulationOutput(
+        output_dir=output_dir,
+        is_temp=is_temp
+    )
 
-    return output_dir
+
+# =====================================================
+# SAVE OUTPUTS COMPONENT (NEW - YOUR MISSING PIECE)
+# =====================================================
+@wbgeo_component(
+    title="Save outputs of simulation",
+    description="Save outputs",
+    group="Outputs",
+    identifier="wbgeo::save_outputs",
+    return_name="simulation_output",
+)
+def save_outputs(sim_output: SfepySimulationOutput) -> SfepySimulationOutput:
+    """
+    This component just passes through the output
+    and allows wbgeo to explicitly manage lifecycle.
+    """
+    return sim_output
+
+
