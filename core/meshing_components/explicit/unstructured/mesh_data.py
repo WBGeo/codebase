@@ -1537,6 +1537,70 @@ def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData) -> T
 
 
 
+def classify_boundary_nodes(nodes, extent, tol_ratio=1e-4):
+
+    nodes = np.asarray(nodes)
+
+    xmin, xmax, ymin, ymax, zmin, zmax = extent
+
+    dx = xmax - xmin
+    dy = ymax - ymin
+    dz = zmax - zmin
+
+    tolx = dx * tol_ratio
+    toly = dy * tol_ratio
+    tolz = dz * tol_ratio
+
+    boundary_groups = {
+        "left": [],
+        "right": [],
+        "front": [],
+        "back": [],
+        "bottom": [],
+        "top": [],
+    }
+
+    for i, (x, y, z) in enumerate(nodes):
+
+        if abs(x - xmin) <= tolx:
+            boundary_groups["left"].append(i)
+
+        if abs(x - xmax) <= tolx:
+            boundary_groups["right"].append(i)
+
+        if abs(y - ymin) <= toly:
+            boundary_groups["front"].append(i)
+
+        if abs(y - ymax) <= toly:
+            boundary_groups["back"].append(i)
+
+        if abs(z - zmin) <= tolz:
+            boundary_groups["bottom"].append(i)
+
+        if abs(z - zmax) <= tolz:
+            boundary_groups["top"].append(i)
+
+    return boundary_groups
+
+def build_point_sets(boundary_groups, n_nodes):
+
+    point_sets = {}
+
+    for name, node_ids in boundary_groups.items():
+        if len(node_ids) == 0:
+            continue
+
+        arr = np.asarray(node_ids, dtype=int)
+
+        # optional safety check
+        if np.any(arr >= n_nodes):
+            raise ValueError(f"{name} contains invalid node index")
+
+        point_sets[name] = arr
+
+    return point_sets
+
+
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
                  title='Create Unstructured Mesh',  # The title shown in the GUI
@@ -1673,9 +1737,24 @@ def create_unstructured_mesh_data(
       nodes: NDArray[np.float64]
       cells: List[meshio.CellBlock]
       nodes, cells = mesh_generator(ov, tagssss, extent_arr , wells, well_tags, source_tag, shaft_tags, shaft_to_child_fragments,  tri_surface_tags, tri_surface_to_child_fragments, grid_litho, mesh_size= mesh_size, curve_mesh_size=curve_mesh_size )
+
       print("\n[FINAL DEBUG] Line blocks in new_cells:")
     finally:
       gmsh.finalize()
+    x_min, y_min, z_min = nodes.min(axis=0)
+    x_max, y_max, z_max = nodes.max(axis=0)
+
+    extent_mesh = np.array([x_min, x_max, y_min, y_max, z_min, z_max])
+
+    boundary_groups_n = classify_boundary_nodes(nodes, extent_mesh)
+    point_sets = build_point_sets(boundary_groups_n, len(nodes))
+
+    return MeshResults(
+        elements=cells,
+        nodes=nodes,
+        point_sets=point_sets,
+        #cell_data={"region": region_blocks}
+    )
     # return a MeshData instance
     return MeshResults(elements=cells,
                        nodes=nodes,

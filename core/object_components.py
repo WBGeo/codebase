@@ -144,6 +144,7 @@ class FaultModelResults:
     fault_frame: FaultFrame  # this is a deepcopy of the structural frame object
 
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
+
 class MeshResults(BaseModel):
     """
     Container class holding unstructured mesh results.
@@ -157,40 +158,69 @@ class MeshResults(BaseModel):
         Mesh elements stored as MeshIO CellBlocks.
 
     cell_data : dict[str, list[np.ndarray]], optional
-        Per-cell data arrays associated with the mesh.
-    """
+        Per-cell data arrays (aligned with elements list)
 
+    point_sets : dict[str, np.ndarray], optional
+        Per-node data arrays (same length as nodes)
+    """
 
     nodes: NpNDArrayFp64
     elements: List[MeshIOCellBlock]
-    cell_data: Optional[Dict[str, List[NpNDArrayFp64]]] = None
-    model_config = ConfigDict(arbitrary_types_allowed=True)  # <--- add this
+
+    point_sets: Optional[Dict[str, np.ndarray]] = None
+    cell_data: Optional[Dict[str, List[np.ndarray]]] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # transient / derived
-    _mesh : Optional[pyvista.MultiBlock]  = PrivateAttr(default=None) #  exclude this field from serialization
+    _mesh: Optional[pyvista.MultiBlock] = PrivateAttr(default=None)
     _vtm_in = PrivateAttr(default=None)
+
+    # =====================================================
+    # 🔹 PyVista mesh interface
+    # =====================================================
     @property
-    def mesh(self): # getter/setter due to private/transient field
-      if self._mesh is None:
-        self._mesh = self.vtm_in.create_mesh()
-      return self._mesh
+    def mesh(self):
+        if self._mesh is None:
+            self._mesh = self.vtm_in.create_mesh()
+        return self._mesh
 
     @mesh.setter
-    def mesh(self, m): # getter/setter due to private/transient field
-      self._mesh = m
+    def mesh(self, m):
+        self._mesh = m
 
+    # =====================================================
+    # 🔹 VTM input builder
+    # =====================================================
     @property
     def vtm_in(self):
-      if self._vtm_in is None:
-        from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
-        self._vtm_in = VTMInputs(
-          self.nodes,
-          self.elements
-        )
-        if self.mesh is None:
-          raise ValueError("failed to load mesh during")
-      return self._vtm_in
+        if self._vtm_in is None:
+            from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
 
+            self._vtm_in = VTMInputs(
+                self.nodes,
+                self.elements,
+                point_sets=self.point_sets,   # ✅ NEW
+                cell_data=self.cell_data
+            )
+
+        return self._vtm_in
+
+    # =====================================================
+    # 🔹 Optional helper (very useful for debugging)
+    # =====================================================
+    def to_meshio(self):
+        """
+        Convert to meshio.Mesh (useful for writing Exodus, VTK, etc.)
+        """
+        import meshio
+
+        return meshio.Mesh(
+            points=self.nodes,
+            cells=self.elements,
+            point_sets=self.point_sets if self.point_sets else {},
+            cell_data=self.cell_data if self.cell_data else {}
+        )
 
 
     # TODO: export_resqml is not yet fully working (Petrel/CMG compatibility issues
