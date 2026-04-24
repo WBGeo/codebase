@@ -60,11 +60,11 @@ def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, 
 
 
 
-RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='Table|R')]
+RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='List|R')]
 
 MeshDev = typing.Annotated[
     Tuple[int, int],
-    AnnotatedScriptType(name='mesh_devision', color='pink', identifier='mesh::MeshDev', controlled='Table|M1|M2')
+    AnnotatedScriptType(name='mesh_devision', color='pink', identifier='mesh::MeshDev', controlled='Tuple|M1|M2')
 ]
 
 # Prepare geological model's results to be used in creating structured meshing
@@ -125,8 +125,12 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
 
 
 
-def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinement_data: RefinementData = (25,21,16,5,6),
-                                z_threshold: float =0.1, mesh_devision: MeshDev =[], tolerance: float =1, extent: ExtentData = [] ) -> MeshResults:
+def create_structured_mesh_data(geomodel_result: StructuralModelResults,
+                                refinement_data: RefinementData = (25,21,16,5,6),
+                                z_threshold: float =0.1,
+                                mesh_devision: typing.Optional[MeshDev] = None,
+                                tolerance: float =1,
+                                extent: typing.Optional[ExtentData] = None ) -> MeshResults:
     """
     Generates a geological mesh and returns a MeshData object.
 
@@ -134,9 +138,9 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults, refinem
         geomodel_result :Results of geological modeling.
         refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
-        mesh_devision (list): Resolution in x and y directions.
+        mesh_devision (MeshDev): Resolution in x and y directions.
         tolerance (float): Distance tolerance for Z-value adjustment.
-        extent (list): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
+        extent (ExtentData): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
 
     Returns:
         MeshResults:

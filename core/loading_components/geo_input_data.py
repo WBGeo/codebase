@@ -37,16 +37,16 @@ JSONFileDataType = typing.Annotated[
 AExtent6 = typing.Annotated[
   grid_classes.Extent6, AnnotatedScriptType(name='grid_classes.Extent6', color='aqua',
                                             identifier='grid_classes.Extent6',
-                                            controlled='Table|xmin|xmax|ymin|ymax|zmin|zmax')]
+                                            controlled='Tuple|xmin|xmax|ymin|ymax|zmin|zmax')]
 AResolution3 = typing.Annotated[
   grid_classes.Resolution3, AnnotatedScriptType(name='grid_classes.Resolution3', color='aqua',
                                                 identifier='grid_classes.Resolution3',
-                                                controlled='Table|x|y|z')]
+                                                controlled='Tuple|x|y|z')]
 
 FaultNames = typing.Annotated[
   typing.List[str], AnnotatedScriptType(name='Fault Names', color='aqua',
                                                 identifier='wbgeo::FaultNames',
-                                                controlled='Table|FaultName')]
+                                                controlled='List|FaultName')]
 
 @wbgeo_component(description='Regular (axis-aligned) grid defined by an extent and a 3D resolution',
                  title='Regular Grid',  # The title shown in the GUI

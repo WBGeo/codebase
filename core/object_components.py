@@ -379,5 +379,5 @@ class SimulationResults:
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],
   AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData',
-                      controlled='Table|xmin|xmax|ymin|ymax|zmin|zmax')
+                      controlled='Tuple|xmin|xmax|ymin|ymax|zmin|zmax')
 ]
