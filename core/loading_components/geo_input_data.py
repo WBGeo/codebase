@@ -57,9 +57,9 @@ FaultNames = typing.Annotated[
                  return_name='grid',  # the name for the returned-port
                  is_object_type=True,
                  )  # inputs are handled via the method signature
-def _regular_grid_constr(extent: AExtent6 = [(0, 1000, 0, 1000, 0, 1000)],
+def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
                          # todo: fix tuple reporting
-                         resolution: AResolution3 = [(50, 50, 50)]) -> grid_classes.RegularGrid:
+                         resolution: AResolution3 = (50, 50, 50)) -> grid_classes.RegularGrid:
   return grid_classes.RegularGrid(extent, resolution)
 
 
