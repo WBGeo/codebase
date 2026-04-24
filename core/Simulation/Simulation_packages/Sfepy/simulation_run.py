@@ -63,7 +63,7 @@ def sfepy_input_data(
     output_dir: typing.Optional[str] = None
 ) -> SfepyInputType:
     # resolve up to the codebase directory
-    datadir = pathlib.Path(__file__).parent.parent.parent.parent.parent.parent.resolve()
+    datadir = pathlib.Path(__file__).parent.parent.parent.parent.parent.resolve()
     full_input_path = os.path.join(datadir, input_file)
 
     return {
