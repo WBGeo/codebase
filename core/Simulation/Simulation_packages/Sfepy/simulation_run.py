@@ -62,8 +62,8 @@ def sfepy_input_data(
         'examples/synthetic_examples/Model1/input_data/Simulation_input_file/Hydro_thermal.py',
     output_dir: typing.Optional[str] = None
 ) -> SfepyInputType:
-
-    datadir = pathlib.Path(__file__).parent.parent.parent.resolve()
+    # resolve up to the codebase directory
+    datadir = pathlib.Path(__file__).parent.parent.parent.parent.parent.parent.resolve()
     full_input_path = os.path.join(datadir, input_file)
 
     return {
