@@ -17,6 +17,8 @@ gempy_viewer==2024.2.0
 gmsh==4.13.1
 idna>=3.10
 imageio==2.35.1
+jax==0.4.38
+jaxlib==0.4.38
 Jinja2==3.1.4
 kiwisolver>=1.4.9
 lazy_loader==0.4
