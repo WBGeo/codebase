@@ -172,12 +172,13 @@ def run_sfepy(
 # =====================================================
 # SAVE OUTPUT COMPONENT
 # =====================================================
-@wbgeo_component(
-    title="Save outputs of simulation",
-    description="Save outputs",
-    group="Outputs",
-    identifier="wbgeo::save_outputs",
-    return_name="simulation_output",
-)
+# @wbgeo_component(
+#     title="Save outputs of simulation",
+#     description="Save outputs",
+#     group="Outputs",
+#     identifier="wbgeo::save_outputs",
+#     return_name="simulation_output",
+# )
 def save_outputs(sim_output: SfepyOutputType) -> SfepyOutputType:
+    # todo: Why is this component necessary?
     return sim_output

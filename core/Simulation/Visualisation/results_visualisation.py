@@ -1,4 +1,6 @@
 # Import your SimulationResults class
+from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector
+
 from core.object_components import SimulationResults  # adjust this path
 
 import pyvista as pv
@@ -167,3 +169,25 @@ def plot_variable_time_series(sim: SimulationResults, var_name, point, decimals=
     ax.yaxis.set_major_formatter(FormatStrFormatter(f'%.{decimals}f'))
     plt.tight_layout()
     plt.show()
+
+
+@wbgeo_component(identifier='wbgeo::inspect_sim_plot_variable_at_a_time',
+                 title='Plot Variable p at a time',
+                 description='...')
+@wbgeo_inspector()
+async def vis_plot_variable_at_a_time(
+    sim: SimulationResults
+):
+  # todo: inspect windows currently do not offer inputs. Discuss if we need/want them
+  plot_variable_at_a_time(sim, var_name='p', time=0, cmap='coolwarm', scale=(1, 1, 1))
+
+
+@wbgeo_component(identifier='wbgeo::inspect_sim_plot_variable_time_series',
+                 title='Plot Variable p at time series',
+                 description='...')
+@wbgeo_inspector()
+async def vis_plot_variable_time_series(
+    sim: SimulationResults
+):
+  # todo: inspect windows currently do not offer inputs. Discuss if we need/want them
+  plot_variable_time_series(sim, 'p', point=(500.0, 20.0, 500.0))
