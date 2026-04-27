@@ -28,7 +28,7 @@ from core.utility.pydantic_bridge import PandasDataFrame, MeshIOCellBlock
 @wbgeo_type(name='Input input_data for the rock elements of a structural geological model',
             color='#b0dfa9',
             identifier='InputData_StructuralElements')
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+@dataclass
 class InputData_StructuralElements:
     """
     A class to represent the input input_data for a geological model.
@@ -83,7 +83,7 @@ class InputData_StructuralElements:
 @wbgeo_type(name='Input input_data for the fault elements of a structural geological model',
             color='orange',
             identifier='InputData_FaultElements')
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+@dataclass
 class InputData_FaultElements:
     """
     A class to represent the input input_data for a geological model.
@@ -119,7 +119,7 @@ class InputData_FaultElements:
 
 
 @wbgeo_type(name='Result of a structural geological model', color='#8cb369', identifier='StructuralModelResults')
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+@dataclass
 class StructuralModelResults:
     """
     A class to represent the results of a geological model.
@@ -348,33 +348,33 @@ class MeshResults(BaseModel):
 
 
 @wbgeo_type(name='SimulationResults', color='pink', identifier='SimulationResults')
-@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+@dataclass
 class SimulationResults:
     """
     Container class for all simulation results timesteps.
 
     Attributes
     ----------
-    nodes_by_time : Dict[float, np.ndarray]
+    nodes_by_time : Dict[float, NpNDArrayFp64]
         Node coordinates for each timestep.
 
-    cells_by_time : Dict[float, np.ndarray]
+    cells_by_time : Dict[float, NpNDArrayInt64]
         Cell connectivity for each timestep.
 
-    celltypes_by_time : Dict[float, np.ndarray]
+    celltypes_by_time : Dict[float, NpNDArrayInt64]
         Cell types for each timestep.
 
-    node_data_by_time : Dict[float, Dict[str, np.ndarray]]
+    node_data_by_time : Dict[float, Dict[str, NpNDArrayFp64]]
         Node-based data arrays for each timestep.
 
-    cell_data_by_time : Dict[float, Dict[str, np.ndarray]]
+    cell_data_by_time : Dict[float, Dict[str, NpNDArrayFp64]]
         Cell-based data arrays for each timestep.
     """
-    nodes_by_time: Dict[float, np.ndarray] = field(default_factory=dict)
-    cells_by_time: Dict[float, np.ndarray] = field(default_factory=dict)
-    celltypes_by_time: Dict[float, np.ndarray] = field(default_factory=dict)
-    node_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
-    cell_data_by_time: Dict[float, Dict[str, np.ndarray]] = field(default_factory=dict)
+    nodes_by_time: Dict[float, NpNDArrayFp64] = field(default_factory=dict)
+    cells_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
+    celltypes_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
+    node_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
+    cell_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
 
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],
