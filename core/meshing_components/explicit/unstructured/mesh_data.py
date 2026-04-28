@@ -645,10 +645,8 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
                     cell_sets[name] = []
                 cell_sets[name].extend(block_ids)
   extract_all_fast()
-  t1 = time.perf_counter()
 
 
-  t2=time.perf_counter()
 # SPECIAL HANDLING FOR LINES (WELLS)
   line_blocks = defaultdict(list)
 
@@ -676,9 +674,6 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
 
     cells.append(meshio.CellBlock(cell_type, merged))
     cell_sets[name] = [len(cells) - 1]
-  t3=time.perf_counter()
-
-  t4=time.perf_counter()
 
 # -----------------------------
 # FILTER UNUSED NODES (FAST VERSION)
@@ -707,9 +702,6 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
     cell_sets=cell_sets
 )
 
-  t5=time.perf_counter()
-
-  t6=time.perf_counter()
 
 # Inspect mesh blocks
   for block in mesh_model.cells:
@@ -728,9 +720,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
   shaft_tag_set = set(shaft_tags)
   for tag in shaft_tag_set:
     shaft_blocks_dict[tag] = []
-  t7=time.perf_counter()
 
-  t8=time.perf_counter()
 # -------------------------------------------------
 # SINGLE LOOP over cell_sets
 # -------------------------------------------------
@@ -779,9 +769,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
     else:
         print(f"  Shaft {shaft_tag}: not found")
   print(f"  Regular volume blocks: {len(regular_blocks)}")
-  t9=time.perf_counter()
 
-  t10=time.perf_counter()
 # -------------------------------------------------
 # Lithology assignment (ONLY regular blocks)
 # -------------------------------------------------
@@ -807,8 +795,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
         distances = np.linalg.norm(node_coords - centroid, axis=1)
         nearest_sample_idx = np.argmin(distances)
         lithology_numbers.append(int(node_litho[nearest_sample_idx]))
-  t11=time.perf_counter()
-  t12=time.perf_counter()
+
 # -------------------------------------------------
 # Merge geological blocks by lithology
 # -------------------------------------------------
@@ -840,9 +827,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
   sorted_regular_blocks: List[meshio.CellBlock] = [
     merged_regular_blocks[i] for i in sorted_indices
 ]
-  t13=time.perf_counter()
 
-  t14=time.perf_counter()
 #-------------------------------------------------
 # FINAL MERGE: regular + shafts
 # -------------------------------------------------
@@ -875,8 +860,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
 ]
   print("Extracting wells, sources, fault surfaces, and triangulated surfaces (single loop)")
   found_any = False
-  t15=time.perf_counter()
-  t16=time.perf_counter()
+
 
 # -----------------------------
 # Detect fault tags dynamically from cell names
@@ -939,8 +923,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
         if block.type == "vertex":
             vertex_blocks.append(block)
 
-  t17=time.perf_counter()
-  t18=time.perf_counter()
+
 
 # -----------------------------
 # ADD FAULT SURFACES (merge by tag, filter outside)
@@ -989,8 +972,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
     new_cells.append(meshio.CellBlock("triangle", merged_data))
     print(f"  Triangulated surface: {len(merged_data)} triangles")
     found_any = True
-  t19=time.perf_counter()
-  t20=time.perf_counter()
+
 
 # -----------------------------
 # ADD WELLS
@@ -1014,21 +996,6 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
 # -----------------------------
   if not found_any:
     print("  No surfaces, wells, or sources found")
-  t21=time.perf_counter()
-
-
-  print(f"Extraction: {t1 - t0:.4f} s")
-  print(f"Handeling lines after extraction:    {t3 - t2:.4f} s")
-  print(f"Filter unused nodes and create meshio:      {t5 - t4:.4f} s")
-  print(f"Shaft sepration: {t7 - t6:.4f} s")
-  print(f"regular grid sepration:    {t9 - t8:.4f} s")
-  print(f"Lithology assign:      {t11 - t10:.4f} s")
-  print(f"Merge Litho: {t13 - t12:.4f} s")
-  print(f"Final merge +rebluid:    {t15 - t14:.4f} s")
-  print(f"Fiault + wells ...:      {t17 - t16:.4f} s")
-  print(f"Add faults:      {t19 - t18:.4f} s")
-  print(f"Add wells:      {t21 - t20:.4f} s")
-
 #---------------
   if new_cells:
     return nodes, new_cells
