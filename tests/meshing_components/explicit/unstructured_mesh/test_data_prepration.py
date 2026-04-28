@@ -21,12 +21,12 @@ class TestDataPreprationModel2(unittest.TestCase):
 
         self.surface_path = os.path.join(
             cwd,
-            "../../../../examples/synthetic_examples/Model2/input_data/Geological_data/model2_surface_points_df.csv"
+            "Geological_data/model2_surface_points_df.csv"
         )
 
         self.orient_path = os.path.join(
             cwd,
-            "../../../../examples/synthetic_examples/Model2/input_data/Geological_data/model2_orientations_df.csv"
+            "Geological_data/model2_orientations_df.csv"
         )
 
         self.grid = RegularGrid(
