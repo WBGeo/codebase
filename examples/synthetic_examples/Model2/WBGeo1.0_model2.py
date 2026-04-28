@@ -177,7 +177,7 @@ mesh_unstr = create_unstructured_mesh_data(
     shafts= shafts,
     extra_planes= planes,
     tolerance=50,
-    mesh_size=30,
+    mesh_size=20,
     curve_mesh_size=5,
     DISTANCE_THRESHOLD = 40,
     PROJECTION_THRESHOLD = 60,
@@ -194,6 +194,8 @@ mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_
 
 # Plot the meshing results
 plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
+
 ###########################################################################################################################
 #                                                    Exporting meshes
 ###########################################################################################################################
@@ -209,9 +211,9 @@ plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
 #with open("filename_implic2.exo", "wb") as f:
 #    f.write(buf.getvalue())
 # Unstructured mesh
-#buf = export_mesh_results_to_exodus(mesh_unstr)
-#with open("filename_2.exo", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_unstr)
+with open("filename_2.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 #buf = export_mesh_results_to_exodus(mesh_implicit)
 #with open("filename_2_imp.exo", "wb") as f:

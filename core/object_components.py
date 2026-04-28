@@ -200,8 +200,6 @@ class MeshResults(BaseModel):
             self._vtm_in = VTMInputs(
                 self.nodes,
                 self.elements,
-                point_sets=self.point_sets,   # ✅ NEW
-                cell_data=self.cell_data
             )
 
         return self._vtm_in
