@@ -9,6 +9,73 @@ from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_ty
   InspectorHelper
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 
+
+def classify_boundary_nodes(nodes, extent, tol_ratio=1e-4):
+
+    nodes = np.asarray(nodes)
+
+    xmin, xmax, ymin, ymax, zmin, zmax = extent
+
+    dx = xmax - xmin
+    dy = ymax - ymin
+    dz = zmax - zmin
+
+    tolx = dx * tol_ratio
+    toly = dy * tol_ratio
+    tolz = dz * tol_ratio
+
+    boundary_groups = {
+        "left": [],
+        "right": [],
+        "front": [],
+        "back": [],
+        "bottom": [],
+        "top": [],
+    }
+
+    for i, (x, y, z) in enumerate(nodes):
+
+        if abs(x - xmin) <= tolx:
+            boundary_groups["left"].append(i)
+
+        if abs(x - xmax) <= tolx:
+            boundary_groups["right"].append(i)
+
+        if abs(y - ymin) <= toly:
+            boundary_groups["front"].append(i)
+
+        if abs(y - ymax) <= toly:
+            boundary_groups["back"].append(i)
+
+        if abs(z - zmin) <= tolz:
+            boundary_groups["bottom"].append(i)
+
+        if abs(z - zmax) <= tolz:
+            boundary_groups["top"].append(i)
+
+    return boundary_groups
+
+def build_point_sets(boundary_groups, n_nodes):
+
+    point_sets = {}
+
+    for name, node_ids in boundary_groups.items():
+        if len(node_ids) == 0:
+            continue
+
+        arr = np.asarray(node_ids, dtype=int)
+
+        # optional safety check
+        if np.any(arr >= n_nodes):
+            raise ValueError(f"{name} contains invalid node index")
+
+        point_sets[name] = arr
+
+    return point_sets
+
+
+
+
 @wbgeo_component(
     description='Provides structured implicit mesh as unstructured',
     title='Create Structured Implicit Mesh',
@@ -100,10 +167,20 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
         cell_data_list.append(np.full(len(elems_blk), blk, dtype=int))
 
     cell_data = {"block_id": cell_data_list}
+    # -----------------------------------
+    x_min, y_min, z_min = points.min(axis=0)
+    x_max, y_max, z_max = points.max(axis=0)
+
+    extent_mesh = np.array([x_min, x_max, y_min, y_max, z_min, z_max])
+
+    boundary_groups_n = classify_boundary_nodes(points, extent_mesh)
+    point_sets = build_point_sets(boundary_groups_n, len(points))
+
     return MeshResults(
         nodes=points,
         elements=cells,
-        cell_data=cell_data
+        cell_data=cell_data,
+        point_sets=point_sets
     )
 
 @wbgeo_component(identifier='wbgeo::inspect_implicit_mesh_3d',

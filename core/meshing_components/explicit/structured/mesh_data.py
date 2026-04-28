@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
   InspectorHelper
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+from core.meshing_components.geometry.Nodes import Nodes
 
 # Rsample while preserving Z
 def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, extent: List[float]) -> NDArray[np.floating]:
@@ -256,7 +257,12 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
         cell_data_list.append(np.full(len(elems_blk), blk, dtype=int))
 
     cell_data = {"block_id": cell_data_list}
+    #------------------------------------
+    #.Add node boundaries
+    #------------------------------------
+    nodes_obj = Nodes(nodes)
 
+    point_sets = nodes_obj.nodes_on_boundaries()
     # -----------------------------------
     # Return mesh
     # -----------------------------------
@@ -264,7 +270,8 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
     return MeshResults(
         nodes=nodes[:, 1:4] if nodes.shape[1] == 4 else nodes,  # remove node_id column if present
         elements=cells,
-        cell_data=cell_data
+        cell_data=cell_data,
+        point_sets=point_sets
     )
 
 @wbgeo_component(identifier='wbgeo::inspect_structured_mesh_3d',
