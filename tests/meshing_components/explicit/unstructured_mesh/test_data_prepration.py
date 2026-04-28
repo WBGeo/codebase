@@ -17,16 +17,15 @@ class TestDataPreprationModel2(unittest.TestCase):
 
     def setUp(self):
 
-        cwd = os.getcwd()
-
+        data_dir = os.path.dirname(__file__) + "/Geological_data/"
         self.surface_path = os.path.join(
-            cwd,
-            "Geological_data/model2_surface_points_df.csv"
+            data_dir,
+            "model2_surface_points_df.csv"
         )
 
         self.orient_path = os.path.join(
-            cwd,
-            "Geological_data/model2_orientations_df.csv"
+            data_dir,
+            "model2_orientations_df.csv"
         )
 
         self.grid = RegularGrid(
