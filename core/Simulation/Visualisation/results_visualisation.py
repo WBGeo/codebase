@@ -182,12 +182,26 @@ async def vis_plot_variable_at_a_time(
   plot_variable_at_a_time(sim, var_name='p', time=0, cmap='coolwarm', scale=(1, 1, 1))
 
 
-@wbgeo_component(identifier='wbgeo::inspect_sim_plot_variable_time_series',
-                 title='Plot Variable p at time series',
+@wbgeo_component(identifier='wbgeo::inspect_sim_plot_cross_section',
+                 title='Plot Variable T along a cross_section',
                  description='...')
 @wbgeo_inspector()
-async def vis_plot_variable_time_series(
+async def vis_plot_cross_section(
     sim: SimulationResults
 ):
   # todo: inspect windows currently do not offer inputs. Discuss if we need/want them
-  plot_variable_time_series(sim, 'p', point=(500.0, 20.0, 500.0))
+  plot_cross_section(sim,"T", 0, origin=(540,20,100), normal=(1,0,0))
+
+
+
+@wbgeo_component(identifier='wbgeo::inspect_sim_plot_variable_along_line',
+                 title='Plot Variable p along a line',
+                 description='...')
+@wbgeo_inspector()
+async def vis_plot_variable_along_line(
+    sim: SimulationResults
+):
+  # todo: inspect windows currently do not offer inputs. Discuss if we need/want them
+  plot_variable_along_line(sim,"p", 0, p0=(500,20,50), p1=(500,20,1000))
+
+
