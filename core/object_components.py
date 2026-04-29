@@ -167,8 +167,8 @@ class MeshResults(BaseModel):
     nodes: NpNDArrayFp64
     elements: List[MeshIOCellBlock]
 
-    point_sets: Optional[Dict[str, np.ndarray]] = None
-    cell_data: Optional[Dict[str, List[np.ndarray]]] = None
+    point_sets: Optional[Dict[str, NpNDArrayInt64]] = None
+    cell_data: Optional[Dict[str, List[NpNDArrayInt64]]] = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
