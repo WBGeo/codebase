@@ -28,6 +28,12 @@ from core.structural_modeling_components.structural_objects.structural_objects i
 CSVFileDataType = typing.Annotated[
   str, AnnotatedScriptType(name='path', color='aqua', identifier='CSVFileDataType',
                            controlled='RemoteFile|endswith=.csv')]
+SurfaceCSVFileDataType = typing.Annotated[
+  str, AnnotatedScriptType(name='path', color='aqua', identifier='SurfaceCSVFileDataType',
+                           controlled='RemoteFile|endswith=.csv|contains=surface_points')]
+OrientationsCSVFileDataType = typing.Annotated[
+  str, AnnotatedScriptType(name='path', color='aqua', identifier='OrientationsCSVFileDataType',
+                           controlled='RemoteFile|endswith=.csv|contains=orientations_')]
 JSONFileDataType = typing.Annotated[
   str, AnnotatedScriptType(name='path', color='aqua', identifier='JSONFileDataType',
                            controlled='RemoteFile|endswith=.json')]
@@ -95,8 +101,8 @@ def load_mapping(path: RemoteMappingFileType):
                  )  # inputs are handled via the method signature
 def structural_input_data(
     name: str = 'Model 1',
-    surface_points_file: CSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
-    orientations_file: typing.Optional[CSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
+    surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
+    orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
     mapping_file: JSONFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_mapping.json'
 ) -> InputData_StructuralElements:
   import os
@@ -150,12 +156,18 @@ def group_from_type(type: type[pydantic.BaseModel]) -> list[
     field_type = field.annotation
     default_value = field.default
     description = field.description
-    if field_type == int:
-      ret.append(CtrlInt(id=name, label=description, defaultValue=default_value))
+    if field_type == int :
+      ret.append(CtrlInt(id=name, label=name, description=description, defaultValue=default_value))
+    elif field_type == typing.Optional[int]:
+      ret.append(CtrlInt(id=name, label=f'({name})', description=description, defaultValue=default_value))
     elif field_type == float:
-      ret.append(CtrlFloat(id=name, label=description, defaultValue=default_value))
+      ret.append(CtrlFloat(id=name, label=name, description=description, defaultValue=default_value))
+    elif field_type == typing.Optional[float]:
+      ret.append(CtrlFloat(id=name, label=f'({name})', description=description, defaultValue=default_value))
     elif field_type == str:
-      ret.append(CtrlText(id=name, label=description, defaultValue=default_value))
+      ret.append(CtrlText(id=name, label=name, description=description, defaultValue=default_value))
+    elif field_type == typing.Optional[str]:
+      ret.append(CtrlText(id=name, label=f'({name})', description=description, defaultValue=default_value))
     else:
       ret.append(CtrlLabel(label=description + f": Unhandled `{str(name)}: {str(field_type)}`"))
 
@@ -198,8 +210,7 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
 
                                    ) for key in group_names
                                  ]),
-    # CtrlLabel(label='Group ' + key) for key in group_names
-    CtrlGroup(id='faults', inner=[CtrlLabel(label='Faults: (WIP) ')])
+    #CtrlGroup(id='faults', inner=[CtrlLabel(label='Faults: (WIP) ')]) # show nothing for faults
   ])
 
 
@@ -297,8 +308,8 @@ def inspect_structural_model_result_plot_structural_model_3D_sf(
                  )
 def faults_input_data(
     name: str = 'Faults Model 2',
-    fault_surface_points_file: CSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
-    fault_orientations_file: typing.Optional[CSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
+    fault_surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
+    fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
     fault_names: FaultNames = ['fault',]) -> InputData_FaultElements:
   import os
   import pathlib
