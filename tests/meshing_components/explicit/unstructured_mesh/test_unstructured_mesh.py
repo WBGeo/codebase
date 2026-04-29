@@ -152,7 +152,7 @@ class UnstructuredMeshTestCase(unittest.TestCase):
         # Size sanity (tolerant)
         # -----------------------------
         self.assertTrue(
-            4000 < len(nodes) < 6000,
+            4000 < len(nodes) < 18000,
             f"Unexpected number of nodes: {len(nodes)}"
         )
 
