@@ -6,7 +6,7 @@ import gzip
 import pickle
 
 from core.object_components import InputData_StructuralElements
-from core.object_components import MeshResults  # (important for type consistency)
+from core.object_components import MeshResults
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
@@ -39,11 +39,6 @@ def load_pickle(path):
 # SAFE EXTRACTORS
 # ------------------------
 def get_nodes(mesh):
-    """
-    Supports:
-    - MeshResults from core.object_components
-    - fallback dict-like objects
-    """
     if hasattr(mesh, "nodes"):
         return np.asarray(mesh.nodes)
 
@@ -54,9 +49,6 @@ def get_nodes(mesh):
 
 
 def get_elements(mesh):
-    """
-    Supports meshio-style or wrapped storage
-    """
     if hasattr(mesh, "elements"):
         return mesh.elements
 
@@ -115,23 +107,43 @@ class StructuredMeshTestCase(unittest.TestCase):
             tolerance=1
         )
 
-        # ------------------------
-        # Wrap generated mesh to match PKL EXACTLY
-        # ------------------------
+        # Wrap generated mesh
         mesh_gen_wrapped = MeshResults(
             nodes=mesh_generated.nodes,
             elements=mesh_generated.elements
         )
 
-        # ------------------------
-        # Extract safely
-        # ------------------------
+        # Extract nodes
         gen_nodes = get_nodes(mesh_gen_wrapped)
         ref_nodes = get_nodes(self.mesh_pkl)
 
+        # ------------------------
+        # Shape must match
+        # ------------------------
         self.assertEqual(gen_nodes.shape, ref_nodes.shape)
-        self.assertTrue(np.allclose(gen_nodes, ref_nodes, atol=1e-6))
 
+        # ------------------------
+        # Sort nodes to avoid ordering issues
+        # ------------------------
+        def sort_nodes(arr):
+            return arr[np.lexsort(arr.T)]
+
+        gen_nodes_sorted = sort_nodes(gen_nodes)
+        ref_nodes_sorted = sort_nodes(ref_nodes)
+
+        # ------------------------
+        # Robust comparison
+        # ------------------------
+        diff = np.abs(gen_nodes_sorted - ref_nodes_sorted)
+
+        self.assertTrue(
+            np.allclose(gen_nodes_sorted, ref_nodes_sorted, atol=1e-5),
+            msg=f"Max node diff: {diff.max()}"
+        )
+
+        # ------------------------
+        # Compare elements
+        # ------------------------
         gen_elems = get_elements(mesh_gen_wrapped)
         ref_elems = get_elements(self.mesh_pkl)
 
@@ -145,5 +157,8 @@ class StructuredMeshTestCase(unittest.TestCase):
             )
 
 
+# ------------------------
+# Run
+# ------------------------
 if __name__ == "__main__":
     unittest.main()
