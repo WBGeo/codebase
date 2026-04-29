@@ -26,9 +26,9 @@ def extract_time(filename: str):
 @wbgeo_component(
     description='load VTK results',
     title='Load VTK results',
-    color='#cc9999',
+    color="#e5d016",
     border_color='#000000',
-    group='Meshing',
+    group='Simulation',
     identifier='Load_VTK_results',
     return_name='Loaded VTK results',
 )

@@ -50,9 +50,9 @@ SfepyOutputType = typing.Annotated[
 @wbgeo_component(
     description='Input data for SfePy simulation',
     title='SfePy Input',
-    color='#b0dfa9',
+    color="#e5d016",
     border_color='#000000',
-    group='Inputs',
+    group='Simulation',
     identifier='wbgeo::sfepy_input_data',
     return_name='sfepy_input',
 )
@@ -79,9 +79,9 @@ def sfepy_input_data(
 @wbgeo_component(
     description='Simulation using Sfepy',
     title='Simulating with Sfepy',
-    color="#74be9d",
+    color="#e5d016",
     border_color='#000000',
-    group='Meshing',
+    group='Simulation',
     identifier='Simulate_with_sfepy',
     return_name='Simulation',
 )
