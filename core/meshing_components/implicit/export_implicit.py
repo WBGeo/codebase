@@ -1,14 +1,13 @@
-import numpy as np
-import typing
 from typing import List
+
 import meshio
-from core.object_components import MeshResults, StructuralModelResults, ExtentData
-from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
+import numpy as np
 from numpy.typing import NDArray
-from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
-  InspectorHelper
-from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
-from core.meshing_components.explicit.unstructured.mesh_data import classify_boundary_nodes, build_point_sets
+from py_api_wbgeo.nodesapi import wbgeo_component
+
+from core.meshing_components.explicit.unstructured.mesh_data import classify_boundary_nodes, \
+  build_point_sets
+from core.object_components import MeshResults, StructuralModelResults, ExtentData
 
 
 @wbgeo_component(
@@ -117,14 +116,3 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
         cell_data=cell_data,
         point_sets=point_sets
     )
-
-@wbgeo_component(identifier='wbgeo::inspect_implicit_mesh_3d',
-                 title='Plot Implicit Mesh in 3D',
-                 description='...')
-@wbgeo_inspector()
-async def inspect_implicit_mesh_3d(
-    mesh_results: MeshResults, _inspector: InspectorHelper):
-  # load structural_model_result from the execution trace
-  structural_model_result = await (await _inspector.trace(StructuralModelResults)).get_value()
-  # and call the render function with both the mesh_results and the object from our trace
-  plot_mesh_3d(mesh_results, structural_model_result, "surface", True)

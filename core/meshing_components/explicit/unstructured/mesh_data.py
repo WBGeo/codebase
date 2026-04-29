@@ -12,9 +12,6 @@ from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
-from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
-  InspectorHelper
-from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 
@@ -1726,16 +1723,4 @@ def create_unstructured_mesh_data(
     return MeshResults(elements=cells,
                        nodes=nodes,
                        )
-
-
-@wbgeo_component(identifier='wbgeo::inspect_unstructure_mesh_3d',
-                 title='Plot Unstructured Mesh in 3D',
-                 description='...')
-@wbgeo_inspector()
-async def inspect_unstructured_mesh_3d(
-    mesh_results: MeshResults, _inspector: InspectorHelper):
-  # load structural_model_result from the execution trace
-  structural_model_result = await (await _inspector.trace(StructuralModelResults)).get_value()
-  # and call the render function with both the mesh_results and the object from our trace
-  plot_mesh_3d(mesh_results, structural_model_result, "surface", True)
 

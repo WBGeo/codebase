@@ -1,11 +1,10 @@
-from __future__ import annotations
 
 import warnings
 from typing import List
 
 import pyvista as pv
-
 from core.object_components import MeshResults, StructuralModelResults
+from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector, InspectorHelper
 
 
 _FALLBACK_COLORS = [
@@ -95,3 +94,14 @@ def plot_mesh_3d(
         plotter.show()
 
     return plotter
+
+@wbgeo_component(identifier='wbgeo::inspect_mesh_3d',
+                 title='Plot Mesh in 3D',
+                 description='...')
+@wbgeo_inspector()
+async def inspect_implicit_mesh_3d(
+    mesh_results: MeshResults, _inspector: InspectorHelper):
+  # load structural_model_result from the execution trace
+  structural_model_result = await (await _inspector.trace(StructuralModelResults)).get_value()
+  # and call the render function with both the mesh_results and the object from our trace
+  plot_mesh_3d(mesh_results, structural_model_result, "surface", True)

@@ -7,16 +7,13 @@ from core.meshing_components.explicit.structured.store_grid_data import create_i
 from core.meshing_components.explicit.structured.node_element_generator import adjust_z_values, \
     create_hexahedral_elements_with_nodes
 from core.object_components import StructuralModelResults, MeshResults, ExtentData
-from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 import typing
 from typing import List, Tuple, Dict
 from scipy.spatial import cKDTree
 from numpy.typing import NDArray
 import meshio
 from types import SimpleNamespace
-from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type, wbgeo_inspector, \
-  InspectorHelper
-from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.geometry.Nodes import Nodes
 
 # Rsample while preserving Z
@@ -273,15 +270,4 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
         cell_data=cell_data,
         point_sets=point_sets
     )
-
-@wbgeo_component(identifier='wbgeo::inspect_structured_mesh_3d',
-                 title='Plot Structured Mesh in 3D',
-                 description='...')
-@wbgeo_inspector()
-async def inspect_structured_mesh_3d(
-    mesh_results: MeshResults, _inspector: InspectorHelper):
-  # load structural_model_result from the execution trace
-  structural_model_result = await (await _inspector.trace(StructuralModelResults)).get_value()
-  # and call the render function with both the mesh_results and the object from our trace
-  plot_mesh_3d(mesh_results, structural_model_result, "surface", True)
 
