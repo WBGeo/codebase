@@ -119,12 +119,13 @@ class VTMInputs:
         mesh: pv.MultiBlock = pv.read(self.output_filename)
         mesh.plot(show_edges=True)
 
-@wbgeo_component(
-    title="Download Mesh as VTM ZIP",
-    description="Export Mesh to VTM inside a ZIP (like Exporters.export_vtm)",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_vtm_zip",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as VTM ZIP",
+#     description="Export Mesh to VTM inside a ZIP (like Exporters.export_vtm)",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_vtm_zip",
+# )
 def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object as a VTK MultiBlock (.vtm) dataset

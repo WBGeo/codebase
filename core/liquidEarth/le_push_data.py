@@ -96,7 +96,7 @@ LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', 
                  description='push the geosolution to a new space in Liquid Earth',
                  color='#9fc5e8',
                  border_color='#000000',
-                 group='visualisation',
+                 group='Visualisation',
                  return_name='space link',  # name of the returned port
                  )
 def push_geosolution_to_le(geosolution: StructuralModelResults, space_name: str = 'WBGeo: Demo',

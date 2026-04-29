@@ -56,12 +56,14 @@ class ExosInputs:
 # =========================================================
 # 🚀 WBGeo Export Component
 # =========================================================
-@wbgeo_component(
-    title="Download Mesh as Exodus",
-    description="Export Mesh to Exodus",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_exodus",
-)
+
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as Exodus",
+#     description="Export Mesh to Exodus",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_exodus",
+# )
 def export_mesh_results_to_exodus(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to an Exodus (.exo) file.

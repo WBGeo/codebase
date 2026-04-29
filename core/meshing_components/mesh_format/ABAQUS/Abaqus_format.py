@@ -155,13 +155,13 @@ class AbaqusInputs:
         print(f"[INFO] Abaqus file written: {filename}")
 
 
-
-@wbgeo_component(
-    title="Download Mesh as Abaqus",
-    description="Export Mesh to Abaqus",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_abaqus",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as Abaqus",
+#     description="Export Mesh to Abaqus",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_abaqus",
+# )
 def export_mesh_results_to_abaqus(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to an Abaqus `.inp` file

@@ -50,13 +50,13 @@ class VTUInputs:
         )
         return mesh
 
-
-@wbgeo_component(
-    title="Download Mesh as VTU",
-    description="Export Mesh to VTU",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_vtu",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as VTU",
+#     description="Export Mesh to VTU",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_vtu",
+# )
 def export_mesh_results_to_vtu(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a MeshResults object to a VTU (.vtu) file.

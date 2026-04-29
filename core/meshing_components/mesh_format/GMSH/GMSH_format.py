@@ -147,13 +147,13 @@ class GMSHInputs:
 
 
 
-
-@wbgeo_component(
-    title="Download Mesh as Gmsh",
-    description="Export Mesh to Gmsh",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_gmsh",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as Gmsh",
+#     description="Export Mesh to Gmsh",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_gmsh",
+# )
 def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a Gmsh (.msh) file using GMSHInputs.

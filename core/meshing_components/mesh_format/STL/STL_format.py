@@ -174,13 +174,13 @@ class STLInputs:
 
 
 
-
-@wbgeo_component(
-    title="Download Mesh as STL",
-    description="Export Mesh to STL",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_stl",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as STL",
+#     description="Export Mesh to STL",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_stl",
+# )
 def export_mesh_results_to_stl(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to STL format.

@@ -73,13 +73,13 @@ class VTKInputs:
         return grid
 
 
-
-@wbgeo_component(
-    title="Download Mesh as VTK",
-    description="Export Mesh to single VTK",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_vtk",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as VTK",
+#     description="Export Mesh to single VTK",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_vtk",
+# )
 def export_mesh_results_to_vtk(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a legacy VTK (.vtk) file

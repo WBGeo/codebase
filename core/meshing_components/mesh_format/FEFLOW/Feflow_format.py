@@ -495,13 +495,13 @@ class FeflowInputs:
 
 
 
-
-@wbgeo_component(
-    title="Download Mesh as Feflow",
-    description="Export Mesh to Feflow",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_feflow",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as Feflow",
+#     description="Export Mesh to Feflow",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_feflow",
+# )
 def export_mesh_results_to_feflow(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a FEFLOW (.fem) file.

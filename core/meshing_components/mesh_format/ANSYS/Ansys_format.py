@@ -129,13 +129,13 @@ class AnsysInputs:
 
         return meshio.Mesh(points=points, cells=cells)
 
-
-@wbgeo_component(
-    title="Download Mesh as ANSYS",
-    description="Export WBGeo MeshResults to ANSYS (.msh) format",
-    group="Export",
-    identifier="wbgeo::expert_mesh_results_ansys",
-)
+# We have one singular export component now
+# @wbgeo_component(
+#     title="Download Mesh as ANSYS",
+#     description="Export WBGeo MeshResults to ANSYS (.msh) format",
+#     group="Export",
+#     identifier="wbgeo::expert_mesh_results_ansys",
+# )
 def export_mesh_results_to_ansys(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to ANSYS (.msh) format using AnsysInputs.
