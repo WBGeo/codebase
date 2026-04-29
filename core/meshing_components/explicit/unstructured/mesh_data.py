@@ -16,7 +16,8 @@ from core.meshing_components.explicit.unstructured.create_clean_surface import d
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 
 
-
+MESH_ENGINEERING_COLOR = '#99b3cc';
+MESH_ENGINEERING_GROUP = 'Engineering Objects';
 
 def point_on_line_segment(pt: Tuple[float, float, float], p1: Tuple[float, float, float], p2: Tuple[float, float, float],
     tol: float = 1e-6) -> bool:
@@ -1014,9 +1015,9 @@ WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='
 
 @wbgeo_component(description='Loads a well from a wells.CSV file',
                  title='Load Well',  # The title shown in the GUI
-                 color='#cc9999',  # the color of the components
+                 color=MESH_ENGINEERING_COLOR,  # the color of the components
                  border_color='#000000',  # and its border color
-                 group='Meshing',
+                 group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
                  return_name='Wells',  # the name for the returned-port
                  )  # inputs are handled via the method signature
@@ -1094,9 +1095,9 @@ SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color
 
 @wbgeo_component(description='Loads a source from a sources.CSV file',
                  title='Load Source',  # The title shown in the GUI
-                 color='#cc9999',  # the color of the components
+                 color=MESH_ENGINEERING_COLOR,  # the color of the components
                  border_color='#000000',  # and its border color
-                 group='Meshing',
+                 group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_source_from_csv',  # a unique identifier
                  return_name='Sources',  # the name for the returned-port
                  )  # inputs are handled via the method signature
@@ -1164,12 +1165,13 @@ def load_sources_from_csv(source_file: SourceCSVDataType) -> SourcesData:
 
 EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::ellipse_csv', controlled='RemoteFile|endswith=ellipses.csv')]
 
+
 @wbgeo_component(
     description='Loads ellipses from an ellipses.CSV file',
     title='Load Ellipse',
-    color='#cc9999',
-    border_color='#000000',
-    group='Meshing',
+    color=MESH_ENGINEERING_COLOR,  # the color of the components
+    border_color='#000000',  # and its border color
+    group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
 )
@@ -1288,11 +1290,11 @@ def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType) -> EllipseData:
 # the file must end with "shaftss.csv", e.g., "example_shaftss.csv", etc.
 ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::shaft_csv', controlled='RemoteFile|endswith=shafts.csv')]
 
-@wbgeo_component(description='Loads a shatf from a shafts.CSV file',
+@wbgeo_component(description='Loads a shaft from a shafts.CSV file',
                  title='Load Shaft',  # The title shown in the GUI
-                 color='#cc9999',  # the color of the components
+                 color=MESH_ENGINEERING_COLOR,  # the color of the components
                  border_color='#000000',  # and its border color
-                 group='Meshing',
+                 group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
                  return_name='Shafts',  # the name for the returned-port
                  )  # inputs are handled via the method signature
@@ -1382,9 +1384,9 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
 
 @wbgeo_component(description='Loads a plane from a planes.CSV file',
                  title='Load Plane',  # The title shown in the GUI
-                 color='#cc9999',  # the color of the components
+                 color=MESH_ENGINEERING_COLOR,  # the color of the components
                  border_color='#000000',  # and its border color
-                 group='Meshing',
+                 group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
                  return_name='planes',  # the name for the returned-port
                  )  # inputs are handled via the method signature
@@ -1456,9 +1458,9 @@ TriangulationsPlanesData = typing.Annotated[str, AnnotatedScriptType(name='path'
 @wbgeo_component(
     description='Load planes coordinates from a CSV to do triangulations',
     title='Load Triangulations Planes',
-    color='#cc9999',
-    border_color='#000000',
-    group='Meshing',
+    color=MESH_ENGINEERING_COLOR,  # the color of the components
+    border_color='#000000',  # and its border color
+    group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
 )
