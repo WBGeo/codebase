@@ -20,9 +20,8 @@ def test_marching_cubes_calls_skimage_for_each_level_and_offsets_vertices(monkey
 
     def fake_marching_cubes(block_arg, level, spacing=None, **kwargs):
         calls.append({"block": block_arg, "level": level, "spacing": spacing, "kwargs": kwargs})
-        # Verts in padded-block voxel space; chosen to land inside the extent
-        # after the origin shift so clipping does not alter them.
-        verts = np.array([[5.0, 10.0, 15.0], [10.0, 20.0, 30.0]], dtype=float)
+        # verts are simple and recognizable
+        verts = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]], dtype=float)
         faces = np.array([[0, 1, 0]], dtype=int)
         normals = np.zeros_like(verts)
         values = np.zeros((verts.shape[0],), dtype=float)
@@ -40,10 +39,9 @@ def test_marching_cubes_calls_skimage_for_each_level_and_offsets_vertices(monkey
     assert [c["level"] for c in calls] == [float(e) for e in elements]
     assert all(c["spacing"] == spacing for c in calls)
 
-    # Assert: vertices are offset by (extent_min - spacing) to account for the
-    # one-cell padding layer added before marching cubes.
-    origin = np.array([extent[0] - spacing[0], extent[2] - spacing[1], extent[4] - spacing[2]], dtype=float)
-    expected_verts = np.array([[5.0, 10.0, 15.0], [10.0, 20.0, 30.0]], dtype=float) + origin
+    # Assert: vertices are offset by extent[0], extent[2], extent[4]
+    offset = np.array([extent[0], extent[2], extent[4]], dtype=float)
+    expected_verts = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]], dtype=float) + offset
 
     assert len(mc_vertices) == 2
     assert np.allclose(mc_vertices[0], expected_verts)
@@ -103,9 +101,8 @@ def test_marching_cubes_per_element_passes_mask_and_offsets_vertices(monkeypatch
 
     assert captured["level"] == element
     assert captured["spacing"] == spacing
-    # The mask passed to skimage is the padded version (shape grows by 2 in each dim).
-    assert captured["mask"].shape == tuple(s + 2 for s in block.shape)
+    assert captured["mask"] is mask
 
-    origin = np.array([extent[0] - spacing[0], extent[2] - spacing[1], extent[4] - spacing[2]], dtype=float)
-    assert np.allclose(vertices, np.array([[5.0, 6.0, 7.0]]) + origin)
+    offset = np.array([extent[0], extent[2], extent[4]], dtype=float)
+    assert np.allclose(vertices, np.array([[5.0, 6.0, 7.0]]) + offset)
     assert np.array_equal(edges, np.array([[0, 0, 0]], dtype=int))
