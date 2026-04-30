@@ -30,7 +30,7 @@ def extract_time(filename: str):
     border_color='#000000',
     group='Simulation',
     identifier='Load_VTK_results',
-    return_name='Loaded VTK results',
+    return_name='results',
 )
 def load_vtk_results(sim_output: SfepyOutputType) -> SimulationResults:
 
