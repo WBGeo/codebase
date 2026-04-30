@@ -29,7 +29,7 @@ def extract_time(filename: str):
     color="#e5d016",
     border_color='#000000',
     group='Simulation',
-    identifier='Load_VTK_results',
+    identifier='wbgeo::load_VTK_results',
     return_name='results',
 )
 def load_vtk_results(sim_output: SfepyOutputType) -> SimulationResults:

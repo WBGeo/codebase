@@ -82,7 +82,7 @@ def sfepy_input_data(
     color="#e5d016",
     border_color='#000000',
     group='Simulation',
-    identifier='Simulate_with_sfepy',
+    identifier='wbgeo::simulate_with_sfepy',
     return_name='Simulation',
 )
 def run_sfepy(
