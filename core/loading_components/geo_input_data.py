@@ -293,13 +293,14 @@ def structural_modeling(
                                          fault_model_results=fault_model
                                          )
 
-  # Apply Options
-  for frame_name, frame_options in options.root.frame.items():
-    frame[frame_name].set_interpolation_method(frame_options.method)
-    params = frame_options.get_params()
-    if params is not None:
-      # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
-      frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
+  # Apply Options (if present)
+  if options and options.root and options.root.frame:
+    for frame_name, frame_options in options.root.frame.items():
+      frame[frame_name].set_interpolation_method(frame_options.method)
+      params = frame_options.get_params()
+      if params is not None:
+        # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
+        frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
 
   # todo: also faults with smart inputs?
 
