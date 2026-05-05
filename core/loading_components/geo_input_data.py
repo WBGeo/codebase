@@ -14,7 +14,8 @@ import typing
 from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.general import build_structural_frame
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import \
-  InterpolationMethod, OKParams, RBFParams, UCKParams, GeoINRParams, FDIParams, UKParams
+  InterpolationMethod, OKParams, RBFParams, UCKParams, GeoINRParams, FDIParams, UKParams, \
+  InterpolationParameterSet
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
   plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
@@ -137,11 +138,40 @@ def structural_input_data(
   return data_elements
 
 
-@wbgeo_type(name='StructuralFrameInputOptions', color='orange', identifier='wbgeo::StructuralFrameInputOptions')
+class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
+  method: InterpolationMethod = InterpolationMethod.RADIAL_BASIS_FUNCTION
+  ok: typing.Optional[OKParams] = None
+  rbf: typing.Optional[RBFParams] = None
+  uck: typing.Optional[UCKParams] = None
+  geoinr: typing.Optional[GeoINRParams] = None
+  fdi: typing.Optional[FDIParams] = None
+  uk: typing.Optional[UKParams] = None
+
+  def get_params(self) -> InterpolationParameterSet | None:
+    if self.method == InterpolationMethod.ORDINARY_KRIGING:
+      return self.ok
+    elif self.method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
+      return self.rbf
+    elif self.method == InterpolationMethod.UNIVERSAL_COKRIGING:
+      return self.uck
+    elif self.method == InterpolationMethod.GEOINR:
+      return self.geoinr
+    elif self.method == InterpolationMethod.FINITE_DIFFERENCES:
+      return self.fdi
+    elif self.method == InterpolationMethod.UNIVERSAL_KRIGING:
+      return self.uk
+    else:
+      raise ValueError("Unhandled interpolation method", self.method)
+
+
+class StructuralFrameInputOptions_Root(pydantic.BaseModel):
+  frame: typing.Dict[str, StructuralFrameInputOptions_Frame]
+
+
+@wbgeo_type(name='StructuralFrameInputOptions', color='orange',
+            identifier='wbgeo::StructuralFrameInputOptions')
 class StructuralFrameInputOptions(pydantic.BaseModel):
-  pass
-  # todo: Add options here
-  # data_per_number: typing.Dict[int, ComplexNumberOption]
+  root: StructuralFrameInputOptions_Root
 
 
 from py_api_wbgeo.smartcontrols import CtrlLabel, CtrlSelect, CtrlInt, CtrlFloat, CtrlIf, CtrlText, \
@@ -213,14 +243,28 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
     #CtrlGroup(id='faults', inner=[CtrlLabel(label='Faults: (WIP) ')]) # show nothing for faults
   ])
 
+def unflatten_dict(d):
+  ret = dict()
+  for key, vlaue in d.items():
+    parts = key.split(".")
+    d = ret
+    for part in parts[:-1]:
+      if part not in d:
+        d[part] = dict()
+      d = d[part]
+    d[parts[-1]] = vlaue
+  return ret
 
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options_to_data',
                  description='structural_modeling_smart_options_to_data',
                  title='structural_modeling_smart_options_to_data')
 def structural_modeling_smart_options_to_data(
     _input: SmartInputFormData) -> StructuralFrameInputOptions:
-  print(_input)
-  return None # todo
+  data = json.loads(_input) # _input is a json dict
+  data = unflatten_dict({k: v for k, v in data.items() if v is not None}) # un-flatten it and remove nulls
+  # and convert it to our StructuralFrameInputOptions type
+  return StructuralFrameInputOptions(**data)
+
 
 
 SmartStructuralFrameInputOptions = typing.Annotated[
@@ -248,9 +292,16 @@ def structural_modeling(
                                          grid=grid,
                                          fault_model_results=fault_model
                                          )
-  # todo: Options
-  print(options)
-  # todo: also faults with smart inputs
+
+  # Apply Options
+  for frame_name, frame_options in options.root.frame.items():
+    frame[frame_name].set_interpolation_method(frame_options.method)
+    params = frame_options.get_params()
+    if params is not None:
+      # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
+      frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
+
+  # todo: also faults with smart inputs?
 
   structural_model_result = general.compute_structural_model(
     frame,
