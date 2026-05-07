@@ -25,12 +25,12 @@ base_dir = os.path.dirname(__file__)
 
 data_dir = os.path.join(
     base_dir,
-    "../../loading_engineering_objects/data/Geological_data/"
+    "../../loading_engineering_objects/data/geological_data/"
 )
 
 engineering_dir = os.path.join(
     base_dir,
-    "../../loading_engineering_objects/data/Engineering_objects/"
+    "../../loading_engineering_objects/data/engineering_objects/"
 )
 
 

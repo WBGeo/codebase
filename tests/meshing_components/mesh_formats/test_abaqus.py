@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import os
 import tempfile
-from core.meshing_components.mesh_format.ABAQUS.Abaqus_format import   AbaqusInputs,export_mesh_results_to_abaqus
+from core.meshing_components.mesh_format.abaqus.Abaqus_format import   AbaqusInputs,export_mesh_results_to_abaqus
 from core.object_components import MeshResults
 
 

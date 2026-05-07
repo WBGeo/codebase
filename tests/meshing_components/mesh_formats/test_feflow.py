@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import os
 import tempfile
-from core.meshing_components.mesh_format.FEFLOW.Feflow_format import FeflowInputs, export_mesh_results_to_feflow
+from core.meshing_components.mesh_format.feflow.Feflow_format import FeflowInputs, export_mesh_results_to_feflow
 
 from core.object_components import MeshResults
 

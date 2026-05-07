@@ -4,7 +4,7 @@ import gzip
 import os
 
 from core.object_components import MeshResults
-from core.Simulation.Simulation_packages.Sfepy.simulation_run import run_sfepy
+from core.simulation_components.simulation_packages.sfepy.simulation_run import run_sfepy
 
 
 # =====================================================
@@ -37,7 +37,7 @@ class SfepyFromPKLTestCase(unittest.TestCase):
 
         cls.input_file = os.path.join(
             base_dir,
-            "Simulation_input_file",
+            "simulation_input_file",
             "Hydro_thermal.py"
         )
 

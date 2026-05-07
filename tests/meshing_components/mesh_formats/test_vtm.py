@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import io
 import zipfile
-from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs, export_mesh_results_to_vtm
+from core.meshing_components.mesh_format.vtm.VTM_format import VTMInputs, export_mesh_results_to_vtm
 
 
 from core.object_components import MeshResults

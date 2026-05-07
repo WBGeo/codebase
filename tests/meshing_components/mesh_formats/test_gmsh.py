@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import os
 import tempfile
-from core.meshing_components.mesh_format.GMSH.GMSH_format import     GMSHInputs, export_mesh_results_to_gmsh
+from core.meshing_components.mesh_format.gmsh.GMSH_format import     GMSHInputs, export_mesh_results_to_gmsh
 
 from core.object_components import MeshResults
 

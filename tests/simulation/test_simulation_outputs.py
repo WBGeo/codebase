@@ -1,7 +1,7 @@
 import unittest
 import os
 
-from core.Simulation.Output_format.VTK.unified_format_vtk import load_vtk_results
+from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
 from core.object_components import SimulationResults
 
 

@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import io
 import zipfile
-from core.meshing_components.mesh_format.VTK.VTK_format import VTKInputs, export_mesh_results_to_vtk
+from core.meshing_components.mesh_format.vtk.VTK_format import VTKInputs, export_mesh_results_to_vtk
 
 
 from core.object_components import MeshResults

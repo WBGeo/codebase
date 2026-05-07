@@ -22,7 +22,7 @@ base_dir = os.path.dirname(__file__)
 
 data_dir = os.path.join(
     base_dir,
-    "../../../../examples/synthetic_examples/Model1/input_data/Geological_data/"
+    "../../../../examples/synthetic_examples/model1/input_data/geological_data/"
 )
 
 pkl_file = os.path.join(base_dir, "structured_mesh.pkl.gz")

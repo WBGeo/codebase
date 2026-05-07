@@ -17,7 +17,7 @@ class TestDataPreprationModel2(unittest.TestCase):
 
     def setUp(self):
 
-        data_dir = os.path.dirname(__file__) + "/Geological_data/"
+        data_dir = os.path.dirname(__file__) + "/geological_data/"
         self.surface_path = os.path.join(
             data_dir,
             "model2_surface_points_df.csv"

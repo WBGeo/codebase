@@ -195,7 +195,7 @@ class MeshResults(BaseModel):
     @property
     def vtm_in(self):
         if self._vtm_in is None:
-            from core.meshing_components.mesh_format.VTM.VTM_format import VTMInputs
+            from core.meshing_components.mesh_format.vtm.VTM_format import VTMInputs
 
             self._vtm_in = VTMInputs(
                 self.nodes,

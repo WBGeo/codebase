@@ -102,9 +102,9 @@ def load_mapping(path: RemoteMappingFileType):
                  )  # inputs are handled via the method signature
 def structural_input_data(
     name: str = 'Model 1',
-    surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
-    orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
-    mapping_file: JSONFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_mapping.json'
+    surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
+    orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
+    mapping_file: JSONFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_mapping.json'
 ) -> InputData_StructuralElements:
   import os
   import pathlib
@@ -360,8 +360,8 @@ def inspect_structural_model_result_plot_structural_model_3D_sf(
                  )
 def faults_input_data(
     name: str = 'Faults Model 2',
-    fault_surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_surface_points_df.csv',
-    fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/Model1/input_data/Geological_data/model1_orientations_df.csv',
+    fault_surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
+    fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
     fault_names: FaultNames = ['fault',]) -> InputData_FaultElements:
   import os
   import pathlib

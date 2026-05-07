@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import os
 import tempfile
-from core.meshing_components.mesh_format.ANSYS.Ansys_format import   AnsysInputs,export_mesh_results_to_ansys
+from core.meshing_components.mesh_format.ansys.Ansys_format import   AnsysInputs,export_mesh_results_to_ansys
 from core.object_components import MeshResults
 
 

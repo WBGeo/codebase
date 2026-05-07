@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import io
 
-from core.meshing_components.mesh_format.VTU.VTU_format import VTUInputs, export_mesh_results_to_vtu
+from core.meshing_components.mesh_format.vtu.VTU_format import VTUInputs, export_mesh_results_to_vtu
 from core.object_components import MeshResults
 
 

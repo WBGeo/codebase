@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import io
 import zipfile
-from core.meshing_components.mesh_format.STL.STL_format import STLInputs, export_mesh_results_to_stl
+from core.meshing_components.mesh_format.stl.STL_format import STLInputs, export_mesh_results_to_stl
 
 
 from core.object_components import MeshResults

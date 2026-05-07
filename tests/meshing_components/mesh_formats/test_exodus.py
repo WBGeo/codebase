@@ -3,7 +3,7 @@ import numpy as np
 import meshio
 import io
 
-from core.meshing_components.mesh_format.EXUDOS.Exo_format import (
+from core.meshing_components.mesh_format.exudos.Exo_format import (
     ExosInputs,
     export_mesh_results_to_exodus
 )

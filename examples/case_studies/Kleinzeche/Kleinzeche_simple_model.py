@@ -254,7 +254,7 @@ p.show()
 
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
-from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.exudos.Exo_format import export_mesh_results_to_exodus
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
   load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
@@ -268,7 +268,7 @@ mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_
 # Explicit Unstructured meshing #
 #################################
  #load wells
-wells = load_wells_from_csv(cwd + "/examples/case_studies/Kleinzeche/input_data/Engineering_objects/kleinzeche_wells.csv")
+wells = load_wells_from_csv(cwd + "/examples/case_studies/Kleinzeche/input_data/engineering_objects/kleinzeche_wells.csv")
 mesh_unstr = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
     tolerance=1,

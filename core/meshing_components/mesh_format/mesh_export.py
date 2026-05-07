@@ -3,15 +3,15 @@ import typing
 
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile, AnnotatedScriptType
 
-from core.meshing_components.mesh_format.ABAQUS.Abaqus_format import export_mesh_results_to_abaqus
-from core.meshing_components.mesh_format.ANSYS.Ansys_format import export_mesh_results_to_ansys
-from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
-from core.meshing_components.mesh_format.FEFLOW.Feflow_format import export_mesh_results_to_feflow
-from core.meshing_components.mesh_format.GMSH.GMSH_format import export_mesh_results_to_gmsh
-from core.meshing_components.mesh_format.STL.STL_format import export_mesh_results_to_stl
-from core.meshing_components.mesh_format.VTK.VTK_format import export_mesh_results_to_vtk
-from core.meshing_components.mesh_format.VTM.VTM_format import export_mesh_results_to_vtm
-from core.meshing_components.mesh_format.VTU.VTU_format import export_mesh_results_to_vtu
+from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh_results_to_abaqus
+from core.meshing_components.mesh_format.ansys.Ansys_format import export_mesh_results_to_ansys
+from core.meshing_components.mesh_format.exudos.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.feflow.Feflow_format import export_mesh_results_to_feflow
+from core.meshing_components.mesh_format.gmsh.GMSH_format import export_mesh_results_to_gmsh
+from core.meshing_components.mesh_format.stl.STL_format import export_mesh_results_to_stl
+from core.meshing_components.mesh_format.vtk.VTK_format import export_mesh_results_to_vtk
+from core.meshing_components.mesh_format.vtm.VTM_format import export_mesh_results_to_vtm
+from core.meshing_components.mesh_format.vtu.VTU_format import export_mesh_results_to_vtu
 from core.object_components import MeshResults
 
 """
