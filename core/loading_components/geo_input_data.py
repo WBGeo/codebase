@@ -17,7 +17,8 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
   InterpolationMethod, OKParams, RBFParams, UCKParams, GeoINRParams, FDIParams, UKParams, \
   InterpolationParameterSet
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
-  plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
+  plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D, \
+  plot_input_data_3D, plot_fault_input_data_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_objects.structural_objects import \
@@ -136,6 +137,15 @@ def structural_input_data(
   )
 
   return data_elements
+
+
+@wbgeo_component(identifier='wbgeo::inspect_structural_input_data_plot_3D',
+                 title='Plot Input Data 3D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_structural_input_data_plot_3D(input_data: InputData_StructuralElements,
+                                          _inspector: InspectorHelper):
+  plot_input_data_3D(input_data)
 
 
 class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
@@ -373,6 +383,14 @@ def faults_input_data(
   )
 
 
+@wbgeo_component(identifier='wbgeo::inspect_fault_input_data_plot_3D',
+                 title='Plot Fault Input Data 3D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_fault_input_data_plot_3D(faults_data: InputData_FaultElements,
+                                     _inspector: InspectorHelper):
+  plot_fault_input_data_3D(faults_data)
+
 
 # Register this function as a component
 @wbgeo_component(description='fault_modeling',
@@ -419,6 +437,6 @@ def inspect_fault_model_result_plot_structural_model_2D(
                  title='Plot Fault Model Result 3D',
                  description='...')
 @wbgeo_inspector()
-def inspect_faull_model_result_plot_structural_model_3D_sf(
+def inspect_fault_model_result_plot_structural_model_3D_sf(
     fault_model_result: FaultModelResults, _inspector: InspectorHelper):
   plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True)
