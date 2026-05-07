@@ -6,7 +6,7 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 
 from core.object_components import InputData_StructuralElements
 from core.structural_modeling_components import general, general_faults
-from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D)
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D, plot_input_data_3D)
 
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -54,6 +54,12 @@ data_elements = InputData_StructuralElements(name='Model_5',
                                              orientations=pd.read_csv(
                                                  cwd + "/examples/synthetic_examples/model5/input_data/geological_data/model5_orientations_df.csv")
                                              )
+
+#%%
+
+plot_input_data_3D(data_elements)
+
+#%%
 
 # Create a StructuralFrame
 frame = general.build_structural_frame(input_data_elements=data_elements,

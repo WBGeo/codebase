@@ -9,7 +9,8 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
-plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D, plot_fault_model_2D)
+plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D, plot_fault_model_2D,
+plot_fault_input_data_3D, plot_input_data_3D)
 
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -40,6 +41,12 @@ data_faults = InputData_FaultElements(name='Faults_Model_9',
                                           cwd + "/examples/synthetic_examples/model9/input_data/geological_data/model9_orientations_df.csv"),
                                       fault_names=['fault1', 'fault2', 'fault3', 'fault4', 'fault5']
                                       )
+
+#%%
+
+plot_fault_input_data_3D(data_faults)
+
+#%%
 
 # Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
@@ -82,6 +89,12 @@ data_elements = InputData_StructuralElements(name='Model_9',
                                              orientations=pd.read_csv(
                                                  cwd + "/examples/synthetic_examples/model9/input_data/geological_data/model9_orientations_df.csv")
                                              )
+
+#%%
+
+plot_input_data_3D(data_elements)
+
+#%%
 
 # Create a StructuralFrame and include the fault frame
 frame = general.build_structural_frame(input_data_elements=data_elements,

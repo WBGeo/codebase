@@ -9,7 +9,7 @@ from core.loading_components.geo_input_data import load_mapping
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D)
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D, plot_input_data_3D)
 
 from core.structural_modeling_components import general, general_faults
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
@@ -41,6 +41,12 @@ data_elements = InputData_StructuralElements(name='Model_6',
                                              orientations=pd.read_csv(
                                                  cwd + "/examples/synthetic_examples/model6/input_data/geological_data/model6_orientations_df.csv")
                                              )
+
+#%%
+
+plot_input_data_3D(data_elements)
+
+#%%
 
 # Create a StructuralFrame
 frame = general.build_structural_frame(input_data_elements=data_elements,
