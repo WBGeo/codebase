@@ -568,8 +568,8 @@ def plot_fault_model_2D(
         Xc, Yc = np.meshgrid(x, y, indexing="ij")
         xlabel, ylabel = "X", "Y"
 
-    domain_map = getattr(fault_frame, "_domain_map", None)
-    faults = getattr(fault_frame, "_fault_elements", []) or []
+    domain_map = getattr(fault_frame, "domain_map", None)
+    faults = getattr(fault_frame, "fault_elements", []) or []
 
     has_result = show_results and domain_map is not None and np.size(domain_map) > 0
     if show_results and not has_result:

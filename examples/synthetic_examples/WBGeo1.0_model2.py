@@ -66,7 +66,6 @@ fault_model_result = general_faults.compute_fault_domains(fault_frame)
 plot_fault_model_2D(fault_model_result.fault_frame)
 plot_fault_model_3D(fault_model_result.fault_frame)
 
-
 #%%
 
 # Create input data for the structural elements
