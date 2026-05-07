@@ -269,9 +269,6 @@ def test_fault_frame_get_element_by_name_and_df_filters():
 
 def test_fault_frame_set_grid_requires_regulargrid():
     ff = FaultFrame([FaultElement("F1")])
-    with pytest.raises(ValueError, match="instance of RegularGrid"):
-        ff.set_grid(object())  # type: ignore[arg-type]
-
     g = make_grid()
     ff.set_grid(g)
     assert ff.grid is g

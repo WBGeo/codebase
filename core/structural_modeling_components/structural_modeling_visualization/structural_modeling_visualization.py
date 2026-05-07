@@ -55,7 +55,7 @@ def plot_structural_model_3D(
             # meshes (per domain)
             if show_surface_meshes:
                 for mesh_elem in group.structural_elements:  # <--- renamed variable
-                    if mesh_type not in getattr(mesh_elem, "vertices", {}) or mesh_type not in getattr(mesh_elem, "edges", {}):
+                    if mesh_type not in mesh_elem.vertices or mesh_type not in mesh_elem.edges:
                         continue  # skip if requested mesh type not present
                     plotter.add_mesh(
                         pv.PolyData(mesh_elem.vertices[mesh_type],
@@ -70,7 +70,7 @@ def plot_structural_model_3D(
                     plotter.add_points(cloud, color=elem.color, point_size=8, render_points_as_spheres=True)
 
             # orientations
-            if show_orientations and getattr(frame, "orientations", None) is not None and hasattr(frame,
+            if show_orientations and frame.orientations is not None and hasattr(frame,
                                                                                                   "get_orientations_for_element"):
                 df_ori = frame.get_orientations_for_element(elem.name)
                 if df_ori is not None and not df_ori.empty:
@@ -90,12 +90,11 @@ def plot_structural_model_3D(
         # we'll append "Faults" header at the top with the flatten stage below
         fault_entries = []
 
-        for fault in getattr(frame.fault_frame, "fault_elements", []):
-            if fault_mesh_type not in getattr(fault, "vertices", {}) or fault_mesh_type not in getattr(fault, "edges",
-                                                                                                       {}):
+        for fault in frame.fault_frame.fault_elements:
+            if fault_mesh_type not in fault.vertices or fault_mesh_type not in fault.edges:
                 fault_mesh_type = "unmasked"  # fallback if requested type not present
-            fv = getattr(fault, "vertices", None)[fault_mesh_type]
-            ff = getattr(fault, "edges", None)[fault_mesh_type]
+            fv = fault.vertices[fault_mesh_type]
+            ff = fault.edges[fault_mesh_type]
             if fv is None or ff is None or len(fv) == 0 or len(ff) == 0:
                 continue
             faces_flat = _faces_to_vtk(np.asarray(ff))
@@ -103,7 +102,7 @@ def plot_structural_model_3D(
                 fmesh = pv.PolyData(np.asarray(fv), faces_flat)
             except Exception:
                 fmesh = pv.PolyData(np.asarray(fv), faces_flat.astype(np.int64, copy=False))
-            fcolor = getattr(fault, "color", None) or "black"
+            fcolor = fault.color or "black"
             plotter.add_mesh(
                 fmesh,
                 color=fcolor,
@@ -126,7 +125,7 @@ def plot_structural_model_3D(
     plotter.add_legend(labels=flat_legend, size=(0.22, 0.22), loc="lower right", face="rectangle")
 
     # bounds/grid + camera
-    if getattr(frame, "grid", None) is not None:
+    if frame.grid is not None:
         plotter.show_bounds(bounds=frame.grid.extent, location="furthest", grid=True)
 
     plotter.camera.view_angle = 30.0
@@ -215,7 +214,7 @@ def plot_structural_model_2D(
 
                 for group in frame.structural_groups:
                     for elem in group.structural_elements:
-                        if getattr(elem, "id", None):
+                        if elem.id:
                             id_to_color[elem.id] = elem.color
                             id_to_label[elem.id] = f"{group.name} | {elem.name}"
 
@@ -228,8 +227,8 @@ def plot_structural_model_2D(
     # ---- faults as contours from their scalar fields ----
     if show_fault_contours and frame.fault_frame is not None:
         for fault_index, fault in enumerate(frame.fault_frame.fault_elements):
-            f_sf = getattr(fault, "scalar_field", None)
-            f_sv = getattr(fault, "scalar_value", None)
+            f_sf = fault.scalar_field
+            f_sv = fault.scalar_value
             if f_sf is None or f_sv is None:
                 continue
             f_slice = np.take(f_sf, index, axis=dim).T
@@ -247,7 +246,7 @@ def plot_structural_model_2D(
             else:
                 # Fallback to unmasked contour if no result or mask available
                 f_slice_masked = f_slice
-            fcol = getattr(fault, "color", None) or "black"
+            fcol = fault.color or "black"
             CSf = ax.contour(x_coords, y_coords, f_slice_masked.T, levels=[f_sv], colors=[fcol], linewidths=1.5,
                              linestyles="-", zorder=10000)
             ax.clabel(CSf, fmt={f_sv: f"{fault.name}"}, fontsize=15)
@@ -289,10 +288,10 @@ def plot_structural_model_2D(
             legend_handles.append(plt.Line2D([0], [0], color=elem.color, lw=3, label=f"{elem.name}"))
 
     # add faults header + lines
-    if frame.fault_frame is not None and getattr(frame.fault_frame, "fault_elements", []):
+    if frame.fault_frame is not None and frame.fault_frame.fault_elements:
         legend_handles.append(plt.Line2D([0], [0], color='black', lw=0, label=rf"$\bf{{Faults}}$"))
         for fault in frame.fault_frame.fault_elements:
-            fcol = getattr(fault, "color", None) or "black"
+            fcol = fault.color or "black"
             legend_handles.append(plt.Line2D([0], [0], color=fcol, lw=3, label=fault.name))
 
     by_label = {h.get_label(): h for h in legend_handles}
@@ -327,13 +326,13 @@ def plot_fault_model_3D(
     legend_entries_faults = []
     legend_entries_domains = []
 
-    faults = getattr(fault_frame, "_fault_elements", []) or []
+    faults = fault_frame.fault_elements or []
 
     # -------------------------
     # (A) Domain map as translucent voxel blocks (optional)
     # -------------------------
-    domain_map = getattr(fault_frame, "_domain_map", None)
-    grid = getattr(fault_frame, "grid", None)
+    domain_map = fault_frame.domain_map
+    grid = fault_frame.grid
 
     if show_domain_map and domain_map is not None and grid is not None:
         # Get coordinate vectors (same pattern as your 2D)
@@ -341,7 +340,7 @@ def plot_fault_model_3D(
             val = getattr(obj, name, None)
             if val is not None:
                 return val
-            sub = getattr(obj, "grid", None)
+            sub = obj.grid
             if sub is not None:
                 return getattr(sub, name, None)
             return None
@@ -410,13 +409,13 @@ def plot_fault_model_3D(
     # (B) Fault meshes + input data
     # -------------------------
     for fault in faults:
-        fcol = getattr(fault, "color", None) or "black"
+        fcol = fault.color or "black"
         fname = getattr(fault, "name", "fault")
 
         # mesh (optional, skip cleanly if not computed)
         if show_surface_meshes:
-            verts = getattr(fault, "vertices", None)
-            edges = getattr(fault, "edges", None)
+            verts = fault.vertices
+            edges = fault.edges
             fv = verts.get(mesh_type) if isinstance(verts, dict) else None
             ff = edges.get(mesh_type) if isinstance(edges, dict) else None
 
@@ -431,7 +430,7 @@ def plot_fault_model_3D(
                 legend_entries_faults.append((f"• {fname}", fcol))
 
         # points (optional, show even if no meshes)
-        if show_input_data and getattr(fault_frame, "_fault_surface_points_df", None) is not None:
+        if show_input_data and fault_frame.fault_surface_points_df is not None:
             df_points = fault_frame.get_surface_points_for_element(fname)
             if df_points is not None and not df_points.empty:
                 cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values)
@@ -443,7 +442,7 @@ def plot_fault_model_3D(
                 )
 
         # orientations (optional, show even if no meshes)
-        if show_input_data and getattr(fault_frame, "_fault_orientations_df", None) is not None:
+        if show_input_data and fault_frame.fault_orientations_df is not None:
             df_ori = fault_frame.get_orientations_for_element(fname)
             if df_ori is not None and not df_ori.empty:
                 start = df_ori[["X", "Y", "Z"]].values
@@ -510,7 +509,7 @@ def plot_fault_model_2D(
 
     assert axis in ("x", "y", "z"), "Axis must be 'x', 'y', or 'z'."
 
-    if getattr(fault_frame, "_grid", None) is None:
+    if fault_frame.grid is None:
         raise ValueError("FaultFrame has no grid associated.")
 
     grid = fault_frame.grid
@@ -521,7 +520,7 @@ def plot_fault_model_2D(
         if val is not None:
             return val
 
-        sub = getattr(obj, "grid", None)
+        sub = obj.grid
         if sub is not None:
             return getattr(sub, name, None)
 
@@ -565,8 +564,8 @@ def plot_fault_model_2D(
         Xc, Yc = np.meshgrid(x, y, indexing="ij")
         xlabel, ylabel = "X", "Y"
 
-    domain_map = getattr(fault_frame, "_domain_map", None)
-    faults = getattr(fault_frame, "_fault_elements", []) or []
+    domain_map = fault_frame.domain_map
+    faults = fault_frame.fault_elements or []
 
     has_result = show_results and domain_map is not None and np.size(domain_map) > 0
     if show_results and not has_result:
@@ -608,13 +607,13 @@ def plot_fault_model_2D(
         if show_fault_contours:
             handles = []
             for fault in faults:
-                sf = getattr(fault, "scalar_field", None)
-                sv = getattr(fault, "scalar_value", None)
+                sf = fault.scalar_field
+                sv = fault.scalar_value
                 if sf is None or sv is None:
                     continue
 
                 f_slice = np.take(sf, index, axis=dim).T
-                fcol = getattr(fault, "color", None) or "black"
+                fcol = fault.color or "black"
 
                 CS = ax.contour(
                     Xc, Yc,
@@ -646,14 +645,14 @@ def plot_fault_model_2D(
     if show_input_data:
         for fault in faults:
             # Preferred: dataframe getter (X,Y,Z)
-            getter = getattr(fault_frame, "get_surface_points_for_element", None)
+            getter = fault_frame.get_surface_points_for_element
             if getter is not None:
                 df_pts = getter(getattr(fault, "name", "fault"))
 
                 if df_pts is None or getattr(df_pts, "empty", False):
                     continue
 
-                fcol = getattr(fault, "color", None) or "black"
+                fcol = fault.color or "black"
                 if axis == "x":
                     ax.scatter(df_pts["Y"], df_pts["Z"], color=fcol, s=30,
                                edgecolors="black", linewidths=0.5, label=getattr(fault, "name", "fault"))
@@ -665,7 +664,7 @@ def plot_fault_model_2D(
                                edgecolors="black", linewidths=0.5, label=getattr(fault, "name", "fault"))
 
             # ---- orientations as arrows (optional, if getter exists and data present) ----
-            ori_getter = getattr(fault_frame, "get_orientations_for_element", None)
+            ori_getter = fault_frame.get_orientations_for_element
             if ori_getter is not None:
                 df_ori = ori_getter(getattr(fault, "name", "fault"))
                 if df_ori is not None and not getattr(df_ori, "empty", False):

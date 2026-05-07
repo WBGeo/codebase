@@ -61,8 +61,8 @@ fault_orientations   = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'fault1_orienta
 
 # ── Grid ───────────────────────────────────────────────────────────────────────
 grid = RegularGrid(
-    extent=(380046, 380096, 5700883, 5700933, Z_MIN, 130),
-    resolution=(50, 50, 90),
+    extent=(380030, 380110, 5700875, 5700945, Z_MIN, 130),
+    resolution=(100, 100, 100),
 )
 
 # ── Fault frame ────────────────────────────────────────────────────────────────
@@ -252,17 +252,47 @@ p.show()
 
 #%%
 
-# Explicit Unstructured meshing (Structured does not work with faults)
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
+  load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
+cwd = os.getcwd()
 
-# DISTANCE_THRESHOLD must be << model extent.  The default (50) removes ALL points
-# from a 50×50 m model.  Use ~10 % of the minimum horizontal extent (here 5 m).
-mesh_result = create_unstructured_mesh_data(
+#################################
+# ImplicitStructured meshing.   #
+#################################
+mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
+#################################
+# Explicit Unstructured meshing #
+#################################
+ #load wells
+wells = load_wells_from_csv(cwd + "/examples/case_studies/Kleinzeche/input_data/Engineering_objects/kleinzeche_wells.csv")
+mesh_unstr = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
-    z_threshold=0.1,
     tolerance=1,
-    DISTANCE_THRESHOLD=5,  # Minimum distance between points to be retained (after surface sampling and before meshing)
-    mesh_size=3  # Target edge length for meshing (not a hard constraint, but smaller → finer mesh)
+    wells= wells,
+    mesh_size=1,
+    curve_mesh_size=2,
+    DISTANCE_THRESHOLD = 3,
+    PROJECTION_THRESHOLD = 4,
+    EXTRUSION_FACTOR = 4.2,
+    z_threshold = 1,
 )
-plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)
+#plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
+###########################################################################################################################
+#                                                    Exporting meshes
+###########################################################################################################################
+#########################
+# Export mesh to exodus #
+#########################
+
+# Implicit structured mesh
+#buf = export_mesh_results_to_exodus(mesh_implicit)
+#with open("filename_implic_klein.exo", "wb") as f:
+#    f.write(buf.getvalue())
+# Unstructured mesh
+#buf = export_mesh_results_to_exodus(mesh_unstr)
+#with open("filename_klein.exo", "wb") as f:
+#    f.write(buf.getvalue())

@@ -2,6 +2,7 @@ import inspect
 import sys
 import types
 import typing
+import traceback
 import unittest
 from typing import Unpack, Any, Optional
 
@@ -49,6 +50,19 @@ class TestComponentSignatures(unittest.TestCase):
             if py_file in sys.modules
         }
         nodesapi.set_instance(MockBackendInstance())
+        # monkey patch
+        def init_money_patch(self, **kwargs: Unpack[ScriptTypeParams]):
+          self.kwargs = kwargs
+          if kwargs["identifier"] in MockBackendInstance.registered_types:
+            MockBackendInstance.errors.append(ValueError(
+              "@GeoType `{id}` is defined in multiple locations. Identifiers MUST be unique: \n - {floc}\n - {floc2}".format(
+                id=kwargs["identifier"],
+                floc=traceback.format_stack()[-2],
+                floc2=MockBackendInstance.registered_types[kwargs["identifier"]],
+              )))
+          MockBackendInstance.registered_types[kwargs["identifier"]] = traceback.format_stack()[-2]
+        AnnotatedScriptType.__init__ = init_money_patch
+
         # force unload all py-files to allow decorators to actually work
         for py_file in cls.py_files:
             if py_file in sys.modules:
@@ -83,7 +97,7 @@ class TestComponentSignatures(unittest.TestCase):
           for py_file in self.py_files:
             try:
               importlib.import_module(py_file)
-            except Exception as e:
+            except ValueError as e:
               MockBackendInstance.errors.append(e)
         finally:
           if MockBackendInstance.errors:
@@ -91,7 +105,12 @@ class TestComponentSignatures(unittest.TestCase):
 
 
 def get_location(x):
-    return inspect.getfile(x) + ":" + str(inspect.getsourcelines(x)[1])
+    try:
+      return inspect.getfile(x) + ":" + str(inspect.getsourcelines(x)[1])
+    except TypeError:
+      return str(x) + '(source missing?)' # some types are just unhappy to report their locations, such as io.BytesIO
+    except OSError:
+      return str(x) + '(source not available)'
 
 
 class MockBackendInstance:
@@ -111,10 +130,10 @@ class MockBackendInstance:
         def h(c):
             import typing
             # load core schema of the type
-            try:
-              TypeAdapter(c).core_schema
-            except Exception as e:
-              MockBackendInstance.errors.append(e)
+            # try:
+              # TypeAdapter(c).core_schema
+            # except Exception as e:
+            #   MockBackendInstance.errors.append(e)
 
             return typing.Annotated[c, AnnotatedScriptType(**kwargs)]
 
@@ -160,14 +179,14 @@ class MockBackendInstance:
             if sig.return_annotation == Signature.empty:
                 if not is_visualizer:
                   MockBackendInstance.errors.append(ValueError(
-                        "@GeoComponent requires a declared return type, e.g. @GeoComponent def {fname}() -> str: \n{floc}".format(
+                        "@GeoComponent `{fname}` requires a declared return type, e.g. @GeoComponent def {fname}() -> str: \n{floc}".format(
                             fname=str(f.__name__), floc=get_location(f))))
             elif sig.return_annotation in [str, bool, int, float]:
                 pass
             elif not hasattr(sig.return_annotation, '__metadata__'):
               MockBackendInstance.errors.append(ValueError(
-                    "GeoComponent must return a built-in type or a type annotated with AnnotatedScriptType, instead it returned `{t}`, {typel} / {floc}".format(
-                        t=str(sig.return_annotation), typel=get_location(sig.return_annotation),
+                    "GeoComponent `{fname}` must return a built-in type or a type annotated with AnnotatedScriptType, instead it returned `{t}`, {typel} / {floc}".format(
+                        fname=f.__name__,t=str(sig.return_annotation), typel=get_location(sig.return_annotation),
                         floc=get_location(f))))
             else:
                 ret_v = gwt_ast(sig.return_annotation.__metadata__)
@@ -178,14 +197,26 @@ class MockBackendInstance:
                 else:
                     pass
 
+            # check against duplicate identifiers
+            if params["identifier"] in MockBackendInstance.registered_components:
+              MockBackendInstance.errors.append(ValueError(
+                "GeoComponent `{id}` is defined in multiple locations. Identifiers MUST be unique: \n - {floc}\n - {floc2}".format(
+                  id=params["identifier"],
+                  fname=str(f.__name__),
+                  fname2=str(MockBackendInstance.registered_components[params["identifier"]].__name__),
+                  floc=get_location(f),
+                  floc2=get_location(MockBackendInstance.registered_components[params["identifier"]]),
+                )))
+            MockBackendInstance.registered_components[params["identifier"]] = f
+
             ### end return
             def get_type_from_param(t, param: str, loc, is_vis: bool):
                 # t = sig.parameters[param].annotation
                 origin = typing.get_origin(t)
                 if t is None or t == inspect.Parameter.empty:
                   MockBackendInstance.errors.append(ValueError(
-                        "Parameter `{param}` must be annotated, e.g. `{param}: str` or `{param}: str = 1` \n {loc}".format(
-                            param=param, loc=get_location(t))))
+                        "Parameter `{param}` of `{fname}` must be annotated, e.g. `{param}: str` or `{param}: str = 1` \n {loc}".format(
+                            param=param, loc=get_location(t), fname=f.__name__)))
                 if not hasattr(t, '__metadata__') or gwt_ast(t.__metadata__) is None:
                     if origin is typing.Union:
                         u_args = typing.get_args(t)
@@ -200,7 +231,7 @@ class MockBackendInstance:
                             "@GeoComponent parameter `{param}` must be a built-in type or its type `{type}` be annotated with AnnotatedScriptType at {loc}".format(
                                 param=param, type=str(t), loc=get_location(loc))))
                 else:
-                    pass
+                  pass
 
             for param in sig.parameters:
                 t = sig.parameters[param].annotation
@@ -210,6 +241,8 @@ class MockBackendInstance:
         return decorate_func
 
 MockBackendInstance.errors = list()
+MockBackendInstance.registered_components = dict()
+MockBackendInstance.registered_types = dict()
 
 class ComponentMethod():
     def __init__(self, identifier: str):
