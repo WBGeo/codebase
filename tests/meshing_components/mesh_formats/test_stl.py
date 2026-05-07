@@ -1,8 +1,11 @@
-import unittest
-import numpy as np
-import meshio
 import io
+import tempfile
+import unittest
 import zipfile
+
+import meshio
+import numpy as np
+
 from core.meshing_components.mesh_format.stl.STL_format import STLInputs, export_mesh_results_to_stl
 
 
@@ -57,10 +60,9 @@ class TestExportMeshResultsToSTL(unittest.TestCase):
     def test_surface_triangle_extraction(self):
         stl = STLInputs(self.nodes, self.elements)
 
-        # must define output filename
-        stl.output_filename = "test.stl"
-
-        surface_nodes = stl._extract_and_save_triangle_groups()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            stl.output_filename = f"{tmp_dir}/test.stl"
+            surface_nodes = stl._extract_and_save_triangle_groups()
 
         # -----------------------------
         # Should include triangle nodes
@@ -70,10 +72,11 @@ class TestExportMeshResultsToSTL(unittest.TestCase):
 
     def test_interface_extraction(self):
         stl = STLInputs(self.nodes, self.elements)
-        stl.output_filename = "test.stl"
 
-        surface_nodes = stl._extract_and_save_triangle_groups()
-        interfaces = stl._extract_interface_faces_by_group(surface_nodes)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            stl.output_filename = f"{tmp_dir}/test.stl"
+            surface_nodes = stl._extract_and_save_triangle_groups()
+            interfaces = stl._extract_interface_faces_by_group(surface_nodes)
 
         # -----------------------------
         # Interface structure check
