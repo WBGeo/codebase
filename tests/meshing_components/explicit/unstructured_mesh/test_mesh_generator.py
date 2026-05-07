@@ -26,7 +26,8 @@ class TestMeshGeneratorFromMshReference(unittest.TestCase):
             raise FileNotFoundError(zip_path)
 
         # ---- unzip msh ----
-        tmp_dir = tempfile.mkdtemp()
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        tmp_dir = self._tmp_dir.name
 
         with zipfile.ZipFile(zip_path, "r") as z:
             z.extractall(tmp_dir)
@@ -40,9 +41,6 @@ class TestMeshGeneratorFromMshReference(unittest.TestCase):
         # ---- load mesh into gmsh ----
         gmsh.merge(self.msh_path)
         gmsh.model.mesh.generate(3)
-
-        # ---- store for tests ----
-        self.msh_dir = tmp_dir
 
     # ---------------------------------------------------
     def run_mesh(self):
@@ -110,6 +108,7 @@ class TestMeshGeneratorFromMshReference(unittest.TestCase):
     # ---------------------------------------------------
     def tearDown(self):
         gmsh.finalize()
+        self._tmp_dir.cleanup()
 
 
 if __name__ == "__main__":
