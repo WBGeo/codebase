@@ -331,20 +331,11 @@ def inspect_structural_model_result_plot_structural_model_2D(
   plot_structural_model_2D(structural_model_result.structural_frame)
 
 
-@wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D',
+@wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D_sf',
                  title='Plot Model Result 3D',
                  description='...')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_3D(
-    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
-  plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=False)
-
-
-@wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D_sf',
-                 title='Plot Model Result 3D with Surface Meshes',
-                 description='...')
-@wbgeo_inspector()
-def inspect_structural_model_result_plot_structural_model_3D_sf(
     structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
   plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
 
@@ -424,17 +415,8 @@ def inspect_fault_model_result_plot_structural_model_2D(
   plot_fault_model_2D(fault_model_result.fault_frame)
 
 
-@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_3D',
-                 title='Plot Fault Model Result 3D',
-                 description='...')
-@wbgeo_inspector()
-def inspect_fault_model_result_plot_structural_model_3D(
-    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
-  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=False)
-
-
 @wbgeo_component(identifier='wbgeo::inspect_faull_model_result_plot_structural_model_3D_sf',
-                 title='Plot Fault Model Result 3D with Surface Meshes',
+                 title='Plot Fault Model Result 3D',
                  description='...')
 @wbgeo_inspector()
 def inspect_faull_model_result_plot_structural_model_3D_sf(
