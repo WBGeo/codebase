@@ -327,12 +327,12 @@ def plot_fault_model_3D(
     legend_entries_faults = []
     legend_entries_domains = []
 
-    faults = getattr(fault_frame, "_fault_elements", []) or []
+    faults = getattr(fault_frame, "fault_elements", []) or []
 
     # -------------------------
     # (A) Domain map as translucent voxel blocks (optional)
     # -------------------------
-    domain_map = getattr(fault_frame, "_domain_map", None)
+    domain_map = getattr(fault_frame, "domain_map", None)
     grid = getattr(fault_frame, "grid", None)
 
     if show_domain_map and domain_map is not None and grid is not None:
@@ -431,7 +431,7 @@ def plot_fault_model_3D(
                 legend_entries_faults.append((f"• {fname}", fcol))
 
         # points (optional, show even if no meshes)
-        if show_input_data and getattr(fault_frame, "_fault_surface_points_df", None) is not None:
+        if show_input_data and getattr(fault_frame, "fault_surface_points_df", None) is not None:
             df_points = fault_frame.get_surface_points_for_element(fname)
             if df_points is not None and not df_points.empty:
                 cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values)
@@ -443,13 +443,16 @@ def plot_fault_model_3D(
                 )
 
         # orientations (optional, show even if no meshes)
-        if show_input_data and getattr(fault_frame, "_fault_orientations_df", None) is not None:
+        if show_input_data and getattr(fault_frame, "fault_orientations_df", None) is not None:
             df_ori = fault_frame.get_orientations_for_element(fname)
             if df_ori is not None and not df_ori.empty:
                 start = df_ori[["X", "Y", "Z"]].values
                 direction = df_ori[["G_x", "G_y", "G_z"]].values
 
-                scale = 50.0
+                # scale arrow relative to grid X-extent so it stays visible at any coordinate scale
+                grid_obj = getattr(fault_frame, "grid", None)
+                extent_vals = getattr(grid_obj, "extent", None) if grid_obj is not None else None
+                scale = (extent_vals[1] - extent_vals[0]) * 0.05 if extent_vals is not None else 50.0
                 for i in range(len(start)):
                     arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
                     plotter.add_mesh(arrow, color=fcol)
@@ -510,7 +513,7 @@ def plot_fault_model_2D(
 
     assert axis in ("x", "y", "z"), "Axis must be 'x', 'y', or 'z'."
 
-    if getattr(fault_frame, "_grid", None) is None:
+    if getattr(fault_frame, "grid", None) is None:
         raise ValueError("FaultFrame has no grid associated.")
 
     grid = fault_frame.grid
