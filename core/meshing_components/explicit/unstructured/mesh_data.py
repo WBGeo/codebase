@@ -515,7 +515,7 @@ def mesh_generator(ov: List[Tuple[int, int]], tagsss: List[int], extent: List[fl
 
     The function meshes 3D volumes using Gmsh, preserves embedded points, lines (wells), and surfaces (faults, triangulations),
     separates shaft-related tetrahedra from regular geological volumes, assigns lithology to tetrahedral blocks using nearest-neighbor
-        classification against a geological grid, merges tetrahedra with identical lithology into larger blocks, and returns a cleaned mesh ready for export or simulation.
+        classification against a geological grid, merges tetrahedra with identical lithology into larger blocks, and returns a cleaned mesh ready for export or tests_simulation_components.
 
     Args:
         ov (List[Tuple[int, int]]): Gmsh entities defined as (dimension, tag), typically volume entities resulting from prior fragmentation.

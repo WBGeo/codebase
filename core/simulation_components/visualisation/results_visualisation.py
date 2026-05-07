@@ -36,7 +36,7 @@ def build_grid_from_class(sim: SimulationResults, time: float):
 #  Plot variable at a given time
 # -------------------------------
 def plot_variable_at_a_time(sim: SimulationResults, var_name, time, cmap="viridis", show_edges=False, scale=(1,1,1)):
-    # Build the grid from your simulation class
+    # Build the grid from your tests_simulation_components class
     grid = build_grid_from_class(sim, time)
 
     # Check if the variable exists

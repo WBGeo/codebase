@@ -48,7 +48,7 @@ SfepyOutputType = typing.Annotated[
 # INPUT COMPONENT
 # =====================================================
 @wbgeo_component(
-    description='Input data for SfePy simulation',
+    description='Input data for SfePy tests_simulation_components',
     title='SfePy Input',
     color="#e5d016",
     border_color='#000000',
@@ -173,7 +173,7 @@ def run_sfepy(
 # SAVE OUTPUT COMPONENT
 # =====================================================
 # @wbgeo_component(
-#     title="Save outputs of simulation",
+#     title="Save outputs of tests_simulation_components",
 #     description="Save outputs",
 #     group="Outputs",
 #     identifier="wbgeo::save_outputs",

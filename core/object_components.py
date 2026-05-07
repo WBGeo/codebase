@@ -379,7 +379,7 @@ class MeshResults(BaseModel):
 @dataclass
 class SimulationResults:
     """
-    Container class for all simulation results timesteps.
+    Container class for all tests_simulation_components results timesteps.
 
     Attributes
     ----------
