@@ -5,7 +5,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile, Annot
 
 from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh_results_to_abaqus
 from core.meshing_components.mesh_format.ansys.Ansys_format import export_mesh_results_to_ansys
-from core.meshing_components.mesh_format.exudos.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.meshing_components.mesh_format.feflow.Feflow_format import export_mesh_results_to_feflow
 from core.meshing_components.mesh_format.gmsh.GMSH_format import export_mesh_results_to_gmsh
 from core.meshing_components.mesh_format.stl.STL_format import export_mesh_results_to_stl

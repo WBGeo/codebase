@@ -15,7 +15,7 @@ from core.structural_modeling_components import general, general_faults
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
   load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
-from core.meshing_components.mesh_format.exudos.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
 #%%
 
