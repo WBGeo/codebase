@@ -65,7 +65,7 @@ structural_model_result = general.compute_structural_model(
 mesh_str = create_structured_mesh_data(
     geomodel_result=structural_model_result,
     refinement_data=(10, 10, 10),
-    mesh_devision=(30, 30),
+    mesh_division=(30, 30),
     z_threshold=0.1,
     tolerance=1
 )

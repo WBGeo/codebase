@@ -62,7 +62,7 @@ RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinemen
 
 MeshDev = typing.Annotated[
     Tuple[int, int],
-    AnnotatedScriptType(name='mesh_devision', color='pink', identifier='mesh::MeshDev', controlled='Tuple|M1|M2')
+    AnnotatedScriptType(name='mesh_division', color='pink', identifier='mesh::MeshDev', controlled='Tuple|M1|M2')
 ]
 
 # Prepare geological model's results to be used in creating structured meshing
@@ -124,11 +124,11 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
 
 
 def create_structured_mesh_data(geomodel_result: StructuralModelResults,
-                                refinement_data: RefinementData = (25,21,16,5,6),
+                                refinement_data: RefinementData = (25,21,16,5,6),  #TODO: This needs a proper default
                                 z_threshold: float =0.1,
-                                mesh_devision: typing.Optional[MeshDev] = None,
+                                mesh_division: typing.Optional[MeshDev] = None,
                                 tolerance: float =1,
-                                extent: typing.Optional[ExtentData] = None ) -> MeshResults:
+                                extent: typing.Optional[ExtentData] = None) -> MeshResults:
     """
     Generates a geological mesh and returns a MeshData object.
 
@@ -136,7 +136,7 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
         geomodel_result :Results of geological modeling.
         refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
-        mesh_devision (MeshDev): Resolution in x and y directions.
+        mesh_division (MeshDev): Resolution in x and y directions.
         tolerance (float): Distance tolerance for Z-value adjustment.
         extent (ExtentData): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
 
@@ -159,10 +159,10 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
     geomodel_adapter = prepare_surface_vertices_from_geomodel(geomodel_result)  # TODO: HOTFIX — see adapter definition above
 
     # Create surface grids
-    if mesh_devision and len(mesh_devision) == 2:
+    if mesh_division and len(mesh_division) == 2:
         n_gx: int
         n_gy: int
-        n_gx, n_gy = mesh_devision
+        n_gx, n_gy = mesh_division
         raw_surfaces: Dict[str, NDArray[np.floating]] = create_surface_grid(geomodel_adapter , extent)[0]
 
         interpolated_surfaces: Dict[str, NDArray[np.floating]] = {
@@ -182,7 +182,7 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
     # Crop surfaces to extent ONLY
     nx: int
     ny: int
-    nx, ny = mesh_devision if mesh_devision else (n_gx, n_gy)
+    nx, ny = mesh_division if mesh_division else (n_gx, n_gy)
     cropped_surfaces: List[pd.DataFrame] = []
 
     for df in dataframes_list:

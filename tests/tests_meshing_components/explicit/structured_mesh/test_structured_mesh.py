@@ -58,7 +58,7 @@ class StructuredMeshTestCase(unittest.TestCase):
         mesh_generated = create_structured_mesh_data(
             geomodel_result=self.structural_model_result,
             refinement_data=(10, 10, 10),
-            mesh_devision=(20, 20),
+            mesh_division=(20, 20),
             z_threshold=0.1,
             tolerance=1
         )
