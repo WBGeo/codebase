@@ -2,26 +2,25 @@
 import pandas as pd
 import os
 
-from core.object_components import InputData_StructuralElements, InputData_FaultElements
-
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
-from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D, plot_fault_input_data_3D)
-
-from core.structural_modeling_components import general, general_faults
+from core.object_components import InputData_FaultElements
+from core.structural_modeling_components import general_faults
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
+    plot_fault_model_2D, plot_fault_model_3D, plot_fault_input_data_3D)
 
 #%%
 
 cwd = os.getcwd()
 
-# WORKFLOW Synthetic Model 4: 2 faults, no unconformities, 1 stratigraphic groups
+# WORKFLOW Synthetic Model 4: 2 faults, no unconformities, 1 stratigraphic group
 
 #%%
 
 # Create a grid for the model
 grid = RegularGrid(
-    extent=(0, 2000, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(100, 50, 50)  # Example resolution
+    extent=(0, 2000, 0, 1000, 0, 1000),
+    resolution=(100, 50, 50)
 )
 
 #%%
@@ -51,7 +50,7 @@ fault_frame.detailed_report()
 
 #%%
 
-# Plot the fault input input_data (2D and 3D possible)
+# Plot the fault input data (2D and 3D possible)
 plot_fault_model_2D(fault_frame)
 plot_fault_model_3D(fault_frame)
 
@@ -62,4 +61,9 @@ general_faults.compute_fault_domains(fault_frame)
 
 #%%
 
-# --> This model fails die to cross-cutting faults
+# This model is expected to fail at compute_fault_domains above.
+# The two faults in this model cross-cut each other, which the fault domain algorithm
+# cannot handle: cross-cutting faults create grid cells whose domain membership is
+# contradictory (claimed by more than one fault side simultaneously), producing an
+# inconsistent domain map that the downstream interpolation cannot resolve.
+# Non-intersecting faults are required.
