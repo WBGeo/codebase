@@ -143,7 +143,7 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 mesh_str = create_structured_mesh_data(
     geomodel_result=structural_model_result,
     refinement_data=[10, 10, 5, 5, 6,7,9,10],
-    mesh_devision= (100,100),
+    mesh_division= (100, 100),
     z_threshold=0.1,
     tolerance=0.5
       )

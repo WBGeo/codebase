@@ -310,7 +310,7 @@ mesh_unstr = create_unstructured_mesh_data(
 #mesh_str = create_structured_mesh_data(
 #    geomodel_result=structural_model_result,
 #    refinement_data=(40,40,40),
-#    mesh_devision=(40,40),
+#    mesh_division=(40,40),
 #    z_threshold=0.1,
 #    tolerance=1
 #)
