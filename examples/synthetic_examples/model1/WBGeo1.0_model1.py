@@ -5,15 +5,15 @@ import os
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.object_components import InputData_StructuralElements
-from core.structural_modeling_components import general, general_faults
-from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D, plot_input_data_3D)
+from core.structural_modeling_components import general
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
+    plot_structural_model_2D, plot_structural_model_3D, plot_input_data_3D)
 
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
+    load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
-  load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.meshing_components.mesh_format.vtu.VTU_format import export_mesh_results_to_vtu
 from core.meshing_components.mesh_format.vtk.VTK_format import export_mesh_results_to_vtk
@@ -26,7 +26,9 @@ from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh
 
 from core.simulation_components.simulation_packages.sfepy.simulation_run import run_sfepy
 from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
-from core.simulation_components.visualisation.results_visualisation import plot_variable_at_a_time, plot_cross_section, plot_variable_along_line, print_variable_at_point, plot_variable_time_series
+from core.simulation_components.visualisation.results_visualisation import (
+    plot_variable_at_a_time, plot_cross_section, plot_variable_along_line,
+    print_variable_at_point, plot_variable_time_series)
 
 #%%
 
@@ -38,8 +40,8 @@ cwd = os.getcwd()
 
 # Create a grid for the model
 grid = RegularGrid(
-    extent=(0, 1000, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(50, 50, 50)  # Example resolution
+    extent=(0, 1000, 0, 1000, 0, 1000),
+    resolution=(50, 50, 50)
 )
 
 #%%
@@ -55,6 +57,7 @@ data_elements = InputData_StructuralElements(name='Model_1',
 
 #%%
 
+# Plot input data without model context
 plot_input_data_3D(data_elements)
 
 #%%
@@ -66,7 +69,6 @@ frame = general.build_structural_frame(input_data_elements=data_elements,
 
 frame.detailed_report()
 
-
 #%%
 
 # Plot the input data (2D and 3D possible)
@@ -75,23 +77,8 @@ plot_structural_model_3D(frame)
 
 #%%
 
-# Default interpolation method is RBF, but we can set it to something else if we want
-
-# # UK
-# frame["Strat_Series1"].set_interpolation_method("Universal Kriging")
-#
-# # UCK
-# frame["Strat_Series1"].set_interpolation_method("Universal Co-Kriging")
-#
-# # OK
+# Set another interpolation method per group
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
-#
-# # Loop
-# frame["Strat_Series1"].set_interpolation_method("Loop Structural")
-#
-# # GeoINR
-# frame["Strat_Series1"].set_interpolation_method("GeoINR")
-
 
 # Configure interpolation parameters if needed (available parameters depend on the interpolation method)
 # frame["Strat_Series1"].configure_interpolation_params()
@@ -115,210 +102,101 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
-# Optional plotting
+# Optional: Plotting age masks and scalar fields
 # frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
 #%%
-###########################################################################################################################
-#                                              Meshing
-###########################################################################################################################
-#################################
-#  Explicit Structured meshing. #
-#################################
-mesh_str = create_structured_mesh_data(
-    geomodel_result=structural_model_result,
-    refinement_data=(10,10,10),
-    mesh_devision=(30,30),
-    z_threshold=0.1,
-    tolerance=1
-)
-#################################
-# ImplicitStructured meshing.   #
-#################################
-mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
-#################################
-# Explicit Unstructured meshing #
-#################################
-# load wells
-wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
-# load shafts
-shafts=  load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
-# load point sources
-sources= load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
-# load planes
-planes= load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
-# load ellipse
-ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
-# load triangulations
-triangulations= load_triangulations_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/seismic_plane_new_offset.csv")
 
-mesh_unstr = create_unstructured_mesh_data(
+# Compute 3D meshes based on the structural model result using different meshing approaches.
+
+# Implicit structured mesh
+mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
+
+# Explicit unstructured mesh
+mesh_unstructured = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
-    wells=wells,
-    sources=sources,
-    shafts= shafts,
-    triangulations = triangulations,
-    extra_planes= planes,
-    ellipses = ellipses,
-    mesh_size=75,
+    mesh_size=25,
     curve_mesh_size=5
 )
 
+# Explicit structured mesh
+mesh_explicit_structured = create_structured_mesh_data(
+    geomodel_result=structural_model_result,
+    refinement_data=[10,10,10])
 
-##########################################################################################################################
-#                                                Plot the meshing results
-##########################################################################################################################
-#plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
-#plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
-#plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
+#%%
 
-###########################################################################################################################
-#                                                    Exporting meshes
-###########################################################################################################################
-#########################
-# Export mesh to exodus #
-#########################
-# Structured mesh
-buf = export_mesh_results_to_exodus(mesh_str)
-with open("filename_str1.exo", "wb") as f:
-    f.write(buf.getvalue())
-# Implicit structured mesh
-buf = export_mesh_results_to_exodus(mesh_implicit)
-with open("filename_implic2.exo", "wb") as f:
-    f.write(buf.getvalue())
-# Unstructured mesh
-buf = export_mesh_results_to_exodus(mesh_unstr)
-with open("filename.exo", "wb") as f:
-    f.write(buf.getvalue())
-#######################
-# Export mesh to vtu  #
-#######################
-# Structured mesh
-buf = export_mesh_results_to_vtu(mesh_str)
-with open("filename_str2.vtu", "wb") as f:
-    f.write(buf.getvalue())
-# Implicit structured mesh
-buf = export_mesh_results_to_vtu(mesh_implicit)
-with open("filename_implic2.vtu", "wb") as f:
-    f.write(buf.getvalue())
-# Unstructured mesh
-buf = export_mesh_results_to_vtu(mesh_unstr)
-with open("filename.vtu", "wb") as f:
-    f.write(buf.getvalue())
-######################
-# Export mesh to vtk #
-######################
-# Structured mesh
-buf = export_mesh_results_to_vtk(mesh_str)
-with open("filename_str2.vtk", "wb") as f:
-   f.write(buf.getvalue())
-# Implicit structured mesh
-buf = export_mesh_results_to_vtk(mesh_implicit)
-with open("filename_implic2.vtk", "wb") as f:
-    f.write(buf.getvalue())
-# Unstructured mesh
-buf = export_mesh_results_to_vtk(mesh_unstr)
-with open("filename.vtk", "wb") as f:
-    f.write(buf.getvalue())
-#######################
-# Export mesh to vtm  #
-#######################
-# Structured mesh
-buf = export_mesh_results_to_vtm(mesh_str)
-with open("filename_str2.vtm.zip", "wb") as f:
-    f.write(buf.getvalue())
-# Implicit structured mesh
-buf = export_mesh_results_to_vtm(mesh_implicit)
-with open("filename_implic2.vtm.zip", "wb") as f:
-    f.write(buf.getvalue())
-# Unstructured mesh
-buf = export_mesh_results_to_vtm(mesh_unstr)
-with open("filename.vtm.zip", "wb") as f:
-    f.write(buf.getvalue())
-#########################################################
-## Export mesh to stl (only unstructured is supported). #
-#########################################################
-# Unstructured mesh
-buf = export_mesh_results_to_stl(mesh_unstr)
-with open("filename.stl.zip", "wb") as f:
-    f.write(buf.getvalue())
-#########################################################
-# Export mesh to gmsh (only unstructured is supported)  #
-#########################################################
-# Unstructured mesh
-buf = export_mesh_results_to_gmsh(mesh_unstr)
-with open("filename.msh", "wb") as f:
-    f.write(buf.getvalue())
-##########################################################
-# Export mesh to feflow (only unstructured is supported) #
-##########################################################
-# Unstructured mesh
-buf = export_mesh_results_to_feflow(mesh_unstr)
-with open("filename.fem", "wb") as f:
-    f.write(buf.getvalue())
-########################
-# Export mesh to ansys #
-########################
-## Structured mesh
-buf = export_mesh_results_to_ansys(mesh_str)
-with open("filename_str2_ansys.msh", "wb") as f:
-    f.write(buf.getvalue())
-# Implicit structured mesh
-buf = export_mesh_results_to_vtm(mesh_implicit)
-with open("filename_implic2_ansys.msh", "wb") as f:
-    f.write(buf.getvalue())
-# Unstructured mesh
-buf = export_mesh_results_to_ansys(mesh_unstr)
-with open("filename_ansys.msh", "wb") as f:
-    f.write(buf.getvalue())
-#########################
-# Export mesh to abaqus #
-#########################
-# Unstructured mesh
-buf = export_mesh_results_to_abaqus(mesh_unstr)
-with open("filename.inp", "wb") as f:
-    f.write(buf.getvalue())
-# Structured mesh
-buf = export_mesh_results_to_abaqus(mesh_str)
-with open("filename_st.inp", "wb") as f:
-    f.write(buf.getvalue())
-# Implicit mesh
-buf = export_mesh_results_to_abaqus(mesh_implicit)
-with open("filename_imp.inp", "wb") as f:
-    f.write(buf.getvalue())
+# Plot the meshing results
+plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_unstructured, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=True)
 
-###########################################################################################################################
-#                                                   simulation_components with Sfepy
-###########################################################################################################################
-################################
-# Explicit unstructured mesh.  #
-################################
-#mesh_unst = create_unstructured_mesh_data(
-#    geomodel_result=structural_model_result,
-#    mesh_size=50,
-#    curve_mesh_size=5,
-#)
-#Sim_out=run_sfepy(cwd +'/examples/input_data/engineering_objects/Model1/Hydro_thermal.py', mesh_unst, 'results')
-################################
-# Explicit structured mesh.  #
-################################
-#mesh_str = create_structured_mesh_data(
-#    geomodel_result=structural_model_result,
-#    refinement_data=(40,40,40),
-#    mesh_devision=(40,40),
-#    z_threshold=0.1,
-#    tolerance=1
-#)
-#Sim_out=run_sfepy(cwd +'/examples/input_data/engineering_objects/Model1/Hydro_thermal.py', mesh_str, 'results')
-################################
-# Implicit structured mesh.  #
-################################
+#%%
+
+# Optional: Example of how to export the unstructured mesh to Exodus format.
+# Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
+# buf = export_mesh_results_to_exodus(mesh_unstructured)
+# with open("filename_example_mesh.exo", "wb") as f:
+#    f.write(buf.getvalue())
+
+#%%
+
+# Optional: Example of how to include objects (only works for unstructured mesh)
+
+# # Load engineering objects
+# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
+# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
+# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
+# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
+# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
+# triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/seismic_plane_new_offset.csv")
+#
+# # Explicit unstructured mesh with objects
+# mesh_unstructured_with_objects = create_unstructured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     wells=wells,
+#     sources=sources,
+#     shafts=shafts,
+#     triangulations=triangulations,
+#     extra_planes=planes,
+#     ellipses=ellipses,
+#     mesh_size=75,
+#     curve_mesh_size=5
+# )
+#
+# # Plot the resulting mesh
+# plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
+
+#%%
+
+# Process simulation with SfePy on the implicit structured mesh
+
 mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
 Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_implicit, 'results')
-###########################################################################################################################
-#                                                   Visualization of simulation_components results
-###########################################################################################################################
+
+#%%
+
+# Optional: Run simulation with unstructured or explicit structured mesh instead
+# mesh_unst = create_unstructured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     mesh_size=50,
+#     curve_mesh_size=5,
+# )
+# Sim_out=run_sfepy(cwd +'/examples/input_data/engineering_objects/Model1/Hydro_thermal.py', mesh_unst, 'results')
+#
+# mesh_str = create_structured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     refinement_data=(40,40,40),
+#     mesh_division=(40,40),
+#     z_threshold=0.1,
+#     tolerance=1
+# )
+# Sim_out=run_sfepy(cwd +'/examples/input_data/engineering_objects/Model1/Hydro_thermal.py', mesh_str, 'results')
+
+#%%
+
+# Visualize simulation results
 data_by_time=load_vtk_results(Sim_out)
 for t in data_by_time.nodes_by_time:
     print(f"\n⏱ Time {t}")
@@ -330,4 +208,3 @@ plot_variable_along_line(data_by_time,"p", 0, p0=(500,20,50), p1=(500,20,1000))
 print_variable_at_point(data_by_time,"p", 0, point=(500.0,20.0,500.0))
 plot_variable_time_series(data_by_time,"p", point=(500.0,20.0,500.0))
 
-# %%
