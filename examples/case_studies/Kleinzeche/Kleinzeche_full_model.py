@@ -86,6 +86,7 @@ fault_frame.detailed_report()
 
 #%%
 
+plot_fault_model_2D(fault_frame)
 plot_fault_model_3D(fault_frame)
 
 #%%
@@ -155,7 +156,7 @@ structural_model_result = general.compute_structural_model(
 #%%
 
 # ── Visualize results ──────────────────────────────────────────────────────────
-plot_structural_model_2D(structural_model_result.structural_frame, show_input_data=False, axis="y")
+plot_structural_model_2D(structural_model_result.structural_frame, show_input_data=False, axis="x")
 plot_structural_model_3D(
     structural_model_result.structural_frame,
     show_surface_meshes=True,

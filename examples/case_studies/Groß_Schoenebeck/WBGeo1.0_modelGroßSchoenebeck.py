@@ -19,26 +19,26 @@ from core.meshing_components.meshing_visualization.meshing_visualization import 
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
   load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
-from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
-from core.meshing_components.mesh_format.VTU.VTU_format import export_mesh_results_to_vtu
-from core.meshing_components.mesh_format.VTK.VTK_format import export_mesh_results_to_vtk
-from core.meshing_components.mesh_format.FEFLOW.Feflow_format import export_mesh_results_to_feflow
-from core.meshing_components.mesh_format.GMSH.GMSH_format import export_mesh_results_to_gmsh
-from core.meshing_components.mesh_format.STL.STL_format import export_mesh_results_to_stl
-from core.meshing_components.mesh_format.VTM.VTM_format import export_mesh_results_to_vtm
-from core.meshing_components.mesh_format.ANSYS.Ansys_format import export_mesh_results_to_ansys
-from core.meshing_components.mesh_format.ABAQUS.Abaqus_format import export_mesh_results_to_abaqus
+from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.vtu.VTU_format import export_mesh_results_to_vtu
+from core.meshing_components.mesh_format.vtk.VTK_format import export_mesh_results_to_vtk
+from core.meshing_components.mesh_format.feflow.Feflow_format import export_mesh_results_to_feflow
+from core.meshing_components.mesh_format.gmsh.GMSH_format import export_mesh_results_to_gmsh
+from core.meshing_components.mesh_format.stl.STL_format import export_mesh_results_to_stl
+from core.meshing_components.mesh_format.vtm.VTM_format import export_mesh_results_to_vtm
+from core.meshing_components.mesh_format.ansys.Ansys_format import export_mesh_results_to_ansys
+from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh_results_to_abaqus
 #%%
 
 cwd = os.getcwd()
 
 #%%
 
-surface_points = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/Geological_data/schoenebeck_surface_points_downsampled.csv")
-orientations = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/Geological_data/schoenebeck_orientations_downsampled.csv")
+surface_points = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_surface_points_downsampled.csv")
+orientations = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_orientations_downsampled.csv")
 
-surface_points_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/Geological_data/schoenebeck_faults_surface_points_downsampled.csv")
-orientations_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/Geological_data/schoenebeck_faults_orientations_downsampled.csv")
+surface_points_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_faults_surface_points_downsampled.csv")
+orientations_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_faults_orientations_downsampled.csv")
 
 print(len(surface_points), len(orientations))
 print(len(surface_points_faults), len(orientations_faults))
@@ -143,7 +143,7 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 mesh_str = create_structured_mesh_data(
     geomodel_result=structural_model_result,
     refinement_data=[10, 10, 5, 5, 6,7,9,10],
-    mesh_devision= (100,100),
+    mesh_division= (100, 100),
     z_threshold=0.1,
     tolerance=0.5
       )

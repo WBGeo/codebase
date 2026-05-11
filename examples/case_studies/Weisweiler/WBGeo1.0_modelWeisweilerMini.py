@@ -21,15 +21,15 @@ from core.meshing_components.implicit.export_implicit import create_implicit_str
 from core.hierarchical_simulation.generate_mesh.hierarchical_mesh import hierarchical_mesh
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
   load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
-from core.meshing_components.mesh_format.EXUDOS.Exo_format import export_mesh_results_to_exodus
-from core.meshing_components.mesh_format.VTU.VTU_format import export_mesh_results_to_vtu
-from core.meshing_components.mesh_format.VTK.VTK_format import export_mesh_results_to_vtk
-from core.meshing_components.mesh_format.FEFLOW.Feflow_format import export_mesh_results_to_feflow
-from core.meshing_components.mesh_format.GMSH.GMSH_format import export_mesh_results_to_gmsh
-from core.meshing_components.mesh_format.STL.STL_format import export_mesh_results_to_stl
-from core.meshing_components.mesh_format.VTM.VTM_format import export_mesh_results_to_vtm
-from core.meshing_components.mesh_format.ANSYS.Ansys_format import export_mesh_results_to_ansys
-from core.meshing_components.mesh_format.ABAQUS.Abaqus_format import export_mesh_results_to_abaqus
+from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.vtu.VTU_format import export_mesh_results_to_vtu
+from core.meshing_components.mesh_format.vtk.VTK_format import export_mesh_results_to_vtk
+from core.meshing_components.mesh_format.feflow.Feflow_format import export_mesh_results_to_feflow
+from core.meshing_components.mesh_format.gmsh.GMSH_format import export_mesh_results_to_gmsh
+from core.meshing_components.mesh_format.stl.STL_format import export_mesh_results_to_stl
+from core.meshing_components.mesh_format.vtm.VTM_format import export_mesh_results_to_vtm
+from core.meshing_components.mesh_format.ansys.Ansys_format import export_mesh_results_to_ansys
+from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh_results_to_abaqus
 from core.hierarchical_simulation.export_data.EXUDOS.Exo_format import export_meshes_exodus
 from core.hierarchical_simulation.export_data.ABAQUS.Abaqus_format import export_meshes_abaqus
 from core.hierarchical_simulation.export_data.ANSYS.Ansys_format import export_meshes_ansys
@@ -63,9 +63,9 @@ data_elements = InputData_StructuralElements(name='Model_9',
                                                      'MittlererKohlenkalkGP',
                                                      'CondrozGP')},
                                              surface_points=pd.read_csv(
-                                                 cwd + "/examples/case_studies/Weisweiler/input_data/Geological_data/modelWeisweilerMini_surface_points_df.csv"),
+                                                 cwd + "/examples/case_studies/Weisweiler/input_data/geological_data/modelWeisweilerMini_surface_points_df.csv"),
                                              orientations=pd.read_csv(
-                                                 cwd + "/examples/case_studies/Weisweiler/input_data/Geological_data/modelWeisweilerMini_orientations_df.csv")
+                                                 cwd + "/examples/case_studies/Weisweiler/input_data/geological_data/modelWeisweilerMini_orientations_df.csv")
                                              )
 
 # Create a StructuralFrame and include the fault frame

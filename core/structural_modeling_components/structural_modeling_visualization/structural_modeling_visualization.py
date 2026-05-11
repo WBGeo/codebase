@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+import colorsys
+from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.colors import ListedColormap, BoundaryNorm, to_hex
 import warnings
 
 from core.structural_modeling_components.structural_objects.structural_objects import (
     FaultFrame,
     StructuralFrame,
 )
+
+if TYPE_CHECKING:
+    from core.object_components import InputData_StructuralElements, InputData_FaultElements
 
 
 def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
@@ -20,6 +24,166 @@ def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
     if faces_arr.ndim != 2 or faces_arr.shape[1] != 3:
         raise ValueError("faces must be (N, 3) triangle indices")
     return np.hstack([np.full((faces_arr.shape[0], 1), 3, dtype=np.int64), faces_arr.astype(np.int64)]).ravel()
+
+
+def _make_formation_color_map(mapping_object: dict) -> dict[str, str]:
+    """Return {formation_name: hex_color} using the same group/element shading as build_structural_frame."""
+    group_cmap = plt.get_cmap("Accent")
+    color_map: dict[str, str] = {}
+    groups = list(mapping_object.items())
+    n_groups = len(groups)
+    for g_idx, (_, elements) in enumerate(groups):
+        base_rgb = group_cmap(g_idx / max(n_groups, 1))[:3]
+        base_hls = colorsys.rgb_to_hls(*base_rgb)
+        n_el = len(elements)
+        for i, el_name in enumerate(elements):
+            lightness = 0.35 + 0.5 * (i / max(n_el - 1, 1))
+            color_map[el_name] = to_hex(colorsys.hls_to_rgb(base_hls[0], lightness, base_hls[2]))
+    return color_map
+
+
+def plot_input_data_3D(
+        input_data: InputData_StructuralElements,
+        *,
+        show_orientations: bool = True,
+        arrow_scale: Optional[float] = None,
+        point_size: int = 8,
+        notebook: bool = False,
+        show: bool = True,
+) -> pv.Plotter:
+    """
+    3D PyVista plot of raw structural input data (surface points + orientations),
+    colored by formation.  No StructuralFrame required.
+    """
+    pv.global_theme.allow_empty_mesh = True
+    plotter = pv.Plotter(notebook=notebook)
+
+    sp = input_data.surface_points
+    ori = input_data.orientations
+    mapping = input_data.mapping_object  # {group_name: (elem1, elem2, ...)}
+
+    color_map = _make_formation_color_map(mapping)
+
+    if arrow_scale is None and show_orientations and ori is not None and not ori.empty:
+        pts = sp[["X", "Y", "Z"]].values
+        diag = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
+        arrow_scale = max(diag * 0.05, 1.0)
+
+    legend_entries: list[tuple[str, str]] = []
+    for group_name, elements in mapping.items():
+        legend_entries.append((group_name, "black"))
+        for el_name in elements:
+            color = color_map.get(el_name, "grey")
+            legend_entries.append((f"• {el_name}", color))
+
+            df_pts = sp[sp["formation"] == el_name]
+            if not df_pts.empty:
+                cloud = pv.PolyData(df_pts[["X", "Y", "Z"]].values.astype(np.float64))
+                plotter.add_points(cloud, color=color, point_size=point_size, render_points_as_spheres=True)
+
+            if show_orientations and ori is not None and not ori.empty:
+                df_ori = ori[ori["formation"] == el_name]
+                for _, row in df_ori.iterrows():
+                    plotter.add_mesh(
+                        pv.Arrow(
+                            start=row[["X", "Y", "Z"]].values.astype(float),
+                            direction=row[["G_x", "G_y", "G_z"]].values.astype(float),
+                            scale=arrow_scale,
+                        ),
+                        color=color,
+                    )
+
+    pts = sp[["X", "Y", "Z"]].values
+    ranges = pts.max(axis=0) - pts.min(axis=0)
+    margin = ranges * 0.05
+    bounds = (
+        pts[:, 0].min() - margin[0], pts[:, 0].max() + margin[0],
+        pts[:, 1].min() - margin[1], pts[:, 1].max() + margin[1],
+        pts[:, 2].min() - margin[2], pts[:, 2].max() + margin[2],
+    )
+    plotter.show_bounds(bounds=bounds, location="furthest", grid=True)
+
+    plotter.add_legend(labels=legend_entries, size=(0.22, 0.25), loc="lower right", face="rectangle")
+    plotter.camera.view_angle = 30.0
+    plotter.camera.azimuth = 25.0
+    plotter.camera.elevation = -15.0
+
+    if show:
+        plotter.show()
+    return plotter
+
+
+def plot_fault_input_data_3D(
+        input_data: InputData_FaultElements,
+        *,
+        show_orientations: bool = True,
+        arrow_scale: Optional[float] = None,
+        point_size: int = 8,
+        notebook: bool = False,
+        show: bool = True,
+) -> pv.Plotter:
+    """
+    3D PyVista plot of raw fault input data (surface points + orientations),
+    colored by fault name.  No FaultFrame required.
+    """
+    pv.global_theme.allow_empty_mesh = True
+    plotter = pv.Plotter(notebook=notebook)
+
+    sp = input_data.fault_surface_points
+    ori = input_data.fault_orientations
+    fault_names = input_data.fault_names
+
+    fault_cmap = plt.get_cmap("tab10")
+    color_map = {
+        name: to_hex(fault_cmap(i / max(len(fault_names), 1))[:3])
+        for i, name in enumerate(fault_names)
+    }
+
+    if arrow_scale is None and show_orientations and ori is not None and not ori.empty:
+        pts = sp[["X", "Y", "Z"]].values
+        diag = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
+        arrow_scale = max(diag * 0.05, 1.0)
+
+    legend_entries: list[tuple[str, str]] = []
+    for fault_name in fault_names:
+        color = color_map.get(fault_name, "grey")
+        legend_entries.append((fault_name, color))
+
+        df_pts = sp[sp["formation"] == fault_name]
+        if not df_pts.empty:
+            cloud = pv.PolyData(df_pts[["X", "Y", "Z"]].values.astype(np.float64))
+            plotter.add_points(cloud, color=color, point_size=point_size, render_points_as_spheres=True)
+
+        if show_orientations and ori is not None and not ori.empty:
+            df_ori = ori[ori["formation"] == fault_name]
+            for _, row in df_ori.iterrows():
+                plotter.add_mesh(
+                    pv.Arrow(
+                        start=row[["X", "Y", "Z"]].values.astype(float),
+                        direction=row[["G_x", "G_y", "G_z"]].values.astype(float),
+                        scale=arrow_scale,
+                    ),
+                    color=color,
+                )
+
+    pts = sp[["X", "Y", "Z"]].values
+    ranges = pts.max(axis=0) - pts.min(axis=0)
+    margin = ranges * 0.05
+    bounds = (
+        pts[:, 0].min() - margin[0], pts[:, 0].max() + margin[0],
+        pts[:, 1].min() - margin[1], pts[:, 1].max() + margin[1],
+        pts[:, 2].min() - margin[2], pts[:, 2].max() + margin[2],
+    )
+    plotter.show_bounds(bounds=bounds, location="furthest", grid=True)
+
+    plotter.add_legend(labels=legend_entries, size=(0.20, 0.18), loc="lower right", face="rectangle")
+    plotter.camera.view_angle = 30.0
+    plotter.camera.azimuth = 25.0
+    plotter.camera.elevation = -15.0
+
+    if show:
+        plotter.show()
+    return plotter
 
 
 def plot_structural_model_3D(
@@ -448,7 +612,10 @@ def plot_fault_model_3D(
                 start = df_ori[["X", "Y", "Z"]].values
                 direction = df_ori[["G_x", "G_y", "G_z"]].values
 
-                scale = 50.0
+                # scale arrow relative to grid X-extent so it stays visible at any coordinate scale
+                grid_obj = getattr(fault_frame, "grid", None)
+                extent_vals = getattr(grid_obj, "extent", None) if grid_obj is not None else None
+                scale = (extent_vals[1] - extent_vals[0]) * 0.05 if extent_vals is not None else 50.0
                 for i in range(len(start)):
                     arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
                     plotter.add_mesh(arrow, color=fcol)
