@@ -50,6 +50,7 @@ data_faults = InputData_FaultElements(name='Faults_Model_2',
 
 #%%
 
+# Plot fault input data without model context
 plot_fault_input_data_3D(data_faults)
 
 #%%
@@ -95,6 +96,7 @@ data_elements = InputData_StructuralElements(name='Model_2',
 
 #%%
 
+# Plot input data without model context
 plot_input_data_3D(data_elements)
 
 #%%

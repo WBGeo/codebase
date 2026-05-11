@@ -53,6 +53,7 @@ data_elements = InputData_StructuralElements(name='Model_6',
 
 #%%
 
+# Plot input data without model context
 plot_input_data_3D(data_elements)
 
 #%%
