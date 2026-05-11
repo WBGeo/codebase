@@ -48,7 +48,7 @@ SfepyOutputType = typing.Annotated[
 # INPUT COMPONENT
 # =====================================================
 @wbgeo_component(
-    description='Input data for SfePy tests_simulation_components',
+    description='Input data for SfePy simulation',
     title='SfePy Input',
     color="#e5d016",
     border_color='#000000',
@@ -77,13 +77,13 @@ def sfepy_input_data(
 # SIMULATION COMPONENT
 # =====================================================
 @wbgeo_component(
-    description='simulation_components using Sfepy',
+    description='Simulation using Sfepy',
     title='Simulating with Sfepy',
     color="#e5d016",
     border_color='#000000',
     group='simulation_components',
     identifier='wbgeo::simulate_with_sfepy',
-    return_name='simulation_components',
+    return_name='Simulation',
 )
 def run_sfepy(
     sfepy_input_or_file: typing.Union[SfepyInputType, str],
@@ -173,7 +173,7 @@ def run_sfepy(
 # SAVE OUTPUT COMPONENT
 # =====================================================
 # @wbgeo_component(
-#     title="Save outputs of tests_simulation_components",
+#     title="Save outputs of simulation",
 #     description="Save outputs",
 #     group="Outputs",
 #     identifier="wbgeo::save_outputs",

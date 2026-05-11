@@ -21,7 +21,7 @@ def plot_mesh_3d(
     show_plotter: bool = True,
 ) -> pv.Plotter:
     """
-    Plot the mesh for process tests_simulation_components in 3D.
+    Plot the mesh for process simulation in 3D.
 
     Args:
         mesh_results: The mesh to plot.
