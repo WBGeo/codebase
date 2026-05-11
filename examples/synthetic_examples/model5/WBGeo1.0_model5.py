@@ -139,7 +139,7 @@ mesh_unstructured = create_unstructured_mesh_data(
     PROJECTION_THRESHOLD=60,
     EXTRUSION_FACTOR=120,
     z_threshold=10,
-    extent=[50, 2000, 50, 1000, 50, 1000]
+    extent=(50, 2000, 50, 1000, 50, 1000)
 )
 
 # Explicit structured mesh
@@ -148,7 +148,7 @@ mesh_explicit_structured = create_structured_mesh_data(
     refinement_data=[25, 21, 16, 5, 6],
     z_threshold=0.1,
     tolerance=1,
-    extent=[50, 2000, 50, 1000, 50, 1000]
+    extent=(50, 2000, 50, 1000, 50, 1000)
 )
 
 #%%
