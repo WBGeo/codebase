@@ -69,8 +69,6 @@ def group_from_type(type: type[pydantic.BaseModel], t_inst: typing.Any = None) -
                                                                             name) else default_value
     description = field.description
 
-    print("###CV", current_value, name)
-
     if field_type == int:
       ret.append(CtrlInt(id=name, label=name, description=description,
                          defaultValue=int(current_value) if current_value is not None else None))
@@ -110,7 +108,6 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
     if len(stack) == 0:
       return [CtrlLabel(label=' Unhandled method ')]
     enum_val, key, param_type, param_instance = stack[0]
-    print("###param_instance", param_instance)
     return [CtrlIf(condition=f"'$.method' == \"{enum_val.value}\"",
                    when_true=[CtrlGroup(id=key, inner=group_from_type(param_type, param_instance))],
                    when_false=construct_group_from(stack[1:])
@@ -125,7 +122,6 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
   except:
     print("Failed to build frame")
     pass
-  print("####frame", frame)
   # interpolator_parameters.default_ok_params(frame[key].context) if frame is not None else None
 
   return CtrlGroup(id='root', inner=[
