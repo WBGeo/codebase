@@ -93,12 +93,18 @@ def group_from_type(type: type[pydantic.BaseModel], t_inst: typing.Any = None) -
 
 
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options',
-                 description='structural_modeling_smart_options',
                  title='structural_modeling_smart_options')
 def structural_modeling_smart_options(data_elements: InputData_StructuralElements,
                                       grid: grid_classes.RegularGrid,
                                       fault_model: typing.Optional[FaultModelResults] = None
                                       ) -> CtrlGroup:
+  """
+  (Internal) component to compute the smart input form
+  :param data_elements:
+  :param grid:
+  :param fault_model:
+  :return:
+  """
   group_names = data_elements.mapping_object.keys()
 
   def construct_group_from(stack: typing.List[
@@ -190,10 +196,14 @@ def unflatten_dict(d):
 
 
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options_to_data',
-                 description='structural_modeling_smart_options_to_data',
                  title='structural_modeling_smart_options_to_data')
 def structural_modeling_smart_options_to_data(
     _input: SmartInputFormData) -> StructuralFrameInputOptions:
+  """
+  (Internal) component to convert the smartinput dict to proper StructuralFrameInputOptions
+  :param _input:
+  :return:
+  """
   data = json.loads(_input)  # _input is a json dict
   data = unflatten_dict(
     {k: v for k, v in data.items() if v is not None})  # un-flatten it and remove nulls
@@ -208,8 +218,7 @@ SmartStructuralFrameInputOptions = typing.Annotated[
 
 
 # Register this function as a component
-@wbgeo_component(description='structural_modeling',
-                 title='Compute Structural Model',  # The title shown in the GUI
+@wbgeo_component(title='Compute Structural Model',  # The title shown in the GUI
                  color='#8cb369',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Inputs',
@@ -222,6 +231,26 @@ def structural_modeling(
     fault_model: typing.Optional[FaultModelResults] = None,
     options: SmartStructuralFrameInputOptions = None,
 ) -> StructuralModelResults:
+  """
+  Construct a :class:`StructuralFrame` from mapping, grid info, and input_data.
+
+  Then applies options on the frame
+
+  And finally runs the full pipeline with (optional) fault domains
+
+      Steps
+    -----
+    1) Per-domain interpolation (stores scalar fields/values per domain)
+    2) Per-domain age masks
+    3) Final lithology block combining domains
+    4) Per-domain masked surface meshes (optional)
+
+  :param elements: the input elements
+  :param grid: the grid
+  :param fault_model: (optional) fault model
+  :param options: (optional) options to be applied
+  :return: a StructuralModelResults
+  """
   frame = general.build_structural_frame(input_data_elements=elements,
                                          grid=grid,
                                          fault_model_results=fault_model
@@ -248,8 +277,7 @@ def structural_modeling(
 
 
 @wbgeo_component(identifier='wbgeo::structural_model_result_detailed_report',
-                 title='Detailed Report',
-                 description='...')
+                 title='Detailed Report')
 @wbgeo_inspector()
 def inspect_structural_model_result_detailed_report(structural_model_result: StructuralModelResults,
                                                     _inspector: InspectorHelper):
@@ -257,8 +285,7 @@ def inspect_structural_model_result_detailed_report(structural_model_result: Str
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_2D',
-                 title='Plot Model Result 2D',
-                 description='...')
+                 title='Plot Model Result 2D')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_2D(
     structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
@@ -266,8 +293,7 @@ def inspect_structural_model_result_plot_structural_model_2D(
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D_sf',
-                 title='Plot Model Result 3D',
-                 description='...')
+                 title='Plot Model Result 3D')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_3D(
     structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
