@@ -14,15 +14,12 @@ from core.meshing_components.explicit.unstructured.mesh_data import create_unstr
     load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
-from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
-from core.meshing_components.mesh_format.vtu.VTU_format import export_mesh_results_to_vtu
-from core.meshing_components.mesh_format.vtk.VTK_format import export_mesh_results_to_vtk
-from core.meshing_components.mesh_format.feflow.Feflow_format import export_mesh_results_to_feflow
-from core.meshing_components.mesh_format.gmsh.GMSH_format import export_mesh_results_to_gmsh
-from core.meshing_components.mesh_format.stl.STL_format import export_mesh_results_to_stl
-from core.meshing_components.mesh_format.vtm.VTM_format import export_mesh_results_to_vtm
-from core.meshing_components.mesh_format.ansys.Ansys_format import export_mesh_results_to_ansys
-from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh_results_to_abaqus
+from core.meshing_components.mesh_format.mesh_export import (
+    export_mesh_results_to_exodus, export_mesh_results_to_vtu,
+    export_mesh_results_to_vtk, export_mesh_results_to_feflow,
+    export_mesh_results_to_gmsh, export_mesh_results_to_stl,
+    export_mesh_results_to_vtm, export_mesh_results_to_ansys,
+    export_mesh_results_to_abaqus)
 
 from core.simulation_components.simulation_packages.sfepy.simulation_run import run_sfepy
 from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
@@ -139,7 +136,6 @@ mesh_unstructured = create_unstructured_mesh_data(
     PROJECTION_THRESHOLD=60,
     EXTRUSION_FACTOR=120,
     z_threshold=10,
-    extent=(50, 2000, 50, 1000, 50, 1000)
 )
 
 # Explicit structured mesh
@@ -148,7 +144,6 @@ mesh_explicit_structured = create_structured_mesh_data(
     refinement_data=[25, 21, 16, 5, 6],
     z_threshold=0.1,
     tolerance=1,
-    extent=(50, 2000, 50, 1000, 50, 1000)
 )
 
 #%%
@@ -190,7 +185,6 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 #     PROJECTION_THRESHOLD=60,
 #     EXTRUSION_FACTOR=120,
 #     z_threshold=10,
-#     extent=[50, 2000, 50, 1000, 50, 1000]
 # )
 #
 # # Plot the resulting mesh

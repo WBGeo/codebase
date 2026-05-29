@@ -36,12 +36,29 @@ from core.structural_modeling_components.structural_objects.structural_objects i
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes
 
 # -----------------------------------------------------------------------------
+# Constants
+# -----------------------------------------------------------------------------
+# Must match _SURFACE_PADDING_CELLS in general.py.
+_SURFACE_PADDING_CELLS: int = 2
+
+# -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 IntArray: TypeAlias = npt.NDArray[np.integer]
 BoolArray: TypeAlias = npt.NDArray[np.bool_]
 Pairs: TypeAlias = FrozenSet[tuple[int, int]]
+
+
+def _build_padded_grid(grid: RegularGrid, p: int) -> RegularGrid:
+    """Return a new grid with the same cell size but extent expanded by p cells on each side."""
+    dx, dy, dz = grid.spacing
+    x0, x1, y0, y1, z0, z1 = grid.extent
+    nx, ny, nz = grid.resolution
+    return RegularGrid(
+        extent=(x0 - p*dx, x1 + p*dx, y0 - p*dy, y1 + p*dy, z0 - p*dz, z1 + p*dz),
+        resolution=(nx + 2*p, ny + 2*p, nz + 2*p),
+    )
 
 
 def check_fault_crosscuts_via_isovalue_bands(
@@ -253,17 +270,28 @@ def compute_fault_domains(
     domain_id_counter = 1
     temp_ids: list[int] = []
 
+    padded_grid = _build_padded_grid(fault_frame.grid, _SURFACE_PADDING_CELLS)
+    p = _SURFACE_PADDING_CELLS
+
     for fault in reversed(fault_frame.fault_elements):  # youngest first
         name = fault.name
         points = fault_frame.get_surface_points_for_element(name)
         orientations = fault_frame.get_orientations_for_element(name)
 
+        # Run on padded grid so the scalar field covers model extent + margin.
+        # The center slice becomes the regular scalar field; the full padded
+        # result is stored as extended_scalar_field for meshing surface extraction.
         interpolate_group_universal_cokriging_for_faults(
             fault_frame.get_element_by_name(name),
-            fault_frame.grid,
+            padded_grid,
             fault_surface_points_df=points,
             fault_orientations_points_df=orientations,
         )
+
+        # Store full padded field, trim center for regular use, recompute domain mask.
+        fault.extended_scalar_field = fault.scalar_field
+        fault.set_scalar_field(fault.scalar_field[p:-p, p:-p, p:-p])
+        fault.set_domain_mask(fault.scalar_field > fault.scalar_value)
 
         mask = fault.get_domain_mask()
         if mask is None:
@@ -353,7 +381,15 @@ def compute_fault_domains(
 
         fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
 
-    # Extract surfaces meshes for faults
+    # Extract surface meshes for faults
+    dx, dy, dz = fault_frame.grid.spacing
+    x0, x1, y0, y1, z0, z1 = fault_frame.grid.extent
+    padded_extent = (
+        x0 - p*dx, x1 + p*dx,
+        y0 - p*dy, y1 + p*dy,
+        z0 - p*dz, z1 + p*dz,
+    )
+
     for _, fault in enumerate(reversed(fault_frame.fault_elements)):
         vertices, edges = marching_cubes(
             fault.scalar_field,
@@ -362,6 +398,15 @@ def compute_fault_domains(
             fault_frame.grid.extent,
         )
         fault.set_mesh("unmasked", vertices[0], edges[0])
+
+        if fault.extended_scalar_field is not None:
+            vertices_ext, edges_ext = marching_cubes(
+                fault.extended_scalar_field,
+                [fault.scalar_value],
+                fault_frame.grid.spacing,
+                padded_extent,
+            )
+            fault.set_mesh("extended", vertices_ext[0], edges_ext[0])
 
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
 

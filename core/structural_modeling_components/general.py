@@ -75,6 +75,14 @@ from core.structural_modeling_components.interpolator_functions.universal_krigin
 )
 
 # -----------------------------------------------------------------------------
+# Constants
+# -----------------------------------------------------------------------------
+# Number of grid cells to pad the extent when computing extended scalar fields.
+# Extended scalar fields are evaluated on a larger grid so that marching-cubes
+# surfaces naturally cross the model bounding box — required for GMSH fragment.
+_SURFACE_PADDING_CELLS: int = 2
+
+# -----------------------------------------------------------------------------
 # Typing helpers
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
@@ -238,18 +246,26 @@ def run_interpolation_with_fault_domains(
     crop_to_domain : bool, default True
         Crop computation to minimal bounding box for speed.
     """
+    p = _SURFACE_PADDING_CELLS
+    padded_grid = _build_padded_grid(frame.grid, p)
+
     domain_map: IntArray = (
         fault_frame.domain_map
         if fault_frame is not None
         else np.zeros(frame.grid.resolution, dtype=int)
     )
+    # Pad the domain map with boundary values so interpolations on the padded grid
+    # see the correct domain IDs in the extended margin cells.
+    padded_domain_map: IntArray = np.pad(domain_map, p, mode='edge')
+    domain_ids: IntArray = np.unique(padded_domain_map)  # identical to np.unique(domain_map)
 
-    domain_ids: IntArray = np.unique(domain_map)
-
-    # Assign each point to a domain
-    sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
+    # Assign each point to a domain using the padded grid/map.
+    # Surface points lie within the original extent, so they map to the same
+    # domain IDs as before (cells p…nx+p in the padded array equal cells 0…nx-1
+    # in the original).
+    sp_in_domain = assign_domain_ids_to_points(padded_grid, padded_domain_map, frame.surface_points)
     ori_in_domain = (
-        assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
+        assign_domain_ids_to_points(padded_grid, padded_domain_map, frame.orientations)
         if frame.orientations is not None
         else None
     )
@@ -271,6 +287,12 @@ def run_interpolation_with_fault_domains(
                 fault_activity=frame.fault_activity,
                 group_idx=group_idx,
             )
+
+        # Padded scalar field accumulator for this group.
+        # Each component writes its result into the corresponding voxels; at the
+        # end we store the full padded array as extended_scalar_field and trim
+        # the center p-cell margin to get the regular scalar field.
+        padded_acc = np.zeros(padded_grid.resolution, dtype=float)
 
         # Interpolate per active merged component
         for comp_ids in components:
@@ -295,18 +317,19 @@ def run_interpolation_with_fault_domains(
             if sp_filtered.empty:
                 continue
 
-            # Bounding box crop from merged component mask (optional)
-            use_grid = frame.grid
+            # Always interpolate on the padded grid (or a padded bbox subgrid).
+            # Trimming the padded result to frame.grid.resolution recovers the
+            # regular scalar field; the full padded result is extended_scalar_field.
+            use_grid = padded_grid
             bbox: Optional[BBox6] = None
             if crop_to_domain and len(domain_ids) > 1:
-                comp_mask = np.isin(domain_map, comp_ids_arr)
-                # compute bbox from comp_mask (XYZ)
+                comp_mask = np.isin(padded_domain_map, comp_ids_arr)
                 xs = np.where(comp_mask.any(axis=(1, 2)))[0]
                 ys = np.where(comp_mask.any(axis=(0, 2)))[0]
                 zs = np.where(comp_mask.any(axis=(0, 1)))[0]
                 if xs.size and ys.size and zs.size:
                     bbox = (int(xs[0]), int(xs[-1]), int(ys[0]), int(ys[-1]), int(zs[0]), int(zs[-1]))
-                    use_grid = build_subgrid_from_bbox(frame.grid, bbox)
+                    use_grid = build_subgrid_from_bbox(padded_grid, bbox)
 
             # Pick interpolator
             method = group.interpolation_method
@@ -324,17 +347,16 @@ def run_interpolation_with_fault_domains(
             # Preserve existing behavior: transpose to expected axis order
             scalar_field_sub = scalar_field_sub.transpose(2, 1, 0)
 
+            # Place result into the padded accumulator
             if bbox is not None and len(domain_ids) > 1:
-                full_shape = tuple(frame.grid.resolution)
-                scalar_field_full = np.full(full_shape, np.nan, dtype=scalar_field_sub.dtype)
+                padded_field = np.full(padded_grid.resolution, np.nan, dtype=scalar_field_sub.dtype)
                 kx0, kx1, ky0, ky1, kz0, kz1 = bbox
-                scalar_field_full[kx0:kx1 + 1, ky0:ky1 + 1, kz0:kz1 + 1] = scalar_field_sub
-                scalar_field = scalar_field_full
+                padded_field[kx0:kx1 + 1, ky0:ky1 + 1, kz0:kz1 + 1] = scalar_field_sub
             else:
-                scalar_field = scalar_field_sub
+                padded_field = scalar_field_sub
 
-            comp_vox_mask = np.isin(domain_map, comp_ids_arr)
-            group.scalar_field = np.where(comp_vox_mask, scalar_field, group.get_scalar_field())
+            comp_vox_mask = np.isin(padded_domain_map, comp_ids_arr)
+            padded_acc = np.where(comp_vox_mask, padded_field, padded_acc)
 
             # Store scalar values per element
             for elem in group.structural_elements:
@@ -343,6 +365,10 @@ def run_interpolation_with_fault_domains(
                         f"Interpolator did not return a scalar value for element '{elem.name}' in group '{group.name}'."
                     )
                 elem.set_scalar_value(float(scalar_values[elem.name]))
+
+        # Store extended scalar field (full padded) and regular scalar field (trimmed center)
+        group.extended_scalar_field = padded_acc
+        group.scalar_field = padded_acc[p:-p, p:-p, p:-p]
 
 
 # --- 2) Age masks per domain --------------------------------------------------
@@ -601,6 +627,30 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             verts, faces = marching_cubes_per_element(sf, sval, frame.grid.spacing, frame.grid.extent, mask=None)
             elem.set_mesh("unmasked", verts, faces)
 
+    # ---- extended meshes (padded scalar field) ----
+    # Surfaces extracted here cross the model bounding box, which is required
+    # by the unstructured meshing component for GMSH volume fragmentation.
+    p = _SURFACE_PADDING_CELLS
+    for group in frame.structural_groups:
+        esf = group.extended_scalar_field
+        if esf is None:
+            continue
+        dx, dy, dz = frame.grid.spacing
+        x0, x1, y0, y1, z0, z1 = frame.grid.extent
+        padded_extent: Extent6 = (
+            x0 - p * dx, x1 + p * dx,
+            y0 - p * dy, y1 + p * dy,
+            z0 - p * dz, z1 + p * dz,
+        )
+        for elem in group.structural_elements:
+            sval = elem.scalar_value
+            if sval is None:
+                continue
+            verts, faces = marching_cubes_per_element(
+                esf, sval, frame.grid.spacing, padded_extent, mask=None
+            )
+            elem.set_mesh("extended", verts, faces)
+
     # ---- combined meshes from lithology block ----
     lith_block = frame.get_LithBlock()
     if lith_block is None:
@@ -801,6 +851,20 @@ def build_subgrid_from_bbox(grid: RegularGrid, bbox: BBox6) -> RegularGrid:
         extent=sub_extent,
         resolution=sub_resolution,
     )
+
+
+def _build_padded_grid(grid: RegularGrid, padding_cells: int) -> RegularGrid:
+    """Return a new grid with the same cell size but extent expanded by padding_cells on each side."""
+    dx, dy, dz = grid.spacing
+    x0, x1, y0, y1, z0, z1 = grid.extent
+    nx, ny, nz = grid.resolution
+    padded_extent: Extent6 = (
+        x0 - padding_cells * dx, x1 + padding_cells * dx,
+        y0 - padding_cells * dy, y1 + padding_cells * dy,
+        z0 - padding_cells * dz, z1 + padding_cells * dz,
+    )
+    padded_resolution = (nx + 2 * padding_cells, ny + 2 * padding_cells, nz + 2 * padding_cells)
+    return RegularGrid(extent=padded_extent, resolution=padded_resolution)
 
 
 def generate_grouped_colors_per_element(

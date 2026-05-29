@@ -1678,7 +1678,7 @@ def create_unstructured_mesh_data(
                                                                                   EXTRUSION_FACTOR = EXTRUSION_FACTOR, z_threshold = z_threshold)
 
        # Surface interpolation
-      interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth)
+      interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth, extent=extent_arr)
 
       # Import surfaces
       surfaces_original: List[int]

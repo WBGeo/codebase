@@ -189,8 +189,8 @@ def plot_fault_input_data_3D(
 def plot_structural_model_3D(
         frame: StructuralFrame,
         *,
-        mesh_type: str = "masked",  # "masked" | "unmasked" | "combined" (if present)
-        fault_mesh_type: str = "masked",  # same options for fault meshes
+        mesh_type: str = "masked",  # "masked" | "unmasked" | "combined" | "extended"
+        fault_mesh_type: Optional[str] = None,  # defaults to mesh_type when not set
         show_surface_meshes: bool = True,
         show_points: bool = True,
         show_orientations: bool = True,
@@ -204,6 +204,8 @@ def plot_structural_model_3D(
       which returns a dict like {"masked": (V, F), "unmasked": ..., "combined": ...}
     - fault_frame.fault_elements[i].vertices / .edges are used for fault meshes.
     """
+    fault_mesh_type = fault_mesh_type if fault_mesh_type is not None else mesh_type
+
     pv.global_theme.allow_empty_mesh = True
     plotter = pv.Plotter(notebook=notebook)
 
@@ -218,13 +220,11 @@ def plot_structural_model_3D(
 
             # meshes (per domain)
             if show_surface_meshes:
-                for mesh_elem in group.structural_elements:  # <--- renamed variable
-                    if mesh_type not in mesh_elem.vertices or mesh_type not in mesh_elem.edges:
-                        continue  # skip if requested mesh type not present
+                if mesh_type in elem.vertices and mesh_type in elem.edges:
                     plotter.add_mesh(
-                        pv.PolyData(mesh_elem.vertices[mesh_type],
-                                    np.insert(mesh_elem.edges[mesh_type], 0, 3, axis=1).ravel()),
-                        color=mesh_elem.color, opacity=1.0, label=f"{group.name} | {mesh_elem.name}")
+                        pv.PolyData(elem.vertices[mesh_type],
+                                    np.insert(elem.edges[mesh_type], 0, 3, axis=1).ravel()),
+                        color=elem.color, opacity=1.0, label=f"{group.name} | {elem.name}")
 
             # surface points
             if show_points and hasattr(frame, "get_surface_points_for_element"):
