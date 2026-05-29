@@ -5,11 +5,8 @@ import pandas as pd
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_inspector, \
   InspectorHelper
 
-from core.object_components import InputData_StructuralElements, InputData_FaultElements, \
-  FaultModelResults
-from core.structural_modeling_components import general_faults
+from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
-  plot_fault_model_2D, plot_fault_model_3D, \
   plot_input_data_3D, plot_fault_input_data_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
 
@@ -57,6 +54,18 @@ FaultNames = typing.Annotated[
 def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
                          # todo: fix tuple reporting
                          resolution: AResolution3 = (50, 50, 50)) -> grid_classes.RegularGrid:
+  """
+  Defines the 3D computation domain for the geological model.
+
+  The extent sets the bounding box of the model in world coordinates
+  (xmin, xmax, ymin, ymax, zmin, zmax). The resolution controls how many
+  voxels the domain is divided into along each axis — higher resolution
+  gives more detail but increases computation time.
+
+  :param extent: Bounding box of the model in world coordinates (xmin, xmax, ymin, ymax, zmin, zmax).
+  :param resolution: Number of voxels along each axis (nx, ny, nz).
+  :return: A RegularGrid defining the computation domain.
+  """
   return grid_classes.RegularGrid(extent, resolution)
 
 
@@ -81,7 +90,7 @@ def load_mapping(path: RemoteMappingFileType):
 
 
 # Register this function as a component
-@wbgeo_component(description='Provides a geo model',
+@wbgeo_component(description='Input data for a Structural Geological Model. Requires surface points, optionally orientations and a mapping file.',
                  title='Input data for Structural Elements',  # The title shown in the GUI
                  color='#b0dfa9',  # the color of the components
                  border_color='#000000',  # and its border color
@@ -96,6 +105,20 @@ def structural_input_data(
     orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
     mapping_file: JSONFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_mapping.json'
 ) -> InputData_StructuralElements:
+  """
+  Loads the input data for a structural geological model from CSV and JSON files.
+
+  Surface points define the contact locations of geological interfaces.
+  Orientations (optional) provide dip and azimuth constraints that improve
+  interpolation quality. The mapping file assigns each formation to a
+  stratigraphic group, which controls the layer ordering in the model.
+
+  :param name: Name of the model, used for identification.
+  :param surface_points_file: CSV file with surface contact points (columns: X, Y, Z, formation).
+  :param orientations_file: CSV file with orientation measurements (columns: X, Y, Z, G_x, G_y, G_z, formation). Optional.
+  :param mapping_file: JSON file mapping formation names to stratigraphic groups.
+  :return: InputData_StructuralElements ready to connect to the Compute Structural Model component.
+  """
   import os
   import pathlib
 
@@ -139,8 +162,8 @@ def inspect_structural_input_data_plot_3D(input_data: InputData_StructuralElemen
 
 
 ### faults
-@wbgeo_component(description='Provides fault data',
-                 title='Input data for Fault Elements',
+@wbgeo_component(description='Input data for Fault Elements. Requires surface points and orientations.',
+                 title='Fault Input Data',
                  color='#b0dfa9',
                  border_color='#000000',
                  group='Inputs',
@@ -153,6 +176,20 @@ def faults_input_data(
     fault_surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
     fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
     fault_names: FaultNames = ['fault',]) -> InputData_FaultElements:
+  """
+  Loads the input data for fault elements from CSV files.
+
+  Surface points define the locations where faults are observed (e.g. from
+  boreholes or outcrop mapping). Orientations constrain the dip and strike of
+  each fault plane. The fault names list must match the formation names used
+  in the surface points file and determines which faults are modelled.
+
+  :param name: Name of the fault dataset, used for identification.
+  :param fault_surface_points_file: CSV file with fault surface points (columns: X, Y, Z, formation).
+  :param fault_orientations_file: CSV file with fault orientation measurements (columns: X, Y, Z, G_x, G_y, G_z, formation).
+  :param fault_names: List of fault names to model, matching formation names in the surface points file.
+  :return: InputData_FaultElements ready to connect to the Compute Fault Model component.
+  """
   import os
   import pathlib
 
@@ -181,51 +218,3 @@ def inspect_fault_input_data_plot_3D(faults_data: InputData_FaultElements,
   plot_fault_input_data_3D(faults_data)
 
 
-# Register this function as a component
-@wbgeo_component(description='fault_modeling',
-                 title='Compute Fault Model',  # The title shown in the GUI
-                 color='#8cb369',  # the color of the components
-                 border_color='#000000',  # and its border color
-                 group='Inputs',
-                 identifier='wbgeo::fault_modeling',  # a unique identifier
-                 return_name='fault_model',  # the name for the returned-port
-                 )  # inputs are handled via the method signature
-def compute_fault_frame(
-    data_faults: InputData_FaultElements,
-    grid: grid_classes.RegularGrid,
-) -> FaultModelResults:
-  fault_frame = general_faults.build_fault_frame(
-    input_data_fault_elements=data_faults,
-    grid=grid
-  )
-  if grid is None:
-    raise ValueError("Missing grid?")
-  fault_model_result = general_faults.compute_fault_domains(fault_frame)
-
-  return fault_model_result
-
-@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_detailed_report',
-                 title='Detailed Fault Report',
-                 description='...')
-@wbgeo_inspector()
-def inspect_fault_model_result_detailed_report(fault_model_result: FaultModelResults,
-                                                    _inspector: InspectorHelper):
-  fault_model_result.fault_frame.detailed_report()
-
-
-@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_2D',
-                 title='Plot Fault Model Result 2D',
-                 description='...')
-@wbgeo_inspector()
-def inspect_fault_model_result_plot_structural_model_2D(
-    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
-  plot_fault_model_2D(fault_model_result.fault_frame)
-
-
-@wbgeo_component(identifier='wbgeo::inspect_faull_model_result_plot_structural_model_3D_sf',
-                 title='Plot Fault Model Result 3D',
-                 description='...')
-@wbgeo_inspector()
-def inspect_fault_model_result_plot_structural_model_3D_sf(
-    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
-  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True)

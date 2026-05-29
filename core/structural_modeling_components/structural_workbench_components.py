@@ -6,15 +6,15 @@ from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, 
   InspectorHelper
 from pydantic import BaseModel
 
-from core.object_components import InputData_StructuralElements, StructuralModelResults, \
-  FaultModelResults
-from core.structural_modeling_components import general
+from core.object_components import InputData_StructuralElements, InputData_FaultElements, \
+  StructuralModelResults, FaultModelResults
+from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.interpolator_functions import interpolator_parameters
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import \
   InterpolationMethod, OKParams, RBFParams, UCKParams, GeoINRParams, FDIParams, UKParams, \
   InterpolationParameterSet
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
-  plot_structural_model_2D, plot_structural_model_3D
+  plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
 
 
@@ -218,7 +218,8 @@ SmartStructuralFrameInputOptions = typing.Annotated[
 
 
 # Register this function as a component
-@wbgeo_component(title='Compute Structural Model',  # The title shown in the GUI
+@wbgeo_component(description='Computes a Structural Geological model from input data, grid, and (optionally) fault model. With smart options for interpolation methods and parameters.',
+                 title='Compute Structural Model',  # The title shown in the GUI
                  color='#8cb369',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Inputs',
@@ -232,24 +233,23 @@ def structural_modeling(
     options: SmartStructuralFrameInputOptions = None,
 ) -> StructuralModelResults:
   """
-  Construct a :class:`StructuralFrame` from mapping, grid info, and input_data.
+  Computes a 3D structural geological model from input data and a grid.
 
-  Then applies options on the frame
+  Interpolates scalar fields for each stratigraphic group to reconstruct
+  geological interfaces across the model domain. If a fault model is
+  connected, interpolation is performed per fault domain so that formations
+  are correctly offset across faults. The optional smart options input allows
+  selecting the interpolation method (e.g. RBF, Kriging) and tuning its
+  parameters per stratigraphic group.
 
-  And finally runs the full pipeline with (optional) fault domains
+  The output contains the lithology block, scalar fields, and surface meshes
+  for all geological formations and — if present — fault surfaces.
 
-      Steps
-    -----
-    1) Per-domain interpolation (stores scalar fields/values per domain)
-    2) Per-domain age masks
-    3) Final lithology block combining domains
-    4) Per-domain masked surface meshes (optional)
-
-  :param elements: the input elements
-  :param grid: the grid
-  :param fault_model: (optional) fault model
-  :param options: (optional) options to be applied
-  :return: a StructuralModelResults
+  :param elements: Structural input data including surface points, orientations, and group mapping.
+  :param grid: The computation grid defining the model domain.
+  :param fault_model: Optional fault model output from the Compute Fault Model component.
+  :param options: Optional smart options for interpolation method and parameter selection.
+  :return: StructuralModelResults containing scalar fields, lithology block, and surface meshes.
   """
   frame = general.build_structural_frame(input_data_elements=elements,
                                          grid=grid,
@@ -298,3 +298,70 @@ def inspect_structural_model_result_plot_structural_model_2D(
 def inspect_structural_model_result_plot_structural_model_3D(
     structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
   plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
+
+
+# -----------------------------------------------------------------------------
+# Fault modeling
+# -----------------------------------------------------------------------------
+
+@wbgeo_component(description='Computes fault surfaces and fault domains from input data and grid.',
+                 title='Compute Fault Model',
+                 color='#8cb369',
+                 border_color='#000000',
+                 group='Inputs',
+                 identifier='wbgeo::fault_modeling',
+                 return_name='fault_model',
+                 )
+def compute_fault_frame(
+    data_faults: InputData_FaultElements,
+    grid: grid_classes.RegularGrid,
+) -> FaultModelResults:
+  """
+  Computes the fault model from fault input data and a grid.
+
+  Builds a fault frame from the provided surface points and orientations,
+  then runs the fault domain computation. The resulting fault model partitions
+  the grid into domains separated by fault surfaces, and provides the fault
+  geometry as surface meshes. Connect the output to the Compute Structural
+  Model component to incorporate faults into the geological model.
+
+  :param data_faults: Fault input data including surface points, orientations, and fault names.
+  :param grid: The computation grid defining the model domain.
+  :return: FaultModelResults containing fault surfaces and the domain map.
+  """
+  fault_frame = general_faults.build_fault_frame(
+    input_data_fault_elements=data_faults,
+    grid=grid
+  )
+  if grid is None:
+    raise ValueError("Missing grid?")
+  fault_model_result = general_faults.compute_fault_domains(fault_frame)
+
+  return fault_model_result
+
+
+@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_detailed_report',
+                 title='Detailed Fault Report',
+                 description='...')
+@wbgeo_inspector()
+def inspect_fault_model_result_detailed_report(fault_model_result: FaultModelResults,
+                                               _inspector: InspectorHelper):
+  fault_model_result.fault_frame.detailed_report()
+
+
+@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_2D',
+                 title='Plot Fault Model Result 2D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_fault_model_result_plot_structural_model_2D(
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
+  plot_fault_model_2D(fault_model_result.fault_frame)
+
+
+@wbgeo_component(identifier='wbgeo::inspect_faull_model_result_plot_structural_model_3D_sf',
+                 title='Plot Fault Model Result 3D',
+                 description='...')
+@wbgeo_inspector()
+def inspect_fault_model_result_plot_structural_model_3D_sf(
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
+  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True)

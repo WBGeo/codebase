@@ -306,8 +306,10 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
     if has_faults:
         # get_surface_mesh_gradients returns two dicts: geological and fault elements,
         # each mapping element_name → {"points": (N,3), "vectors": (N,3)}.
+        # Fault surfaces use "extended" meshes (from padded interpolation) so they
+        # naturally cross the GMSH bounding box for volume fragmentation.
         geo_grads, fault_grads = surface_mesh_gradients.get_surface_mesh_gradients(
-            geomodel_result, mesh_type="unmasked"
+            geomodel_result, mesh_type="unmasked", fault_mesh_type="extended"
         )
 
         all_entries = list(geo_grads.values()) + list(fault_grads.values())
@@ -316,12 +318,17 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
         result = [False] * len(geo_grads) + [True] * len(fault_grads)
         print(result)
 
-    # If there are no faults: collect unmasked surface vertices from structural elements.
+    # If there are no faults: collect extended surface vertices from structural elements.
+    # Extended meshes come from interpolation on a padded grid and naturally cross
+    # the model bounding box, enabling GMSH volume fragmentation.
     else:
         raw_surfaces = []
         for group in frame.structural_groups:
             for elem in group.structural_elements:
-                verts, _ = elem.get_mesh("unmasked")
+                try:
+                    verts, _ = elem.get_mesh("extended")
+                except KeyError:
+                    verts, _ = elem.get_mesh("unmasked")
                 if verts is not None and len(verts) > 0:
                     raw_surfaces.append(verts)
         surfaces = [(i, surface) for i, surface in enumerate(raw_surfaces)]

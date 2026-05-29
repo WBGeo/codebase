@@ -247,6 +247,18 @@ def test_run_interpolation_with_fault_domains_calls_interpolator_and_sets_scalar
     # interpolator was called with filtered points
     assert captured["n_sp"] == 2
 
+    # interpolator received the padded grid, not the original grid
+    p = mod._SURFACE_PADDING_CELLS
+    expected_padded_res = tuple(r + 2 * p for r in grid.resolution)
+    assert captured["grid_res"] == expected_padded_res
+
+    # group scalar field is trimmed back to original resolution
+    assert group.scalar_field.shape == tuple(grid.resolution)
+
+    # extended_scalar_field retains the full padded result
+    assert group.extended_scalar_field is not None
+    assert group.extended_scalar_field.shape == expected_padded_res
+
 
 # -----------------------------------------------------------------------------
 # compute_structural_model (mock the big steps; pure orchestration)
@@ -772,6 +784,65 @@ def test_extract_meshes_combined_set_when_lith_block_present(monkeypatch):
     combined_verts, combined_faces = elems[0].get_mesh("combined")
     np.testing.assert_array_equal(combined_verts, sentinel_verts)
     np.testing.assert_array_equal(combined_faces, sentinel_faces)
+
+
+def test_extract_meshes_extended_uses_padded_extent_and_stores_mesh(monkeypatch):
+    """Extended meshes are extracted from extended_scalar_field with the padded extent."""
+    grid = make_grid((3, 2, 2))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
+
+    p = mod._SURFACE_PADDING_CELLS
+    padded_res = tuple(r + 2 * p for r in grid.resolution)
+    groups[0].extended_scalar_field = np.ones(padded_res, dtype=float)
+
+    extents_seen = []
+    sentinel_verts = np.array([[1.0, 2.0, 3.0]])
+    sentinel_faces = np.array([[0, 0, 0]], dtype=int)
+
+    def fake_mc(sf, sval, spacing, extent, mask=None):
+        extents_seen.append(extent)
+        return sentinel_verts.copy(), sentinel_faces.copy()
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", fake_mc)
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    # "extended" mesh must be stored on the element
+    ext_v, ext_f = elems[0].get_mesh("extended")
+    np.testing.assert_array_equal(ext_v, sentinel_verts)
+
+    # The extent used for the extended MC call must be padded (larger than model extent)
+    dx, dy, dz = grid.spacing
+    x0, x1, y0, y1, z0, z1 = grid.extent
+    expected_padded_extent = (
+        x0 - p * dx, x1 + p * dx,
+        y0 - p * dy, y1 + p * dy,
+        z0 - p * dz, z1 + p * dz,
+    )
+    # extents_seen contains calls for both unmasked (regular extent) and extended (padded extent)
+    assert any(e == pytest.approx(expected_padded_extent) for e in extents_seen)
+
+
+def test_extract_meshes_extended_skipped_when_no_extended_scalar_field(monkeypatch):
+    """Extended mesh extraction is silently skipped when extended_scalar_field is None."""
+    grid = make_grid((3, 2, 2))
+    frame, groups, elems = _make_mesh_frame(grid, n_groups=1)
+    # extended_scalar_field left as None (default)
+
+    monkeypatch.setattr(mod, "marching_cubes_per_element", lambda *a, **kw: (
+        np.zeros((1, 3), dtype=float), np.zeros((1, 3), dtype=int)
+    ))
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))], [np.zeros((1, 3), dtype=int)]
+    ))
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    with pytest.raises(KeyError):
+        elems[0].get_mesh("extended")
 
 
 # -----------------------------------------------------------------------------

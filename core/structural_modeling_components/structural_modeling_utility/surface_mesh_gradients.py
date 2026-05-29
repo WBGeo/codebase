@@ -10,7 +10,7 @@ def normalize_vectors(vectors):
     return vectors / np.where(norms == 0, 1, norms)  # Avoid division by zero
 
 
-def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_faults=True):
+def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_faults=True, fault_mesh_type=None):
     """
     Returns
     -------
@@ -49,8 +49,8 @@ def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_f
         iz = RegularGridInterpolator((x_sorted, y_sorted, z_sorted), gz, bounds_error=False, fill_value=None)
         return ix, iy, iz
 
-    def interpolate_on_mesh(element, ix, iy, iz):
-        pts = element.get_mesh(mesh_type)[0]  # keep your convention
+    def interpolate_on_mesh(element, ix, iy, iz, mt):
+        pts = element.get_mesh(mt)[0]
         vecs = np.column_stack((ix(pts), iy(pts), iz(pts)))
         if norm:
             vecs = normalize_vectors(vecs)
@@ -64,16 +64,19 @@ def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_f
     for group in result.structural_frame.structural_groups:
         ix, iy, iz = make_interpolators(group.scalar_field)
         for element in group.structural_elements:
-            gradients_dict[element.name] = interpolate_on_mesh(element, ix, iy, iz)
+            gradients_dict[element.name] = interpolate_on_mesh(element, ix, iy, iz, mesh_type)
 
     # --- faults (optional) ---
     gradients_faults_dict = {}
     fault_frame = getattr(result.structural_frame, "fault_frame", None)
+    _fault_mesh_type = fault_mesh_type if fault_mesh_type is not None else mesh_type
 
     if return_faults and fault_frame is not None:
         for fault_element in fault_frame.fault_elements:
             ix, iy, iz = make_interpolators(fault_element.scalar_field)
-            gradients_faults_dict[fault_element.name] = interpolate_on_mesh(fault_element, ix, iy, iz)
+            gradients_faults_dict[fault_element.name] = interpolate_on_mesh(
+                fault_element, ix, iy, iz, _fault_mesh_type
+            )
 
     return gradients_dict, gradients_faults_dict
 

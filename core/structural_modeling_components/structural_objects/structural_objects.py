@@ -37,8 +37,8 @@ FloatArray = NpNDArrayFp64
 IntArray = npt.NDArray[np.integer] #todo: unused & bad pydantic
 BoolArray = NpNDArrayBool
 
-MeshType3 = str  # expected: "masked" | "unmasked" | "combined"
-MeshType2 = str  # expected: "masked" | "unmasked"
+MeshType3 = str  # expected: "masked" | "unmasked" | "combined" | "extended"
+MeshType2 = str  # expected: "masked" | "unmasked" | "extended"
 MeshDict = Dict[str, NpNDArrayFp64]
 
 
@@ -92,9 +92,9 @@ class StructuralElement(BaseModel):
         Raises:
             ValueError: If mesh_type is not an allowed mesh type.
         """
-        if mesh_type not in {"masked", "unmasked", "combined"}:
+        if mesh_type not in {"masked", "unmasked", "combined", "extended"}:
             raise ValueError(
-                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined."
+                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined, extended."
             )
 
         self.vertices[mesh_type] = vertices
@@ -129,6 +129,7 @@ class StructuralGroup(BaseModel):
 
     interpolation_method: Optional[InterpolationMethod] = Field(default=None)
     scalar_field: Optional[NpNDArrayFp64] = Field(default=None)
+    extended_scalar_field: Optional[NpNDArrayFp64] = Field(default=None)
     interpolation_params: Optional[InterpolationParameterSet] = Field(default=None)
     mask: Optional[NpNDArrayBool] = Field(default=None)
     context: Optional[InterpolationContext] = Field(default=None)
@@ -650,6 +651,7 @@ class FaultElement(BaseModel):
     name: str = Field()
     scalar_value: Optional[float] = Field(default=None)
     scalar_field: Optional[NpNDArrayFp64] = Field(default=None)
+    extended_scalar_field: Optional[NpNDArrayFp64] = Field(default=None)
     color: str = Field(default="#AAAAAA")  # Default color in hex format
     separated_domains: Optional[Tuple[FrozenSet[int], FrozenSet[int]]] = Field(
         default=None
@@ -707,9 +709,9 @@ class FaultElement(BaseModel):
         Raises:
             ValueError: If mesh_type is not an allowed mesh type.
         """
-        if mesh_type not in {"masked", "unmasked"}:
+        if mesh_type not in {"masked", "unmasked", "extended"}:
             raise ValueError(
-                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined."
+                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, extended."
             )
 
         self.vertices[mesh_type] = vertices

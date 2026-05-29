@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import gmsh
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Dict, Any, Union
+from typing import List, Tuple, Dict, Any, Union, Optional
 from numpy.typing import NDArray
 from scipy.interpolate import Rbf
 from sklearn.cluster import HDBSCAN
@@ -74,7 +74,7 @@ def plot_all_surfaces_together(interpolated_surfaces: List[NDArray[np.float64]])
     plt.show()
 
 
-def create_surface_grid(cleaned_surfaces: List[Tuple[int, NDArray[np.float64]]], smooth: float = 1e-5 ) -> List[NDArray[np.float64]]:
+def create_surface_grid(cleaned_surfaces: List[Tuple[int, NDArray[np.float64]]], smooth: float = 1e-5, extent: Optional[NDArray[np.float64]] = None) -> List[NDArray[np.float64]]:
     """
     Generate interpolated surface grids from cleaned geological surface points.
 
@@ -156,13 +156,20 @@ def create_surface_grid(cleaned_surfaces: List[Tuple[int, NDArray[np.float64]]],
         unique_x = np.unique(x_cleaned)
         unique_y = np.unique(y_cleaned)
 
-        n_gx = min(len(unique_x), max_n_gx)
-        n_gy = min(len(unique_y), max_n_gy)
+        n_gx = max(min(len(unique_x), max_n_gx), 4)
+        n_gy = max(min(len(unique_y), max_n_gy), 4)
 
-        # --------------------------------------------------
+        # RBF grid covers the full extent of the input surface points.
+        # For no-fault models these come from interpolation on a padded grid,
+        # so they already extend past the model bounding box — no artificial
+        # expansion needed here.
+        gx_min, gx_max = x_min, x_max
+        gy_min, gy_max = y_min, y_max
+        gz_min, gz_max = z_min, z_max
+
         if  not is_vertical_yz:
-                grid_x, grid_y = np.meshgrid(np.linspace(x_min,x_max,n_gx),
-                                             np.linspace(y_min,y_max,n_gy))
+                grid_x, grid_y = np.meshgrid(np.linspace(gx_min, gx_max, n_gx),
+                                             np.linspace(gy_min, gy_max, n_gy))
 
                 rbf = Rbf(x_cleaned, y_cleaned, z_cleaned, function='multiquadric', epsilon=2, smooth=smooth)
                 z_interp_real = rbf(grid_x, grid_y)
@@ -170,8 +177,8 @@ def create_surface_grid(cleaned_surfaces: List[Tuple[int, NDArray[np.float64]]],
                 grid_x_real, grid_y_real = grid_x, grid_y
 
         else:
-                grid_y, grid_z = np.meshgrid(np.linspace(y_min,y_max,n_gx),
-                                             np.linspace(z_min,z_max,n_gy))
+                grid_y, grid_z = np.meshgrid(np.linspace(gy_min, gy_max, n_gx),
+                                             np.linspace(gz_min, gz_max, n_gy))
 
                 rbf = Rbf(y_cleaned, z_cleaned, x_cleaned, function='multiquadric', epsilon=2, smooth=smooth)
                 x_interp_real = rbf(grid_y, grid_z)
@@ -249,6 +256,33 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: List[floa
         max_y_list.append(float(np.max(surface_points[:, 1])))
         min_z_list.append(float(np.min(surface_points[:, 2])))
         max_z_list.append(float(np.max(surface_points[:, 2])))
+
+        # Detect truly vertical (YZ-plane) surfaces: X range is negligible compared to Y/Z range.
+        # For these, the RBF produces nearly-identical X floats that all appear "unique" to
+        # np.unique, making numPointsU explode and causing the mismatch check to skip the surface.
+        x_range = float(np.ptp(surface_points[:, 0]))
+        y_range = float(np.ptp(surface_points[:, 1]))
+        z_range = float(np.ptp(surface_points[:, 2]))
+        is_planar_x = x_range < 0.05 * max(y_range, z_range, 1e-12)
+
+        if is_planar_x:
+            # Create a rectangular plane surface spanning the full Y/Z extent of the surface.
+            x_c = float(np.mean(surface_points[:, 0]))
+            y0, y1 = float(np.min(surface_points[:, 1])), float(np.max(surface_points[:, 1]))
+            z0, z1 = float(np.min(surface_points[:, 2])), float(np.max(surface_points[:, 2]))
+            p1 = gmsh.model.occ.addPoint(x_c, y0, z0)
+            p2 = gmsh.model.occ.addPoint(x_c, y1, z0)
+            p3 = gmsh.model.occ.addPoint(x_c, y1, z1)
+            p4 = gmsh.model.occ.addPoint(x_c, y0, z1)
+            loop = gmsh.model.occ.addCurveLoop([
+                gmsh.model.occ.addLine(p1, p2),
+                gmsh.model.occ.addLine(p2, p3),
+                gmsh.model.occ.addLine(p3, p4),
+                gmsh.model.occ.addLine(p4, p1),
+            ])
+            s = gmsh.model.occ.addPlaneSurface([loop])
+            surfaces.append(s)
+            continue
 
         # Extract x and y coordinates to identify the grid structure
         x = surface_points[:, 0]

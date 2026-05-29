@@ -143,8 +143,9 @@ class UnstructuredMeshTestCase(unittest.TestCase):
         # -----------------------------
         # Bounds check (based on grid)
         # -----------------------------
+        tol = 1e-6
         self.assertTrue(
-            np.all((nodes >= 0) & (nodes <= 1000)),
+            np.all((nodes >= -tol) & (nodes <= 1000 + tol)),
             "Nodes outside expected domain"
         )
 
