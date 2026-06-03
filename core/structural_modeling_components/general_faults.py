@@ -153,7 +153,7 @@ def check_fault_crosscuts_via_isovalue_bands(
                 continue
             if np.any(band_i & band_j):
                 raise ValueError(
-                    f"❌ Fault '{name_i}' crosscuts fault '{name_j}' (isovalue-band overlap)."
+                    f"Fault '{name_i}' crosscuts fault '{name_j}' (isovalue-band overlap detected)."
                 )
 
 
@@ -410,8 +410,6 @@ def compute_fault_domains(
 
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
 
-    # Return a FaultModelResults object
-    print("Creating copy of ", type(fault_frame))
     result = FaultModelResults(
         fault_frame=copy.deepcopy(fault_frame),
     )
@@ -441,7 +439,33 @@ def build_fault_frame(
     # Collect input data
     fault_names = input_data_fault_elements.fault_names
     fault_surface_points_df = input_data_fault_elements.fault_surface_points.copy()
+
+    if input_data_fault_elements.fault_orientations is None:
+        raise ValueError(
+            "Fault orientations are required for fault interpolation (Universal Co-Kriging) "
+            "but were not provided."
+        )
     fault_orientations_df = input_data_fault_elements.fault_orientations.copy()
+
+    # Validate required columns
+    required_sp_cols = {"X", "Y", "Z", "formation"}
+    if not required_sp_cols.issubset(fault_surface_points_df.columns):
+        missing = required_sp_cols - set(fault_surface_points_df.columns)
+        raise ValueError(f"Fault surface points missing required columns: {missing}")
+
+    required_ori_cols = {"X", "Y", "Z", "G_x", "G_y", "G_z", "formation"}
+    if not required_ori_cols.issubset(fault_orientations_df.columns):
+        missing = required_ori_cols - set(fault_orientations_df.columns)
+        raise ValueError(f"Fault orientations missing required columns: {missing}")
+
+    # Validate per-fault coverage — each named fault must have surface points and orientations.
+    # UCK (the only fault interpolator) requires both; catching this here avoids a confusing
+    # GemPy error deep in the pipeline.
+    for name in fault_names:
+        if fault_surface_points_df[fault_surface_points_df["formation"] == name].empty:
+            raise ValueError(f"No surface points found for fault '{name}'")
+        if fault_orientations_df[fault_orientations_df["formation"] == name].empty:
+            raise ValueError(f"No orientations found for fault '{name}'")
 
     # Assign default gray colors if none provided
     colors = ["#000000"] * len(fault_names)

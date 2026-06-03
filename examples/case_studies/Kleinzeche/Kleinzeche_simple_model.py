@@ -15,7 +15,7 @@ Fault-1 active for Strat_Series2 upward.  Gravel-1 is post-fault.
 Grid: 50 × 50 m square footprint centred on Profile A mid-point.
   X : 380046 – 380096   Y : 5700883 – 5700933   Z : 40 – 130 m a.s.l.
 """
-
+# Importing necessary libraries
 import json
 import os
 import sys
@@ -33,8 +33,14 @@ from core.structural_modeling_components.structural_modeling_visualization.struc
     plot_fault_model_3D,
 )
 from core.structural_modeling_components import general, general_faults
+from core.meshing_components.explicit.unstructured.mesh_data import (
+    create_unstructured_mesh_data,
+    load_wells_from_csv,
+)
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
+from core.meshing_components.mesh_format.mesh_export import export_mesh_results_to_exodus
 
-# ── Local Kleinzeche imports ───────────────────────────────────────────────────
 try:
     _SECTION_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
@@ -53,19 +59,29 @@ from input_data.Kleinzeche_shared import (
     find_data_bbox, georeference_section, make_section_mesh,
 )
 
-# ── Load input data ────────────────────────────────────────────────────────────
+#%%
+
+# WORKFLOW Kleinzeche Simple Model: 2.5D structural model with Fault-1, extruded along strike
+
+#%%
+
+# Load input data
 surface_points       = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'simple_surface_points.csv'))
 orientations         = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'simple_orientations.csv'))
 fault_surface_points = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'fault1_surface_points.csv'))
 fault_orientations   = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'fault1_orientations.csv'))
 
-# ── Grid ───────────────────────────────────────────────────────────────────────
+#%%
+
+# Create a grid for the model
 grid = RegularGrid(
     extent=(380030, 380110, 5700875, 5700945, Z_MIN, 130),
     resolution=(100, 100, 100),
 )
 
-# ── Fault frame ────────────────────────────────────────────────────────────────
+#%%
+
+# Create input data for the fault elements
 data_faults = InputData_FaultElements(
     name='Kleinzeche_simple',
     fault_surface_points=fault_surface_points,
@@ -73,6 +89,9 @@ data_faults = InputData_FaultElements(
     fault_names=['Fault-1'],
 )
 
+#%%
+
+# Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
     input_data_fault_elements=data_faults,
     grid=grid,
@@ -81,16 +100,22 @@ fault_frame.detailed_report()
 
 #%%
 
+# Plot fault model input data
 plot_fault_model_3D(fault_frame)
 
 #%%
 
+# Compute fault domains
 fault_model_result = general_faults.compute_fault_domains(fault_frame)
+
+#%%
+
+# Plot fault domain results
 plot_fault_model_3D(fault_model_result.fault_frame)
 
 #%%
 
-# ── Formation mapping (youngest → oldest) ─────────────────────────────────────
+# Create input data for structural elements
 _available = set(surface_points['formation'].unique())
 _ALL_SERIES = [
     ('Strat_Series3', ('Gravel-1',)),
@@ -103,7 +128,6 @@ for _series, _fms in _ALL_SERIES:
     if _present:
         mapping_object[_series] = _present
 
-# ── Structural frame ───────────────────────────────────────────────────────────
 data_elements = InputData_StructuralElements(
     name='Kleinzeche_simple',
     mapping_object=mapping_object,
@@ -111,13 +135,15 @@ data_elements = InputData_StructuralElements(
     orientations=orientations,
 )
 
+#%%
+
+# Create StructuralFrame and configure colors, fault activity, and interpolation
 frame = general.build_structural_frame(
     input_data_elements=data_elements,
     grid=grid,
     fault_model_results=fault_model_result,
 )
 
-# ── Formation colors and fault activity ───────────────────────────────────────
 for _series, _fms in _ALL_SERIES:
     if _series not in mapping_object:
         continue
@@ -127,16 +153,19 @@ for _series, _fms in _ALL_SERIES:
 
 frame.set_fault_activity_by_group(fault_name='Fault-1', group_name='Strat_Series2')
 
-# ── Interpolation ──────────────────────────────────────────────────────────────
 for _series in mapping_object:
     frame[_series].set_interpolation_method('Universal Co-Kriging')
 
 frame.detailed_report()
+
+#%%
+
+# Plot input data (2D and 3D possible)
 plot_structural_model_3D(frame)
 
 #%%
 
-# ── Compute structural model ───────────────────────────────────────────────────
+# Compute structural model
 structural_model_result = general.compute_structural_model(
     frame,
     extract_meshes=True,
@@ -145,7 +174,7 @@ structural_model_result = general.compute_structural_model(
 
 #%%
 
-# ── Visualize results ──────────────────────────────────────────────────────────
+# Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame)
 plot_structural_model_3D(
     structural_model_result.structural_frame,
@@ -155,7 +184,7 @@ plot_structural_model_3D(
 
 #%%
 
-# ── Combined: model + Profile A section + borehole trajectories ───────────────
+# Combined 3D visualization with Profile A section and borehole trajectories
 _csv = pd.read_csv(CSV_PATH)
 
 with open(MARKER_CACHE) as _f:
@@ -176,7 +205,6 @@ p = plot_structural_model_3D(
     show=False,
 )
 
-# ── Profile A section (toggleable) ────────────────────────────────────────────
 _section_actors = [
     p.add_mesh(
         make_section_mesh(_corners_A, _bbox_A, PILImage.open(PATH_A).size),
@@ -184,7 +212,6 @@ _section_actors = [
     ),
 ]
 
-# ── Boreholes (toggleable) ────────────────────────────────────────────────────
 _borehole_actors = []
 
 for _name, _bh in BOREHOLES.items():
@@ -227,7 +254,6 @@ for _fn, _fg in _df_fault.groupby('formation'):
                    point_size=8, render_points_as_spheres=True)
     )
 
-# ── Toggle checkboxes ─────────────────────────────────────────────────────────
 def _toggle_section(flag):
     for _a in _section_actors:
         _a.SetVisibility(flag)
@@ -252,47 +278,35 @@ p.show()
 
 #%%
 
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
-from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
-from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
-  load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
-cwd = os.getcwd()
+# Compute 3D meshes based on the structural model result
 
-#################################
-# ImplicitStructured meshing.   #
-#################################
-mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
-#################################
-# Explicit Unstructured meshing #
-#################################
- #load wells
-wells = load_wells_from_csv(cwd + "/examples/case_studies/Kleinzeche/input_data/engineering_objects/kleinzeche_wells.csv")
-mesh_unstr = create_unstructured_mesh_data(
+# Implicit structured mesh (without engineering objects)
+mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model_result)
+
+# Load engineering objects and compute explicit unstructured mesh
+wells = load_wells_from_csv(os.path.join(_INPUT_DATA_DIR, 'engineering_objects/kleinzeche_wells.csv'))
+mesh_unstructured = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
     tolerance=1,
-    wells= wells,
+    wells=wells,
     mesh_size=1,
     curve_mesh_size=2,
-    DISTANCE_THRESHOLD = 3,
-    PROJECTION_THRESHOLD = 4,
-    EXTRUSION_FACTOR = 4.2,
-    z_threshold = 1,
+    DISTANCE_THRESHOLD=3,
+    PROJECTION_THRESHOLD=4,
+    EXTRUSION_FACTOR=4.2,
+    z_threshold=1,
 )
-#plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
-###########################################################################################################################
-#                                                    Exporting meshes
-###########################################################################################################################
-#########################
-# Export mesh to exodus #
-#########################
 
-# Implicit structured mesh
-#buf = export_mesh_results_to_exodus(mesh_implicit)
-#with open("filename_implic_klein.exo", "wb") as f:
-#    f.write(buf.getvalue())
-# Unstructured mesh
-#buf = export_mesh_results_to_exodus(mesh_unstr)
-#with open("filename_klein.exo", "wb") as f:
-#    f.write(buf.getvalue())
+#%%
+
+# Plot the meshing results
+plot_mesh_3d(mesh_unstructured, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
+
+#%%
+
+# Optional: Example of how to export the unstructured mesh to Exodus format.
+# Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
+# buf = export_mesh_results_to_exodus(mesh_unstructured)
+# with open("filename_kleinzeche_simple.exo", "wb") as f:
+#     f.write(buf.getvalue())

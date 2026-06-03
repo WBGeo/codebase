@@ -58,6 +58,15 @@ class RegularGrid:
             - Uses cell centers (half-cell offset at each boundary).
             - The flattened coordinate array is ordered according to ``indexing="ij"``.
         """
+        if any(self.extent[2 * i] >= self.extent[2 * i + 1] for i in range(3)):
+            raise ValueError(
+                f"Invalid grid extent: each min must be strictly less than max. Got {self.extent}"
+            )
+        if any(r <= 0 for r in self.resolution):
+            raise ValueError(
+                f"Invalid grid resolution: all dimensions must be positive integers. Got {self.resolution}"
+            )
+
         dx = (self.extent[1] - self.extent[0]) / self.resolution[0]
         dy = (self.extent[3] - self.extent[2]) / self.resolution[1]
         dz = (self.extent[5] - self.extent[4]) / self.resolution[2]

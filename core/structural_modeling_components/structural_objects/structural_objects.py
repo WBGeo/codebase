@@ -34,7 +34,7 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
 FloatArray = NpNDArrayFp64
-IntArray = npt.NDArray[np.integer] #todo: unused & bad pydantic
+IntArray = npt.NDArray[np.integer]
 BoolArray = NpNDArrayBool
 
 MeshType3 = str  # expected: "masked" | "unmasked" | "combined" | "extended"
@@ -438,7 +438,7 @@ class StructuralFrame(BaseModel):
         if self.orientations is not None:
             print(f"• Total orientations: {len(self.orientations)} entries\n")
         else:
-            print("• Orientation input_data: None\n")
+            print("• Orientations: None\n")
 
         for group in self.structural_groups:
             print(f"▶ {group.name}")
@@ -818,9 +818,11 @@ class FaultElement(BaseModel):
 
 class FaultFrame(BaseModel):
     """
-    Container for managing fault elements and their relationships.
+    Container for fault elements and their computed relationships.
 
-    attributes are used for numpy arrays / large data objects.
+    Stores fault surface data, the domain map produced by interpolation, and per-fault
+    adjacency information (separated domains, domain pairs). Large numpy arrays (scalar
+    fields, masks, domain map) are stored as Pydantic fields with pydantic-numpy types.
     """
 
     fault_elements: List[FaultElement]
@@ -832,23 +834,15 @@ class FaultFrame(BaseModel):
     domain_masks: dict[int, NpNDArrayBool] = Field(default_factory=dict)
 
     def __init__(self, *args, **kwargs):
-        # shortcut definition - not sure if I like this
+        # Positional shortcut: FaultFrame([elements]) or FaultFrame([elements], relations)
         if args:
-          if len(args) == 1 or len(args) == 2:
-            kwargs["fault_elements"] = args[0]
-          else:
-            raise TypeError("Unsupported shortcut, fault_elements: List[FaultElement], fault_relations: Optional[NpNDArrayBool] = None ")
-          if len(args) == 2:
-            kwargs["fault_relations"] = args[1]
+            if len(args) == 1 or len(args) == 2:
+                kwargs["fault_elements"] = args[0]
+            else:
+                raise TypeError("FaultFrame positional args: fault_elements, fault_relations (optional)")
+            if len(args) == 2:
+                kwargs["fault_relations"] = args[1]
         super().__init__(**kwargs)
-    # def __init__(
-    #         self,
-    #         fault_elements: List[FaultElement],
-    #         fault_relations: Optional[NpNDArrayBool] = None,
-    # ):
-    #     super().__init__()
-    #     self.fault_elements = fault_elements
-    #     self.fault_relations = fault_relations
 
 
     def get_element_by_name(self, name: str) -> Optional[FaultElement]:

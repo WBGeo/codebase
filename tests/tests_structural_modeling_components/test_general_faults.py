@@ -149,10 +149,12 @@ def test_build_fault_frame_creates_elements_reversed_and_sets_defaults():
     grid = RegularGrid(extent=(0, 1, 0, 1, 0, 1), resolution=(2, 2, 2))
 
     fault_names = ["F_old", "F_young"]
-    sp = pd.DataFrame({"X": [0.0], "Y": [0.0], "Z": [0.0], "formation": ["F_old"]})
-    ori = pd.DataFrame(
-        {"X": [0.0], "Y": [0.0], "Z": [0.0], "G_x": [1.0], "G_y": [0.0], "G_z": [0.0], "formation": ["F_old"]}
-    )
+    sp = pd.DataFrame({"X": [0.0, 0.5], "Y": [0.0, 0.0], "Z": [0.0, 0.0], "formation": ["F_old", "F_young"]})
+    ori = pd.DataFrame({
+        "X": [0.0, 0.5], "Y": [0.0, 0.0], "Z": [0.0, 0.0],
+        "G_x": [1.0, 1.0], "G_y": [0.0, 0.0], "G_z": [0.0, 0.0],
+        "formation": ["F_old", "F_young"],
+    })
 
     inp = FakeInputFaultElements(fault_names=fault_names, fault_surface_points=sp, fault_orientations=ori)
 

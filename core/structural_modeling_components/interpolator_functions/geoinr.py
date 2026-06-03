@@ -2,15 +2,10 @@
 GeoINR interpolation for a single structural group.
 
 This module contains:
-- `interpolate_group_geo_inr`: your framework-facing interpolator (pure function)
-- A small PyTorch MLP (`ConcatMLP`) and helper functions used by GeoINR training/inference
-- `stratigraphic_ConcatMLP`: training loop producing predictions and iso-values
-
-Important notes
----------------
-- `loss_intf` and `loss_grad` are defined twice in the original source. This is likely accidental,
-  but removing one definition would be a code change, so both are kept. The second definition
-  overwrites the first at runtime (standard Python behavior).
+- `interpolate_group_geo_inr`: framework-facing interpolator (pure function)
+- `ConcatMLP`: small PyTorch MLP used for implicit neural representation
+- `stratigraphic_ConcatMLP`: training loop producing scalar field predictions and iso-values
+- Helper functions: `normalize`, `loss_intf`, `loss_grad`, `predict_to_mesh_stratigraphic`
 """
 
 from __future__ import annotations
