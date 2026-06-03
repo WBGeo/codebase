@@ -1,5 +1,3 @@
-# interpolator_universal_kriging_3d.py
-
 """
 Universal Kriging (3D) interpolation for a single structural group.
 
@@ -40,16 +38,33 @@ def interpolate_group_universal_kriging(
     """
     Universal Kriging for a single structural group (pure function).
 
-    Expected `params = group.get_interpolation_params()` attributes (minimum):
-      - variogram_model, sill, range, nugget
-      - anisotropy_scaling_y, anisotropy_scaling_z
-      - neighbors
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object. Expected members:
+        - `name: str`
+        - `structural_elements: Sequence[... with .name]`
+        - `get_interpolation_params() -> UKParams-like`
+          Minimum required attributes: variogram_model, sill, range, nugget,
+          anisotropy_scaling_y, anisotropy_scaling_z, neighbors.
+          Optional UK-specific: drift_terms (default "regional_linear"),
+          specified_drift_arrays, external_drift, external_drift_grid.
+    grid
+        RegularGrid-like object providing:
+        - `gridx`, `gridy`, `gridz`: 1D coordinate arrays (cell centers)
+    group_surface_points_df
+        DataFrame of constraint points with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        Optional orientations DataFrame. Accepted for API consistency but not used.
 
-    Optional UK-specific params (if present):
-      - drift_terms: list[str] | str   (default: "regional_linear")
-      - specified_drift (array or dict[str,array]) OR specified_drift_arrays (list[array])
-      - external_drift (array at data points)
-      - external_drift_grid (array on grid for execute)
+    Returns
+    -------
+    scalar_field : np.ndarray
+        Interpolated scalar field evaluated on the grid.
+    scalar_values_by_element : dict[str, float]
+        Mapping element_name -> scalar value. Values are strictly increasing from
+        oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
+        so reversed order is used here).
     """
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")

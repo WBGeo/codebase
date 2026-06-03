@@ -1,4 +1,12 @@
+"""
+WBGeo workflow components for loading geological input data from files.
+
+Provides components for creating RegularGrid instances and loading structural
+and fault input data from CSV and JSON files into the pipeline.
+"""
 import json
+import os
+import pathlib
 import typing
 
 import pandas as pd
@@ -11,8 +19,8 @@ from core.structural_modeling_components.structural_modeling_visualization.struc
 from core.structural_modeling_components.structural_objects.grids import grid_classes
 
 # Add some file path types:
-# The frontend will handle them specially (via their identifier), yet they are strings in the backend
-# We use the typing.Annotated notation here, as we can't use the @wbgeo_type decorator on builtin types
+# The frontend handles these specially (via their identifier); in the backend they are strings.
+# typing.Annotated is used because @wbgeo_type cannot be applied to builtin types.
 CSVFileDataType = typing.Annotated[
   str, AnnotatedScriptType(name='path', color='aqua', identifier='CSVFileDataType',
                            controlled='RemoteFile|endswith=.csv')]
@@ -27,7 +35,7 @@ JSONFileDataType = typing.Annotated[
                            controlled='RemoteFile|endswith=.json')]
 
 # todo: ALu improve these by giving them a fixed tuple instead of Table?
-# the following two annotations allow an editing of extends via the web-ui
+# The following two annotations allow editing of extent/resolution via the web-UI.
 AExtent6 = typing.Annotated[
   grid_classes.Extent6, AnnotatedScriptType(name='grid_classes.Extent6', color='aqua',
                                             identifier='grid_classes.Extent6',
@@ -39,32 +47,39 @@ AResolution3 = typing.Annotated[
 
 FaultNames = typing.Annotated[
   typing.List[str], AnnotatedScriptType(name='Fault Names', color='aqua',
-                                                identifier='wbgeo::FaultNames',
-                                                controlled='List|FaultName')]
+                                        identifier='wbgeo::FaultNames',
+                                        controlled='List|FaultName')]
+
 
 @wbgeo_component(description='Regular (axis-aligned) grid defined by an extent and a 3D resolution',
-                 title='Regular Grid',  # The title shown in the GUI
-                 color='#b0dfa9',  # the color of the components
-                 border_color='#000000',  # and its border color
+                 title='Regular Grid',
+                 color='#b0dfa9',
+                 border_color='#000000',
                  group='Inputs',
-                 identifier='wbgeo::regular_grid',  # a unique identifier
-                 return_name='grid',  # the name for the returned-port
+                 identifier='wbgeo::regular_grid',
+                 return_name='grid',
                  is_object_type=True,
-                 )  # inputs are handled via the method signature
+                 )
 def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
-                         # todo: fix tuple reporting
                          resolution: AResolution3 = (50, 50, 50)) -> grid_classes.RegularGrid:
   """
   Defines the 3D computation domain for the geological model.
 
-  The extent sets the bounding box of the model in world coordinates
-  (xmin, xmax, ymin, ymax, zmin, zmax). The resolution controls how many
-  voxels the domain is divided into along each axis — higher resolution
-  gives more detail but increases computation time.
+  The extent sets the bounding box of the model in world coordinates.
+  The resolution controls how many voxels the domain is divided into along
+  each axis — higher resolution gives more detail but increases computation time.
 
-  :param extent: Bounding box of the model in world coordinates (xmin, xmax, ymin, ymax, zmin, zmax).
-  :param resolution: Number of voxels along each axis (nx, ny, nz).
-  :return: A RegularGrid defining the computation domain.
+  Parameters
+  ----------
+  extent : tuple[float, float, float, float, float, float]
+      Bounding box as (xmin, xmax, ymin, ymax, zmin, zmax).
+  resolution : tuple[int, int, int]
+      Number of voxels along each axis (nx, ny, nz).
+
+  Returns
+  -------
+  RegularGrid
+      Grid defining the computation domain.
   """
   return grid_classes.RegularGrid(extent, resolution)
 
@@ -74,31 +89,33 @@ RemoteMappingFileType = typing.Annotated[
                            controlled='RemoteFile|endswith=mapping.json')]
 
 
-# the mapping is not provided as a interface-type? Should we do so?
-# @wbgeo_component(description='load_mapping',
-#                  title='load_mapping',  # The title shown in the GUI
-#                  color='#8cb369',  # the color of the components
-#                  border_color='#000000',  # and its border color
-#                  group='Inputs',
-#                  identifier='wbgeo::load_mapping',  # a unique identifier
-#                  return_name='grid',  # the name for the returned-port
-#                  is_object_type=True,
-#                  )  # inputs are handled via the method signature
-def load_mapping(path: RemoteMappingFileType):
+def load_mapping(path: RemoteMappingFileType) -> dict:
+  """
+  Load a stratigraphic group mapping from a JSON file.
+
+  Parameters
+  ----------
+  path : str
+      Path to a JSON file mapping group names to lists of formation names.
+
+  Returns
+  -------
+  dict
+      Mapping of group name -> tuple of formation names.
+  """
   with open(path, "r") as fd:
     return {k: tuple(v) for k, v in json.load(fd).items()}
 
 
-# Register this function as a component
 @wbgeo_component(description='Input data for a Structural Geological Model. Requires surface points, optionally orientations and a mapping file.',
-                 title='Input data for Structural Elements',  # The title shown in the GUI
-                 color='#b0dfa9',  # the color of the components
-                 border_color='#000000',  # and its border color
+                 title='Input data for Structural Elements',
+                 color='#b0dfa9',
+                 border_color='#000000',
                  group='Inputs',
-                 identifier='wbgeo::geo_input_data',  # a unique identifier
-                 return_name='input_data',  # the name for the returned-port
+                 identifier='wbgeo::geo_input_data',
+                 return_name='input_data',
                  is_object_type=True,
-                 )  # inputs are handled via the method signature
+                 )
 def structural_input_data(
     name: str = 'Model 1',
     surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
@@ -106,49 +123,60 @@ def structural_input_data(
     mapping_file: JSONFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_mapping.json'
 ) -> InputData_StructuralElements:
   """
-  Loads the input data for a structural geological model from CSV and JSON files.
+  Loads input data for a structural geological model from CSV and JSON files.
 
   Surface points define the contact locations of geological interfaces.
   Orientations (optional) provide dip and azimuth constraints that improve
   interpolation quality. The mapping file assigns each formation to a
   stratigraphic group, which controls the layer ordering in the model.
 
-  :param name: Name of the model, used for identification.
-  :param surface_points_file: CSV file with surface contact points (columns: X, Y, Z, formation).
-  :param orientations_file: CSV file with orientation measurements (columns: X, Y, Z, G_x, G_y, G_z, formation). Optional.
-  :param mapping_file: JSON file mapping formation names to stratigraphic groups.
-  :return: InputData_StructuralElements ready to connect to the Compute Structural Model component.
-  """
-  import os
-  import pathlib
+  Parameters
+  ----------
+  name : str
+      Name of the model, used for identification.
+  surface_points_file : str
+      CSV file with surface contact points. Required columns: X, Y, Z, formation.
+  orientations_file : str, optional
+      CSV file with orientation measurements. Required columns: X, Y, Z, G_x, G_y, G_z, formation.
+  mapping_file : str
+      JSON file mapping formation names to stratigraphic groups.
 
+  Returns
+  -------
+  InputData_StructuralElements
+      Ready to connect to the Compute Structural Model component.
+  """
   datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
 
   surface_points = pd.read_csv(os.path.join(datadir, surface_points_file))
+
+  required_sp_cols = {"X", "Y", "Z", "formation"}
+  missing = required_sp_cols - set(surface_points.columns)
+  if missing:
+    raise ValueError(f"Surface points CSV missing required columns: {missing}")
+
   orientations = None
   if orientations_file is not None:
     orientations = pd.read_csv(os.path.join(datadir, orientations_file))
+    required_ori_cols = {"X", "Y", "Z", "G_x", "G_y", "G_z", "formation"}
+    missing = required_ori_cols - set(orientations.columns)
+    if missing:
+      raise ValueError(f"Orientations CSV missing required columns: {missing}")
 
   mapping_object = {}
   if mapping_file is not None:
     with open(os.path.join(datadir, mapping_file), 'r') as fd:
-      import json
       mapping_object = {k: tuple(v) for k, v in json.load(fd).items()}
 
-  # turn list into tuple
-  # todo: is this even necessary?
-  # real_mapping_object = {}
-  # if 'mapping' in mapping_object:
-  #   real_mapping_object = {k: tuple(v) for k,v in mapping_object["mapping"].items()}
+  if not mapping_object:
+    raise ValueError("Mapping file is empty or could not be loaded — at least one group must be defined.")
 
-  data_elements = InputData_StructuralElements(
+  return InputData_StructuralElements(
     name=name,
     surface_points=surface_points,
     orientations=orientations,
     mapping_object=mapping_object
   )
-
-  return data_elements
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_input_data_plot_3D',
@@ -160,8 +188,8 @@ def inspect_structural_input_data_plot_3D(input_data: InputData_StructuralElemen
   plot_input_data_3D(input_data)
 
 
+# --- Fault input data ---
 
-### faults
 @wbgeo_component(description='Input data for Fault Elements. Requires surface points and orientations.',
                  title='Fault Input Data',
                  color='#b0dfa9',
@@ -177,29 +205,54 @@ def faults_input_data(
     fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
     fault_names: FaultNames = ['fault',]) -> InputData_FaultElements:
   """
-  Loads the input data for fault elements from CSV files.
+  Loads input data for fault elements from CSV files.
 
   Surface points define the locations where faults are observed (e.g. from
   boreholes or outcrop mapping). Orientations constrain the dip and strike of
   each fault plane. The fault names list must match the formation names used
   in the surface points file and determines which faults are modelled.
 
-  :param name: Name of the fault dataset, used for identification.
-  :param fault_surface_points_file: CSV file with fault surface points (columns: X, Y, Z, formation).
-  :param fault_orientations_file: CSV file with fault orientation measurements (columns: X, Y, Z, G_x, G_y, G_z, formation).
-  :param fault_names: List of fault names to model, matching formation names in the surface points file.
-  :return: InputData_FaultElements ready to connect to the Compute Fault Model component.
-  """
-  import os
-  import pathlib
+  Parameters
+  ----------
+  name : str
+      Name of the fault dataset, used for identification.
+  fault_surface_points_file : str
+      CSV file with fault surface points. Required columns: X, Y, Z, formation.
+  fault_orientations_file : str, optional
+      CSV file with fault orientation measurements. Required columns: X, Y, Z, G_x, G_y, G_z, formation.
+      Orientations are required for fault interpolation (Universal Co-Kriging).
+  fault_names : list[str]
+      Fault names to model, matching formation names in the surface points file.
 
+  Returns
+  -------
+  InputData_FaultElements
+      Ready to connect to the Compute Fault Model component.
+  """
   datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
 
-  surface_points = pd.read_csv(os.path.join(datadir, fault_surface_points_file))
-  orientations = None
-  if fault_orientations_file is not None:
-    orientations = pd.read_csv(os.path.join(datadir, fault_orientations_file))
+  if not fault_names:
+    raise ValueError("At least one fault name must be provided.")
 
+  surface_points = pd.read_csv(os.path.join(datadir, fault_surface_points_file))
+
+  required_sp_cols = {"X", "Y", "Z", "formation"}
+  missing = required_sp_cols - set(surface_points.columns)
+  if missing:
+    raise ValueError(f"Fault surface points CSV missing required columns: {missing}")
+
+  if fault_orientations_file is None:
+    raise ValueError(
+      "Fault orientations are required for fault interpolation (Universal Co-Kriging) "
+      "but no orientations file was provided."
+    )
+
+  orientations = pd.read_csv(os.path.join(datadir, fault_orientations_file))
+
+  required_ori_cols = {"X", "Y", "Z", "G_x", "G_y", "G_z", "formation"}
+  missing = required_ori_cols - set(orientations.columns)
+  if missing:
+    raise ValueError(f"Fault orientations CSV missing required columns: {missing}")
 
   return InputData_FaultElements(
     name=name,
@@ -216,5 +269,3 @@ def faults_input_data(
 def inspect_fault_input_data_plot_3D(faults_data: InputData_FaultElements,
                                      _inspector: InspectorHelper):
   plot_fault_input_data_3D(faults_data)
-
-

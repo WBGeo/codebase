@@ -718,7 +718,7 @@ def compute_structural_model(
     Parameters
     ----------
     frame : StructuralFrame
-        Structural frame containing grid, groups, elements, and input input_data.
+        Structural frame containing grid, groups, elements, and input data.
     extract_meshes : bool, default True
         Whether to extract masked meshes at the end.
     verbose : bool, default True
@@ -970,12 +970,18 @@ def build_structural_frame(
         if count == 0:
             raise ValueError(f"No surface points found for structural element '{elem}'")
 
-    # If orientations are provided, ensure each group has at least one relevant entry
+    # If orientations are provided, ensure at least some formations match the mapping object.
+    # Per-group, per-method coverage is checked in validate_interpolation_inputs (called at
+    # compute time), which correctly accounts for which methods actually require orientations.
     if orientations is not None:
-        for group_name, element_names in mapping_object.items():
-            group_orient = orientations[orientations["formation"].isin(element_names)]
-            if group_orient.empty:
-                raise ValueError(f"No orientations found for structural group '{group_name}'")
+        known_formations = set(itertools.chain.from_iterable(mapping_object.values()))
+        ori_formations = set(orientations["formation"].unique())
+        if ori_formations.isdisjoint(known_formations):
+            raise ValueError(
+                f"Orientations dataframe contains no formations matching the mapping object. "
+                f"Check for typos. Orientation formations: {sorted(ori_formations)}. "
+                f"Mapping formations: {sorted(known_formations)}."
+            )
 
     # Build groups first
     group_objects: list[StructuralGroup] = []

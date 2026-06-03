@@ -1,26 +1,58 @@
+"""
+Gradient computation and visualization for surface meshes.
+
+Provides utilities for interpolating scalar-field gradients onto surface mesh
+vertices and plotting the resulting vector field.
+"""
 import numpy as np
 import pyvista as pv
 from scipy.interpolate import RegularGridInterpolator
 from core.object_components import StructuralModelResults
 
 
-# Normalize function
 def normalize_vectors(vectors):
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)  # Compute L2 norm
-    return vectors / np.where(norms == 0, 1, norms)  # Avoid division by zero
+    """
+    Normalize an array of vectors to unit length.
+
+    Parameters
+    ----------
+    vectors : np.ndarray
+        Array of shape (N, 3).
+
+    Returns
+    -------
+    np.ndarray
+        Row-normalized array of shape (N, 3). Zero-norm rows are left unchanged.
+    """
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    return vectors / np.where(norms == 0, 1, norms)
 
 
 def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_faults=True, fault_mesh_type=None):
     """
+    Compute gradient vectors at surface mesh vertices by interpolating scalar field gradients.
+
+    Parameters
+    ----------
+    result : StructuralModelResults
+        Computed structural model results.
+    norm : bool, default True
+        Whether to normalize gradient vectors to unit length.
+    mesh_type : str, default "unmasked"
+        Mesh type to use for structural elements. One of "masked", "unmasked", "combined".
+    return_faults : bool, default True
+        Whether to also compute gradients for fault elements.
+    fault_mesh_type : str, optional
+        Mesh type to use for fault elements. Defaults to ``mesh_type`` if not set.
+
     Returns
     -------
     gradients_dict : dict
-        {element.name: {"points": (N,3), "vectors": (N,3)}}
+        ``{element.name: {"points": (N, 3), "vectors": (N, 3)}}``
     gradients_faults_dict : dict
-        {fault_element.name: {"points": (N,3), "vectors": (N,3)}}  (empty if no faults or return_faults=False)
+        ``{fault_element.name: {"points": (N, 3), "vectors": (N, 3)}}``
+        Empty if no faults or ``return_faults=False``.
     """
-    mesh_counter = {"masked": 0, "unmasked": 1, "combined": 2}.get(mesh_type, 1)
-
     grid = result.structural_frame.grid
     res = grid.resolution
 
@@ -87,26 +119,29 @@ def plot_surface_mesh_gradients(structural_model_result,
                                 mesh_type="unmasked",
                                 scale_factor=50):
     """
-    Plot the gradient vector field at the surface mesh vertices
-    Args:
-        structural_model_result (StructuralModelResults): The results of the geological model.
-        gradients_dict (dict): A dictionary containing the gradient vectors for each structural element.
-        gradients_faults_dict (dict, optional): A dictionary containing the gradient vectors for each fault element. Default is None.
-        mesh_type (str): The type of surface mesh to use. Default is "unmasked".
-        scale_factor (float): The scale factor for the arrows. Default is 50.
-    """
+    Plot gradient vector fields at surface mesh vertices using PyVista.
 
-    # Plotting the gradient vector field
+    Parameters
+    ----------
+    structural_model_result : StructuralModelResults
+        The computed structural model results (used for mesh and color lookup).
+    gradients_dict : dict
+        Gradient data for structural elements, as returned by
+        :func:`get_surface_mesh_gradients`.
+    gradients_faults_dict : dict, optional
+        Gradient data for fault elements. If None, faults are not plotted.
+    mesh_type : str, default "unmasked"
+        Mesh type used to retrieve element meshes for wireframe overlay.
+    scale_factor : float, default 50
+        Arrow scale factor for gradient glyphs.
+    """
     plotter = pv.Plotter()
 
     for i, element in enumerate(gradients_dict.keys()):
         pdata = pv.PolyData(gradients_dict[element]['points'])
-        pdata["vectors"] = gradients_dict[element]['vectors']  # Add vector field
+        pdata["vectors"] = gradients_dict[element]['vectors']
 
-        # Create arrow glyphs
         arrows = pdata.glyph(orient="vectors", scale="vectors", factor=scale_factor)
-
-        # Plot the arrows
         plotter.add_mesh(arrows, color=structural_model_result.structural_frame.get_element_by_name(element).color)
 
         plotter.add_mesh(
@@ -118,12 +153,9 @@ def plot_surface_mesh_gradients(structural_model_result,
     if gradients_faults_dict is not None:
         for i, fault_element in enumerate(gradients_faults_dict.keys()):
             pdata = pv.PolyData(gradients_faults_dict[fault_element]['points'])
-            pdata["vectors"] = gradients_faults_dict[fault_element]['vectors']  # Add vector field
+            pdata["vectors"] = gradients_faults_dict[fault_element]['vectors']
 
-            # Create arrow glyphs
             arrows = pdata.glyph(orient="vectors", scale="vectors", factor=scale_factor)
-
-            # Plot the arrows
             plotter.add_mesh(arrows,
                              color=structural_model_result.structural_frame.fault_frame.get_element_by_name(
                                  fault_element).color)

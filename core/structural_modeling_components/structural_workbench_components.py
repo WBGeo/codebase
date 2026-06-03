@@ -98,13 +98,7 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
                                       grid: grid_classes.RegularGrid,
                                       fault_model: typing.Optional[FaultModelResults] = None
                                       ) -> CtrlGroup:
-  """
-  (Internal) component to compute the smart input form
-  :param data_elements:
-  :param grid:
-  :param fault_model:
-  :return:
-  """
+  """(Internal) component that builds the smart input form for interpolation method selection."""
   group_names = data_elements.mapping_object.keys()
 
   def construct_group_from(stack: typing.List[
@@ -199,11 +193,7 @@ def unflatten_dict(d):
                  title='structural_modeling_smart_options_to_data')
 def structural_modeling_smart_options_to_data(
     _input: SmartInputFormData) -> StructuralFrameInputOptions:
-  """
-  (Internal) component to convert the smartinput dict to proper StructuralFrameInputOptions
-  :param _input:
-  :return:
-  """
+  """(Internal) component that converts the smart input form data dict to StructuralFrameInputOptions."""
   data = json.loads(_input)  # _input is a json dict
   data = unflatten_dict(
     {k: v for k, v in data.items() if v is not None})  # un-flatten it and remove nulls

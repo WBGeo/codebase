@@ -199,10 +199,33 @@ def plot_structural_model_3D(
         show: bool = True,
 ) -> pv.Plotter:
     """
-    PyVista 3D plot of structural elements (per-domain meshes) + faults, with your preferred legend style.
-    - frame.structural_groups[...] elements store meshes by domain via element.meshes_for_domain(domain_id)
-      which returns a dict like {"masked": (V, F), "unmasked": ..., "combined": ...}
-    - fault_frame.fault_elements[i].vertices / .edges are used for fault meshes.
+    3D PyVista plot of a structural model with per-element meshes, input points, and faults.
+
+    Parameters
+    ----------
+    frame : StructuralFrame
+        Structural frame to visualize.
+    mesh_type : str, default "masked"
+        Mesh type for geological elements. One of "masked", "unmasked", "combined", "extended".
+    fault_mesh_type : str, optional
+        Mesh type for fault surfaces. Defaults to ``mesh_type`` if not set.
+    show_surface_meshes : bool, default True
+        Whether to render surface meshes for each element.
+    show_points : bool, default True
+        Whether to render input surface points.
+    show_orientations : bool, default True
+        Whether to render orientation arrows.
+    fault_opacity : float, default 0.35
+        Opacity of fault surface meshes.
+    notebook : bool, default False
+        Use off-screen/notebook mode for PyVista.
+    show : bool, default True
+        Call plotter.show() at the end. Set False to add further actors before displaying.
+
+    Returns
+    -------
+    pv.Plotter
+        The PyVista plotter instance (useful when show=False).
     """
     fault_mesh_type = fault_mesh_type if fault_mesh_type is not None else mesh_type
 
@@ -312,11 +335,24 @@ def plot_structural_model_2D(
         title_suffix: str = "",
 ) -> None:
     """
-    2D slice of model with:
-      - lithology block slice (if provided)
-      - structural contours per group from per-domain scalar fields
-      - fault contours from fault scalar fields at their scalar_value
-      - legend matching your style (group bold + element lines)
+    2D slice plot of a structural model showing lithology block, scalar contours, and input data.
+
+    Parameters
+    ----------
+    frame : StructuralFrame
+        Structural frame to visualize.
+    axis : {'x', 'y', 'z'}, default 'y'
+        Axis along which to slice.
+    index : int, optional
+        Slice index along the chosen axis. Defaults to the mid-point.
+    show_result : bool, default True
+        Overlay the lithology block as a colored background if available.
+    show_fault_contours : bool, default True
+        Overlay fault isolines from their scalar fields.
+    show_input_data : bool, default True
+        Overlay input surface points and orientation arrows.
+    title_suffix : str, default ""
+        Optional string appended to the plot title.
     """
     warnings.simplefilter("always", UserWarning)
 
@@ -415,7 +451,7 @@ def plot_structural_model_2D(
                              linestyles="-", zorder=10000)
             ax.clabel(CSf, fmt={f_sv: f"{fault.name}"}, fontsize=15)
 
-    # ---- input input_data (optional) ----
+    # ---- input data (optional) ----
     if show_input_data:
         for group in frame.structural_groups:
             for elem in group.structural_elements:
@@ -484,6 +520,33 @@ def plot_fault_model_3D(
     notebook: bool = False,
     show: bool = True,
 ) -> pv.Plotter:
+    """
+    3D PyVista plot of a fault model with domain map, fault meshes, and input data.
+
+    Parameters
+    ----------
+    fault_frame : FaultFrame
+        Fault frame to visualize.
+    mesh_type : str, default "unmasked"
+        Mesh type for fault surfaces. One of "masked", "unmasked", "extended".
+    show_surface_meshes : bool, default True
+        Whether to render fault surface meshes.
+    show_input_data : bool, default True
+        Whether to render input surface points and orientation arrows.
+    show_domain_map : bool, default True
+        Whether to render translucent domain blocks.
+    domain_opacity : float, default 0.15
+        Opacity of domain block visualizations.
+    notebook : bool, default False
+        Use off-screen/notebook mode for PyVista.
+    show : bool, default True
+        Call plotter.show() at the end. Set False to add further actors before displaying.
+
+    Returns
+    -------
+    pv.Plotter
+        The PyVista plotter instance (useful when show=False).
+    """
     pv.global_theme.allow_empty_mesh = True
     plotter = pv.Plotter(notebook=notebook)
 
@@ -696,9 +759,6 @@ def plot_fault_model_2D(
     x = _get_coord(grid, "gridx")
     y = _get_coord(grid, "gridy")
     z = _get_coord(grid, "gridz")
-
-    if x is None or y is None or z is None:
-        raise ValueError("Grid must provide gridx, gridy, gridz coordinate arrays.")
 
     if x is None or y is None or z is None:
         raise ValueError("Grid must provide gridx, gridy, gridz coordinate arrays.")

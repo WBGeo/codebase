@@ -3,34 +3,33 @@ import pandas as pd
 import os
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
-
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
-
-from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D)
-
+from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
+    plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D)
 from core.structural_modeling_components import general, general_faults
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-from core.structural_modeling_components import general, general_faults
-from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D)
-
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import (
+    create_unstructured_mesh_data,
+    load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv,
+    load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv)
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
-  load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
 from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_exodus, export_mesh_results_to_vtu,
     export_mesh_results_to_vtk, export_mesh_results_to_feflow,
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
+
 #%%
 
 cwd = os.getcwd()
 
+# WORKFLOW Groß Schoenebeck Case Study: 7-layer structural model
+
 #%%
 
+# Load input data
 surface_points = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_surface_points_downsampled.csv")
 orientations = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_orientations_downsampled.csv")
 
@@ -40,9 +39,9 @@ orientations_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/
 print(len(surface_points), len(orientations))
 print(len(surface_points_faults), len(orientations_faults))
 
-
 #%%
 
+# Create a grid for the model
 margin = 100  # Add a margin of 100 units around the data
 grid = RegularGrid(
     extent=(surface_points["X"].min()-margin, surface_points["X"].max()+margin,
@@ -68,6 +67,8 @@ data_elements = InputData_StructuralElements(name='GSB',
                                              orientations=orientations
                                              )
 
+#%%
+
 # Create a StructuralFrame
 frame = general.build_structural_frame(input_data_elements=data_elements,
                                        grid=grid
@@ -77,7 +78,7 @@ frame.detailed_report()
 
 #%%
 
-# Plot the input input_data (2D and 3D possible)
+# Plot the input data (2D and 3D possible)
 plot_structural_model_2D(frame)
 plot_structural_model_3D(frame)
 
@@ -111,9 +112,7 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
-#%%
-
-# Optional plotting
+# Optional: Plotting age masks and scalar fields
 # frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
@@ -129,28 +128,23 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #                                                    gradients_faults_dict,
 #                                                    mesh_type="unmasked")
 
+#%%
 
+# Compute 3D meshes based on the structural model result using different meshing approaches.
 
-###########################################################################################################################
-#                                              Meshing
-###########################################################################################################################
-#################################
-#  Explicit Structured meshing. #
-#################################
+# Explicit structured mesh
 mesh_str = create_structured_mesh_data(
     geomodel_result=structural_model_result,
-    refinement_data=[10, 10, 5, 5, 6,7,9,10],
-    mesh_division= (100, 100),
+    refinement_data=[10, 10, 5, 5, 6, 7, 9, 10],
+    mesh_division=(100, 100),
     z_threshold=0.1,
     tolerance=0.5
-      )
-#################################
-# ImplicitStructured meshing.   #
-#################################
-mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
-#################################
-# Explicit Unstructured meshing #
-#################################
+)
+
+# Implicit structured mesh
+mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model_result)
+
+# Explicit unstructured mesh
 mesh_unstr = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
     tolerance=500,
@@ -160,21 +154,19 @@ mesh_unstr = create_unstructured_mesh_data(
     extent=[401377.0, 409314.0, 5859433.0, 5865390.0, -3678.0, -4453.0]
 )
 
+#%%
 
+# Plot the meshing results
+# plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
+# plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
+# plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
 
-##########################################################################################################################
-#                                                Plot the meshing results
-##########################################################################################################################
-#plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
-#plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
-#plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
+#%%
 
-###########################################################################################################################
-#                                                    Exporting meshes
-###########################################################################################################################
-#########################
-# Export mesh to exodus #
-#########################
+# Optional: Export meshes to various formats.
+# Similar functions are available for VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus.
+
+# Export mesh to exodus
 # Structured mesh
 #buf = export_mesh_results_to_exodus(mesh_str)
 #with open("filename_str_gross.exo", "wb") as f:
@@ -187,9 +179,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #buf = export_mesh_results_to_exodus(mesh_unstr)
 #with open("filename_gross.exo", "wb") as f:
 #    f.write(buf.getvalue())
-#######################
-# Export mesh to vtu  #
-#######################
+
+# Export mesh to vtu
 # Structured mesh
 #buf = export_mesh_results_to_vtu(mesh_str)
 #with open("filename_str2.vtu", "wb") as f:
@@ -202,9 +193,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #buf = export_mesh_results_to_vtu(mesh_unstr)
 #with open("filename.vtu", "wb") as f:
 #    f.write(buf.getvalue())
-######################
-# Export mesh to vtk #
-######################
+
+# Export mesh to vtk
 # Structured mesh
 #buf = export_mesh_results_to_vtk(mesh_str)
 #with open("filename_str2.vtk", "wb") as f:
@@ -217,9 +207,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #buf = export_mesh_results_to_vtk(mesh_unstr)
 #with open("filename.vtk", "wb") as f:
 #    f.write(buf.getvalue())
-#######################
-# Export mesh to vtm  #
-#######################
+
+# Export mesh to vtm
 # Structured mesh
 #buf = export_mesh_results_to_vtm(mesh_str)
 #with open("filename_str2.vtm.zip", "wb") as f:
@@ -232,31 +221,24 @@ mesh_unstr = create_unstructured_mesh_data(
 #buf = export_mesh_results_to_vtm(mesh_unstr)
 #with open("filename.vtm.zip", "wb") as f:
 #    f.write(buf.getvalue())
-#########################################################
-## Export mesh to stl (only unstructured is supported). #
-#########################################################
-# Unstructured mesh
+
+# Export mesh to stl (only unstructured is supported)
 #buf = export_mesh_results_to_stl(mesh_unstr)
 #with open("filename.stl.zip", "wb") as f:
 #    f.write(buf.getvalue())
-#########################################################
-# Export mesh to gmsh (only unstructured is supported)  #
-#########################################################
-# Unstructured mesh
+
+# Export mesh to gmsh (only unstructured is supported)
 #buf = export_mesh_results_to_gmsh(mesh_unstr)
 #with open("filename.msh", "wb") as f:
 #    f.write(buf.getvalue())
-##########################################################
-# Export mesh to feflow (only unstructured is supported) #
-##########################################################
-# Unstructured mesh
+
+# Export mesh to feflow (only unstructured is supported)
 #buf = export_mesh_results_to_feflow(mesh_unstr)
 #with open("filename.fem", "wb") as f:
 #    f.write(buf.getvalue())
-########################
-# Export mesh to ansys #
-########################
-## Structured mesh
+
+# Export mesh to ansys
+# Structured mesh
 #buf = export_mesh_results_to_ansys(mesh_str)
 #with open("filename_str2_ansys.msh", "wb") as f:
 #    f.write(buf.getvalue())
@@ -268,9 +250,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #buf = export_mesh_results_to_ansys(mesh_unstr)
 #with open("filename_ansys.msh", "wb") as f:
 #    f.write(buf.getvalue())
-#########################
-# Export mesh to abaqus #
-#########################
+
+# Export mesh to abaqus
 # Unstructured mesh
 #buf = export_mesh_results_to_abaqus(mesh_unstr)
 #with open("filename.inp", "wb") as f:
@@ -284,12 +265,11 @@ mesh_unstr = create_unstructured_mesh_data(
 #with open("filename_imp.inp", "wb") as f:
 #    f.write(buf.getvalue())
 
-###############################################################
-#                       Export Hierarchical meshes
-# ##############################################################
-#########################
-# Export mesh to exodus #
-#########################
+#%%
+
+# Optional: Export hierarchical meshes.
+
+# Export to exodus
 #export_meshes_exodus(
 #    mesh1_st,
 #    mesh2_st,
@@ -298,9 +278,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #    mesh2_filename="small_mesh_st.exo",
 #    closest_nodes_filename="closest_nodes_st.csv"
 #)
-#######################
-# Export mesh to vtm  #
-#######################
+
+# Export to vtm
 #export_meshes_vtm(
 #    mesh1_u,
 #    mesh2_u,
@@ -309,9 +288,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #    mesh2_filename="small_mesh_u.vtm.zip",
 #    closest_nodes_filename="closest_nodes_u_vtm.csv"
 #)
-#######################
-# Export mesh to vtu  #
-#######################
+
+# Export to vtu
 #export_meshes_vtu(
 #    mesh1_im,
 #    mesh2_im,
@@ -320,9 +298,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #    mesh2_filename="small_mesh.vtu",
 #    closest_nodes_filename="closest_nodes_im_vtu.csv"
 #)
-#######################
-# Export mesh to vtk  #
-#######################
+
+# Export to vtk
 #export_meshes_vtk(
 #    mesh1_u,
 #    mesh2_u,
@@ -331,9 +308,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #    mesh2_filename="small_mesh_u.vtk",
 #    closest_nodes_filename="closest_nodes_u_vtk.csv"
 #)
-##########################
-# Export mesh to feflow  #
-##########################
+
+# Export to feflow
 #export_meshes_feflow(
 #    mesh1_u,
 #    mesh2_u,
@@ -342,9 +318,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #    mesh2_filename="small_mesh_u.fem",
 #    closest_nodes_filename="closest_nodes_u_fem.csv"
 #)
-##########################
-# Export mesh to abaqus  #
-##########################
+
+# Export to abaqus
 #export_meshes_abaqus(
 #    mesh1_im,
 #    mesh2_im,
@@ -353,9 +328,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #    mesh2_filename="small_mesh_im.inp",
 #    closest_nodes_filename="closest_nodes_im_abaqus.csv"
 #)
-##########################
-# Export mesh to ansys  #
-##########################
+
+# Export to ansys
 #export_meshes_ansys(
 #    mesh1_im,
 #    mesh2_im,
@@ -364,9 +338,8 @@ mesh_unstr = create_unstructured_mesh_data(
 #    mesh2_filename="small_mesh_im.mesh",
 #    closest_nodes_filename="closest_nodes_im_ansys.csv"
 #)
-########################
-# Export mesh to gmsh  #
-########################
+
+# Export to gmsh
 #export_meshes_gmsh(
 #    mesh1_u,
 #    mesh2_u,

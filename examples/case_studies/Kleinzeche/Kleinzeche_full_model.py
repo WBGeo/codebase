@@ -15,7 +15,7 @@ Fault-1 active for Strat_Series1.  Gravel-1 and Loose-1 are post-fault.
 
 Coordinate system: UTM 32N  X 380040–380132  Y 5700884–5700938  Z 30–130 m a.s.l.
 """
-
+# Importing necessary libraries
 import json
 import os
 import sys
@@ -34,8 +34,10 @@ from core.structural_modeling_components.structural_modeling_visualization.struc
     plot_fault_model_3D,
 )
 from core.structural_modeling_components import general, general_faults
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+from core.meshing_components.mesh_format.mesh_export import export_mesh_results_to_exodus
 
-# ── Local Kleinzeche imports ───────────────────────────────────────────────────
 try:
     _SECTION_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
@@ -54,13 +56,21 @@ from input_data.Kleinzeche_shared import (
     find_data_bbox, georeference_section, make_section_mesh,
 )
 
-# ── Load input data ────────────────────────────────────────────────────────────
+#%%
+
+# WORKFLOW Kleinzeche Full Model: structural model with Fault-1, Profiles A and B, borehole data
+
+#%%
+
+# Load input data
 surface_points       = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'full_surface_points.csv'))
 orientations         = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'full_orientations.csv'))
 fault_surface_points = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'fault1_surface_points.csv'))
 fault_orientations   = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'fault1_orientations.csv'))
 
-# ── Grid ───────────────────────────────────────────────────────────────────────
+#%%
+
+# Create a grid for the model
 # Z extended 10 m below Z_MIN to capture Clay/Coal in the hanging wall.
 _Z_MIN_MODEL = Z_MIN - 10   # 30 m
 
@@ -69,7 +79,9 @@ grid = RegularGrid(
     resolution=(92, 54, 90),
 )
 
-# ── Fault frame ────────────────────────────────────────────────────────────────
+#%%
+
+# Create input data for the fault elements
 data_faults = InputData_FaultElements(
     name='Kleinzeche',
     fault_surface_points=fault_surface_points,
@@ -77,27 +89,35 @@ data_faults = InputData_FaultElements(
     fault_names=['Fault-1'],
 )
 
+#%%
+
+# Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
     input_data_fault_elements=data_faults,
     grid=grid,
 )
-
 fault_frame.detailed_report()
 
 #%%
 
+# Plot fault model input data (2D and 3D possible)
 plot_fault_model_2D(fault_frame)
 plot_fault_model_3D(fault_frame)
 
 #%%
 
+# Compute fault domains
 fault_model_result = general_faults.compute_fault_domains(fault_frame)
+
+#%%
+
+# Plot fault domain results (2D and 3D possible)
 plot_fault_model_2D(fault_model_result.fault_frame, show_input_data=False, axis="y")
 plot_fault_model_3D(fault_model_result.fault_frame)
 
 #%%
 
-# ── Formation mapping (youngest → oldest) ─────────────────────────────────────
+# Create input data for structural elements
 _available = set(surface_points['formation'].unique())
 _ALL_SERIES = [
     ('Strat_Series3', ('Gravel-1',)),
@@ -111,7 +131,6 @@ for _series, _fms in _ALL_SERIES:
     if _present:
         mapping_object[_series] = _present
 
-# ── Structural frame ───────────────────────────────────────────────────────────
 data_elements = InputData_StructuralElements(
     name='Kleinzeche_full',
     mapping_object=mapping_object,
@@ -119,13 +138,15 @@ data_elements = InputData_StructuralElements(
     orientations=orientations,
 )
 
+#%%
+
+# Create StructuralFrame and configure colors, fault activity, and interpolation
 frame = general.build_structural_frame(
     input_data_elements=data_elements,
     grid=grid,
     fault_model_results=fault_model_result,
 )
 
-# ── Formation colors and fault activity ───────────────────────────────────────
 for _series, _fms in _ALL_SERIES:
     if _series not in mapping_object:
         continue
@@ -133,20 +154,21 @@ for _series, _fms in _ALL_SERIES:
         if _fm in FORMATION_COLORS:
             frame[_series][_fm].set_color(FORMATION_COLORS[_fm])
 
-# Fault-1 displaces Strat_Series1 (Silt/Sand/Clay); Gravel-1 and Loose-1 are post-fault.
 frame.set_fault_activity_by_group(fault_name='Fault-1', group_name='Strat_Series1')
 
-# ── Interpolation ──────────────────────────────────────────────────────────────
 for _series in mapping_object:
     frame[_series].set_interpolation_method('Universal Co-Kriging')
 
-# plot_structural_model_2D(frame, show_result=False)
 frame.detailed_report()
+
+#%%
+
+# Plot input data (2D and 3D possible)
 plot_structural_model_3D(frame)
 
 #%%
 
-# ── Compute structural model ───────────────────────────────────────────────────
+# Compute structural model
 structural_model_result = general.compute_structural_model(
     frame,
     extract_meshes=True,
@@ -155,7 +177,7 @@ structural_model_result = general.compute_structural_model(
 
 #%%
 
-# ── Visualize results ──────────────────────────────────────────────────────────
+# Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame, show_input_data=False, axis="x")
 plot_structural_model_3D(
     structural_model_result.structural_frame,
@@ -165,7 +187,7 @@ plot_structural_model_3D(
 
 #%%
 
-# ── Combined: model + cross sections + borehole trajectories ──────────────────
+# Combined 3D visualization with Profile A and B sections and borehole trajectories
 _csv = pd.read_csv(CSV_PATH)
 
 with open(MARKER_CACHE) as _f:
@@ -187,7 +209,6 @@ p = plot_structural_model_3D(
     show=False,
 )
 
-# ── Cross sections (toggleable) ───────────────────────────────────────────────
 _section_actors = [
     p.add_mesh(make_section_mesh(_corners_A, _bbox_A, PILImage.open(PATH_A).size),
                texture=_tex_A, opacity=0.9),
@@ -195,7 +216,6 @@ _section_actors = [
                texture=_tex_B, opacity=0.9),
 ]
 
-# ── Boreholes (toggleable) ────────────────────────────────────────────────────
 _borehole_actors = []
 
 for _name, _bh in BOREHOLES.items():
@@ -238,7 +258,6 @@ for _fn, _fg in _df_fault.groupby('formation'):
                    point_size=8, render_points_as_spheres=True)
     )
 
-# ── Toggle checkboxes ─────────────────────────────────────────────────────────
 def _toggle_sections(flag):
     for _a in _section_actors:
         _a.SetVisibility(flag)
@@ -263,18 +282,26 @@ p.show()
 
 #%%
 
-# TODO: Next step, meshing does not yet work for this model
-# Explicit Unstructured meshing (Structured does not work with faults)
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
+# Compute 3D meshes based on the structural model result
+# DISTANCE_THRESHOLD must be << model extent to avoid removing all points from small models.
+# WARNING: Runtime extremely high
+# mesh_unstructured = create_unstructured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     z_threshold=0.1,
+#     tolerance=1,
+#     DISTANCE_THRESHOLD=5,
+#     mesh_size=10,
+# )
 
-# DISTANCE_THRESHOLD must be << model extent.  The default (50) removes ALL points
-# from a 50×50 m model.  Use ~10 % of the minimum horizontal extent (here 5 m).
-mesh_result = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
-    z_threshold=0.1,
-    tolerance=1,
-    DISTANCE_THRESHOLD=5,  # Minimum distance between points to be retained (after surface sampling and before meshing)
-    mesh_size=10  # Target edge length for meshing (not a hard constraint, but smaller → finer mesh)
-)
-plot_mesh_3d(mesh_result, structural_model_result, show_plotter=True)
+#%%
+
+# Plot the meshing results
+# plot_mesh_3d(mesh_unstructured, structural_model_result, show_plotter=True)
+
+#%%
+
+# Optional: Example of how to export the unstructured mesh to Exodus format.
+# Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
+# buf = export_mesh_results_to_exodus(mesh_unstructured)
+# with open("filename_kleinzeche_full.exo", "wb") as f:
+#     f.write(buf.getvalue())
