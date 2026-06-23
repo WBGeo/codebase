@@ -698,8 +698,19 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
                 x0, x1, y0, y1, z0, z1 = frame.grid.extent
                 p = _SURFACE_PADDING_CELLS
                 padded_extent = (x0 - p*dx, x1 + p*dx, y0 - p*dy, y1 + p*dy, z0 - p*dz, z1 + p*dz)
-                # Pad mask with True so the mesh is always kept in the extension zone
-                padded_mask = np.pad(mc_fault_mask, p, mode='constant', constant_values=True)
+                # Derive the padded age mask from the group's extended scalar field so the
+                # mask boundary follows the actual scalar field extrapolation rather than
+                # being artificially forced to True at the border.
+                if index >= 0:
+                    grp = frame.structural_groups[index]
+                    esf = grp.extended_scalar_field
+                    sval_pad = grp.structural_elements[-1].get_scalar_value()
+                    if esf is not None and sval_pad is not None:
+                        padded_mask = ~(esf >= sval_pad)
+                    else:
+                        padded_mask = np.pad(mc_fault_mask, p, mode='edge')
+                else:
+                    padded_mask = np.ones(fault.extended_scalar_field.shape, dtype=bool)
                 verts_ext, faces_ext = marching_cubes_per_element(
                     fault.extended_scalar_field,
                     fault.scalar_value,
