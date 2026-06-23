@@ -693,6 +693,22 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             )
             fault.set_mesh("masked", verts, faces)
 
+            if fault.extended_scalar_field is not None:
+                dx, dy, dz = frame.grid.spacing
+                x0, x1, y0, y1, z0, z1 = frame.grid.extent
+                p = _SURFACE_PADDING_CELLS
+                padded_extent = (x0 - p*dx, x1 + p*dx, y0 - p*dy, y1 + p*dy, z0 - p*dz, z1 + p*dz)
+                # Pad mask with True so the mesh is always kept in the extension zone
+                padded_mask = np.pad(mc_fault_mask, p, mode='constant', constant_values=True)
+                verts_ext, faces_ext = marching_cubes_per_element(
+                    fault.extended_scalar_field,
+                    fault.scalar_value,
+                    frame.grid.spacing,
+                    padded_extent,
+                    mask=padded_mask,
+                )
+                fault.set_mesh("extended_masked", verts_ext, faces_ext)
+
 
 # -----------------------------------------------------------------------------
 # Pipeline driver

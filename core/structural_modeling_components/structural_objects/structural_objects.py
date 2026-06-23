@@ -38,7 +38,7 @@ IntArray = npt.NDArray[np.integer]
 BoolArray = NpNDArrayBool
 
 MeshType3 = str  # expected: "masked" | "unmasked" | "combined" | "extended"
-MeshType2 = str  # expected: "masked" | "unmasked" | "extended"
+MeshType2 = str  # expected: "masked" | "unmasked" | "extended" | "extended_masked"
 MeshDict = Dict[str, NpNDArrayFp64]
 
 
@@ -709,9 +709,9 @@ class FaultElement(BaseModel):
         Raises:
             ValueError: If mesh_type is not an allowed mesh type.
         """
-        if mesh_type not in {"masked", "unmasked", "extended"}:
+        if mesh_type not in {"masked", "unmasked", "extended", "extended_masked"}:
             raise ValueError(
-                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, extended."
+                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, extended, extended_masked."
             )
 
         self.vertices[mesh_type] = vertices
