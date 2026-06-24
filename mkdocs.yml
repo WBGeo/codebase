@@ -21,9 +21,13 @@ markdown_extensions:
   - pymdownx.snippets
   - pymdownx.superfences
 plugins:
-  - search
-  - pdoc:
-      api_path: core_py_docs
+  - search:
+  - mkdocstrings:
+  - gen-files:
+      scripts:
+        - docs/scripts/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
 nav:
   - index.md
   - Installation Guide:
@@ -43,6 +47,7 @@ nav:
       - Components: developers/components.md
       - Types: developers/types.md
       - Local execution: developers/local.md
+  - Code Reference: reference/
   - Examples: Examples.md
   - Publications: Publications.md
 
