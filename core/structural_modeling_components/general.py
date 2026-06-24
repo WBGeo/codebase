@@ -50,6 +50,8 @@ from core.structural_modeling_components.structural_objects.structural_objects i
     StructuralElement,
     FaultFrame,
     InterpolationMethod,
+    GeoMeshType,
+    FaultMeshType,
 )
 
 from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (
@@ -613,7 +615,7 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
                 verts_list.append(verts)
                 faces_list.append(faces)
             combined_vertices, combined_faces = combine_meshes(verts_list, faces_list)
-            elem.set_mesh("masked", combined_vertices, combined_faces)
+            elem.set_mesh(GeoMeshType.MASKED, combined_vertices, combined_faces)
 
     # ---- unmasked meshes ----
     for group in frame.structural_groups:
@@ -625,7 +627,7 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             if sval is None:
                 continue
             verts, faces = marching_cubes_per_element(sf, sval, frame.grid.spacing, frame.grid.extent, mask=None)
-            elem.set_mesh("unmasked", verts, faces)
+            elem.set_mesh(GeoMeshType.UNMASKED, verts, faces)
 
     # ---- extended meshes (padded scalar field) ----
     # Surfaces extracted here cross the model bounding box, which is required
@@ -649,7 +651,7 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             verts, faces = marching_cubes_per_element(
                 esf, sval, frame.grid.spacing, padded_extent, mask=None
             )
-            elem.set_mesh("extended", verts, faces)
+            elem.set_mesh(GeoMeshType.EXTENDED, verts, faces)
 
     # ---- combined meshes from lithology block ----
     lith_block = frame.get_LithBlock()
@@ -667,7 +669,7 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
     idx = 0
     for group in frame.structural_groups:
         for element in group.structural_elements:
-            element.set_mesh("combined", combined_vertices[idx], combined_edges[idx])
+            element.set_mesh(GeoMeshType.COMBINED, combined_vertices[idx], combined_edges[idx])
             idx += 1
 
     # ---- masked meshes for faults using existing age masks ----
@@ -691,7 +693,34 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
                 frame.grid.extent,
                 mask=mc_fault_mask,  # only keep mesh where fault_mask is True
             )
-            fault.set_mesh("masked", verts, faces)
+            fault.set_mesh(FaultMeshType.MASKED, verts, faces)
+
+            if fault.extended_scalar_field is not None:
+                dx, dy, dz = frame.grid.spacing
+                x0, x1, y0, y1, z0, z1 = frame.grid.extent
+                p = _SURFACE_PADDING_CELLS
+                padded_extent = (x0 - p*dx, x1 + p*dx, y0 - p*dy, y1 + p*dy, z0 - p*dz, z1 + p*dz)
+                # Derive the padded age mask from the group's extended scalar field so the
+                # mask boundary follows the actual scalar field extrapolation rather than
+                # being artificially forced to True at the border.
+                if index >= 0:
+                    grp = frame.structural_groups[index]
+                    esf = grp.extended_scalar_field
+                    sval_pad = grp.structural_elements[-1].get_scalar_value()
+                    if esf is not None and sval_pad is not None:
+                        padded_mask = ~(esf >= sval_pad)
+                    else:
+                        padded_mask = np.pad(mc_fault_mask, p, mode='edge')
+                else:
+                    padded_mask = np.ones(fault.extended_scalar_field.shape, dtype=bool)
+                verts_ext, faces_ext = marching_cubes_per_element(
+                    fault.extended_scalar_field,
+                    fault.scalar_value,
+                    frame.grid.spacing,
+                    padded_extent,
+                    mask=padded_mask,
+                )
+                fault.set_mesh(FaultMeshType.EXTENDED_MASKED, verts_ext, faces_ext)
 
 
 # -----------------------------------------------------------------------------

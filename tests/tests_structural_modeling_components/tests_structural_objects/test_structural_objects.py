@@ -222,6 +222,11 @@ def test_fault_element_mesh_and_mask_and_domain_pairs_helpers():
     assert got_v2 is v
     assert got_e2 is e
 
+    f.set_mesh("extended_masked", v, e)
+    got_v3, got_e3 = f.get_mesh("extended_masked")
+    assert got_v3 is v
+    assert got_e3 is e
+
     with pytest.raises(ValueError, match="Invalid mesh type"):
         f.set_mesh("combined", v, e)  # FaultElement does not allow "combined"
 

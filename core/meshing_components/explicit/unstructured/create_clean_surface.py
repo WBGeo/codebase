@@ -13,6 +13,7 @@ import colorcet as cc
 from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
 from core.object_components import StructuralModelResults
 from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
 from scipy.spatial import cKDTree
 
 def get_normals(near_points: NDArray[np.floating], points: NDArray[np.floating], normal_vec: Tuple[int, NDArray[np.floating]],
@@ -309,7 +310,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
         # Fault surfaces use "extended" meshes (from padded interpolation) so they
         # naturally cross the GMSH bounding box for volume fragmentation.
         geo_grads, fault_grads = surface_mesh_gradients.get_surface_mesh_gradients(
-            geomodel_result, mesh_type="unmasked", fault_mesh_type="extended"
+            geomodel_result, mesh_type=GeoMeshType.UNMASKED, fault_mesh_type=FaultMeshType.EXTENDED
         )
 
         all_entries = list(geo_grads.values()) + list(fault_grads.values())
@@ -326,9 +327,9 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
         for group in frame.structural_groups:
             for elem in group.structural_elements:
                 try:
-                    verts, _ = elem.get_mesh("extended")
+                    verts, _ = elem.get_mesh(GeoMeshType.EXTENDED)
                 except KeyError:
-                    verts, _ = elem.get_mesh("unmasked")
+                    verts, _ = elem.get_mesh(GeoMeshType.UNMASKED)
                 if verts is not None and len(verts) > 0:
                     raw_surfaces.append(verts)
         surfaces = [(i, surface) for i, surface in enumerate(raw_surfaces)]

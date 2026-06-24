@@ -6,10 +6,11 @@ import subsurface as ss
 import numpy as np
 import pandas as pd
 from core.object_components import StructuralModelResults
+from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_inspector
 from py_api_wbgeo import apitypes
 
-def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: str = "masked") -> ss.UnstructuredData:
+def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: GeoMeshType = GeoMeshType.MASKED) -> ss.UnstructuredData:
     """
     Convert a StructuralModelResults to a subsurface UnstructuredData mesh.
     Collects the requested mesh type from every structural element across all groups,
