@@ -1,0 +1,162 @@
+{
+  "name": "Synthetic Model 2",
+  "components": {
+    "618": {
+      "identifier": "wbgeo::regular_grid",
+      "x": 38,
+      "y": 32,
+      "ports": {
+        "0": {
+          "fixed_value": "[0,2500,0,1000,0,1000]"
+        },
+        "1": {
+          "fixed_value": "[125,50,50]"
+        }
+      }
+    },
+    "626": {
+      "identifier": "wbgeo::geo_input_data",
+      "x": 38,
+      "y": 295,
+      "ports": {
+        "0": {
+          "fixed_value": "Model 2"
+        },
+        "1": {
+          "fixed_value": "examples/synthetic_examples/model2/input_data/geological_data/model2_surface_points_df.csv"
+        },
+        "2": {
+          "fixed_value": "examples/synthetic_examples/model2/input_data/geological_data/model2_orientations_df.csv"
+        },
+        "3": {
+          "fixed_value": "[\"Strat_Series2\",\"Strat_Series1\"]"
+        },
+        "4": {
+          "smartinput_value": "{\"root.groups\":{\"<None>\":[\"fault\"],\"Strat_Series1\":[\"rock2\",\"rock1\"],\"Strat_Series2\":[\"rock4\",\"rock3\"]}}",
+          "smartinput_form": "{\"id\": \"root\", \"inner\": [{\"label\": \"Assign Groups\", \"description\": null, \"id\": \"groups\", \"groups\": [\"<None>\", \"Strat_Series2\", \"Strat_Series4\"], \"items\": [\"fault\", \"rock1\", \"rock2\", \"rock3\", \"rock4\"], \"defaultValue\": {\"<None>\": [\"fault\", \"rock1\", \"rock2\", \"rock3\", \"rock4\"], \"Strat_Series2\": [], \"Strat_Series1\": []}, \"smart_type\": \"order\"}], \"smart_type\": \"group\"}"
+        }
+      }
+    },
+    "647": {
+      "identifier": "wbgeo::faults_input_data",
+      "x": 39,
+      "y": 616,
+      "ports": {
+        "0": {
+          "fixed_value": "Faults Model 2"
+        },
+        "1": {
+          "fixed_value": "examples/synthetic_examples/model2/input_data/geological_data/model2_surface_points_df.csv"
+        },
+        "2": {
+          "fixed_value": "examples/synthetic_examples/model2/input_data/geological_data/model2_orientations_df.csv"
+        }
+      }
+    },
+    "658": {
+      "identifier": "wbgeo::fault_modeling",
+      "x": 298,
+      "y": 548,
+      "ports": {
+        "0": {
+          "connected_comp": 647,
+          "connected_port": "faults_data"
+        },
+        "1": {
+          "connected_comp": 618,
+          "connected_port": "grid"
+        }
+      }
+    },
+    "663": {
+      "identifier": "wbgeo::structural_modeling",
+      "x": 639,
+      "y": 72,
+      "ports": {
+        "0": {
+          "connected_comp": 626,
+          "connected_port": "input_data"
+        },
+        "1": {
+          "connected_comp": 618,
+          "connected_port": "grid"
+        },
+        "2": {
+          "connected_comp": 658,
+          "connected_port": "fault_model"
+        }
+      }
+    },
+    "671": {
+      "identifier": "create_structured_mesh_data",
+      "x": 1100,
+      "y": 50,
+      "ports": {
+        "0": {
+          "connected_comp": 663,
+          "connected_port": "structural_model"
+        },
+        "1": {
+          "fixed_value": "[25,21,16,5,6]"
+        },
+        "2": {
+          "fixed_value": "0.1"
+        },
+        "3": {
+          "fixed_value": "None"
+        },
+        "4": {
+          "fixed_value": "1"
+        }
+      }
+    },
+    "684": {
+      "identifier": "create_structured_implicit_mesh_meshio",
+      "x": 1102,
+      "y": 286,
+      "ports": {
+        "0": {
+          "connected_comp": 663,
+          "connected_port": "structural_model"
+        }
+      }
+    },
+    "697": {
+      "identifier": "wbgeo::meshing_load_well_from_csv",
+      "x": 707,
+      "y": 533,
+      "ports": {
+        "0": {
+          "fixed_value": "examples/synthetic_examples/model2/input_data/engineering_objects/model_2_wells.csv"
+        }
+      }
+    },
+    "704": {
+      "identifier": "create_unstructured_mesh_data",
+      "x": 1099,
+      "y": 526,
+      "ports": {
+        "0": {
+          "connected_comp": 663,
+          "connected_port": "structural_model"
+        },
+        "1": {
+          "connected_comp": 697,
+          "connected_port": "Wells"
+        },
+        "10": {
+          "fixed_value": "40"
+        },
+        "11": {
+          "fixed_value": "60"
+        },
+        "12": {
+          "fixed_value": "80"
+        },
+        "14": {
+          "fixed_value": "[30, 2450, 30, 980, 30, 950]"
+        }
+      }
+    }
+  }
+}

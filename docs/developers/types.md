@@ -21,6 +21,7 @@ To help users by giving a type a semantic meaning,
 we can annotate types using `AnnotatedScriptType`, like in the following exmaple
 
 ````python
+from py_api_wbgeo.nodesapi import AnnotatedScriptType
 MyListOfNumbers = typing.Annotated[
    typing.List[int], AnnotatedScriptType(name='numbers', color='aqua',
                                          identifier='MyListOfNumbers')]
@@ -45,23 +46,32 @@ The `AnnotatedScriptType` accepts the following parameters:
 The UI additionally supports special input controls via the `controlled` parameter.
 By default, a parameters default value is used.
 
-| Controlled=        | Description                             |
-|--------------------|-----------------------------------------|
-| text               | A generic text input                    |
-| number             | A numeric text input                    |
-| boolean            | A boolean input (                       |
-| password           | A generic text input with masked inputs |
-| Table\|C1\|...\|Cn | NYI                                     |
-| file               | NYI                                     |
+| Controlled=             | Description                                                 |
+|-------------------------|-------------------------------------------------------------|
+| text                    | A generic text input                                        |
+| number                  | A numeric text input                                        |
+| password                | A generic text input with masked inputs                     |
+| boolean                 | A boolean input                                             |
+| RemoteFile\|F1\|...\|Fn | A selection of a file present in the codebase               |
+| Select\|O1\|...\|On     | A drop-down with the Options O1...On                        |
+| Table\|C1\|...\|Cn      | A table with the columns C1...Cn and any number of rows     |
+| List\|C1                | A list with the one C1 and any number of rows               |
+| Tuple\|C1\|...\|Cn      | A table with only one row                                   |
+| _(internal)_            | See type `BasicallyABufferedFile` for uploading files       |
+| _(internal)_            | See Dependant Inputs/SmartInputs; another layer of controls |
 
 To add support for additional input types,
 they have to be added to the UI (feel free to ask Alex for this).
 
 #### Defining more complex types
 
-For more complex types,
+For types, that are not built-ins, you can define your own classes.
+We use pydantic (dataclasses or BaseModel) to define types.
 
 ````python
+from pydantic.dataclasses import dataclass
+from py_api_wbgeo.nodesapi import wbgeo_type
+
 @wbgeo_type(name='Input data for a geological model', color='orange',
             identifier='wbgeo::my_complex_data_type')
 @dataclass
@@ -74,6 +84,3 @@ class MyComplexDataType:
 You must not use pydantics 'arbitrary_types' config option.
 Take a look at the pydantic_bridge adapters instead.
 
-TODO: controls
-
-TODO: Refer to other `wbgeo_type` objects as fields

@@ -54,42 +54,10 @@ class StructuralFrameInputOptions(pydantic.BaseModel):
   root: StructuralFrameInputOptions_Root
 
 
+from py_api_wbgeo import smartcontrols
 from py_api_wbgeo.smartcontrols import CtrlLabel, CtrlSelect, CtrlInt, CtrlFloat, CtrlIf, CtrlText, \
   CtrlGroup, SmartInput, SmartInputFormData, ASmartControl
 
-
-def group_from_type(type: type[pydantic.BaseModel], t_inst: typing.Any = None) -> list[
-  ASmartControl]:
-  ret = []
-
-  for name, field in type.model_fields.items():
-    field_type = field.annotation
-    default_value = field.default
-    current_value = getattr(t_inst, name) if t_inst is not None and hasattr(t_inst,
-                                                                            name) else default_value
-    description = field.description
-
-    if field_type == int:
-      ret.append(CtrlInt(id=name, label=name, description=description,
-                         defaultValue=int(current_value) if current_value is not None else None))
-    elif field_type == typing.Optional[int]:
-      ret.append(CtrlInt(id=name, label=f'({name})', description=description,
-                         defaultValue=int(current_value) if current_value is not None else None))
-    elif field_type == float:
-      ret.append(CtrlFloat(id=name, label=name, description=description, defaultValue=float(
-        current_value) if current_value is not None else None))
-    elif field_type == typing.Optional[float]:
-      ret.append(CtrlFloat(id=name, label=f'({name})', description=description, defaultValue=float(
-        current_value) if current_value is not None else None))
-    elif field_type == str:
-      ret.append(CtrlText(id=name, label=name, description=description, defaultValue=current_value))
-    elif field_type == typing.Optional[str]:
-      ret.append(
-        CtrlText(id=name, label=f'({name})', description=description, defaultValue=current_value))
-    else:
-      ret.append(CtrlLabel(label=description + f": Unhandled `{str(name)}: {str(field_type)}`"))
-
-  return ret
 
 
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options',
@@ -109,7 +77,7 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
       return [CtrlLabel(label=' Unhandled method ')]
     enum_val, key, param_type, param_instance = stack[0]
     return [CtrlIf(condition=f"'$.method' == \"{enum_val.value}\"",
-                   when_true=[CtrlGroup(id=key, inner=group_from_type(param_type, param_instance))],
+                   when_true=[CtrlGroup(id=key, inner=smartcontrols.smart_group_from_type(param_type, param_instance))],
                    when_false=construct_group_from(stack[1:])
                    )]
 
@@ -176,36 +144,18 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
   ])
 
 
-def unflatten_dict(d):
-  ret = dict()
-  for key, vlaue in d.items():
-    parts = key.split(".")
-    d = ret
-    for part in parts[:-1]:
-      if part not in d:
-        d[part] = dict()
-      d = d[part]
-    d[parts[-1]] = vlaue
-  return ret
-
-
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options_to_data',
                  title='structural_modeling_smart_options_to_data')
 def structural_modeling_smart_options_to_data(
     _input: SmartInputFormData) -> StructuralFrameInputOptions:
   """(Internal) component that converts the smart input form data dict to StructuralFrameInputOptions."""
-  data = json.loads(_input)  # _input is a json dict
-  data = unflatten_dict(
-    {k: v for k, v in data.items() if v is not None})  # un-flatten it and remove nulls
-  # and convert it to our StructuralFrameInputOptions type
-  return StructuralFrameInputOptions(**data)
+  return smartcontrols.form_data_to_wbgeo_type_data(_input, StructuralFrameInputOptions)
 
 
 SmartStructuralFrameInputOptions = typing.Annotated[
   StructuralFrameInputOptions, SmartInput(inputs=['data_elements'],
                                           to_form=structural_modeling_smart_options,
                                           to_data=structural_modeling_smart_options_to_data)]
-
 
 # Register this function as a component
 @wbgeo_component(description='Computes a Structural Geological model from input data, grid, and (optionally) fault model. With smart options for interpolation methods and parameters.',

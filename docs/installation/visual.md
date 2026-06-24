@@ -1,7 +1,8 @@
-# Codebase Installation
+# Complete Installation
 
-This document outlines an installation guide for using the workbench.
-See the [developer's guide](developers/index.md) for how to install the development
+This document outlines an installation guide for using the workbench with 
+its visual editor.
+See the [developer's guide](../developers/index.md) for how to install the development
 dependencies.
 
 ### Step 0: Install Docker
@@ -13,7 +14,7 @@ recommend [Docker Desktop](https://docs.docker.com/desktop/) to you.
    1) right-click the Docker Desktop icon in your status bar
    2) click the _Switch to linux containers_ button
 
-   * ![Windows: Switch to linux containers](img/windows_docker.png)
+   * ![Windows: Switch to linux containers](../img/windows_docker.png)
 
 ### Step 1: Create a personal access token:
 
