@@ -31,6 +31,7 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 from core.structural_modeling_components.structural_objects.structural_objects import (
     FaultFrame,
     FaultElement,
+    FaultMeshType,
 )
 
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes
@@ -397,7 +398,7 @@ def compute_fault_domains(
             fault_frame.grid.spacing,
             fault_frame.grid.extent,
         )
-        fault.set_mesh("unmasked", vertices[0], edges[0])
+        fault.set_mesh(FaultMeshType.UNMASKED, vertices[0], edges[0])
 
         if fault.extended_scalar_field is not None:
             vertices_ext, edges_ext = marching_cubes(
@@ -406,7 +407,7 @@ def compute_fault_domains(
                 fault_frame.grid.spacing,
                 padded_extent,
             )
-            fault.set_mesh("extended", vertices_ext[0], edges_ext[0])
+            fault.set_mesh(FaultMeshType.EXTENDED, vertices_ext[0], edges_ext[0])
 
     check_fault_crosscuts_via_isovalue_bands(fault_frame)
 

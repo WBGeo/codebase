@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Dict, FrozenSet, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
@@ -37,9 +37,21 @@ FloatArray = NpNDArrayFp64
 IntArray = npt.NDArray[np.integer]
 BoolArray = NpNDArrayBool
 
-MeshType3 = str  # expected: "masked" | "unmasked" | "combined" | "extended"
-MeshType2 = str  # expected: "masked" | "unmasked" | "extended" | "extended_masked"
 MeshDict = Dict[str, NpNDArrayFp64]
+
+
+class GeoMeshType(StrEnum):
+    MASKED = "masked"
+    UNMASKED = "unmasked"
+    COMBINED = "combined"
+    EXTENDED = "extended"
+
+
+class FaultMeshType(StrEnum):
+    MASKED = "masked"
+    UNMASKED = "unmasked"
+    EXTENDED = "extended"
+    EXTENDED_MASKED = "extended_masked"
 
 
 class StructuralElement(BaseModel):
@@ -77,7 +89,7 @@ class StructuralElement(BaseModel):
 
     def set_mesh(
             self,
-            mesh_type: MeshType3,
+            mesh_type: GeoMeshType,
             vertices: npt.NDArray[np.generic],
             edges: npt.NDArray[np.generic],
     ) -> None:
@@ -85,23 +97,24 @@ class StructuralElement(BaseModel):
         Set the vertices and edges for a specific mesh type.
 
         Args:
-            mesh_type: One of {"masked", "unmasked", "combined"}.
+            mesh_type: A ``GeoMeshType`` member.
             vertices: Vertex array for the mesh.
             edges: Edge/connectivity array for the mesh.
 
         Raises:
-            ValueError: If mesh_type is not an allowed mesh type.
+            ValueError: If mesh_type is not a valid ``GeoMeshType``.
         """
-        if mesh_type not in {"masked", "unmasked", "combined", "extended"}:
+        try:
+            mesh_type = GeoMeshType(mesh_type)
+        except ValueError:
             raise ValueError(
-                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, combined, extended."
+                f"Invalid mesh type '{mesh_type}'. Allowed types are: {', '.join(e.value for e in GeoMeshType)}."
             )
-
         self.vertices[mesh_type] = vertices
         self.edges[mesh_type] = edges
 
     def get_mesh(
-            self, mesh_type: MeshType3
+            self, mesh_type: GeoMeshType
     ) -> tuple[npt.NDArray[np.generic], npt.NDArray[np.generic]]:
         """
         Retrieve the vertices and edges for the given mesh type.
@@ -694,7 +707,7 @@ class FaultElement(BaseModel):
 
     def set_mesh(
             self,
-            mesh_type: MeshType2,
+            mesh_type: FaultMeshType,
             vertices: npt.NDArray[np.generic],
             edges: npt.NDArray[np.generic],
     ) -> None:
@@ -702,23 +715,24 @@ class FaultElement(BaseModel):
         Set the vertices and edges for a specific mesh type.
 
         Args:
-            mesh_type: One of {"masked", "unmasked"}.
+            mesh_type: A ``FaultMeshType`` member.
             vertices: Vertex array.
             edges: Edge/connectivity array.
 
         Raises:
-            ValueError: If mesh_type is not an allowed mesh type.
+            ValueError: If mesh_type is not a valid ``FaultMeshType``.
         """
-        if mesh_type not in {"masked", "unmasked", "extended", "extended_masked"}:
+        try:
+            mesh_type = FaultMeshType(mesh_type)
+        except ValueError:
             raise ValueError(
-                f"Invalid mesh type '{mesh_type}'. Allowed types are: masked, unmasked, extended, extended_masked."
+                f"Invalid mesh type '{mesh_type}'. Allowed types are: {', '.join(e.value for e in FaultMeshType)}."
             )
-
         self.vertices[mesh_type] = vertices
         self.edges[mesh_type] = edges
 
     def get_mesh(
-            self, mesh_type: MeshType2
+            self, mesh_type: FaultMeshType
     ) -> tuple[npt.NDArray[np.generic], npt.NDArray[np.generic]]:
         """
         Retrieve the vertices and edges for the given mesh type.

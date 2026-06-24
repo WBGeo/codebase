@@ -17,8 +17,6 @@ FloatArray = npt.NDArray[np.floating]
 IntArray = npt.NDArray[np.integer]
 BoolArray = npt.NDArray[np.bool_]
 
-MeshType3 = str  # expected: "masked" | "unmasked" | "combined"
-MeshType2 = str  # expected: "masked" | "unmasked"
 MeshDict = Dict[str, npt.NDArray[np.generic]]
 
 

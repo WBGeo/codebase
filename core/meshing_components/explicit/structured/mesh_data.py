@@ -7,6 +7,7 @@ from core.meshing_components.explicit.structured.store_grid_data import create_i
 from core.meshing_components.explicit.structured.node_element_generator import adjust_z_values, \
     create_hexahedral_elements_with_nodes
 from core.object_components import StructuralModelResults, MeshResults, ExtentData
+from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType
 import typing
 from typing import List, Tuple, Dict
 from scipy.spatial import cKDTree
@@ -95,7 +96,7 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
     for group in frame.structural_groups:
         for elem in group.structural_elements:
             try:
-                verts, _ = elem.get_mesh("combined")
+                verts, _ = elem.get_mesh(GeoMeshType.COMBINED)
             except KeyError:
                 continue
             if verts is not None and len(verts) > 0:

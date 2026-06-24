@@ -8,6 +8,7 @@ import numpy as np
 import pyvista as pv
 from scipy.interpolate import RegularGridInterpolator
 from core.object_components import StructuralModelResults
+from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
 
 
 def normalize_vectors(vectors):
@@ -28,7 +29,7 @@ def normalize_vectors(vectors):
     return vectors / np.where(norms == 0, 1, norms)
 
 
-def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_faults=True, fault_mesh_type=None):
+def get_surface_mesh_gradients(result, norm=True, mesh_type: GeoMeshType = GeoMeshType.UNMASKED, return_faults=True, fault_mesh_type: FaultMeshType | None = None):
     """
     Compute gradient vectors at surface mesh vertices by interpolating scalar field gradients.
 
@@ -38,11 +39,11 @@ def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_f
         Computed structural model results.
     norm : bool, default True
         Whether to normalize gradient vectors to unit length.
-    mesh_type : str, default "unmasked"
-        Mesh type to use for structural elements. One of "masked", "unmasked", "combined".
+    mesh_type : GeoMeshType, default GeoMeshType.UNMASKED
+        Mesh type to use for structural elements.
     return_faults : bool, default True
         Whether to also compute gradients for fault elements.
-    fault_mesh_type : str, optional
+    fault_mesh_type : FaultMeshType, optional
         Mesh type to use for fault elements. Defaults to ``mesh_type`` if not set.
 
     Returns
@@ -116,7 +117,7 @@ def get_surface_mesh_gradients(result, norm=True, mesh_type="unmasked", return_f
 def plot_surface_mesh_gradients(structural_model_result,
                                 gradients_dict,
                                 gradients_faults_dict=None,
-                                mesh_type="unmasked",
+                                mesh_type: GeoMeshType = GeoMeshType.UNMASKED,
                                 scale_factor=50):
     """
     Plot gradient vector fields at surface mesh vertices using PyVista.
@@ -130,7 +131,7 @@ def plot_surface_mesh_gradients(structural_model_result,
         :func:`get_surface_mesh_gradients`.
     gradients_faults_dict : dict, optional
         Gradient data for fault elements. If None, faults are not plotted.
-    mesh_type : str, default "unmasked"
+    mesh_type : GeoMeshType, default GeoMeshType.UNMASKED
         Mesh type used to retrieve element meshes for wireframe overlay.
     scale_factor : float, default 50
         Arrow scale factor for gradient glyphs.

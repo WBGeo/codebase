@@ -12,6 +12,8 @@ import warnings
 from core.structural_modeling_components.structural_objects.structural_objects import (
     FaultFrame,
     StructuralFrame,
+    GeoMeshType,
+    FaultMeshType,
 )
 
 if TYPE_CHECKING:
@@ -189,13 +191,14 @@ def plot_fault_input_data_3D(
 def plot_structural_model_3D(
         frame: StructuralFrame,
         *,
-        mesh_type: str = "masked",  # "masked" | "unmasked" | "combined" | "extended"
-        fault_mesh_type: Optional[str] = None,  # defaults to mesh_type when not set
+        mesh_type: GeoMeshType = GeoMeshType.MASKED,
+        fault_mesh_type: Optional[FaultMeshType] = None,
         show_surface_meshes: bool = True,
         show_points: bool = True,
         show_orientations: bool = True,
         fault_opacity: float = 0.35,
         notebook: bool = False,
+        off_screen: bool = False,
         show: bool = True,
 ) -> pv.Plotter:
     """
@@ -205,9 +208,9 @@ def plot_structural_model_3D(
     ----------
     frame : StructuralFrame
         Structural frame to visualize.
-    mesh_type : str, default "masked"
-        Mesh type for geological elements. One of "masked", "unmasked", "combined", "extended".
-    fault_mesh_type : str, optional
+    mesh_type : GeoMeshType, default GeoMeshType.MASKED
+        Mesh type for geological elements.
+    fault_mesh_type : FaultMeshType, optional
         Mesh type for fault surfaces. Defaults to ``mesh_type`` if not set.
     show_surface_meshes : bool, default True
         Whether to render surface meshes for each element.
@@ -219,6 +222,8 @@ def plot_structural_model_3D(
         Opacity of fault surface meshes.
     notebook : bool, default False
         Use off-screen/notebook mode for PyVista.
+    off_screen : bool, default False
+        Render off-screen (no window). Required for screenshot() without calling show() first.
     show : bool, default True
         Call plotter.show() at the end. Set False to add further actors before displaying.
 
@@ -230,7 +235,7 @@ def plot_structural_model_3D(
     fault_mesh_type = fault_mesh_type if fault_mesh_type is not None else mesh_type
 
     pv.global_theme.allow_empty_mesh = True
-    plotter = pv.Plotter(notebook=notebook)
+    plotter = pv.Plotter(notebook=notebook, off_screen=off_screen)
 
     # ---------- plot structural meshes, points, orientations ----------
     legend_entries = []  # [(group_name, [(• elem, color), ...]), ...] in youngest->oldest order
@@ -279,7 +284,7 @@ def plot_structural_model_3D(
 
         for fault in frame.fault_frame.fault_elements:
             if fault_mesh_type not in fault.vertices or fault_mesh_type not in fault.edges:
-                fault_mesh_type = "unmasked"  # fallback if requested type not present
+                fault_mesh_type = FaultMeshType.UNMASKED  # fallback if requested type not present
             fv = fault.vertices[fault_mesh_type]
             ff = fault.edges[fault_mesh_type]
             if fv is None or ff is None or len(fv) == 0 or len(ff) == 0:
@@ -512,7 +517,7 @@ def plot_structural_model_2D(
 
 def plot_fault_model_3D(
     fault_frame: FaultFrame,
-    mesh_type: str = "unmasked",
+    mesh_type: FaultMeshType = FaultMeshType.UNMASKED,
     show_surface_meshes: bool = True,
     show_input_data: bool = True,
     show_domain_map: bool = True,
@@ -527,8 +532,8 @@ def plot_fault_model_3D(
     ----------
     fault_frame : FaultFrame
         Fault frame to visualize.
-    mesh_type : str, default "unmasked"
-        Mesh type for fault surfaces. One of "masked", "unmasked", "extended".
+    mesh_type : FaultMeshType, default FaultMeshType.UNMASKED
+        Mesh type for fault surfaces.
     show_surface_meshes : bool, default True
         Whether to render fault surface meshes.
     show_input_data : bool, default True
