@@ -48,7 +48,7 @@ pages:
   script:
     # add __init__.py files, required for docs
     - find core -type d -exec touch {}/__init__.py \;
-    - pip install mkdocs-material
+    - pip install mkdocs-material mkdocstrings[python] mkdocs-gen-files mkdocs-literate-nav
     - mkdocs build --site-dir public
     - mv htmlcov/ public/coverage
   cache:
