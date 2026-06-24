@@ -1,0 +1,147 @@
+{
+  "name": "Synthetic Model 1",
+  "components": {
+    "523": {
+      "identifier": "wbgeo::regular_grid",
+      "x": 40,
+      "y": 38,
+      "ports": {
+        "0": {
+          "fixed_value": "[0,1000,0,1000,0,1000]"
+        },
+        "1": {
+          "fixed_value": "[50,50,50]"
+        }
+      }
+    },
+    "530": {
+      "identifier": "wbgeo::geo_input_data",
+      "x": 32,
+      "y": 413,
+      "ports": {
+        "0": {
+          "fixed_value": "Model 1"
+        },
+        "1": {
+          "fixed_value": "examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv"
+        },
+        "2": {
+          "fixed_value": "examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv"
+        },
+        "3": {
+          "fixed_value": "[\"Strat_Series1\"]"
+        },
+        "4": {
+          "smartinput_value": "{\"root.groups\":{\"<None>\":[],\"Strat_Series1\":[\"rock1\",\"rock2\"]}}",
+          "smartinput_form": "{\"id\": \"root\", \"inner\": [{\"label\": \"Assign Groups\", \"description\": null, \"id\": \"groups\", \"groups\": [\"<None>\", \"Strat_Series1\"], \"items\": [\"rock1\", \"rock2\"], \"defaultValue\": {\"<None>\": [\"rock1\", \"rock2\"], \"Strat_Series1\": []}, \"smart_type\": \"order\"}], \"smart_type\": \"group\"}"
+        }
+      }
+    },
+    "542": {
+      "identifier": "wbgeo::structural_modeling",
+      "x": 300,
+      "y": 50,
+      "ports": {
+        "0": {
+          "connected_comp": 530,
+          "connected_port": "input_data"
+        },
+        "1": {
+          "connected_comp": 523,
+          "connected_port": "grid"
+        }
+      }
+    },
+    "549": {
+      "identifier": "create_structured_mesh_data",
+      "x": 700,
+      "y": 50,
+      "ports": {
+        "0": {
+          "connected_comp": 542,
+          "connected_port": "structural_model"
+        },
+        "1": {
+          "fixed_value": "[10,10,10]"
+        },
+        "2": {
+          "fixed_value": "0.1"
+        },
+        "3": {
+          "fixed_value": "[30,30]"
+        },
+        "4": {
+          "fixed_value": "1"
+        }
+      }
+    },
+    "562": {
+      "identifier": "create_structured_implicit_mesh_meshio",
+      "x": 770,
+      "y": 390,
+      "ports": {
+        "0": {
+          "connected_comp": 542,
+          "connected_port": "structural_model"
+        }
+      }
+    },
+    "567": {
+      "identifier": "wbgeo::meshing_load_well_from_csv",
+      "x": 350,
+      "y": 560,
+      "ports": {
+        "0": {
+          "fixed_value": "examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv"
+        }
+      }
+    },
+    "573": {
+      "identifier": "create_unstructured_mesh_data",
+      "x": 770,
+      "y": 540,
+      "ports": {
+        "0": {
+          "connected_comp": 542,
+          "connected_port": "structural_model"
+        },
+        "1": {
+          "connected_comp": 567,
+          "connected_port": "Wells"
+        }
+      }
+    },
+    "592": {
+      "identifier": "wbgeo::sfepy_input_data",
+      "x": 910,
+      "y": 200,
+      "ports": {}
+    },
+    "598": {
+      "identifier": "wbgeo::simulate_with_sfepy",
+      "x": 1160,
+      "y": 50,
+      "ports": {
+        "0": {
+          "connected_comp": 592,
+          "connected_port": "sfepy_input"
+        },
+        "1": {
+          "connected_comp": 549,
+          "connected_port": "Mesh"
+        }
+      }
+    },
+    "604": {
+      "identifier": "wbgeo::load_VTK_results",
+      "x": 1440,
+      "y": 60,
+      "ports": {
+        "0": {
+          "connected_comp": 598,
+          "connected_port": "Simulation"
+        }
+      }
+    }
+  }
+}

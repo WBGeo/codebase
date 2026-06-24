@@ -224,5 +224,65 @@ def import_mesh_results_to_vtu(file: BasicallyABufferedFile) -> MyListOfNumbers:
 
 ## Dependant Inputs
 
-TODO
+One special kind of inputs are "dependant inputs",
+ i.e. inputs that depend on another input.
+
+For example: Given a list of group names and a CSV input file, the user 
+ should be able to select the group of each feature.
+
+
+```python
+from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlOrderedGrouping, SmartInputFormData, SmartInput
+
+SmartStructuralInputSmartInputOptions = typing.Annotated[
+  StructuralInputMappingOptions, SmartInput(inputs=['surface_points_file', 'group_names'],
+                                          to_form=structural_input_smart_options,
+                                          to_data=structural_input_smart_options_to_data)]
+
+
+@wbgeo_component("...")
+def structural_input_smart_options(surface_points_file: SurfaceCSVFileDataType,
+                                   group_names: GroupNames
+                                   ) -> CtrlGroup:
+   return CtrlGroup(id='root', inner=[
+      CtrlOrderedGrouping(id='groups',
+                          label='Assign Groups',
+                          groups=["c1", "c2"], # load this from the inputs
+                          items=["a", "b", "c"], # load this from the inputs
+                          )
+   ]
+                    )
+
+@wbgeo_component(...)
+def structural_input_smart_options_to_data(
+      _input: SmartInputFormData,
+      group_names: GroupNames,
+) -> StructuralInputMappingOptions:
+   input_as_json = smartcontrols.form_data_as_dict(_input)
+   grouped = collections.defaultdict(list)
+   if "root" in input_as_json and "groups" in input_as_json["root"]:
+      for gn in group_names:
+         if gn in input_as_json["root"]["groups"]:
+            grouped[gn].extend(input_as_json["root"]["groups"][gn])
+
+   return {k: tuple(v) for k, v in grouped.items()}
+
+
+@wbgeo_component(...)
+def my_component(
+      surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
+      group_names: GroupNames = ['Strat_Series1'],
+      mapping_object: SmartStructuralInputSmartInputOptions = {"Strat_Series1": ('rock2', 'rock1')}
+) -> InputData_StructuralElements:
+    pass
+```
+ 
+
+By using an annotated input type, with an annotation to `SmartInput`,
+ an input type is defined as having "smart controls".
+
+Parameters in the smart-input helper component functions with the same name and type 
+as the real component will be passed along.
+
+TODO: Describe the frontend and link to the available smart controls
 

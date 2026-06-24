@@ -4,14 +4,19 @@ WBGeo workflow components for loading geological input data from files.
 Provides components for creating RegularGrid instances and loading structural
 and fault input data from CSV and JSON files into the pipeline.
 """
+import collections
 import json
 import os
 import pathlib
 import typing
 
 import pandas as pd
+import pydantic
+from py_api_wbgeo import smartcontrols
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_inspector, \
-  InspectorHelper
+  InspectorHelper, wbgeo_type
+from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlOrderedGrouping, SmartInputFormData, \
+  SmartInput
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
@@ -84,27 +89,68 @@ def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
   return grid_classes.RegularGrid(extent, resolution)
 
 
-RemoteMappingFileType = typing.Annotated[
-  str, AnnotatedScriptType(name='path', color='aqua', identifier='RemoteMappingFileType',
-                           controlled='RemoteFile|endswith=mapping.json')]
+GroupNames = typing.Annotated[
+  typing.List[str], AnnotatedScriptType(name='Group Names', color='aqua',
+                                        identifier='wbgeo::GroupNames',
+                                        controlled='List|GroupName')]
 
 
-def load_mapping(path: RemoteMappingFileType) -> dict:
-  """
-  Load a stratigraphic group mapping from a JSON file.
+@wbgeo_type(name='StructuralInputSmartInputOptions', color='orange',
+            identifier='wbgeo::StructuralInputSmartInputOptions')
+class StructuralInputSmartInputOptions(pydantic.BaseModel):
+  root: typing.Dict[str, str]  # mapping of formation name -> grouo
 
-  Parameters
-  ----------
-  path : str
-      Path to a JSON file mapping group names to lists of formation names.
 
-  Returns
-  -------
-  dict
-      Mapping of group name -> tuple of formation names.
-  """
-  with open(path, "r") as fd:
-    return {k: tuple(v) for k, v in json.load(fd).items()}
+@wbgeo_component(identifier='wbgeo:__internal__structural_input_smart_options',
+                 title='structural_input_smart_options')
+def structural_input_smart_options(surface_points_file: SurfaceCSVFileDataType,
+                                   group_names: GroupNames
+                                   ) -> CtrlGroup:
+  datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
+  surface_points = pd.read_csv(os.path.join(datadir, surface_points_file))
+
+  formations = sorted(surface_points["formation"].unique())
+
+  group_options = ['<Exclude>'] + group_names
+  dv = {
+    '<Exclude>': formations,
+  }
+  for g in group_names:
+    dv[g] = []
+
+  return CtrlGroup(id='root', inner=[
+    CtrlOrderedGrouping(id='groups',
+                        label='Assign Groups',
+                        groups=group_options,
+                        items=formations,
+                        defaultValue=dv,
+                        )
+
+  ]
+                   )
+
+StructuralInputMappingOptions = typing.Annotated[typing.Dict[str, typing.Tuple[str, ...]], AnnotatedScriptType(name='wbgeo::StructuralInputMappingOptions', identifier='wbgeo::StructuralInputMappingOptions', color='orange')]
+
+@wbgeo_component(identifier='wbgeo:__internal__structural_input_smart_options_to_data',
+                 title='structural_input_smart_options_to_data')
+def structural_input_smart_options_to_data(
+    _input: SmartInputFormData,
+    group_names: GroupNames,
+) -> StructuralInputMappingOptions:
+  input_as_json = smartcontrols.form_data_as_dict(_input)
+  grouped = collections.defaultdict(list)
+  if "root" in input_as_json and "groups" in input_as_json["root"]:
+    for gn in group_names:
+      if gn in input_as_json["root"]["groups"]:
+        grouped[gn].extend(input_as_json["root"]["groups"][gn])
+
+  return {k: tuple(v) for k, v in grouped.items()}
+
+SmartStructuralInputSmartInputOptions = typing.Annotated[
+  StructuralInputMappingOptions, SmartInput(inputs=['surface_points_file', 'group_names'],
+                                          to_form=structural_input_smart_options,
+                                          to_data=structural_input_smart_options_to_data)]
+
 
 
 @wbgeo_component(description='Input data for a Structural Geological Model. Requires surface points, optionally orientations and a mapping file.',
@@ -120,7 +166,8 @@ def structural_input_data(
     name: str = 'Model 1',
     surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
     orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
-    mapping_file: JSONFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_mapping.json'
+    group_names: GroupNames = ['Strat_Series1'],
+    mapping_object: SmartStructuralInputSmartInputOptions = {"Strat_Series1": ('rock2', 'rock1')}
 ) -> InputData_StructuralElements:
   """
   Loads input data for a structural geological model from CSV and JSON files.
@@ -138,8 +185,10 @@ def structural_input_data(
       CSV file with surface contact points. Required columns: X, Y, Z, formation.
   orientations_file : str, optional
       CSV file with orientation measurements. Required columns: X, Y, Z, G_x, G_y, G_z, formation.
-  mapping_file : str
-      JSON file mapping formation names to stratigraphic groups.
+  group_names: list[str]
+      Sorted list of all stratigraphic groups names
+  mapping: dict[str, tuple[str]]
+      mapping formation names to stratigraphic groups.
 
   Returns
   -------
@@ -162,14 +211,6 @@ def structural_input_data(
     missing = required_ori_cols - set(orientations.columns)
     if missing:
       raise ValueError(f"Orientations CSV missing required columns: {missing}")
-
-  mapping_object = {}
-  if mapping_file is not None:
-    with open(os.path.join(datadir, mapping_file), 'r') as fd:
-      mapping_object = {k: tuple(v) for k, v in json.load(fd).items()}
-
-  if not mapping_object:
-    raise ValueError("Mapping file is empty or could not be loaded — at least one group must be defined.")
 
   return InputData_StructuralElements(
     name=name,

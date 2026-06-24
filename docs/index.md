@@ -16,3 +16,6 @@ On the left, you can find a list of available pages,
 
 [View Guided Tour](#){ .md-button .md-button--primary }
 [View Hosted Demo](https://wbgeo-demo.cloud.luepg.es/gui/Home){ .md-button .md-button }
+
+
+You can contact the developers via TODO

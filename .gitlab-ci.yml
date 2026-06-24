@@ -46,7 +46,10 @@ pages:
   dependencies:
     - test
   script:
-    - pip install mkdocs-material
+    # add __init__.py files, required for pdocs
+    - find core -type d -exec touch {}/__init__.py \;
+    - pip install mkdocs-material pdoc git+https://github.com/spirali/mkdocs-pdoc-plugin@e827ff0f220100b3829f898f423a3a8010bb4fcf
+    - pdoc core -o docs/core_py_docs
     - mkdocs build --site-dir public
     - mv htmlcov/ public/coverage
   cache:

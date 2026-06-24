@@ -22,22 +22,28 @@ markdown_extensions:
   - pymdownx.superfences
 plugins:
   - search
+  - pdoc:
+      api_path: core_py_docs
 nav:
   - index.md
-  - Installation Guide: InstallationGuide.md
+  - Installation Guide:
+    - installation/index.md
+    - Visual Editor: installation/visual.md
+    - Codebase: installation/codebase.md
   - Components:
       - components/index.md
-      - Data Loading: components/todo.md
-      - Interpolation: components/todo.md
-      - Meshing: components/todo.md
-      - Process Simulation: components/todo.md
-      - Visualization: components/todo.md
+      - Data Loading: components/data_loading/index.md
+      - Structural Modeling: components/structural_modeling/Manual_structural_modeling.md
+      - Meshing: components/meshing/index.md
+      - Process Simulation: components/simulation/Manual_simulation.md
+      - Visualization: components/visualization/index.md
   - Developer's Guide:
       - developers/index.md
       - Installation: developers/installation.md
       - Components: developers/components.md
       - Types: developers/types.md
       - Local execution: developers/local.md
+  - Examples: Examples.md
   - Publications: Publications.md
 
 copyright: '(c) https://git.rwth-aachen.de/wbgeo/'
