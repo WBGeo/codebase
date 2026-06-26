@@ -2,11 +2,9 @@ import unittest
 import os
 import numpy as np
 import pandas as pd
-
 from core.object_components import InputData_StructuralElements
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
-
 from core.meshing_components.explicit.unstructured.mesh_data import (
     create_unstructured_mesh_data,
     load_wells_from_csv,
@@ -17,10 +15,9 @@ from core.meshing_components.explicit.unstructured.mesh_data import (
     load_triangulations_planes_from_csv,
 )
 
-
-# -----------------------------
+########
 # Paths
-# -----------------------------
+########
 base_dir = os.path.dirname(__file__)
 
 data_dir = os.path.join(
@@ -34,25 +31,21 @@ engineering_dir = os.path.join(
 )
 
 
-# -----------------------------
+###########
 # TEST CASE
-# -----------------------------
+###########
 class UnstructuredMeshTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
 
-        # -----------------------------
         # Grid
-        # -----------------------------
         cls.grid = RegularGrid(
             extent=(0, 1000, 0, 1000, 0, 1000),
             resolution=(50, 50, 50)
         )
 
-        # -----------------------------
         # Input data
-        # -----------------------------
         cls.input_data = InputData_StructuralElements(
             name='Model_1',
             mapping_object={"Strat_Series": ('rock2', 'rock1')},
@@ -64,9 +57,7 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             )
         )
 
-        # -----------------------------
         # Structural model
-        # -----------------------------
         frame = general.build_structural_frame(
             input_data_elements=cls.input_data,
             grid=cls.grid
@@ -78,9 +69,7 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             verbose=False
         )
 
-        # -----------------------------
         # Engineering objects
-        # -----------------------------
         cls.wells = load_wells_from_csv(
             os.path.join(engineering_dir, "model_1_wells.csv")
         )
@@ -100,9 +89,7 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             os.path.join(engineering_dir, "seismic_plane_new_offset.csv")
         )
 
-    # -----------------------------
     # TEST
-    # -----------------------------
     def test_unstructured_mesh_basic_properties(self):
 
         mesh_generated = create_unstructured_mesh_data(
@@ -120,46 +107,34 @@ class UnstructuredMeshTestCase(unittest.TestCase):
         nodes = mesh_generated.nodes
         elements = mesh_generated.elements
 
-        # -----------------------------
         # Basic existence
-        # -----------------------------
         self.assertIsNotNone(nodes)
         self.assertIsNotNone(elements)
 
         self.assertGreater(len(nodes), 0, "No nodes generated")
         self.assertGreater(len(elements), 0, "No element blocks generated")
 
-        # -----------------------------
         # Node structure
-        # -----------------------------
         self.assertEqual(nodes.shape[1], 3, "Nodes must be 3D coordinates")
 
-        # -----------------------------
         # Numerical sanity
-        # -----------------------------
         self.assertFalse(np.isnan(nodes).any(), "NaN values in nodes")
         self.assertFalse(np.isinf(nodes).any(), "Inf values in nodes")
 
-        # -----------------------------
         # Bounds check (based on grid)
-        # -----------------------------
         tol = 1e-6
         self.assertTrue(
             np.all((nodes >= -tol) & (nodes <= 1000 + tol)),
             "Nodes outside expected domain"
         )
 
-        # -----------------------------
         # Size sanity (tolerant)
-        # -----------------------------
         self.assertTrue(
             4000 < len(nodes) < 18000,
             f"Unexpected number of nodes: {len(nodes)}"
         )
 
-        # -----------------------------
         # Uniqueness (no duplicate nodes)
-        # -----------------------------
         unique_nodes = np.unique(nodes, axis=0)
         self.assertEqual(
             len(unique_nodes),
@@ -167,9 +142,7 @@ class UnstructuredMeshTestCase(unittest.TestCase):
             "Duplicate nodes detected"
         )
 
-        # -----------------------------
         # Elements validity
-        # -----------------------------
         n_nodes = len(nodes)
 
         for i, block in enumerate(elements):
@@ -190,9 +163,6 @@ class UnstructuredMeshTestCase(unittest.TestCase):
                 f"Block {i}: invalid node indices (negative)"
             )
 
-
-# -----------------------------
-# Run
-# -----------------------------
+######################################
 if __name__ == "__main__":
     unittest.main()

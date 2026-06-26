@@ -1,10 +1,8 @@
 import unittest
 import numpy as np
-
 from core.meshing_components.explicit.structured.store_grid_data import (
     create_intermediate_layers
 )
-
 
 class TestCreateIntermediateLayers(unittest.TestCase):
 
@@ -104,6 +102,6 @@ class TestCreateIntermediateLayers(unittest.TestCase):
         self.assertTrue(np.all(z_values >= 0))
         self.assertTrue(np.all(z_values <= 10))
 
-
+#############################################
 if __name__ == "__main__":
     unittest.main()

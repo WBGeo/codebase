@@ -4,7 +4,6 @@ import meshio
 import numpy as np
 from numpy.typing import NDArray
 from py_api_wbgeo.nodesapi import wbgeo_component
-
 from core.meshing_components.explicit.unstructured.mesh_data import classify_boundary_nodes, \
   build_point_sets
 from core.object_components import MeshResults, StructuralModelResults, ExtentData
@@ -28,6 +27,7 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
     # Get extent
     if extent is None or len(extent) == 0:
         extent_arr = np.asarray(geomodel_result.structural_frame.grid.extent, dtype=float)
+
     else:
         extent_arr = np.asarray(extent, dtype=float)
     xmin, xmax, ymin, ymax, zmin, zmax = extent_arr
@@ -49,6 +49,7 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
     # Map old node indices to new node IDs
     old_to_new: NDArray[np.integer] = -np.ones((nx, ny, nz), dtype=int)
     kept_nodes: NDArray[np.integer] = np.argwhere(inside)
+
     for new_id, (i, j, k) in enumerate(kept_nodes):
         old_to_new[i, j, k] = new_id
 
@@ -60,7 +61,9 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
     hexa_blocks: List[int] = []
 
     for i in range(nx - 1):
+
         for j in range(ny - 1):
+
             for k in range(nz - 1):
                 corners = [
                     (i, j, k),
@@ -72,6 +75,7 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
                     (i+1, j+1, k+1),
                     (i, j+1, k+1),
                 ]
+
                 if not all(inside[c] for c in corners):
                     continue
 

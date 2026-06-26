@@ -49,7 +49,7 @@ class VTKInputs:
         cell_types = []
         region_ids = []
 
-        # 🔑 RegionId comes from CellBlock order
+        # RegionId comes from CellBlock order
         for region_id, cb in enumerate(self.elements, start=1):  # use self.elements here
             if cb.type not in MESHIO_TO_VTK:
                 raise ValueError(f"Unsupported cell type: {cb.type}")
@@ -68,18 +68,11 @@ class VTKInputs:
             self.nodes  # use self.nodes here
         )
 
-        # ✅ Physical groups preserved
+        # Physical groups preserved
         grid.cell_data["RegionId"] = np.asarray(region_ids, dtype=np.int32)
         return grid
 
 
-# We have one singular export component now
-# @wbgeo_component(
-#     title="Download Mesh as VTK",
-#     description="Export Mesh to single VTK",
-#     group="Export",
-#     identifier="wbgeo::expert_mesh_results_vtk",
-# )
 def export_mesh_results_to_vtk(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a legacy VTK (.vtk) file
@@ -87,6 +80,7 @@ def export_mesh_results_to_vtk(mesh: MeshResults) -> BasicallyABufferedFile:
 
     The mesh is written to a temporary file and returned as an in-memory buffer.
     """
+
     import tempfile
     import io
     import os

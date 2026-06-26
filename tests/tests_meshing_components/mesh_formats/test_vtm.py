@@ -4,17 +4,12 @@ import meshio
 import io
 import zipfile
 from core.meshing_components.mesh_format.vtm.VTM_format import VTMInputs, export_mesh_results_to_vtm
-
-
 from core.object_components import MeshResults
-
 
 class TestExportMeshResultsToVTM(unittest.TestCase):
 
     def setUp(self):
-        # -----------------------------
         # Simple synthetic mesh
-        # -----------------------------
         self.nodes = np.array([
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -48,26 +43,18 @@ class TestExportMeshResultsToVTM(unittest.TestCase):
         vtm = VTMInputs(self.nodes, self.elements)
         multi_block = vtm.create_mesh()
 
-        # -----------------------------
         # Basic type check
-        # -----------------------------
         import pyvista as pv
         self.assertIsInstance(multi_block, pv.MultiBlock)
 
-        # -----------------------------
         # Correct way to check content
-        # -----------------------------
         self.assertGreater(len(multi_block), 0)
 
-        # -----------------------------
         # Check block names exist
-        # -----------------------------
         names = list(multi_block.keys())
         self.assertTrue(any("Block_" in n for n in names))
 
-        # -----------------------------
         # Check at least one UnstructuredGrid
-        # -----------------------------
         grids = [multi_block[i] for i in range(len(multi_block))]
         self.assertTrue(all(g.n_points > 0 for g in grids))
 
@@ -112,6 +99,6 @@ class TestExportMeshResultsToVTM(unittest.TestCase):
 
         self.assertTrue(any(f.endswith(".vtm") for f in files))
 
-
+############################################
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,6 @@
 import unittest
 import os
 import re
-import numpy as np
-
 from core.meshing_components.explicit.unstructured.mesh_data import (
     load_ellipses_from_csv,
     validate_ellipses
@@ -19,7 +17,7 @@ class LoadEllipsesTestCase(unittest.TestCase):
         # Define model extent: xmin, xmax, ymin, ymax, zmin, zmax
         self.extent = [0, 1000, 0, 1000, 0, 1000]
 
-    # ----------------- Correct loading -----------------
+    # Loading
     def test_correct(self):
         ellipses = load_ellipses_from_csv(data_dir + "valid_ellipses.csv")
         self.assertEqual(4, len(ellipses), "Expected 4 ellipses in CSV")
@@ -36,7 +34,7 @@ class LoadEllipsesTestCase(unittest.TestCase):
         # Validate extents
         validate_ellipses(ellipses, self.extent)
 
-    # ----------------- Required fields -----------------
+    # Required fields
     def test_missing_required_numbers(self):
         # Load a CSV with fewer than required columns
         ellipses = load_ellipses_from_csv(data_dir + "invalid_ellipses_missing_numbers.csv")
@@ -53,7 +51,7 @@ class LoadEllipsesTestCase(unittest.TestCase):
                 data_dir + "invalid_ellipses_non_numeric.csv"
             )
 
-    # ----------------- Axis validation -----------------
+    #  Axis validation
     def test_invalid_zaxis_xaxis_columns(self):
         # Load a CSV where zAxis/xAxis columns are wrong or missing
         ellipses = load_ellipses_from_csv(data_dir + "invalid_ellipses_axis_columns.csv")
@@ -67,8 +65,7 @@ class LoadEllipsesTestCase(unittest.TestCase):
             self.assertEqual(len(e["xAxis"]), 3)
 
 
-
-    # ----------------- Extent validation -----------------
+    #  Extent validation
     def test_validate_ellipse_inside_extent(self):
         ellipses = load_ellipses_from_csv(data_dir + "valid_ellipses.csv")
 
@@ -101,5 +98,6 @@ class LoadEllipsesTestCase(unittest.TestCase):
         validate_ellipses(ellipses, self.extent)
 
 
+#########################################
 if __name__ == "__main__":
     unittest.main()

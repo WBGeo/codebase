@@ -1,7 +1,6 @@
 import re
 import unittest
 import os
-import numpy as np
 
 from core.meshing_components.explicit.unstructured.mesh_data import (
     load_shafts_from_csv,
@@ -40,7 +39,7 @@ class LoadShaftsTestCase(unittest.TestCase):
         ]
         validate_shafts(shafts_dict, self.extent)
 
-    # ----------------- CSV loader error tests -----------------
+    # CSV loader error tests
     def test_missing_value(self):
         with self.assertRaisesRegex(
             ValueError,
@@ -73,7 +72,7 @@ class LoadShaftsTestCase(unittest.TestCase):
                 data_dir + "invalid_shafts_non_numeric.csv"
             )
 
-    # ----------------- Extent validation test -----------------
+    #  Extent validation test
     def test_center_outside_extent(self):
         # Shaft with center outside the extent
         shafts_outside = [
@@ -86,5 +85,6 @@ class LoadShaftsTestCase(unittest.TestCase):
             validate_shafts(shafts_outside, self.extent)
 
 
+###################################
 if __name__ == "__main__":
     unittest.main()

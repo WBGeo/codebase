@@ -1,16 +1,11 @@
 import unittest
 import numpy as np
 from scipy.spatial import cKDTree
-
 from core.meshing_components.explicit.unstructured.create_clean_surface import get_normals, calculate_normals, correct_extrusion_direction
-
-
 
 class TestNormalsFunctions(unittest.TestCase):
 
-    # -------------------------
     # get_normals
-    # -------------------------
     def test_get_normals_basic(self):
         points = np.array([
             [0, 0, 0],
@@ -40,9 +35,7 @@ class TestNormalsFunctions(unittest.TestCase):
 
         np.testing.assert_array_equal(result, expected)
 
-    # -------------------------
     # calculate_normals
-    # -------------------------
     def test_calculate_normals_basic(self):
         surface_points = np.array([
             [0, 0, 0],
@@ -83,9 +76,7 @@ class TestNormalsFunctions(unittest.TestCase):
 
         np.testing.assert_array_equal(result, expected)
 
-    # -------------------------
     # calculate_normals (missing point)
-    # -------------------------
     def test_calculate_normals_partial_match(self):
         surface_points = np.array([
             [0, 0, 0],
@@ -118,9 +109,7 @@ class TestNormalsFunctions(unittest.TestCase):
 
         np.testing.assert_array_equal(result, expected)
 
-    # -------------------------
     # correct_extrusion_direction
-    # -------------------------
     def test_correct_extrusion_direction_shape(self):
         points = np.array([
             [0, 0, 0],
@@ -156,9 +145,7 @@ class TestNormalsFunctions(unittest.TestCase):
         # shape: (n_points, num_steps+1, 3)
         self.assertEqual(result.shape, (2, 6, 3))
 
-    # -------------------------
     # extrusion direction consistency
-    # -------------------------
     def test_extrusion_direction_nonzero(self):
         points = np.array([[0, 0, 0]])
         normals = np.array([[0, 0, 1]])
@@ -182,6 +169,6 @@ class TestNormalsFunctions(unittest.TestCase):
 
         self.assertFalse(np.allclose(first, last))
 
-
+#####################################
 if __name__ == "__main__":
     unittest.main()

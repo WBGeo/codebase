@@ -2,19 +2,16 @@ import unittest
 import os
 import numpy as np
 import pandas as pd
-
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.object_components import InputData_StructuralElements
-
 from core.meshing_components.explicit.structured.mesh_data import (
     prepare_surface_vertices_from_geomodel
 )
 
-
-# ---------------------------------------------------------
-# Build Model1 once (fixture inside test file)
-# ---------------------------------------------------------
+###################
+# Build Model1 once
+###################
 def build_model1():
     base_dir = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "../../../../")
@@ -53,9 +50,9 @@ def build_model1():
     )
 
 
-# ---------------------------------------------------------
+############
 # UNIT TEST
-# ---------------------------------------------------------
+# #########
 class TestPrepareSurfaceVerticesModel1(unittest.TestCase):
 
     @classmethod
@@ -66,29 +63,21 @@ class TestPrepareSurfaceVerticesModel1(unittest.TestCase):
 
         result = prepare_surface_vertices_from_geomodel(self.model)
 
-        # --------------------------
-        # 1. extent check
-        # --------------------------
+        # extent check
         self.assertEqual(len(result.extent), 6)
 
-        # --------------------------
-        # 2. structure size check
-        # --------------------------
+        # structure size check
         self.assertEqual(len(result.surface_meshes_vertices), 3)
 
         # legacy padding must be empty
         self.assertEqual(result.surface_meshes_vertices[0], [])
         self.assertEqual(result.surface_meshes_vertices[1], [])
 
-        # --------------------------
-        # 3. combined surfaces exist
-        # --------------------------
+        # combined surfaces exist
         combined = result.surface_meshes_vertices[2]
         self.assertGreater(len(combined), 0)
 
-        # --------------------------
-        # 4. each surface must be Nx3
-        # --------------------------
+        # each surface must be Nx3
         for surf in combined:
             self.assertEqual(surf.shape[1], 3)
 
@@ -109,6 +98,6 @@ class TestPrepareSurfaceVerticesModel1(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(result.extent)))
 
 
-# ---------------------------------------------------------
+###########################################
 if __name__ == "__main__":
     unittest.main()

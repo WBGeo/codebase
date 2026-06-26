@@ -3,12 +3,10 @@ import meshio
 from collections import defaultdict
 from typing import Dict, List, Tuple, Set
 from numpy.typing import NDArray
-
-import importlib
 import tempfile
 import io
 import os
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 from core.object_components import MeshResults
 
 class GMSHInputs:
@@ -35,11 +33,7 @@ class GMSHInputs:
         "hexahedron": 3,
     }
 
-    def __init__(
-        self,
-        nodes,
-        elements: List[meshio.CellBlock],
-    ) -> None:
+    def __init__(self, nodes, elements: List[meshio.CellBlock],) -> None:
 
         # Normalize nodes to NumPy
         self.points: NDArray[np.float64] = np.asarray(nodes, dtype=float)
@@ -65,6 +59,7 @@ class GMSHInputs:
               - "gmsh:geometrical"
         node_entities (dict): Mapping: node_index → set of (dimension, entity_tag).
         """
+
         cells: List[Tuple[str, NDArray[np.int64]]] = []
         physical: List[NDArray[np.int64]] = []
         geometrical: List[NDArray[np.int64]] = []
@@ -73,8 +68,10 @@ class GMSHInputs:
         node_entities: Dict[int, Set[Tuple[int, int]]] = defaultdict(set)
 
         for cb in self.blocks:
+
             if cb.type not in self.CELL_DIM:
                 continue
+
             if len(cb.data) == 0:
                 continue
 
@@ -85,6 +82,7 @@ class GMSHInputs:
             cells.append((cb.type, cb.data))
 
             n: int = len(cb.data)
+
             physical.append(np.full(n, tag, dtype=np.int64))
             geometrical.append(np.full(n, tag, dtype=np.int64))
 
@@ -112,6 +110,7 @@ class GMSHInputs:
         Returns:
         point_data (dict): Dictionary containing "gmsh:dim_tags".
         """
+
         n_points: int = self.points.shape[0]
         dim_tags: NDArray[np.int64] = np.zeros((n_points, 2), dtype=np.int64)
 
@@ -121,12 +120,14 @@ class GMSHInputs:
             if not ents:
                 # orphan → assign to volume 1
                 dim_tags[nid] = (3, 1)
+
             else:
                 # choose LOWEST dimension entity (Gmsh-safe)
                 dim, tag = sorted(ents, key=lambda x: x[0])[0]
                 dim_tags[nid] = (dim, tag)
 
         return {"gmsh:dim_tags": dim_tags}
+
 
     # Create mesh
     def create_mesh(self) -> meshio.Mesh:
@@ -136,24 +137,17 @@ class GMSHInputs:
         Returns:
         mesh (meshio.Mesh):  Mesh ready for export using meshio.write(..., format="gmsh").
         """
+
         mesh: meshio.Mesh = meshio.Mesh(
             points=self.points,
             cells=self.cells,
             cell_data=self.cell_data,
             point_data=self.point_data,
         )
+
         return mesh
 
 
-
-
-# We have one singular export component now
-# @wbgeo_component(
-#     title="Download Mesh as Gmsh",
-#     description="Export Mesh to Gmsh",
-#     group="Export",
-#     identifier="wbgeo::expert_mesh_results_gmsh",
-# )
 def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a Gmsh (.msh) file using GMSHInputs.
@@ -162,7 +156,7 @@ def export_mesh_results_to_gmsh(mesh: MeshResults) -> BasicallyABufferedFile:
     as an in-memory buffer for download.
     """
 
-    # ✅ Use GMSHInputs to prepare the mesh
+    # Use GMSHInputs to prepare the mesh
     gmsh_in = GMSHInputs(mesh.nodes, mesh.elements)
     meshio_mesh = gmsh_in.create_mesh()
 

@@ -1,14 +1,8 @@
 import unittest
-import numpy as np
-
 from core.meshing_components.explicit.unstructured.mesh_data import  validate_shafts
 
-
 class TestValidateShafts(unittest.TestCase):
-
-    # -----------------------------------
     # VALID SHAFTS
-    # -----------------------------------
     def test_valid_shafts(self):
         extent = [0, 10, 0, 10, 0, 10]
 
@@ -29,9 +23,7 @@ class TestValidateShafts(unittest.TestCase):
         validate_shafts(shafts, extent)
 
 
-    # -----------------------------------
     # SHAFT OUTSIDE EXTENT
-    # -----------------------------------
     def test_shaft_outside_raises(self):
         extent = [0, 10, 0, 10, 0, 10]
 
@@ -55,9 +47,7 @@ class TestValidateShafts(unittest.TestCase):
         self.assertIn("outside extent", str(ctx.exception))
 
 
-    # -----------------------------------
     # EMPTY INPUT
-    # -----------------------------------
     def test_empty_shafts(self):
         extent = [0, 10, 0, 10, 0, 10]
 
@@ -65,9 +55,7 @@ class TestValidateShafts(unittest.TestCase):
         validate_shafts([], extent)
 
 
-    # -----------------------------------
     # INVALID EXTENT
-    # -----------------------------------
     def test_invalid_extent(self):
         shafts = [
             {
@@ -81,9 +69,7 @@ class TestValidateShafts(unittest.TestCase):
             validate_shafts(shafts, [0, 10])  # wrong format
 
 
-    # -----------------------------------
     # MULTIPLE SHAFTS ONE INVALID
-    # -----------------------------------
     def test_multiple_shafts_one_invalid(self):
         extent = [0, 10, 0, 10, 0, 10]
 
@@ -110,6 +96,6 @@ class TestValidateShafts(unittest.TestCase):
 
         self.assertIn("Shaft", str(ctx.exception))
 
-
+########################################
 if __name__ == "__main__":
     unittest.main()

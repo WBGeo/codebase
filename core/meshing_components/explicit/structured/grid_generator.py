@@ -132,9 +132,13 @@ def sort_surfaces_by_z(dataframes: List[pd.DataFrame]) -> List[pd.DataFrame]:
             The input list of DataFrames, where each DataFrame is sorted in
             ascending order by average "Z", with indices reset.
     """
+
     avg_z_values: List[float] = [df["Z"].mean() for df in dataframes]
+
     sorted_indices: NDArray[np.int64] = np.argsort(avg_z_values)
+
     sorted_dataframes: List[pd.DataFrame] = [dataframes[i] for i in sorted_indices]
+
     return sorted_dataframes
 
 
@@ -154,12 +158,14 @@ def store_points_in_array(dataframes: List[pd.DataFrame]) -> List[pd.DataFrame]:
     - n_gx: Number of unique x values (grid size in x direction).
     - n_gy: Number of unique y values (grid size in y direction).
     """
+
     n_gx: int = len(dataframes[0]["X"].unique())
     n_gy: int = len(dataframes[0]["Y"].unique())
     n_gz: int = len(dataframes[0]["Z"].unique())
 
     # Ensure grids are consistent across surfaces
     for df in dataframes:
+
         if len(df["X"].unique()) != n_gx or len(df["Y"].unique()) != n_gy:
             raise ValueError("Inconsistent grid dimensions across surfaces.")
 

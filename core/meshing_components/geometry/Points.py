@@ -1,5 +1,6 @@
 import numpy as np
 class Points:
+
     def __init__(self, node_array):
         """
         Initializes the Points class.
@@ -7,6 +8,7 @@ class Points:
         Args:
             node_array (np.ndarray): Array of coordinates with columns [x, y, z].
         """
+
         self.coordinates = node_array[:, 1:].astype(float)
         self.point_id = node_array[:, 0].astype(int)
 

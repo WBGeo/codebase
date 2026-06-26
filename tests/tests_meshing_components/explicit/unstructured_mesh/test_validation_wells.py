@@ -1,15 +1,10 @@
 import unittest
 import numpy as np
-
 from core.meshing_components.explicit.unstructured.mesh_data import point_on_line_segment, _check_extent_format, point_inside_extent, assert_point_inside_extent, validate_wells
-
-
 
 class TestGeometryUtilities(unittest.TestCase):
 
-    # -----------------------------------
     # point_on_line_segment
-    # -----------------------------------
     def test_point_on_line_true(self):
         p1 = (0, 0, 0)
         p2 = (2, 2, 2)
@@ -39,9 +34,7 @@ class TestGeometryUtilities(unittest.TestCase):
         self.assertFalse(point_on_line_segment(pt, p1, p2))
 
 
-    # -----------------------------------
     # _check_extent_format
-    # -----------------------------------
     def test_valid_extent(self):
         extent = [0, 1, 0, 1, 0, 1]
         _check_extent_format(extent)  # should not raise
@@ -55,9 +48,7 @@ class TestGeometryUtilities(unittest.TestCase):
             _check_extent_format([0, 1, 0])  # too short
 
 
-    # -----------------------------------
     # point_inside_extent
-    # -----------------------------------
     def test_point_inside(self):
         extent = [0, 10, 0, 10, 0, 10]
         pt = (5, 5, 5)
@@ -77,9 +68,7 @@ class TestGeometryUtilities(unittest.TestCase):
         self.assertFalse(point_inside_extent(pt, extent))
 
 
-    # -----------------------------------
     # assert_point_inside_extent
-    # -----------------------------------
     def test_assert_inside(self):
         extent = [0, 10, 0, 10, 0, 10]
         pt = (5, 5, 5)
@@ -97,9 +86,7 @@ class TestGeometryUtilities(unittest.TestCase):
         self.assertIn("outside extent", str(ctx.exception))
 
 
-    # -----------------------------------
     # validate_wells
-    # -----------------------------------
     def test_valid_wells(self):
         extent = [0, 10, 0, 10, 0, 10]
 
@@ -130,6 +117,6 @@ class TestGeometryUtilities(unittest.TestCase):
         # should not raise
         validate_wells([], extent)
 
-
+#############################################
 if __name__ == "__main__":
     unittest.main()

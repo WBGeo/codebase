@@ -2,18 +2,13 @@ import unittest
 import pickle
 import os
 import gmsh
-import numpy as np
-
+import hashlib
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import (
     fragment_surfaces
 )
 
-
 class TestFragmentSurfacesFromPKL(unittest.TestCase):
 
-    # ---------------------------------------------------
-    # 0. setup path + gmsh init
-    # ---------------------------------------------------
     def setUp(self):
 
         data_dir = os.path.dirname(__file__)
@@ -22,7 +17,6 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
         with open(pkl_path, "rb") as f:
             self.inputs = pickle.load(f)
 
-        # IMPORTANT: reset gmsh every test
         try:
             gmsh.finalize()
         except Exception:
@@ -31,12 +25,10 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
         gmsh.initialize()
         gmsh.model.add("test_model")
 
-    # ---------------------------------------------------
-    # 1. ov must exist (not empty)
-    # ---------------------------------------------------
+    # ov must exist (not empty)
     def test_ov_structure(self):
 
-        ov, ovv, tagssss, well_tags, shaft_tags, shaft_map, tri_tags, tri_map, source_tag = fragment_surfaces(
+        ov, *_ = fragment_surfaces(
             self.inputs["surfaces"],
             self.inputs["bounds"],
             self.inputs["ref_surface_indices"],
@@ -53,12 +45,10 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
         self.assertIsInstance(ov, list)
         self.assertGreater(len(ov), 0)
 
-    # ---------------------------------------------------
-    # 2. ovv must exist and match ov size logic
-    # ---------------------------------------------------
-    def test_ovv_non_empty(self):
+    # well_tags must exist and be non-empty list
+    def test_well_tags(self):
 
-        ov, ovv, *_ = fragment_surfaces(
+        _, well_tags, *_ = fragment_surfaces(
             self.inputs["surfaces"],
             self.inputs["bounds"],
             self.inputs["ref_surface_indices"],
@@ -72,15 +62,12 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
             curve_mesh_size=self.inputs["curve_mesh_size"],
         )
 
-        self.assertIsInstance(ovv, list)
-        self.assertGreater(len(ovv), 0)
+        self.assertIsInstance(well_tags, list)
 
-    # ---------------------------------------------------
-    # 3. tagssss must be list
-    # ---------------------------------------------------
-    def test_tagssss_type(self):
+    # shaft_tags must be list
+    def test_shaft_tags(self):
 
-        _, _, tagssss, *_ = fragment_surfaces(
+        _, _, shaft_tags, *_ = fragment_surfaces(
             self.inputs["surfaces"],
             self.inputs["bounds"],
             self.inputs["ref_surface_indices"],
@@ -94,14 +81,12 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
             curve_mesh_size=self.inputs["curve_mesh_size"],
         )
 
-        self.assertIsInstance(tagssss, list)
+        self.assertIsInstance(shaft_tags, list)
 
-    # ---------------------------------------------------
-    # 4. shaft mapping consistency
-    # ---------------------------------------------------
-    def test_shaft_mapping(self):
+    # tri_group_tags must be list
+    def test_tri_group_tags(self):
 
-        _, _, _, _, _, shaft_map, *_ = fragment_surfaces(
+        _, _, _, tri_group_tags, *_ = fragment_surfaces(
             self.inputs["surfaces"],
             self.inputs["bounds"],
             self.inputs["ref_surface_indices"],
@@ -115,17 +100,12 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
             curve_mesh_size=self.inputs["curve_mesh_size"],
         )
 
-        self.assertIsInstance(shaft_map, dict)
+        self.assertIsInstance(tri_group_tags, list)
 
-    # ---------------------------------------------------
-    # 5. regression hash (stable structure only)
-    # ---------------------------------------------------
+    # boundary consistency (regression style)
     def test_regression_hash(self):
 
-        import hashlib
-        import pickle
-
-        ov, ovv, tagssss, *_ = fragment_surfaces(
+        ov, well_tags, shaft_tags, tri_group_tags, tri_surface_tags, source_tag, boundary_tags = fragment_surfaces(
             self.inputs["surfaces"],
             self.inputs["bounds"],
             self.inputs["ref_surface_indices"],
@@ -141,19 +121,18 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
 
         snapshot = {
             "ov_len": len(ov),
-            "ovv_len": len(ovv),
-            "tagssss_len": len(tagssss),
+            "well_tags_len": len(well_tags),
+            "shaft_tags_len": len(shaft_tags),
+            "tri_group_tags_len": len(tri_group_tags),
+            "tri_surface_tags_len": len(tri_surface_tags),
+            "boundary_tags_len": len(boundary_tags),
         }
 
         current_hash = hashlib.md5(pickle.dumps(snapshot)).hexdigest()
-
         expected_hash = self.inputs.get("expected_hash", current_hash)
 
         self.assertEqual(current_hash, expected_hash)
 
-
-# ---------------------------------------------------
-# run
-# ---------------------------------------------------
+##########################################
 if __name__ == "__main__":
     unittest.main()

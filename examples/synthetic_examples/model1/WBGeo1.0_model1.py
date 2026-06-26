@@ -26,7 +26,9 @@ from core.simulation_components.output_format.vtk.unified_format_vtk import load
 from core.simulation_components.visualisation.results_visualisation import (
     plot_variable_at_a_time, plot_cross_section, plot_variable_along_line,
     print_variable_at_point, plot_variable_time_series)
-
+from core.meshing_components.explicit.unstructured.refinement_mesh import (
+    Refinement, LinearWellRefinement, FunctionWellRefinement,EllipseRefinement,
+   LinearSourceRefinement,FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
 #%%
 
 cwd = os.getcwd()
@@ -131,9 +133,14 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 
 #%%
 
+
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
-# buf = export_mesh_results_to_exodus(mesh_unstructured)
+# NOTE:
+# Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
+# In addition, some export formats support only specific mesh types.
+# See the meshing manual/documentation for details.
+# buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
 # with open("filename_example_mesh.exo", "wb") as f:
 #    f.write(buf.getvalue())
 
@@ -142,25 +149,70 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # Optional: Example of how to include objects (only works for unstructured mesh)
 
 # # Load engineering objects
-# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
-# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
-# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
-# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
-# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
-# triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/seismic_plane_new_offset.csv")
-#
+wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
+shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
+sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
+planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
+ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
+csv_files=(cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
+           cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
+triangulations= load_triangulations_planes_from_csv(csv_files)
+
+# Refinement of mesh
+refinement = Refinement()
+
+# Linear refinement near wells
+refinement.wells=LinearWellRefinement(SizeMin=5.0, SizeMax=30.0, DistMin=30.0, DistMax=100.0)
+
+# Function-based refinement near wells
+refinement.wells = FunctionWellRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+
+# Linear refinement near sources
+refinement.sources=LinearSourceRefinement(SizeMin=5.0, SizeMax=80.0, DistMin=30.0, DistMax=100.0)
+
+# Function-based refinement near sources
+refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+
+# Refinment of around triangulated surfaces
+refinement.triangulation = TriangulationRefinement(
+    hmin=8.0,
+    hmax=30.0,
+    d1=50.0,
+    d2=100.0,
+    enabled=True
+ )
+
+# Refinment of ellipses
+refinement.ellipses = EllipseRefinement(
+      hmin=6.0,
+    hmax=30.0,
+    d1=30.0,
+    d2=100.0,
+    enabled=True
+ )
+
 # # Explicit unstructured mesh with objects
-# mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     wells=wells,
-#     sources=sources,
-#     shafts=shafts,
-#     triangulations=triangulations,
-#     extra_planes=planes,
-#     ellipses=ellipses,
-#     mesh_size=75,
-#     curve_mesh_size=5
-# )
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+     geomodel_result=structural_model_result,
+     extent=(0,1000,0,1000,0,950),
+     wells=wells,
+     sources=sources,
+     shafts=shafts,
+     triangulations=triangulations,
+     extra_planes=planes,
+     ellipses=ellipses,
+     mesh_size=75,
+     curve_mesh_size=5,
+     gmsh_flag= True,  # to save original gmsh configuration
+     mapping_litho='auto', # it can be 'manual', 'auto' or 'none'
+#     merge_file = cwd + "/examples/synthetic_examples/model1/input_data/block_groups.csv"  # if mapping_litho='manual'
+     refinement=refinement,
+ )
+
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+with open("filename_example_mesh.exo", "wb") as f:
+    f.write(buf.getvalue())
+
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
@@ -170,7 +222,7 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # Process simulation with SfePy on the implicit structured mesh
 
 mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
-Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_implicit, 'results')
+Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_implicit,type= 'imp', output_dir='results')
 
 #%%
 
@@ -180,7 +232,7 @@ Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulatio
 #     mesh_size=50,
 #     curve_mesh_size=5,
 # )
-# Sim_out=run_sfepy(cwd +'/examples/input_data/engineering_objects/Model1/Hydro_thermal.py', mesh_unst, 'results')
+# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_unst, type= 'unstr', output_dir='results')
 #
 # mesh_str = create_structured_mesh_data(
 #     geomodel_result=structural_model_result,
@@ -189,7 +241,7 @@ Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulatio
 #     z_threshold=0.1,
 #     tolerance=1
 # )
-# Sim_out=run_sfepy(cwd +'/examples/input_data/engineering_objects/Model1/Hydro_thermal.py', mesh_str, 'results')
+# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_str, type= 'str', output_dir='results')
 
 #%%
 
@@ -205,3 +257,7 @@ plot_variable_along_line(data_by_time,"p", 0, p0=(500,20,50), p1=(500,20,1000))
 print_variable_at_point(data_by_time,"p", 0, point=(500.0,20.0,500.0))
 plot_variable_time_series(data_by_time,"p", point=(500.0,20.0,500.0))
 
+# NOTE; It is possible to visualise vtk/exodus results obtained out of workbench.
+# It is required to give the address of directory where results are stored, e.g.:
+# data_by_time=load_vtk_results('../../model_results/') # for vtk results
+# data_by_time=load_exo_results('../../model_results/') # for exodus results

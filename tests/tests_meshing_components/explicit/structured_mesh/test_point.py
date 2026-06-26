@@ -1,10 +1,6 @@
 import unittest
 import numpy as np
-
-# ✅ IMPORTANT FIX:
-# import the CLASS, not the module
 from core.meshing_components.geometry.Points import Points
-
 
 class TestPoints(unittest.TestCase):
 
@@ -19,7 +15,6 @@ class TestPoints(unittest.TestCase):
 
         self.points = Points(self.node_array)
 
-    # ---------------------------------------------------
     def test_coordinates_shape(self):
 
         coords = self.points.get_coordinates()
@@ -27,7 +22,6 @@ class TestPoints(unittest.TestCase):
         self.assertIsInstance(coords, np.ndarray)
         self.assertEqual(coords.shape, (3, 3))
 
-    # ---------------------------------------------------
     def test_point_ids(self):
 
         ids = self.points.get_point_id()
@@ -36,7 +30,6 @@ class TestPoints(unittest.TestCase):
         self.assertEqual(ids.shape, (3,))
         self.assertTrue(np.array_equal(ids, np.array([1, 2, 3])))
 
-    # ---------------------------------------------------
     def test_coordinate_values(self):
 
         coords = self.points.get_coordinates()
@@ -49,7 +42,6 @@ class TestPoints(unittest.TestCase):
 
         np.testing.assert_allclose(coords, expected)
 
-    # ---------------------------------------------------
     def test_single_point(self):
 
         node_array = np.array([[7, 1.0, 2.0, 3.0]], dtype=float)
@@ -60,7 +52,6 @@ class TestPoints(unittest.TestCase):
         self.assertEqual(p.get_point_id().shape, (1,))
         self.assertEqual(p.get_point_id()[0], 7)
 
-    # ---------------------------------------------------
     def test_dtype_conversion(self):
 
         node_array = np.array([
@@ -73,6 +64,6 @@ class TestPoints(unittest.TestCase):
         self.assertEqual(p.get_coordinates().dtype, float)
         self.assertTrue(np.issubdtype(p.get_point_id().dtype, np.integer))
 
-
+########################################
 if __name__ == "__main__":
     unittest.main()

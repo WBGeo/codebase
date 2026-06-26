@@ -1,7 +1,6 @@
 import numpy as np
 from core.meshing_components.geometry.Points import Points
 
-
 class Nodes(Points):
     def __init__(self, node_array):
         """
@@ -11,6 +10,7 @@ class Nodes(Points):
             node_array (np.ndarray): Array of nodes with columns [node_id, x, y, z, surface_id].
         """
         # Call the parent class (Points) to initialize common attributes
+
         super().__init__(node_array)
 
         # Node-specific attributes (getting from Point class)
@@ -31,7 +31,9 @@ class Nodes(Points):
 
     def nodes_on_boundaries(self):
         """Returns a dictionary categorizing nodes on each boundary."""
+
         boundaries = {}
+
         min_y, max_y = np.min(self.coordinates[:, 1]), np.max(self.coordinates[:, 1])
         min_z, max_z = np.min(self.coordinates[:, 2]), np.max(self.coordinates[:, 2])
         min_x, max_x = np.min(self.coordinates[:, 0]), np.max(self.coordinates[:, 0])

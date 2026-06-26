@@ -22,10 +22,14 @@ def adjust_z_values(all_points_array: NDArray[np.floating], n_gx: int,n_gy: int,
     Returns:
         np.array: Adjusted array with updated z values.
     """
+
     z_values: NDArray[np.floating] = all_points_array[:, 2 * n_gx * n_gy: 3 * n_gx * n_gy]
+
     adjusted = False
     c=0
+
     while True:
+
         adjusted = False
 
         # Loop through consecutive rows
@@ -38,6 +42,7 @@ def adjust_z_values(all_points_array: NDArray[np.floating], n_gx: int,n_gy: int,
             matching_indices: NDArray[np.bool_] = z_row_i_plus_1 - z_row_i <= tolerance
 
             if np.any(matching_indices):
+
                 # Adjust the z-values in row i
                 z_values[i][matching_indices] -= z_threshold
                 adjusted = True  # Indicate that an adjustment was made
@@ -72,9 +77,11 @@ def create_hexahedral_elements_with_nodes(adjusted_array: NDArray[np.floating], 
             - nodes_array (np.array): Array of nodes where each row contains:
                 [node_id, x, y, z, surface_id].
     """
+
     elements: list[list[int]] = []
     nodes: list[list[float]] = []
     element_id: int = 0
+
     num_layers = adjusted_array.shape[0]
     num_nodes_per_layer: int = n_gx * n_gy
 
@@ -84,7 +91,9 @@ def create_hexahedral_elements_with_nodes(adjusted_array: NDArray[np.floating], 
 
     # Iterate through layers (excluding the topmost layer)
     for layer in range(num_layers - 1):
+
         for j in range(n_gy - 1):
+
             for i in range(n_gx - 1):
 
                 # Calculate the node indices for the current hexahedral element
@@ -100,7 +109,9 @@ def create_hexahedral_elements_with_nodes(adjusted_array: NDArray[np.floating], 
                 ]
                 new_nodes: list[int] = []
                 # Map old node indices to new numbering and add to nodes array if not already added
+
                 for old_index in node_indices:
+
                     if old_index not in node_mapping:
                         # Extract x, y, z coordinates and surface ID from adjusted_array
                         layer_id: int = old_index // num_nodes_per_layer
@@ -127,8 +138,10 @@ def create_hexahedral_elements_with_nodes(adjusted_array: NDArray[np.floating], 
     # Convert the lists to numpy arrays for saving
     elements_array: NDArray[np.integer] = np.array(elements, dtype=int)
     nodes_array_full: NDArray[np.floating] = np.asarray(nodes, dtype=float)
+
     # Drop surface_id column → [node_id, x, y, z]
     nodes_array: NDArray[np.floating] = nodes_array_full[:, :-1]
+
     return elements_array, nodes_array
 
 

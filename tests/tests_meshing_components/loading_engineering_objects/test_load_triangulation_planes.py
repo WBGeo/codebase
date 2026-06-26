@@ -2,7 +2,6 @@ import re
 import unittest
 import os
 import numpy as np
-
 from core.meshing_components.explicit.unstructured.mesh_data import (
     load_triangulations_planes_from_csv,
     validate_triangulation
@@ -10,41 +9,43 @@ from core.meshing_components.explicit.unstructured.mesh_data import (
 
 data_dir = os.path.dirname(__file__) + "/data/triangulation/"
 
-
 class LoadTriangulationsPlanesTestCase(unittest.TestCase):
-    """Tests loading and validating triangulation planes, including extent checks."""
 
     def setUp(self):
-        # Define a bounding box for extent validation
         self.extent = (0, 1000, 0, 1000, 0, 1000)
 
+    # MAIN VALID TEST
     def test_correct(self):
+
         ret = load_triangulations_planes_from_csv(
             data_dir + "valid_triangulation.csv"
         )
 
-        # expected number of points
-        self.assertEqual(175, len(ret), "Number of triangulation points did not match")
+        self.assertEqual(175, len(ret))
 
-        # check first point
+        # check first point (x,y,z,id)
         np.testing.assert_array_equal(
-            np.array([183.12500000,616.00000000,250.00000100]),
+            np.array([183.12500000, 616.00000000, 250.00000100, 1.0]),
             ret[0]
         )
 
-        # check last point
+        # check last point (x,y,z,id)
         np.testing.assert_array_equal(
-            np.array([271.53125000,679.50000000,157.38330179]),
+            np.array([271.53125000, 679.50000000, 157.38330179, 1.0]),
             ret[-1]
         )
 
-        # check shape
-        self.assertEqual(ret.shape[1], 3, "Triangulation points must have 3 coordinates")
+        # shape must be (N, 4)
+        self.assertEqual(
+            ret.shape[1],
+            4,
+            "Triangulation points must have 4 columns (x,y,z,id)"
+        )
 
-        # Validate that points lie inside extent
-        # This should pass without error for valid points
+        # validate only xyz
         validate_triangulation(ret, extent=self.extent)
 
+    # INVALID COLUMN COUNT
     def test_missing_value(self):
         with self.assertRaisesRegex(
             ValueError,
@@ -63,15 +64,17 @@ class LoadTriangulationsPlanesTestCase(unittest.TestCase):
                 data_dir + "invalid_triangulations_columns.csv"
             )
 
+    # NON NUMERIC
     def test_non_numeric_values(self):
         with self.assertRaisesRegex(
             ValueError,
             re.escape("non-numeric value found")
         ):
             load_triangulations_planes_from_csv(
-               data_dir + "invalid_triangulations_non_numeric.csv"
+                data_dir + "invalid_triangulations_non_numeric.csv"
             )
 
+    # EMPTY FILE
     def test_empty_file(self):
         with self.assertRaisesRegex(
             ValueError,
@@ -81,22 +84,24 @@ class LoadTriangulationsPlanesTestCase(unittest.TestCase):
                 data_dir + "invalid_triangulations_empty.csv"
             )
 
+    # RETURN TYPE
     def test_return_type(self):
+
         ret = load_triangulations_planes_from_csv(
             data_dir + "valid_triangulation.csv"
         )
 
-        self.assertIsInstance(ret, np.ndarray, "Return type must be numpy.ndarray")
-        self.assertEqual(ret.dtype, np.float64, "Data type must be float64")
+        self.assertIsInstance(ret, np.ndarray)
+        self.assertEqual(ret.dtype, np.float64)
 
-    # ----------------- Extent validation test -----------------
+    # EXTENT VALIDATION
     def test_points_outside_extent(self):
-        # Create points some of which are outside the extent
+
         points_outside = np.array([
-            [150.0, 650.0, 200.0],  # inside
-            [3500.0, 650.0, 200.0],  # x > xmax → outside
-            [200.0, 7500.0, 200.0],  # y > ymax → outside
-            [200.0, 650.0, 3000.0]   # z > zmax → outside
+            [150.0, 650.0, 200.0],
+            [3500.0, 650.0, 200.0],
+            [200.0, 7500.0, 200.0],
+            [200.0, 650.0, 3000.0]
         ])
 
         with self.assertRaisesRegex(
@@ -105,6 +110,6 @@ class LoadTriangulationsPlanesTestCase(unittest.TestCase):
         ):
             validate_triangulation(points_outside, extent=self.extent)
 
-
+###################################
 if __name__ == "__main__":
     unittest.main()

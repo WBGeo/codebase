@@ -1,10 +1,8 @@
 import unittest
 import numpy as np
-
 from core.meshing_components.explicit.structured.mesh_data import (
     adjust_z_values
 )
-
 
 class TestAdjustZValues(unittest.TestCase):
 
@@ -40,7 +38,6 @@ class TestAdjustZValues(unittest.TestCase):
         # nothing should change
         np.testing.assert_array_equal(result, original)
 
-    # ---------------------------------------------------------
     def test_adjustment_happens(self):
         """
         Case: z values are too close → adjustment should occur
@@ -79,7 +76,6 @@ class TestAdjustZValues(unittest.TestCase):
         # layer2 should remain unchanged
         np.testing.assert_array_almost_equal(result[1, 8:12], layer2_z)
 
-    # ---------------------------------------------------------
     def test_multiple_adjustments_possible(self):
         """
         Case: repeated adjustment loop should still converge
@@ -112,6 +108,6 @@ class TestAdjustZValues(unittest.TestCase):
         self.assertEqual(result.shape, all_points.shape)
         self.assertFalse(np.allclose(result, all_points))
 
-
+########################################
 if __name__ == "__main__":
     unittest.main()

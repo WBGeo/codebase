@@ -4,11 +4,7 @@ import meshio
 import os
 import tempfile
 from core.meshing_components.mesh_format.gmsh.GMSH_format import     GMSHInputs, export_mesh_results_to_gmsh
-
 from core.object_components import MeshResults
-
-
-
 
 class TestExportMeshResultsToGmsh(unittest.TestCase):
 
@@ -32,7 +28,6 @@ class TestExportMeshResultsToGmsh(unittest.TestCase):
             elements=self.elements
         )
 
-    # -------------------------------------------------
     def test_create_mesh(self):
         gmsh = GMSHInputs(self.nodes, self.elements)
         mesh = gmsh.create_mesh()
@@ -53,7 +48,6 @@ class TestExportMeshResultsToGmsh(unittest.TestCase):
         # point_data
         self.assertIn("gmsh:dim_tags", mesh.point_data)
 
-    # -------------------------------------------------
     def test_gmsh_file_export(self):
         gmsh = GMSHInputs(self.nodes, self.elements)
         mesh = gmsh.create_mesh()
@@ -73,7 +67,6 @@ class TestExportMeshResultsToGmsh(unittest.TestCase):
 
             self.assertIn("$MeshFormat", content)
 
-    # -------------------------------------------------
     def test_export_mesh_results_to_gmsh(self):
         buf = export_mesh_results_to_gmsh(self.mesh)
 
@@ -84,6 +77,6 @@ class TestExportMeshResultsToGmsh(unittest.TestCase):
 
         self.assertTrue(buf.filename.endswith(".msh"))
 
-
+###########################################
 if __name__ == "__main__":
     unittest.main()

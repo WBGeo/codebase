@@ -1,10 +1,8 @@
 import unittest
 import numpy as np
-
 from core.meshing_components.explicit.structured.mesh_data import (
     create_hexahedral_elements_with_nodes
 )
-
 
 class TestCreateHexahedralElements(unittest.TestCase):
 
@@ -39,35 +37,24 @@ class TestCreateHexahedralElements(unittest.TestCase):
             adjusted, n_gx, n_gy
         )
 
-        # --------------------------
-        # 1. basic shape checks
-        # --------------------------
+        # basic shape checks
         self.assertEqual(elements.shape[1], 10)  # 8 nodes + elem id + surf id
         self.assertEqual(nodes.shape[1], 4)      # node_id removed surface column
 
-        # --------------------------
-        # 2. only 1 element expected
-        # --------------------------
+        # only 1 element expected
         self.assertEqual(len(elements), 1)
 
-        # --------------------------
-        # 3. element should contain 8 nodes
-        # --------------------------
+        # element should contain 8 nodes
         self.assertEqual(len(elements[0]) - 2, 8)  # exclude element_id + surface_id
 
-        # --------------------------
-        # 4. node uniqueness (no duplicates expected)
-        # --------------------------
+        # node uniqueness (no duplicates expected)
         node_ids = elements[0][1:-1]
         self.assertEqual(len(node_ids), len(set(node_ids)))
 
-        # --------------------------
-        # 5. nodes should be renumbered starting from 0
-        # --------------------------
+        # nodes should be renumbered starting from 0
         self.assertEqual(nodes[:, 0].min(), 0)
         self.assertEqual(nodes[:, 0].max(), len(nodes) - 1)
 
-    # ---------------------------------------------------------
     def test_multiple_layers(self):
         """
         Check that multiple layers generate multiple elements
@@ -91,6 +78,6 @@ class TestCreateHexahedralElements(unittest.TestCase):
         # nodes must exist
         self.assertGreater(len(nodes), 0)
 
-
+#############################################
 if __name__ == "__main__":
     unittest.main()

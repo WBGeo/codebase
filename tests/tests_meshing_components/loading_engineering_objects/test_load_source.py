@@ -1,14 +1,12 @@
 import re
 import unittest
 import os
-
 from core.meshing_components.explicit.unstructured.mesh_data import (
     load_sources_from_csv,
-    validate_sources  # import your validation function
+    validate_sources
 )
 
 data_dir = os.path.dirname(__file__) + "/data/sources/"
-
 
 class LoadSourcesTestCase(unittest.TestCase):
     """Tests for loading and validating sources from CSV."""
@@ -17,7 +15,7 @@ class LoadSourcesTestCase(unittest.TestCase):
         # Define a model extent: xmin, xmax, ymin, ymax, zmin, zmax
         self.extent = [0, 1000, 0, 1000, 0, 1000]
 
-    # ----------------- Correct loading -----------------
+    # Loading
     def test_correct(self):
         sources = load_sources_from_csv(data_dir + "valid_source.csv")
 
@@ -33,7 +31,7 @@ class LoadSourcesTestCase(unittest.TestCase):
         # Validate sources are inside extent
         validate_sources(sources, self.extent)
 
-    # ----------------- Invalid CSV tests -----------------
+    # Invalid CSV tests
     def test_missing_value(self):
         with self.assertRaisesRegex(
             ValueError,
@@ -70,7 +68,7 @@ class LoadSourcesTestCase(unittest.TestCase):
                 data_dir + "invalid_sources_non_numeric.csv"
             )
 
-    # ----------------- Extent validation -----------------
+    #  Extent validation
     def test_source_outside_extent(self):
         # Sources with one point outside the extent
         sources_outside = [
@@ -94,6 +92,6 @@ class LoadSourcesTestCase(unittest.TestCase):
         # Should not raise
         validate_sources(boundary_sources, self.extent)
 
-
+###########################################
 if __name__ == "__main__":
     unittest.main()

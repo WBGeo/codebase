@@ -2,21 +2,13 @@ import unittest
 import numpy as np
 import meshio
 import io
-import zipfile
 from core.meshing_components.mesh_format.vtk.VTK_format import VTKInputs, export_mesh_results_to_vtk
-
-
 from core.object_components import MeshResults
-
-
-
 
 class TestExportMeshResultsToVTK(unittest.TestCase):
 
     def setUp(self):
-        # -----------------------------
         # Simple cube-like mesh
-        # -----------------------------
         self.nodes = np.array([
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -49,26 +41,18 @@ class TestExportMeshResultsToVTK(unittest.TestCase):
         vtk_in = VTKInputs(self.nodes, self.elements)
         grid = vtk_in.create_mesh()
 
-        # -----------------------------
         # Type check
-        # -----------------------------
         import pyvista as pv
         self.assertIsInstance(grid, pv.UnstructuredGrid)
 
-        # -----------------------------
         # Node check
-        # -----------------------------
         self.assertEqual(grid.points.shape[1], 3)
 
-        # -----------------------------
         # Cell data check
-        # -----------------------------
         self.assertIn("RegionId", grid.cell_data)
         self.assertEqual(len(grid.cell_data["RegionId"]), grid.n_cells)
 
-        # -----------------------------
         # Region ID correctness
-        # -----------------------------
         self.assertTrue(np.all(grid.cell_data["RegionId"] > 0))
 
     def test_region_ids_match_blocks(self):
@@ -87,9 +71,7 @@ class TestExportMeshResultsToVTK(unittest.TestCase):
 
         buf = export_mesh_results_to_vtk(mesh)
 
-        # -----------------------------
         # Buffer check
-        # -----------------------------
         self.assertIsInstance(buf, io.BytesIO)
 
         buf.seek(0)
@@ -111,6 +93,6 @@ class TestExportMeshResultsToVTK(unittest.TestCase):
         # buffer should be readable
         self.assertGreater(len(buf.getvalue()), 0)
 
-
+###############################################
 if __name__ == "__main__":
     unittest.main()
