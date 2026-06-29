@@ -120,7 +120,7 @@ def structural_input_smart_options(surface_points_file: SurfaceCSVFileDataType,
 
   return CtrlGroup(id='root', inner=[
     CtrlOrderedGrouping(id='groups',
-                        label='Assign Groups',
+                        label='Assign Groups, the ordering within the groups is relevant too.',
                         groups=group_options,
                         items=formations,
                         defaultValue=dv,
@@ -231,6 +231,44 @@ def inspect_structural_input_data_plot_3D(input_data: InputData_StructuralElemen
 
 # --- Fault input data ---
 
+
+@wbgeo_component(identifier='wbgeo:__internal__faults_input_data_smart_options',
+                 title='faults_input_data_smart_options')
+def faults_input_data_smart_options(fault_surface_points_file: SurfaceCSVFileDataType) -> CtrlGroup:
+  datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
+  surface_points = pd.read_csv(os.path.join(datadir, fault_surface_points_file))
+  formations = sorted(surface_points["formation"].unique())
+  group_options = ['<Exclude>', '<Faults>']
+  dv = {'<Exclude>': formations, '<Faults>': []}
+  return CtrlGroup(id='root', inner=[
+    CtrlOrderedGrouping(id='fault_selection',
+                        label='Drag fault formations into the <Faults> list',
+                        groups=group_options,
+                        items=formations,
+                        defaultValue=dv,
+                        )]
+                   )
+
+
+@wbgeo_component(identifier='wbgeo:__internal__faults_input_data_smart_options_to_data',
+                 title='faults_input_data_smart_options_to_data')
+def faults_input_data_smart_options_to_data(_input: SmartInputFormData) -> FaultNames:
+  input_as_json = smartcontrols.form_data_as_dict(_input)
+  fault_names = []
+  if "root" in input_as_json and "fault_selection" in input_as_json["root"]:
+    if "<Faults>" in input_as_json["root"]["fault_selection"]:
+      fault_names.extend(input_as_json["root"]["fault_selection"]["<Faults>"])
+  return fault_names
+
+
+SmartFaultInputSmartInputOptions = typing.Annotated[
+  FaultNames, SmartInput(inputs=['fault_surface_points_file'],
+                         to_form=faults_input_data_smart_options,
+                         to_data=faults_input_data_smart_options_to_data)]
+
+
+
+
 @wbgeo_component(description='Input data for Fault Elements. Requires surface points and orientations.',
                  title='Fault Input Data',
                  color='#b0dfa9',
@@ -244,7 +282,7 @@ def faults_input_data(
     name: str = 'Faults Model 2',
     fault_surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
     fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
-    fault_names: FaultNames = ['fault',]) -> InputData_FaultElements:
+    fault_names: SmartFaultInputSmartInputOptions = ['fault',]) -> InputData_FaultElements:
   """
   Loads input data for fault elements from CSV files.
 
