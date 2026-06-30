@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 from unittest.mock import patch, MagicMock
 import meshio
+
 from core.simulation_components.simulation_packages.sfepy.simulation_run import run_sfepy
 
 
@@ -36,16 +37,21 @@ class TestSfepyRun(unittest.TestCase):
     @patch("core.simulation_components.simulation_packages.sfepy.simulation_run.export_mesh_results_to_exodus")
     def test_run_sfepy(self, mock_exodus, mock_read, mock_popen):
 
+        # ------------------------
         # Mock Exodus export
+        # ------------------------
         fake_buffer = MagicMock()
         fake_buffer.getbuffer.return_value = b"fake_exodus_data"
         mock_exodus.return_value = fake_buffer
 
-        # Mock meshio.read output (8 blocks total)
+        # ------------------------
+        # Mock meshio.read output
+        # ------------------------
         mock_mesh = MagicMock()
+
         mock_mesh.cells = [
-            MagicMock(data=np.zeros((1, 4))),  # tetra 1
-            MagicMock(data=np.zeros((1, 4))),  # tetra 2
+            MagicMock(data=np.zeros((1, 4))),
+            MagicMock(data=np.zeros((1, 4))),
 
             MagicMock(data=np.zeros((1, 3))),
             MagicMock(data=np.zeros((1, 3))),
@@ -54,14 +60,19 @@ class TestSfepyRun(unittest.TestCase):
             MagicMock(data=np.zeros((1, 3))),
             MagicMock(data=np.zeros((1, 3))),
         ]
+
         mock_read.return_value = mock_mesh
 
-        # Mock subprocess.Popen
+        # ------------------------
+        # Mock subprocess
+        # ------------------------
         process_mock = MagicMock()
         process_mock.wait.return_value = None
         mock_popen.return_value = process_mock
 
+        # ------------------------
         # Input
+        # ------------------------
         mesh = self.create_mesh()
 
         sfepy_input = {
@@ -69,15 +80,19 @@ class TestSfepyRun(unittest.TestCase):
             "output_dir": None
         }
 
-        # Call function
+        # ------------------------
+        # CALL (FIXED: mesh_type, NOT type)
+        # ------------------------
         result = run_sfepy(
             sfepy_input_or_file=sfepy_input,
             mesh_test=mesh,
-            type="unstr",
+            mesh_type="unstr",
             output_dir=None
         )
 
+        # ------------------------
         # Assertions
+        # ------------------------
         self.assertIn("output_dir", result)
         self.assertIn("is_temp", result)
         self.assertTrue(result["is_temp"])
@@ -89,6 +104,5 @@ class TestSfepyRun(unittest.TestCase):
         self.assertEqual(len(mock_mesh.cells), 8)
 
 
-######################################
 if __name__ == "__main__":
     unittest.main()

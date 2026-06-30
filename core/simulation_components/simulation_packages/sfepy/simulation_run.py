@@ -6,14 +6,14 @@ import subprocess
 import numpy as np
 import meshio
 
-from enum import Enum
+from enum import Enum, StrEnum
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.object_components import MeshResults
 
 
 # ENUM DEFINITION
-class MeshType(str, Enum):
+class MeshType(StrEnum):
     UNSTRUCTURED = "unstr"
     STRUCTURED = "str"
     IMPLICIT = "imp"

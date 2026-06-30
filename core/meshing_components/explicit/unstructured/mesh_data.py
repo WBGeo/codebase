@@ -15,7 +15,7 @@ from core.meshing_components.explicit.unstructured.create_clean_surface import d
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
                                                                LinearSourceRefinement,FunctionSourceRefinement,)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
-from enum import Enum
+from enum import Enum, StrEnum
 
 
 MESH_ENGINEERING_COLOR = '#99b3cc';
@@ -2218,7 +2218,7 @@ def build_point_sets(boundary_groups, n_nodes):
 
 
 
-class LithoMappingMode(str, Enum):
+class LithoMappingMode(StrEnum):
     AUTO = "auto"
     NONE = "none"
     MANUAL = "manual"

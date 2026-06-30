@@ -2,11 +2,14 @@ import unittest
 import numpy as np
 import meshio
 import io
+
 from core.meshing_components.mesh_format.exodus.Exo_format import (
     ExodusInput,
-    export_mesh_results_to_exodus
+    export_mesh_results_to_exodus,
+    MeshType
 )
 from core.object_components import MeshResults
+
 
 class TestExportMeshResultsToExodus(unittest.TestCase):
 
@@ -38,29 +41,33 @@ class TestExportMeshResultsToExodus(unittest.TestCase):
             point_sets=cls.point_sets
         )
 
-    # Test ExodusInput creation
+    # -----------------------------
+    # ExodusInput creation test
+    # -----------------------------
     def test_exodus_input_creation(self):
 
         exo = ExodusInput(
             mesh=self.mesh_results,
-            mesh_type="str"
+            mesh_type=MeshType.STRUCTURED
         )
 
         self.assertEqual(exo.mesh.nodes.shape, (4, 3))
         self.assertEqual(len(exo.mesh.elements), 1)
-        self.assertEqual(exo.mesh_type, "str")
 
+        self.assertEqual(exo.mesh_type, MeshType.STRUCTURED)
+        self.assertEqual(exo.mesh_type.value, "str")
 
-    # Test full export pipeline
+    # -----------------------------
+    # Full export pipeline test
+    # -----------------------------
     def test_export_mesh_results_to_exodus(self):
 
         result = export_mesh_results_to_exodus(
             self.mesh_results,
-            type="str"
+            type="str"   # KEEPING "type" as requested
         )
 
         self.assertIsInstance(result, io.BytesIO)
-
         self.assertTrue(hasattr(result, "filename"))
         self.assertTrue(result.filename.endswith(".exo"))
 
@@ -69,16 +76,17 @@ class TestExportMeshResultsToExodus(unittest.TestCase):
 
         self.assertGreater(size, 0, "Exported file is empty")
 
-    # Test invalid mesh type (must fail in write)
+    # -----------------------------
+    # Invalid mesh type test
+    # -----------------------------
     def test_invalid_mesh_type(self):
 
-        exo = ExodusInput(
-            mesh=self.mesh_results,
-            mesh_type="invalid_type"
-        )
-
         with self.assertRaises(ValueError):
-            exo.write("dummy.exo")
+
+            ExodusInput(
+                mesh=self.mesh_results,
+                mesh_type="invalid_type"
+            )
 
 
 ##############################################

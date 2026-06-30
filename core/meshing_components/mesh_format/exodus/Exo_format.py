@@ -5,9 +5,9 @@ import io
 import os
 from collections import defaultdict
 from core.object_components import MeshResults
-from enum import Enum
+from enum import Enum, StrEnum
 
-class MeshType(str, Enum):
+class MeshType(StrEnum):
     UNSTRUCTURED = "unstr"
     STRUCTURED = "str"
     IMPLICIT = "imp"
