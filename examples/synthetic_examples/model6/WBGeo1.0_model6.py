@@ -139,7 +139,7 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
 )
 
 # Explicit structured mesh
-# NOTE: Currebtly structered mesh does not support models whose layers do not extend the extent of model
+# NOTE: Currently structered mesh does not support models whose layers do not extend the extent of model
 
 #%%
 

@@ -545,7 +545,7 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
 def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: Optional[List[int]],
     source_tag: Optional[List[int]], shaft_tags: Optional[List[int]],   tri_group_tags: Optional[List[int]], tri_surface_tags: Optional[List[int]],
     grid_litho: pd.DataFrame, mesh_size: float = 20.0, curve_mesh_size: float = 5.0,
-    boundary_tags: List[int]= None,gmsh_flag: bool = False, mapping_litho: str = "auto", merge_file: Optional[str] = None):
+    boundary_tags: List[int]= None,gmsh_flag: bool = False,     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTO.value, merge_file: Optional[str] = None):
 
   """
     Generate an unstructured 3D tetrahedral mesh using Gmsh and export it
