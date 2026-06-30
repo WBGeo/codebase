@@ -1,0 +1,11 @@
+#block ids ti be merged
+# all the blocks should be listed here even if a block is not required to be merged
+1,2
+3,4
+5,7
+6, 9
+8,10
+11, 12
+13, 14
+15,
+16

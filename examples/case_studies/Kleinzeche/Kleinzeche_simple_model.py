@@ -40,6 +40,12 @@ from core.meshing_components.explicit.unstructured.mesh_data import (
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
 from core.meshing_components.mesh_format.mesh_export import export_mesh_results_to_exodus
+from core.meshing_components.explicit.unstructured.refinement_mesh import (
+    Refinement, LinearWellRefinement, FunctionWellRefinement,EllipseRefinement,
+   LinearSourceRefinement,FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
+
+
+cwd = os.getcwd()
 
 try:
     _SECTION_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -280,33 +286,54 @@ p.show()
 
 # Compute 3D meshes based on the structural model result
 
+# Creare mesh
 # Implicit structured mesh (without engineering objects)
 mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Load engineering objects and compute explicit unstructured mesh
 wells = load_wells_from_csv(os.path.join(_INPUT_DATA_DIR, 'engineering_objects/kleinzeche_wells.csv'))
-mesh_unstructured = create_unstructured_mesh_data(
+# Refinement of mesh
+refinement = Refinement()
+
+# Linear refinement near wells
+refinement.wells=LinearWellRefinement(SizeMin=0.8, SizeMax=7.0, DistMin=30.0, DistMax=100.0)
+
+
+# Refinment around fault
+refinement.faults = FaultRefinement(
+    hmin=0.8,
+    hmax=7,
+    d1=50.0,
+    d2=100.0,
+    enabled=True
+ )
+
+mesh_explicit_unstructured = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
     tolerance=1,
     wells=wells,
-    mesh_size=1,
+    mesh_size=3,
     curve_mesh_size=2,
     DISTANCE_THRESHOLD=3,
     PROJECTION_THRESHOLD=4,
     EXTRUSION_FACTOR=4.2,
     z_threshold=1,
+    mapping_litho= 'manual',
+    merge_file = cwd + "/examples/case_studies/Kleinzeche/input_data/block_groups.csv", # Only if mapping_litho='manual'
+
+    refinement= refinement
 )
 
 #%%
 
 # Plot the meshing results
-plot_mesh_3d(mesh_unstructured, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
 
 #%%
 
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
-# buf = export_mesh_results_to_exodus(mesh_unstructured)
+# buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
 # with open("filename_kleinzeche_simple.exo", "wb") as f:
 #     f.write(buf.getvalue())

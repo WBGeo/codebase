@@ -145,206 +145,31 @@ mesh_str = create_structured_mesh_data(
 mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Explicit unstructured mesh
-mesh_unstr = create_unstructured_mesh_data(
+mesh_explicit_unstr = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
     tolerance=500,
-    mesh_size=17,
+    mesh_size=60,
     smooth=30,
     curve_mesh_size=5,
-    extent=[401377.0, 409314.0, 5859433.0, 5865390.0, -3678.0, -4453.0]
+    extent=[401377.0, 409314.0, 5859433.0, 5865390.0, -3678.0, -4453.0],
+    mapping_litho='none', # it can be 'manual', 'auto' or 'none' (default: auto)
+
 )
 
 #%%
 
 # Plot the meshing results
-# plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
-# plot_mesh_3d(mesh_unstr, structural_model_result, show_plotter=True)
-# plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_explicit_unstr, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
 
 #%%
 
-# Optional: Export meshes to various formats.
-# Similar functions are available for VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus.
-
-# Export mesh to exodus
-# Structured mesh
-#buf = export_mesh_results_to_exodus(mesh_str)
-#with open("filename_str_gross.exo", "wb") as f:
-#    f.write(buf.getvalue())
-# Implicit structured mesh
-#buf = export_mesh_results_to_exodus(mesh_implicit)
-#with open("filename_implic_gross.exo", "wb") as f:
-#    f.write(buf.getvalue())
-# Unstructured mesh
-#buf = export_mesh_results_to_exodus(mesh_unstr)
-#with open("filename_gross.exo", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to vtu
-# Structured mesh
-#buf = export_mesh_results_to_vtu(mesh_str)
-#with open("filename_str2.vtu", "wb") as f:
-#    f.write(buf.getvalue())
-# Implicit structured mesh
-#buf = export_mesh_results_to_vtu(mesh_implicit)
-#with open("filename_implic2.vtu", "wb") as f:
-#    f.write(buf.getvalue())
-# Unstructured mesh
-#buf = export_mesh_results_to_vtu(mesh_unstr)
-#with open("filename.vtu", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to vtk
-# Structured mesh
-#buf = export_mesh_results_to_vtk(mesh_str)
-#with open("filename_str2.vtk", "wb") as f:
-#   f.write(buf.getvalue())
-# Implicit structured mesh
-#buf = export_mesh_results_to_vtk(mesh_implicit)
-#with open("filename_implic2.vtk", "wb") as f:
-#    f.write(buf.getvalue())
-# Unstructured mesh
-#buf = export_mesh_results_to_vtk(mesh_unstr)
-#with open("filename.vtk", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to vtm
-# Structured mesh
-#buf = export_mesh_results_to_vtm(mesh_str)
-#with open("filename_str2.vtm.zip", "wb") as f:
-#    f.write(buf.getvalue())
-# Implicit structured mesh
-#buf = export_mesh_results_to_vtm(mesh_implicit)
-#with open("filename_implic2.vtm.zip", "wb") as f:
-#    f.write(buf.getvalue())
-# Unstructured mesh
-#buf = export_mesh_results_to_vtm(mesh_unstr)
-#with open("filename.vtm.zip", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to stl (only unstructured is supported)
-#buf = export_mesh_results_to_stl(mesh_unstr)
-#with open("filename.stl.zip", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to gmsh (only unstructured is supported)
-#buf = export_mesh_results_to_gmsh(mesh_unstr)
-#with open("filename.msh", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to feflow (only unstructured is supported)
-#buf = export_mesh_results_to_feflow(mesh_unstr)
-#with open("filename.fem", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to ansys
-# Structured mesh
-#buf = export_mesh_results_to_ansys(mesh_str)
-#with open("filename_str2_ansys.msh", "wb") as f:
-#    f.write(buf.getvalue())
-# Implicit structured mesh
-#buf = export_mesh_results_to_vtm(mesh_implicit)
-#with open("filename_implic2_ansys.msh", "wb") as f:
-#    f.write(buf.getvalue())
-# Unstructured mesh
-#buf = export_mesh_results_to_ansys(mesh_unstr)
-#with open("filename_ansys.msh", "wb") as f:
-#    f.write(buf.getvalue())
-
-# Export mesh to abaqus
-# Unstructured mesh
-#buf = export_mesh_results_to_abaqus(mesh_unstr)
-#with open("filename.inp", "wb") as f:
-#    f.write(buf.getvalue())
-# Structured mesh
-#buf = export_mesh_results_to_abaqus(mesh_str)
-#with open("filename_st.inp", "wb") as f:
-#    f.write(buf.getvalue())
-# Implicit mesh
-#buf = export_mesh_results_to_abaqus(mesh_implicit)
-#with open("filename_imp.inp", "wb") as f:
-#    f.write(buf.getvalue())
-
-#%%
-
-# Optional: Export hierarchical meshes.
-
-# Export to exodus
-#export_meshes_exodus(
-#    mesh1_st,
-#    mesh2_st,
-#    closest_st,
-#    mesh1_filename="big_mesh_st.exo",
-#    mesh2_filename="small_mesh_st.exo",
-#    closest_nodes_filename="closest_nodes_st.csv"
-#)
-
-# Export to vtm
-#export_meshes_vtm(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.vtm.zip",
-#    mesh2_filename="small_mesh_u.vtm.zip",
-#    closest_nodes_filename="closest_nodes_u_vtm.csv"
-#)
-
-# Export to vtu
-#export_meshes_vtu(
-#    mesh1_im,
-#    mesh2_im,
-#    closest_im,
-#    mesh1_filename="big_mesh_im.vtu",
-#    mesh2_filename="small_mesh.vtu",
-#    closest_nodes_filename="closest_nodes_im_vtu.csv"
-#)
-
-# Export to vtk
-#export_meshes_vtk(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.vtk",
-#    mesh2_filename="small_mesh_u.vtk",
-#    closest_nodes_filename="closest_nodes_u_vtk.csv"
-#)
-
-# Export to feflow
-#export_meshes_feflow(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.fem",
-#    mesh2_filename="small_mesh_u.fem",
-#    closest_nodes_filename="closest_nodes_u_fem.csv"
-#)
-
-# Export to abaqus
-#export_meshes_abaqus(
-#    mesh1_im,
-#    mesh2_im,
-#    closest_im,
-#    mesh1_filename="big_mesh_im.inp",
-#    mesh2_filename="small_mesh_im.inp",
-#    closest_nodes_filename="closest_nodes_im_abaqus.csv"
-#)
-
-# Export to ansys
-#export_meshes_ansys(
-#    mesh1_im,
-#    mesh2_im,
-#    closest_im,
-#    mesh1_filename="big_mesh_im.mesh",
-#    mesh2_filename="small_mesh_im.mesh",
-#    closest_nodes_filename="closest_nodes_im_ansys.csv"
-#)
-
-# Export to gmsh
-#export_meshes_gmsh(
-#    mesh1_u,
-#    mesh2_u,
-#    closest_u,
-#    mesh1_filename="big_mesh_u.msh",
-#    mesh2_filename="small_mesh_u.msh",
-#    closest_nodes_filename="closest_nodes_u_gmsh.csv"
-# )
+# Optional: Example of how to export the unstructured mesh to Exodus format.
+# Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
+# NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
+# In addition, some export formats support only specific mesh types.
+# See the meshing manual/documentation for details.
+buf = export_mesh_results_to_exodus(mesh_explicit_unstr, type='unstr')
+with open("filename_Gross_Schoenebeck.exo", "wb") as f:
+    f.write(buf.getvalue())

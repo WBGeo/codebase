@@ -33,6 +33,8 @@ def get_normals(near_points: NDArray[np.floating], points: NDArray[np.floating],
     return normal_vec[1][indices]
 
 
+
+
 def calculate_normals(points: NDArray[np.float64], cleaned_surfaces: List[Tuple[Union[int, str], NDArray[np.float64]]],
     cleaned_normals: List[Tuple[Union[int, str], NDArray[np.float64]]], file_index: Union[int, str]) -> NDArray[np.float64]:
     """
@@ -51,38 +53,40 @@ def calculate_normals(points: NDArray[np.float64], cleaned_surfaces: List[Tuple[
     Returns:
         norm (Array): contains the normal vectors corresponding to `points`, in the same order.
     """
+    surface_points = None
+    normal_points = None
 
-    # Find the desired surface and its normal vectors by searching for its lable
     for label, surface in cleaned_surfaces:
-
-        if label== file_index:
-
-            surface_points=surface
+        if label == file_index:
+            surface_points = surface
+            break
 
     for label, normal in cleaned_normals:
+        if label == file_index:
+            normal_points = normal
+            break
 
-        if label== file_index:
-            normal_points=normal
+    if surface_points is None:
+        raise ValueError(
+            f"Surface '{file_index}' not found in cleaned_surfaces"
+        )
 
-    # Find the indices of points in surface_points
-    indices: List[int] = []
+    if normal_points is None:
+        raise ValueError(
+            f"Normals for surface '{file_index}' not found in cleaned_normals"
+        )
+
+    indices = []
 
     for p in points:
-        # Check if point p is in surface_points, and get its index
-        match_index = np.where(np.all(surface_points == p, axis=1))[0]
+        match_index = np.where(
+            np.all(surface_points == p, axis=1)
+        )[0]
 
         if match_index.size > 0:
             indices.append(match_index[0])
 
-    # Save normal vectors to norm_array
-    norm_array: List[NDArray[np.float64]] = []
-
-    for j in indices:
-        norm_array.append(normal_points[j])
-
-    norm: NDArray[np.float64] = np.vstack(norm_array)
-
-    return norm
+    return normal_points[indices]
 
 
 def correct_extrusion_direction(points: NDArray[np.float64], normals: NDArray[np.float64], file: Union[int, str],
@@ -398,6 +402,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
     cleaned_surfaces: List[Tuple[str | int, NDArray[np.float64]]] = []
     cleaned_normals: List[Tuple[str | int, NDArray[np.float64]]] = []
 
+
     if ref_surfaces:
 
         for ref_file, ref_points in ref_surfaces:
@@ -409,7 +414,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
             normal_subset: NDArray[np.float64] = normal_surfaces[ref_file]  # Extract the corresponding normals
 
-            cleaned_normals.append(normal_subset)
+            cleaned_normals.append((ref_file, normal_subset))
             print(f"Reference surface {ref_file} added at index {ref_surface_indices[ref_file]}")
 
         # Process other surfaces to remove overlapping points
@@ -430,7 +435,13 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                 # then it dose not remove the points near the fault and dose not seprate the surface into two parts
                 if abs(min_z -max_z) <= z_threshold:
                     print(f"All points have almost the same z for {file}, skipping removing.")
+
                     cleaned_surfaces.append((file, points))
+
+                    cleaned_normals.append(
+                        (file, normal_surfaces[file][1])
+                    )
+
                     continue
 
                 else:
@@ -501,17 +512,18 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                         z_values: List[np.float64] = [point[2] for point in filtered_in]
 
                         # Get maximum z
-                        max_z:float = max(z_values)
-                        min_z:float = min(z_values)
+                        if len(nearest_to_ref)>0:
+                            max_z:float = max(z_values)
+                            min_z:float = min(z_values)
 
-                        # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
-                        # then it dose not remove the points near the fault and dose not seprate the surface into two parts
-                        if abs(min_z -max_z) <= z_threshold:
-                            print(f"All points have almost the same z for {file}, skipping removing.")
-                            continue
+                            # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
+                            # then it dose not remove the points near the fault and dose not seprate the surface into two parts
+                            if abs(min_z -max_z) <= z_threshold:
+                                print(f"All points have almost the same z for {file}, skipping removing.")
+                                continue
 
-                        else:
-                            filtered.append(filtered_in)
+                            else:
+                                filtered.append(filtered_in)
 
                     if len(filtered) > 0:
                         filtered_array = np.vstack(filtered)
@@ -554,10 +566,9 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
                         # Also store the corresponding normals in cleaned_normals
                             cleaned_normals.append((cluster_file, cluster_normals))
-
         print(f"Reference surfaces are located at indices: {ref_surface_indices}", len(cleaned_surfaces))
         # Optional
-        #plot_cleaned_surfaces(cleaned_surfaces)
+        # plot_cleaned_surfaces(cleaned_surfaces)
         # Find intersection points, add them to surfaces, and extrude them
         nearest_points_dict: Dict[Any, NDArray[np.floating]] = {}
         intersection_points: List[NDArray[np.floating]] = []
@@ -585,6 +596,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     indices: NDArray[np.integer]  = np.unique(np.hstack(indices_list))
                     nearest_to_ref: NDArray[np.floating] = points[indices.astype(int)]  # Points on current surface near reference
 
+                    nonempty = sum(len(x) > 0 for x in indices_list)
                     # Skip if there are no points close to the reference surface
                     if nearest_to_ref.size == 0:
                         continue
@@ -597,7 +609,6 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     distances_point, indices_point = points_tree.query(ref_points, distance_upper_bound=PROJECTION_THRESHOLD)
                     close_points_mask: NDArray[np.bool_]  = distances_point <= PROJECTION_THRESHOLD
                     nearest_or_points: NDArray[np.floating] = np.unique(points[indices_point[close_points_mask]], axis=0)  # Current surface points near ref
-
                     # Skip if either set is empty
                     if nearest_or_points.size == 0 or nearest_ref_points.size == 0:
                         continue

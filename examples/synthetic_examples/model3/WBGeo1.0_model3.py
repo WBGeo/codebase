@@ -21,7 +21,9 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
-
+from core.meshing_components.explicit.unstructured.refinement_mesh import (
+    Refinement, LinearWellRefinement, FunctionWellRefinement,EllipseRefinement,
+   LinearSourceRefinement,FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
 #%%
 
 cwd = os.getcwd()
@@ -173,7 +175,7 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Explicit unstructured mesh
-mesh_unstructured = create_unstructured_mesh_data(
+mesh_explicit_unstructured = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
     tolerance=50,
     mesh_size=30,
@@ -185,21 +187,23 @@ mesh_unstructured = create_unstructured_mesh_data(
 )
 
 # Explicit structured mesh
-mesh_explicit_structured = create_structured_mesh_data(geomodel_result=structural_model_result,
-                                                       refinement_data=[10,10,10,10,10])
+# NOTE: Currebtly structered mesh does not support models with faults
+
 
 #%%
 
 # Plot the meshing results
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
-plot_mesh_3d(mesh_unstructured, structural_model_result, show_plotter=True)
-plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 
 #%%
 
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
-# buf = export_mesh_results_to_exodus(mesh_unstructured)
+# NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
+# In addition, some export formats support only specific mesh types.
+# See the meshing manual/documentation for details.
+# buf = export_mesh_results_to_exodus(mesh_explicit_unstructured)
 # with open("filename_example_mesh.exo", "wb") as f:
 #    f.write(buf.getvalue())
 
@@ -212,7 +216,36 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model3/input_data/engineering_objects/model_3_shafts.csv")
 # sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model3/input_data/engineering_objects/model_3_sources.csv")
 # planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model3/input_data/engineering_objects/model_3_planes.csv")
+# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model3/input_data/engineering_objects/model_3_ellipses.csv")
+# csv_files=(cwd + "/examples/synthetic_examples/Model3/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
+#           cwd + "/examples/synthetic_examples/Model3/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
+# triangulations= load_triangulations_planes_from_csv(csv_files)
+
+# Refinement of mesh
+# refinement = Refinement()
+
+# Linear refinement near wells
+# refinement.wells=LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+# Function-based refinement near sources
+# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+
+# Refinment around triangulated surfaces
+# refinement.triangulation = TriangulationRefinement(
+#    hmin=8.0,
+#    hmax=90.0,
+#    d1=50.0,
+#    d2=100.0,
+#    enabled=True
+# )
+
+# NOTE: Wells and sources support both linear and function-based refinement:
+#   - LinearWellRefinement / LinearSourceRefinement
+#   - FunctionWellRefinement / FunctionSourceRefinement
 #
+# Ellipse and fault refinement follow the same configuration pattern as
+# TriangulationRefinement, using hmin/hmax for mesh sizes and d1/d2 for
+# distance-based refinement control.
+
 # # Explicit unstructured mesh with objects
 # mesh_unstructured_with_objects = create_unstructured_mesh_data(
 #     geomodel_result=structural_model_result,
@@ -222,12 +255,19 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 #     extra_planes=planes,
 #     tolerance=50,
 #     mesh_size=30,
-#     curve_mesh_size=10,
+#     curve_mesh_size=5,
 #     DISTANCE_THRESHOLD=40,
 #     PROJECTION_THRESHOLD=60,
 #     EXTRUSION_FACTOR=80,
 #     z_threshold=10,
+#     gmsh_flag= True,  # to save original gmsh configuration (defaut is False)
+#     mapping_litho='auto', # it can be 'manual', 'auto' or 'none' (default: auto)
+#     refinement=refinement,
 # )
+# save the mesh
+# buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+# with open("filename_example_mesh.exo", "wb") as f:
+#    f.write(buf.getvalue())
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
