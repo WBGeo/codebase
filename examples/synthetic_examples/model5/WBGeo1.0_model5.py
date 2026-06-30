@@ -238,7 +238,7 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # Process simulation with SfePy on the implicit structured mesh
 
 mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
-Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model5/input_data/simulation_input_file/Thermal.py', mesh_implicit,type= 'imp', output_dir='results')
+Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model5/input_data/simulation_input_file/Thermal.py', mesh_implicit,mesh_type= 'imp', output_dir='results')
 
 #%%
 
@@ -248,7 +248,7 @@ Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model5/input_data/simulatio
 #     mesh_size=50,
 #     curve_mesh_size=5,
 # )
-# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Thermal.py', mesh_unst, type= 'unstr', output_dir='results')
+# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Thermal.py', mesh_unst, mesh_type= 'unstr', output_dir='results')
 #
 # mesh_str = create_structured_mesh_data(
 #     geomodel_result=structural_model_result,
@@ -257,7 +257,7 @@ Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model5/input_data/simulatio
 #     z_threshold=0.1,
 #     tolerance=1
 # )
-# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Thermal.py', mesh_unst, type= 'str', output_dir='results')
+# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Thermal.py', mesh_unst, mesh_type= 'str', output_dir='results')
 
 #%%
 
