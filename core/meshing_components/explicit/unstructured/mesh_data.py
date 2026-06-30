@@ -21,6 +21,19 @@ from enum import Enum, StrEnum
 MESH_ENGINEERING_COLOR = '#99b3cc';
 MESH_ENGINEERING_GROUP = 'Engineering Objects';
 
+class LithoMappingMode(StrEnum):
+    AUTO = "auto"
+    NONE = "none"
+    MANUAL = "manual"
+
+LithoMappingModeType = typing.Annotated[
+    str,
+    AnnotatedScriptType(
+        name="LithoMappingMode",
+        identifier="LithoMappingModeType",
+    ),
+]
+
 def point_on_line_segment(pt: Tuple[float, float, float], p1: Tuple[float, float, float], p2: Tuple[float, float, float],
     tol: float = 1e-6) -> bool:
     """
@@ -986,7 +999,6 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
   regular_blocks: List[meshio.CellBlock] = [
     regular_blocks[i] for i in sorted_indices
 ]
-
   if mapping_litho == LithoMappingMode.AUTO:
 
     # Lithology assignment (ONLY regular blocks)
@@ -2218,10 +2230,6 @@ def build_point_sets(boundary_groups, n_nodes):
 
 
 
-class LithoMappingMode(StrEnum):
-    AUTO = "auto"
-    NONE = "none"
-    MANUAL = "manual"
 
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
@@ -2250,7 +2258,7 @@ def create_unstructured_mesh_data(
     extent: Optional[ExtentData] = None,
     smooth: float = 1e-5,
     gmsh_flag: bool = False,
-    mapping_litho: LithoMappingMode = LithoMappingMode.AUTO,
+    mapping_litho: LithoMappingModeType = LithoMappingMode.AUTO.value,
     merge_file: Optional[str] = None,
     refinement: Optional[Refinement] = None,
 ) -> MeshResults:
@@ -2314,19 +2322,19 @@ def create_unstructured_mesh_data(
     if mapping_litho == LithoMappingMode.MANUAL:
         if merge_file is None:
             raise ValueError(
-                "mapping_litho='manual' requires a merge_file (CSV file with block IDs)."
+                "manual requires a csv file in which block ids are listed"
             )
 
     elif mapping_litho == LithoMappingMode.NONE:
         if merge_file is not None:
             raise ValueError(
-                "mapping_litho='none' does not require a merge_file."
+                "none does not require merge_file"
             )
 
     elif mapping_litho == LithoMappingMode.AUTO:
         if merge_file is not None:
             raise ValueError(
-                "mapping_litho='auto' does not require merge_file."
+                "auto does not require merge_file"
             )
 
 

@@ -3,14 +3,13 @@ from core.meshing_components.geometry.Nodes import Nodes
 
 class Elements(Nodes):
 
-    def __init__(self, element_array, node_array):
-        """
+    """
         Initializes the Elements class.
 
         Args:
             element_array (np.ndarray): Array of elements with columns [element_id, node_id_1, ..., node_id_n, surface_id].
             node_array (np.ndarray): Array of nodes with columns [node_id, x, y, z, surface_id].
-        """
+    """
 
     def __init__(self, element_array, node_array):
 
