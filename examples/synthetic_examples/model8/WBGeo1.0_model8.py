@@ -216,31 +216,31 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 # Optional: Example of how to include objects (only works for unstructured mesh)
 
 # # Load engineering objects
-wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_wells.csv")
-shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_shafts.csv")
-sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_sources.csv")
-planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_planes.csv")
-ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_ellipses.csv")
-csv_files=(cwd + "/examples/synthetic_examples/Model8/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
-           cwd + "/examples/synthetic_examples/Model8/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
-triangulations= load_triangulations_planes_from_csv(csv_files)
+# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_wells.csv")
+# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_shafts.csv")
+# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_sources.csv")
+# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_planes.csv")
+# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_ellipses.csv")
+# csv_files=(cwd + "/examples/synthetic_examples/Model8/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
+#           cwd + "/examples/synthetic_examples/Model8/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
+# triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # Refinement of mesh
-refinement = Refinement()
+# refinement = Refinement()
 
 # Linear refinement near wells
-refinement.wells=LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+# refinement.wells=LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
 # Function-based refinement near sources
-refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
 
 # Refinment around triangulated surfaces
-refinement.triangulation = TriangulationRefinement(
-    hmin=8.0,
-    hmax=90.0,
-    d1=50.0,
-    d2=100.0,
-    enabled=True
- )
+# refinement.triangulation = TriangulationRefinement(
+#    hmin=8.0,
+#    hmax=90.0,
+#    d1=50.0,
+#    d2=100.0,
+#    enabled=True
+# )
 
 # NOTE: Wells and sources support both linear and function-based refinement:
 #   - LinearWellRefinement / LinearSourceRefinement
@@ -251,29 +251,28 @@ refinement.triangulation = TriangulationRefinement(
 # distance-based refinement control.
 
 # # Explicit unstructured mesh with objects
-mesh_unstructured_with_objects = create_unstructured_mesh_data(
-     geomodel_result=structural_model_result,
-     wells=wells,
-     sources=sources,
-     shafts=shafts,
-     extra_planes=planes,
-     tolerance=50,
-     mesh_size=70,
-     curve_mesh_size=8,
-     DISTANCE_THRESHOLD=40,
-     PROJECTION_THRESHOLD=60,
-     EXTRUSION_FACTOR=80,
-     z_threshold=10,
-     gmsh_flag= True,  # to save original gmsh configuration (defaut is False)
-     mapping_litho='manual', # it can be 'manual', 'auto' or 'none' (default: auto)
-     merge_file = cwd + "/examples/synthetic_examples/model8/input_data/block_groups.csv", # Only if mapping_litho='manual'
-
-     refinement=refinement,
- )
+# mesh_unstructured_with_objects = create_unstructured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     wells=wells,
+#     sources=sources,
+#     shafts=shafts,
+#     extra_planes=planes,
+#     tolerance=50,
+#     mesh_size=70,
+#     curve_mesh_size=8,
+#     DISTANCE_THRESHOLD=40,
+#     PROJECTION_THRESHOLD=60,
+#     EXTRUSION_FACTOR=80,
+#     z_threshold=10,
+#     gmsh_flag= True,  # to save original gmsh configuration (defaut is False)
+#     mapping_litho='manual', # it can be 'manual', 'auto' or 'none' (default: auto)
+#     merge_file = cwd + "/examples/synthetic_examples/model8/input_data/block_groups.csv", # Only if mapping_litho='manual'
+#     refinement=refinement,
+# )
 # save the mesh
-buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
-with open("filename_example_mesh.exo", "wb") as f:
-    f.write(buf.getvalue())
+# buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+# with open("filename_example_mesh.exo", "wb") as f:
+#    f.write(buf.getvalue())
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)

@@ -168,8 +168,8 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 # sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_sources.csv")
 # planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_planes.csv")
 # ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_ellipses.csv")
-# csv_files=(cwd + "/examples/synthetic_examples/Model6/input_data/engineering_objects/seismic_plane_new_offset_0.csv",
-#           cwd + "/examples/synthetic_examples/Model6/input_data/engineering_objects/seismic_plane_new_offset_1.csv")
+# csv_files=(cwd + "/examples/synthetic_examples/Model6/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
+#           cwd + "/examples/synthetic_examples/Model6/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
 # triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # Refinement of mesh

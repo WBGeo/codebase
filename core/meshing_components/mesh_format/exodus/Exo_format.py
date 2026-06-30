@@ -5,10 +5,17 @@ import io
 import os
 from collections import defaultdict
 from core.object_components import MeshResults
+from enum import Enum
 
-# ============================================================
+class MeshType(str, Enum):
+    UNSTRUCTURED = "unstr"
+    STRUCTURED = "str"
+    IMPLICIT = "imp"
+
+
+######################
 # EXODUS INPUT CLASS
-# ============================================================
+#####################
 class ExodusInput:
     """
     Create and export meshes in ExodusII format.
@@ -73,18 +80,26 @@ class ExodusInput:
         }
     }
 
+
     ########
     # INIT
     #######
     def __init__(
         self,
         mesh: MeshResults,
-        mesh_type: str = "unstr"
+        mesh_type: MeshType = MeshType.UNSTRUCTURED
     ):
+        if isinstance(mesh_type, str):
+            try:
+                mesh_type = MeshType(mesh_type.lower())
+            except ValueError:
+                raise ValueError(
+                    f"Invalid mesh_type='{mesh_type}'. "
+                    f"Valid options are: {[m.value for m in MeshType]}"
+                )
 
         self.mesh = mesh
-        self.mesh_type = mesh_type.lower()
-
+        self.mesh_type = mesh_type
     ######################
     # EXODUS ELEMENT TYPES
     ######################
@@ -332,7 +347,7 @@ class ExodusInput:
         all_blocks = self.mesh.elements
 
         # MESH TYPE HANDLING
-        if self.mesh_type == "unstr":
+        if self.mesh_type == MeshType.UNSTRUCTURED:
 
             NUM_SIDE_BLOCKS = 6
 
@@ -349,7 +364,7 @@ class ExodusInput:
                 boundary_blocks
             )
 
-        elif self.mesh_type in ["str", "imp"]:
+        elif self.mesh_type in [MeshType.STRUCTURED, MeshType.IMPLICIT]:
             volume_blocks = all_blocks
             side_sets = self.build_side_sets_from_elements(
                 volume_blocks
@@ -812,7 +827,7 @@ class ExodusInput:
 # ########
 def export_mesh_results_to_exodus(
     mesh: MeshResults,
-    type: str = "unstr"
+    type: MeshType = MeshType.UNSTRUCTURED
 ):
     """
     Export a MeshResults object to an in-memory ExodusII file.
@@ -837,6 +852,14 @@ def export_mesh_results_to_exodus(
     Temporary files created during export are automatically removed.
     """
 
+    if isinstance(type, str):
+        try:
+            type = MeshType(type.lower())
+        except ValueError:
+            raise ValueError(
+                f"Invalid mesh type '{type}'. "
+                f"Valid options are: {[m.value for m in MeshType]}"
+            )
     exo = ExodusInput(
         mesh=mesh,
         mesh_type=type

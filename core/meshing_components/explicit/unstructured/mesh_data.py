@@ -15,6 +15,7 @@ from core.meshing_components.explicit.unstructured.create_clean_surface import d
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
                                                                LinearSourceRefinement,FunctionSourceRefinement,)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
+from enum import Enum
 
 
 MESH_ENGINEERING_COLOR = '#99b3cc';
@@ -986,7 +987,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
     regular_blocks[i] for i in sorted_indices
 ]
 
-  if mapping_litho == "auto":
+  if mapping_litho == LithoMappingMode.AUTO:
 
     # Lithology assignment (ONLY regular blocks)
     grid_coords: NDArray[np.float64] = grid_litho.iloc[:, :3].to_numpy()
@@ -1093,7 +1094,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
         print(f"  Shaft {shaft_tag}: merged {len(merged_data)} tetra elements")
 
 
-  elif mapping_litho == "manual":
+  elif mapping_litho == LithoMappingMode.MANUAL:
 
     if merge_file is None:
         raise ValueError(
@@ -1227,7 +1228,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
         print(f"  Shaft {shaft_tag}: merged {len(merged_data)} tetra elements")
 
 
-  else:
+  elif mapping_litho == LithoMappingMode.NONE:
 
     # FINAL MERGE: regular + shafts
     merged_tetra_blocks_sorted = []
@@ -2216,6 +2217,12 @@ def build_point_sets(boundary_groups, n_nodes):
     return point_sets
 
 
+
+class LithoMappingMode(str, Enum):
+    AUTO = "auto"
+    NONE = "none"
+    MANUAL = "manual"
+
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
                  title='Create Unstructured Mesh',  # The title shown in the GUI
@@ -2243,7 +2250,7 @@ def create_unstructured_mesh_data(
     extent: Optional[ExtentData] = None,
     smooth: float = 1e-5,
     gmsh_flag: bool = False,
-    mapping_litho: str = "auto",
+    mapping_litho: LithoMappingMode = LithoMappingMode.AUTO,
     merge_file: Optional[str] = None,
     refinement: Optional[Refinement] = None,
 ) -> MeshResults:
@@ -2292,6 +2299,36 @@ def create_unstructured_mesh_data(
     Returns:
         MeshResults: An instance of the MeshResults class.
     """
+
+    # normalize
+    if isinstance(mapping_litho, str):
+        try:
+            mapping_litho = LithoMappingMode(mapping_litho.lower())
+        except ValueError:
+            raise ValueError(
+                f"Invalid mapping_litho='{mapping_litho}'. "
+                f"Valid options are: {[m.value for m in LithoMappingMode]}"
+            )
+
+    # enforce merge_file rules
+    if mapping_litho == LithoMappingMode.MANUAL:
+        if merge_file is None:
+            raise ValueError(
+                "mapping_litho='manual' requires a merge_file (CSV file with block IDs)."
+            )
+
+    elif mapping_litho == LithoMappingMode.NONE:
+        if merge_file is not None:
+            raise ValueError(
+                "mapping_litho='none' does not require a merge_file."
+            )
+
+    elif mapping_litho == LithoMappingMode.AUTO:
+        if merge_file is not None:
+            raise ValueError(
+                "mapping_litho='auto' does not require merge_file."
+            )
+
 
     wells = wells or []
     sources = sources or []
