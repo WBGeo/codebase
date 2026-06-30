@@ -6,23 +6,37 @@ import subprocess
 import numpy as np
 import meshio
 
-from enum import Enum, StrEnum
+from enum import StrEnum
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.object_components import MeshResults
 
 
-# ENUM DEFINITION
+# =========================================================
+# INTERNAL ENUM (KEEP THIS — SAFE AND CLEAN)
+# =========================================================
 class MeshType(StrEnum):
     UNSTRUCTURED = "unstr"
     STRUCTURED = "str"
     IMPLICIT = "imp"
 
 
-###################
-# TYPES (WBGeo SAFE)
-###################
+# =========================================================
+# WBGeo SAFE TYPE (IMPORTANT FIX)
+# =========================================================
+MeshTypeInput = typing.Annotated[
+    str,
+    AnnotatedScriptType(
+        name="MeshType",
+        identifier="MeshType",
+        controlled="unstr|str|imp"
+    )
+]
 
+
+# =========================================================
+# INPUT TYPES
+# =========================================================
 SfepyInputFileType = typing.Annotated[
     str,
     AnnotatedScriptType(
@@ -50,9 +64,9 @@ SfepyOutputType = typing.Annotated[
 ]
 
 
-#################
+# =========================================================
 # INPUT COMPONENT
-#################
+# =========================================================
 @wbgeo_component(
     description='Input data for SfePy simulation',
     title='SfePy Input',
@@ -79,9 +93,9 @@ def sfepy_input_data(
     }
 
 
-######################
-# SIMULATION COMPONENT
-######################
+# =========================================================
+# SIMULATION COMPONENT (FIXED)
+# =========================================================
 @wbgeo_component(
     description='Simulation using Sfepy',
     title='Simulating with Sfepy',
@@ -94,21 +108,24 @@ def sfepy_input_data(
 def run_sfepy(
     sfepy_input_or_file: typing.Union[SfepyInputType, str],
     mesh_test: MeshResults,
-    mesh_type: MeshType = MeshType.UNSTRUCTURED,
+    mesh_type: MeshTypeInput = "unstr",
     output_dir: typing.Optional[str] = None
 ) -> SfepyOutputType:
 
-    # NORMALIZE MESH TYPE
-    if isinstance(mesh_type, str):
-        try:
-            mesh_type = MeshType(mesh_type.lower())
-        except ValueError:
-            raise ValueError(
-                f"Invalid mesh_type='{mesh_type}'. "
-                f"Valid options are: {[m.value for m in MeshType]}"
-            )
+    # =====================================================
+    # NORMALIZE MESH TYPE (STRING -> ENUM)
+    # =====================================================
+    try:
+        mesh_type_enum = MeshType(mesh_type)
+    except ValueError:
+        raise ValueError(
+            f"Invalid mesh_type='{mesh_type}'. "
+            f"Valid options are: {[m.value for m in MeshType]}"
+        )
 
+    # =====================================================
     # INPUT HANDLING
+    # =====================================================
     if isinstance(sfepy_input_or_file, dict):
         input_file = sfepy_input_or_file["input_file"]
         if output_dir is None:
@@ -116,7 +133,9 @@ def run_sfepy(
     else:
         input_file = sfepy_input_or_file
 
+    # =====================================================
     # OUTPUT DIRECTORY
+    # =====================================================
     is_temp = False
 
     if output_dir is None:
@@ -129,10 +148,12 @@ def run_sfepy(
 
     os.environ["SFEpy_OUTPUT_DIR"] = output_dir
 
-    # EXPORT MESH (EXODUS)
+    # =====================================================
+    # EXPORT MESH
+    # =====================================================
     exo_buffer = export_mesh_results_to_exodus(
         mesh_test,
-        type=mesh_type
+        type=mesh_type_enum
     )
 
     with tempfile.NamedTemporaryFile(suffix=".exo", delete=False) as tmp_exo:
@@ -154,7 +175,9 @@ def run_sfepy(
     mesh.write(tmp_mesh_path, file_format="medit")
     os.environ["TEMP_MESH_FILE"] = tmp_mesh_path
 
+    # =====================================================
     # RUN SFEpy
+    # =====================================================
     print("[INFO] Running SfePy...")
     process = subprocess.Popen(
         ["sfepy-run", input_file],
@@ -164,22 +187,26 @@ def run_sfepy(
     process.wait()
     print("[INFO] SfePy finished.")
 
+    # =====================================================
     # CLEANUP
+    # =====================================================
     for tmp_file in [tmp_exo_path, tmp_mesh_path]:
         try:
             os.remove(tmp_file)
         except:
             pass
 
+    # =====================================================
     # RETURN
+    # =====================================================
     return {
         "output_dir": output_dir,
         "is_temp": is_temp
     }
 
 
-#######################
+# =========================================================
 # SAVE OUTPUT COMPONENT
-#######################
+# =========================================================
 def save_outputs(sim_output: SfepyOutputType) -> SfepyOutputType:
     return sim_output
