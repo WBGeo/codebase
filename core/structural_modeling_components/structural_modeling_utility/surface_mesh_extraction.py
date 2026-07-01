@@ -4,11 +4,18 @@ Surface mesh extraction utilities for structural geological modeling.
 Thin wrappers around scikit-image marching cubes for extracting isosurfaces
 from scalar fields, with optional domain masking.
 """
+from typing import List, Optional, Tuple
 import numpy as np
+from numpy.typing import NDArray
 from skimage import measure
 
 
-def marching_cubes(block, elements, spacing, extent):
+def marching_cubes(
+    block: NDArray[np.float64],
+    elements: List[float],
+    spacing: Tuple[float, float, float],
+    extent: Tuple[float, ...],
+) -> Tuple[List[NDArray[np.float64]], List[NDArray[np.int64]]]:
     """
     Extract isosurfaces for multiple isovalue levels from a scalar field.
 
@@ -39,7 +46,13 @@ def marching_cubes(block, elements, spacing, extent):
     return mc_vertices, mc_edges
 
 
-def marching_cubes_per_element(block, element, spacing, extent, mask):
+def marching_cubes_per_element(
+    block: NDArray[np.float64],
+    element: float,
+    spacing: Tuple[float, float, float],
+    extent: Tuple[float, ...],
+    mask: Optional[NDArray[np.bool_]],
+) -> Tuple[NDArray[np.float64], NDArray[np.int64]]:
     """
     Extract the surface mesh for a single isovalue from a scalar field.
 

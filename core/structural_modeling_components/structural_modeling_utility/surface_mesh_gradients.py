@@ -4,14 +4,16 @@ Gradient computation and visualization for surface meshes.
 Provides utilities for interpolating scalar-field gradients onto surface mesh
 vertices and plotting the resulting vector field.
 """
+from typing import Dict, Optional, Tuple
 import numpy as np
 import pyvista as pv
+from numpy.typing import NDArray
 from scipy.interpolate import RegularGridInterpolator
 from core.object_components import StructuralModelResults
 from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
 
 
-def normalize_vectors(vectors):
+def normalize_vectors(vectors: NDArray[np.float64]) -> NDArray[np.float64]:
     """
     Normalize an array of vectors to unit length.
 
@@ -29,7 +31,13 @@ def normalize_vectors(vectors):
     return vectors / np.where(norms == 0, 1, norms)
 
 
-def get_surface_mesh_gradients(result, norm=True, mesh_type: GeoMeshType = GeoMeshType.UNMASKED, return_faults=True, fault_mesh_type: FaultMeshType | None = None):
+def get_surface_mesh_gradients(
+    result: StructuralModelResults,
+    norm: bool = True,
+    mesh_type: GeoMeshType = GeoMeshType.UNMASKED,
+    return_faults: bool = True,
+    fault_mesh_type: Optional[FaultMeshType] = None,
+) -> Tuple[Dict[str, Dict[str, NDArray[np.float64]]], Dict[str, Dict[str, NDArray[np.float64]]]]:
     """
     Compute gradient vectors at surface mesh vertices by interpolating scalar field gradients.
 
@@ -114,11 +122,13 @@ def get_surface_mesh_gradients(result, norm=True, mesh_type: GeoMeshType = GeoMe
     return gradients_dict, gradients_faults_dict
 
 
-def plot_surface_mesh_gradients(structural_model_result,
-                                gradients_dict,
-                                gradients_faults_dict=None,
-                                mesh_type: GeoMeshType = GeoMeshType.UNMASKED,
-                                scale_factor=50):
+def plot_surface_mesh_gradients(
+    structural_model_result: StructuralModelResults,
+    gradients_dict: Dict[str, Dict[str, NDArray[np.float64]]],
+    gradients_faults_dict: Optional[Dict[str, Dict[str, NDArray[np.float64]]]] = None,
+    mesh_type: GeoMeshType = GeoMeshType.UNMASKED,
+    scale_factor: float = 50,
+) -> None:
     """
     Plot gradient vector fields at surface mesh vertices using PyVista.
 
