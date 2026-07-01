@@ -193,7 +193,7 @@ mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=struc
 # )
 
 # Explicit structured mesh
-# NOTE: currently structered mesh does not support models with faults
+# NOTE: currently structured mesh does not support models with faults
 
 #%%
 

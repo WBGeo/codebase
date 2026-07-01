@@ -120,7 +120,7 @@ mesh_explicit_unstr = create_unstructured_mesh_data(
 )
 
 # Explicit structured mesh
-# NOTE: Currebtly structered mesh does not support models whose layers do not extend the extent of model
+# NOTE: Currently structured mesh does not support models whose layers do not extend the extent of model
 
 # Plot the meshing results
 plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)

@@ -183,7 +183,7 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
 )
 
 # Explicit structured mesh
-# NOTE: Currently structered mesh does not support models with faults
+# NOTE: Currently structured mesh does not support models with faults
 
 #%%
 

@@ -175,7 +175,7 @@ mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=struc
 # with faults where different layers on both sides of the fault lie on nearly same surface.
 
 # Explicit structured mesh
-# NOTE: Currently structered mesh does not support models with faults
+# NOTE: Currently structured mesh does not support models with faults
 #                                                        refinement_data=[10, 10, 10])
 
 #%%
