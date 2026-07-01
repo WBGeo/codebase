@@ -1,16 +1,16 @@
+import logging
 import meshio
-from typing import  List
+from typing import List
 import numpy as np
 import pyvista as pv
 from dataclasses import dataclass
-import numpy as np
-from dataclasses import dataclass
-from typing import List
 import tempfile
 import io
 import os
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 from core.object_components import MeshResults
+
+logger = logging.getLogger(__name__)
 @dataclass
 class C_FeFlowTri:
     """
@@ -226,7 +226,7 @@ class C_FeFlow:
 
         numberoftetrahedra = len(tetrahedronlist)
 
-        print("Generating edges from tetrahedra...")
+        logger.debug("Generating edges from tetrahedra...")
 
         for t in range(numberoftetrahedra):
             tet = tetrahedronlist[t]
@@ -246,7 +246,7 @@ class C_FeFlow:
                 sorted_edge = sorted(edge)
                 self.allEdges.append(C_FeFlowEdg(sorted_edge[0], sorted_edge[1], len(self.allEdges)))
 
-        print("Total edges generated (with duplicates):", len(self.allEdges))
+        logger.debug("Total edges generated (with duplicates): %d", len(self.allEdges))
 
         # Sort edges by node values and then original index
         self.allEdges.sort(key=lambda edg: (edg.nodes[0], edg.nodes[1], edg.index))
@@ -261,7 +261,7 @@ class C_FeFlow:
                 self.allEdgesWithoutDuplicates.append(edg)
                 seen.add(node_tuple)
 
-        print("Total edges after deduplication:", len(self.allEdgesWithoutDuplicates))
+        logger.debug("Total edges after deduplication: %d", len(self.allEdgesWithoutDuplicates))
 
         # Re-index
         for i, edg in enumerate(self.allEdgesWithoutDuplicates):
@@ -270,7 +270,7 @@ class C_FeFlow:
         # Final sort for consistent lookup (optional)
         self.allEdgesWithoutDuplicates.sort(key=lambda edg: (edg.nodes[0], edg.nodes[1]))
 
-        print("Final edges ready:", len(self.allEdgesWithoutDuplicates))
+        logger.debug("Final edges ready: %d", len(self.allEdgesWithoutDuplicates))
 
 
     def generateMarkerEdges(self, marker_edges: np.ndarray):
@@ -294,7 +294,7 @@ class C_FeFlow:
                 marker_edge_indices.append(edge_set[sorted_edge])
 
             else:
-                print(f"Warning: Edge {sorted_edge} not found in allEdgesWithoutDuplicates")
+                logger.warning("Edge %s not found in allEdgesWithoutDuplicates", sorted_edge)
 
         return marker_edge_indices
 
@@ -342,7 +342,7 @@ class FeflowInputs:
                 cells.append((block.type, block.data))
 
             else:
-                print(f"Skipping unsupported FEFLOW cell type: '{block.type}'")
+                logger.warning("Skipping unsupported FEFLOW cell type: '%s'", block.type)
 
 
         mesh = meshio.Mesh(points=self.nodes, cells=cells)
@@ -491,13 +491,13 @@ class FeflowInputs:
             # Create all unique edges from lines
             FeFlowObj.generateAllEdges(tetra)
             # DEBUG: check edges and markers
-            print("Edges array shape:", edges.shape)
+            logger.debug("Edges array shape: %s", edges.shape)
 
             if edge_markers is not None:
-                print("Edge markers unique:", np.unique(edge_markers))
+                logger.debug("Edge markers unique: %s", np.unique(edge_markers))
 
             else:
-                print("Edge markers is None")
+                logger.debug("Edge markers is None")
 
             if edge_markers is not None and len(edge_markers) > 0:
                 f.write("EDGESETS\n")
@@ -528,7 +528,7 @@ class FeflowInputs:
 
             f.write("END\n")
 
-        print(f" Feflow file '{filename}' written successfully.")
+        logger.info("Feflow file '%s' written successfully.", filename)
 
 
 
