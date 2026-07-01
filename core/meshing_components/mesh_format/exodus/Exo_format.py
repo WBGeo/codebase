@@ -1,11 +1,14 @@
 import logging
+import io
+import meshio
 import numpy as np
 import netCDF4 as nc
 import tempfile
-import io
 import os
 from collections import defaultdict
+from typing import Any, Dict, List, Optional
 from core.object_components import MeshResults
+from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 from enum import Enum, StrEnum
 
 logger = logging.getLogger(__name__)
@@ -107,7 +110,7 @@ class ExodusInput:
     # EXODUS ELEMENT TYPES
     ######################
     @staticmethod
-    def exo_elem_type(cell_type, n_nodes=None):
+    def exo_elem_type(cell_type: str, n_nodes: Optional[int] = None) -> str:
 
         cell_type = cell_type.lower()
 
@@ -146,7 +149,7 @@ class ExodusInput:
     # WRITE STRINGS
     ###############
     @staticmethod
-    def write_string_array(var, strings):
+    def write_string_array(var: nc.Variable, strings: List[str]) -> None:
 
         arr = np.full(
             var.shape,
@@ -172,9 +175,9 @@ class ExodusInput:
     ##################################
     def build_side_sets_unstructured(
         self,
-        volume_blocks,
-        boundary_blocks
-    ):
+        volume_blocks: List[meshio.CellBlock],
+        boundary_blocks: List[meshio.CellBlock],
+    ) -> List[Dict[str, Any]]:
 
         face_lookup = {}
 
@@ -260,8 +263,8 @@ class ExodusInput:
     ###########################################
     def build_side_sets_from_elements(
         self,
-        volume_blocks
-    ):
+        volume_blocks: List[meshio.CellBlock],
+    ) -> List[Dict[str, Any]]:
 
         face_map = defaultdict(list)
 
@@ -337,7 +340,7 @@ class ExodusInput:
     ##############
     # WRITE EXODUS
     ##############
-    def write(self, filename):
+    def write(self, filename: str) -> None:
 
         nodes = np.asarray(
             self.mesh.nodes,
@@ -827,8 +830,8 @@ class ExodusInput:
 # ########
 def export_mesh_results_to_exodus(
     mesh: MeshResults,
-    type: MeshType = MeshType.UNSTRUCTURED
-):
+    type: MeshType = MeshType.UNSTRUCTURED,
+) -> BasicallyABufferedFile:
     """
     Export a MeshResults object to an in-memory ExodusII file.
     This is a convenience wrapper around the ExodusInput class.

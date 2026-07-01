@@ -7,7 +7,7 @@ import re
 from core.simulation_components.simulation_packages.sfepy.simulation_run import SfepyOutputType
 from py_api_wbgeo.nodesapi import wbgeo_component
 from core.object_components import SimulationResults
-from typing import Union
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 ####################
 # SAFE TIME EXTRACTOR
 ####################
-def extract_time(filename: str):
+def extract_time(filename: str) -> Optional[float]:
 
     match = re.search(r"([\d\.]+)\.vtk$", filename)
 

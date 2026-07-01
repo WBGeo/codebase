@@ -1,4 +1,5 @@
 import logging
+from typing import Optional, Tuple
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector
 from core.object_components import SimulationResults
 
@@ -12,7 +13,7 @@ import numpy as np
 # -------------------------------
 # Build PyVista grid from SimulationResults
 # -------------------------------
-def build_grid_from_class(sim: SimulationResults, time: float):
+def build_grid_from_class(sim: SimulationResults, time: float) -> pv.UnstructuredGrid:
     if time not in sim.nodes_by_time:
         raise ValueError(f"Time {time} not found in simulation results.")
 
@@ -36,7 +37,7 @@ def build_grid_from_class(sim: SimulationResults, time: float):
 # -------------------------------
 #  Plot variable at a given time
 # -------------------------------
-def plot_variable_at_a_time(sim: SimulationResults, var_name, time, cmap="viridis", show_edges=False, scale=(1,1,1)):
+def plot_variable_at_a_time(sim: SimulationResults, var_name: str, time: float, cmap: str = "viridis", show_edges: bool = False, scale: Tuple[float, float, float] = (1, 1, 1)) -> None:
     # Build the grid from your simulation class
     grid = build_grid_from_class(sim, time)
 
