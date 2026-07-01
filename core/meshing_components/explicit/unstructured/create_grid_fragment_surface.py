@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN, HDBSCAN
 import gmsh
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from typing import List, Tuple, Dict, Any, Union, Optional
 from numpy.typing import NDArray
 from scipy.interpolate import Rbf
@@ -26,8 +27,19 @@ def plot_surfaces_individually(interpolated_surfaces: List[NDArray[np.float64]])
     Returns:
         None: The function produces matplotlib figures as a side effect.
     """
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    for i, surface in enumerate(interpolated_surfaces, start=1):
+        if surface is None or len(surface) == 0:
+            continue
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111, projection="3d")
+        ax.plot_trisurf(surface[:, 0], surface[:, 1], surface[:, 2], edgecolor="none")
+        ax.set_title(f"Surface {i}")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        plt.tight_layout()
+        plt.show()
+
 
 def plot_interpolated_surfaces(interpolated_surfaces, cmap="plasma", alpha=0.9):
     """
