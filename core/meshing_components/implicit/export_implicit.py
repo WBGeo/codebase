@@ -15,7 +15,7 @@ from core.object_components import MeshResults, StructuralModelResults, ExtentDa
     color='#cc9999',
     border_color='#000000',
     group='Meshing',
-    identifier='create_structured_implicit_mesh_meshio',
+    identifier='wbgeo::create_structured_implicit_mesh_meshio',
     return_name='Mesh',
 )
 def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, extent: ExtentData = []) -> MeshResults:
