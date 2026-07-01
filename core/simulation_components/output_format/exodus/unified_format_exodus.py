@@ -1,12 +1,15 @@
+import logging
 import os
 import shutil
 import numpy as np
 import pyvista as pv
-from typing import Union
+from typing import Generator, Union
 from core.object_components import SimulationResults
 from py_api_wbgeo.nodesapi import wbgeo_component
 from vtkmodules.vtkIOExodus import vtkExodusIIReader
 from vtkmodules.vtkCommonExecutionModel import vtkStreamingDemandDrivenPipeline
+
+logger = logging.getLogger(__name__)
 
 
 ##################
@@ -36,7 +39,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"Exodus file not found: {file_path}")
 
-    print(f"[INFO] Reading Exodus file: {file_path}")
+    logger.info("Reading Exodus file: %s", file_path)
 
     # EXODUS READER SETUP
     reader = vtkExodusIIReader()
@@ -62,14 +65,14 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
     info = reader.GetOutputInformation(0)
     time_steps = list(info.Get(vtkStreamingDemandDrivenPipeline.TIME_STEPS()))
 
-    print(f"[INFO] Found {len(time_steps)} time steps")
+    logger.info("Found %d time steps", len(time_steps))
 
     results = SimulationResults()
 
     # LOOP OVER TIME STEPS (MATCH YOUR WORKING SCRIPT)
     for t in time_steps:
 
-        print(f"Processing time {t}")
+        logger.debug("Processing time %s", t)
 
         info.Set(
             vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), t
@@ -83,13 +86,13 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
         leaf_meshes = [m for m in leaf_meshes if m is not None and getattr(m, "n_points", 0) > 0]
 
         if len(leaf_meshes) == 0:
-            print(f"[WARNING] No valid leaf meshes at time {t}")
+            logger.warning("No valid leaf meshes at time %s", t)
             continue
 
         combined_mesh = pv.MultiBlock(leaf_meshes).combine()
 
         if combined_mesh is None or not hasattr(combined_mesh, "points"):
-            print(f"[WARNING] Skipping empty mesh at time {t}")
+            logger.warning("Skipping empty mesh at time %s", t)
             continue
 
         time = float(t)
@@ -109,22 +112,20 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
             k: np.array(v) for k, v in combined_mesh.cell_data.items()
         }
 
-        # Debug (same style as yours)
-        print(f"\n⏱ Time {time}")
-        print(f"  Node data keys: {list(combined_mesh.point_data.keys())}")
-        print(f"  Cell data keys: {list(combined_mesh.cell_data.keys())}")
+        logger.debug("Time %s — node data keys: %s, cell data keys: %s",
+                     time, list(combined_mesh.point_data.keys()), list(combined_mesh.cell_data.keys()))
 
-    print("[INFO] Exodus file loaded successfully.")
+    logger.info("Exodus file loaded successfully.")
 
     # CLEANUP
     if not isinstance(sim_input, str) and is_temp:
         try:
             shutil.rmtree(os.path.dirname(file_path))
-            print("[INFO] Removed temp directory")
+            logger.info("Removed temp directory")
         except Exception as e:
-            print(f"[WARNING] cleanup failed: {e}")
+            logger.warning("Cleanup failed: %s", e)
     else:
-        print(f"[INFO] Kept user file: {file_path}")
+        logger.info("Kept user file: %s", file_path)
 
     return results
 
@@ -132,7 +133,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 #########
 # HELPER
 #########
-def iter_leaf_blocks(block):
+def iter_leaf_blocks(block: pv.DataSet) -> Generator[pv.DataSet, None, None]:
     if isinstance(block, pv.MultiBlock):
         for child in block:
             if child is not None:
