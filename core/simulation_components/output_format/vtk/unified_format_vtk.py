@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import pyvista as pv
@@ -7,6 +8,8 @@ from core.simulation_components.simulation_packages.sfepy.simulation_run import 
 from py_api_wbgeo.nodesapi import wbgeo_component
 from core.object_components import SimulationResults
 from typing import Union
+
+logger = logging.getLogger(__name__)
 
 
 ####################
@@ -62,7 +65,7 @@ def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResult
                 vtk_files.append(os.path.join(root, f))
 
     vtk_files.sort()
-    print(f"[INFO] Found {len(vtk_files)} VTK files")
+    logger.info("Found %d VTK files", len(vtk_files))
 
     results = SimulationResults()
 
@@ -112,11 +115,11 @@ def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResult
     if not isinstance(sim_input, str) and is_temp:
         try:
             shutil.rmtree(output_dir)
-            print(f"[INFO] Removed temp output: {output_dir}")
+            logger.info("Removed temp output: %s", output_dir)
         except Exception as e:
-            print(f"[WARNING] cleanup failed: {e}")
+            logger.warning("Cleanup failed: %s", e)
     else:
-        print(f"[INFO] Kept user output: {output_dir}")
+        logger.info("Kept user output: %s", output_dir)
 
     return results
 

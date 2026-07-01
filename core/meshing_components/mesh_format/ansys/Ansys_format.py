@@ -1,3 +1,4 @@
+import logging
 import meshio
 from typing import List
 import numpy as np
@@ -7,6 +8,8 @@ import os
 import tempfile
 from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 from core.object_components import MeshResults
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -66,7 +69,7 @@ class AnsysInputs:
                 cells.append((block.type, block.data))
 
             else:
-                print(f"⚠️ Skipping unsupported ANSYS cell type: {block.type}")
+                logger.warning("Skipping unsupported ANSYS cell type: %s", block.type)
 
         if not cells:
             raise ValueError("No valid element types for ANSYS export")
@@ -120,7 +123,7 @@ class AnsysInputs:
                 cells.append((block.type, block.data))
 
             else:
-                print(f"⚠️ Skipping unsupported ANSYS cell type: {block.type}")
+                logger.warning("Skipping unsupported ANSYS cell type: %s", block.type)
 
         if not cells:
             raise ValueError("No valid element types for ANSYS export")

@@ -1,12 +1,15 @@
+import logging
 import meshio
-from typing import  List
+from typing import List
 from numpy.typing import NDArray
 import numpy as np
 import tempfile
 import io
 import os
-from py_api_wbgeo.nodesapi import  BasicallyABufferedFile
+from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 from core.object_components import MeshResults
+
+logger = logging.getLogger(__name__)
 
 class AbaqusInputs:
     """
@@ -55,7 +58,7 @@ class AbaqusInputs:
                 cells.append((block.type, block.data))
 
             else:
-                print(f"Skipping unsupported Abaqus cell type: {block.type}")
+                logger.warning("Skipping unsupported Abaqus cell type: %s", block.type)
 
             # Create mesh and write
         mesh: meshio.Mesh = meshio.Mesh(points=points, cells=cells)
@@ -112,7 +115,7 @@ class AbaqusInputs:
                 abaqus_type = element_type_map.get(block.type)
 
                 if abaqus_type is None:
-                    print(f"⚠️ Skipping unsupported element type: {block.type}")
+                    logger.warning("Skipping unsupported element type: %s", block.type)
                     continue
 
                 elset_name = f"ELSET{i+1}"
@@ -157,7 +160,7 @@ class AbaqusInputs:
                 f.write(f"*SOLID SECTION, ELSET={elset}, MATERIAL=STEEL\n")
                 f.write("0.01\n")
 
-        print(f"[INFO] Abaqus file written: {filename}")
+        logger.info("Abaqus file written: %s", filename)
 
 
 

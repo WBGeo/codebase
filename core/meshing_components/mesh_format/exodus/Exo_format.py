@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import netCDF4 as nc
 import tempfile
@@ -6,6 +7,8 @@ import os
 from collections import defaultdict
 from core.object_components import MeshResults
 from enum import Enum, StrEnum
+
+logger = logging.getLogger(__name__)
 
 class MeshType(StrEnum):
     UNSTRUCTURED = "unstr"
@@ -229,10 +232,7 @@ class ExodusInput:
 
                 if match is None:
 
-                    print(
-                        "WARNING: face not matched:",
-                        face
-                    )
+                    logger.warning("Face not matched: %s", face)
 
                     continue
 
