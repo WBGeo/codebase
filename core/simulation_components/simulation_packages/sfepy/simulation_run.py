@@ -1,3 +1,4 @@
+import logging
 import os
 import pathlib
 import typing
@@ -7,6 +8,8 @@ import numpy as np
 import meshio
 
 from enum import StrEnum
+
+logger = logging.getLogger(__name__)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.object_components import MeshResults
@@ -141,10 +144,10 @@ def run_sfepy(
     if output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="sfepy_output_")
         is_temp = True
-        print(f"[INFO] Temp output: {output_dir}")
+        logger.info("Temp output: %s", output_dir)
     else:
         os.makedirs(output_dir, exist_ok=True)
-        print(f"[INFO] User output: {output_dir}")
+        logger.info("User output: %s", output_dir)
 
     os.environ["SFEpy_OUTPUT_DIR"] = output_dir
 
@@ -178,14 +181,14 @@ def run_sfepy(
     # =====================================================
     # RUN SFEpy
     # =====================================================
-    print("[INFO] Running SfePy...")
+    logger.info("Running SfePy...")
     process = subprocess.Popen(
         ["sfepy-run", input_file],
         env=os.environ,
         cwd=os.getcwd()
     )
     process.wait()
-    print("[INFO] SfePy finished.")
+    logger.info("SfePy finished.")
 
     # =====================================================
     # CLEANUP
