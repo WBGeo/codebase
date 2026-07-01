@@ -196,7 +196,7 @@ def run_sfepy(
     for tmp_file in [tmp_exo_path, tmp_mesh_path]:
         try:
             os.remove(tmp_file)
-        except:
+        except OSError:
             pass
 
     # =====================================================
