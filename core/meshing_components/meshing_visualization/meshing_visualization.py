@@ -2,6 +2,7 @@
 import warnings
 from typing import List
 
+import numpy as np
 import pyvista as pv
 from core.object_components import MeshResults, StructuralModelResults
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector, InspectorHelper
@@ -12,14 +13,6 @@ _FALLBACK_COLORS = [
     '#c4e4fc', '#ffd4d4', '#fff4c2', '#c4f8bd',
     '#f18d00', '#bbdaa4', '#a7cdf2', '#9bbff4', '#4a80f5',
 ]
-
-
-
-import warnings
-from typing import List
-
-import numpy as np
-import pyvista as pv
 
 
 def plot_mesh_3d(

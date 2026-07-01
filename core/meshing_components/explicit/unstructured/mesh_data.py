@@ -18,8 +18,8 @@ from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from enum import Enum, StrEnum
 
 
-MESH_ENGINEERING_COLOR = '#99b3cc';
-MESH_ENGINEERING_GROUP = 'Engineering Objects';
+MESH_ENGINEERING_COLOR = '#99b3cc'
+MESH_ENGINEERING_GROUP = 'Engineering Objects'
 
 class LithoMappingMode(StrEnum):
     AUTO = "auto"
