@@ -381,8 +381,7 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: Optional[
     # Initialize the bounding box output
     bounds:  List[float] = None
 
-    # Ensure the extent tuple is valid before processing
-    extent = tuple(extent)
+    extent = tuple(extent) if extent is not None else None
 
     # If surfaces were successfully created and extent is provided
     if surfaces and extent:
@@ -1253,7 +1252,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                     gmsh.model.getType(2, tag)
                     child_surfaces.append(tag)
 
-                except:
+                except Exception:
                     pass
 
             # if no children:
@@ -1264,7 +1263,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                     gmsh.model.getType(2, parent_id)
                     child_surfaces = [parent_id]
 
-                except:
+                except Exception:
                     child_surfaces = []
 
             tri_id_to_children[parent_id] = child_surfaces
@@ -1301,7 +1300,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                         gmsh.model.getType(2, surf)
                         merged_children.append(surf)
 
-                    except:
+                    except Exception:
                         pass
 
             # remove duplicates
@@ -1317,7 +1316,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                     gmsh.model.getType(2, s)
                     existing_surfaces.append(s)
 
-                except:
+                except Exception:
                     logger.debug("surface %s does not exist", s)
 
             logger.debug("existing_surfaces = %s", existing_surfaces)
