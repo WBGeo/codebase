@@ -297,7 +297,7 @@ def inspect_fault_model_result_plot_structural_model_2D(
   plot_fault_model_2D(fault_model_result.fault_frame)
 
 
-@wbgeo_component(identifier='wbgeo::inspect_faull_model_result_plot_structural_model_3D_sf',
+@wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_3D_sf',
                  title='Plot Fault Model Result 3D',
                  description='...')
 @wbgeo_inspector()
