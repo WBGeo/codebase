@@ -87,8 +87,7 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
                                            grid=grid,
                                            fault_model_results=fault_model
                                            )
-  except:
-    print("Failed to build frame")
+  except Exception:
     pass
   # interpolator_parameters.default_ok_params(frame[key].context) if frame is not None else None
 
