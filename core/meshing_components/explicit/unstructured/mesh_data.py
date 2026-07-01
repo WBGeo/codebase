@@ -1045,7 +1045,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
 
     merged_regular_blocks: List[meshio.CellBlock] = []
 
-    for lith, blocks in litho_to_blocks.items():
+    for lith, blocks in sorted(litho_to_blocks.items()):
 
         merged_data: NDArray[np.int64] = np.vstack(
             [b.data for b in blocks if len(b.data) > 0]
