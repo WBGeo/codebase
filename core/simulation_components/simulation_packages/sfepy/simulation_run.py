@@ -32,7 +32,7 @@ MeshTypeInput = typing.Annotated[
     AnnotatedScriptType(
         name="MeshType",
         identifier="MeshType",
-        controlled="unstr|str|imp"
+        controlled="Select|unstr|str|imp"
     )
 ]
 
