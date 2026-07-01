@@ -545,10 +545,10 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
     return points
 
 
-def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: Optional[List[int]],
-    source_tag: Optional[List[int]], shaft_tags: Optional[List[int]],   tri_group_tags: Optional[List[int]], tri_surface_tags: Optional[List[int]],
+def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Optional[List[int]],
+    source_tag: Optional[List[int]], shaft_tags: Optional[List[int]], tri_group_tags: Optional[List[int]], tri_surface_tags: Optional[List[int]],
     grid_litho: pd.DataFrame, mesh_size: float = 20.0, curve_mesh_size: float = 5.0,
-    boundary_tags: List[int]= None,gmsh_flag: bool = False,     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTO.value, merge_file: Optional[str] = None):
+    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTO.value, merge_file: Optional[str] = None) -> MeshResults:
 
   """
     Generate an unstructured 3D tetrahedral mesh using Gmsh and export it
@@ -2169,7 +2169,7 @@ def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData,) -> 
     return np.array(all_points, dtype=np.float64)
 
 
-def classify_boundary_nodes(nodes, extent, tol_ratio=1e-4):
+def classify_boundary_nodes(nodes: NDArray[np.float64], extent: List[float], tol_ratio: float = 1e-4) -> Dict[str, List[int]]:
     nodes = np.asarray(nodes)
 
     xmin, xmax, ymin, ymax, zmin, zmax = extent
@@ -2214,7 +2214,7 @@ def classify_boundary_nodes(nodes, extent, tol_ratio=1e-4):
     return boundary_groups
 
 
-def build_point_sets(boundary_groups, n_nodes):
+def build_point_sets(boundary_groups: Dict[str, List[int]], n_nodes: int) -> Dict[str, NDArray[np.int64]]:
     point_sets = {}
 
     for name, node_ids in boundary_groups.items():
