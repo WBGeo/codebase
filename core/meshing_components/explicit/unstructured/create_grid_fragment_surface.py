@@ -2,9 +2,12 @@ import pandas as pd
 import numpy as np
 from sklearn.cluster import DBSCAN, HDBSCAN
 import gmsh
+import logging
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from typing import List, Tuple, Dict, Any, Union, Optional
+
+logger = logging.getLogger(__name__)
 from numpy.typing import NDArray
 from scipy.interpolate import Rbf
 from core.object_components import  ExtentData
@@ -273,7 +276,7 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: Optional[
 
         # Ensure that each element is a NumPy array with 3 columns (x, y, z)
         if not isinstance(surface_points, np.ndarray) or surface_points.shape[1] != 3:
-            print("Invalid surface points format")
+            logger.warning("Invalid surface points format")
             continue  # Skip invalid surfaces
 
         # Compute min and max coordinates for this surface and store them
@@ -338,8 +341,7 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: Optional[
         # Check if the expected number of points matches the actual number
         if len(ps) != numPointsU * numPointsV:
 
-            print(f"Warning: Skipping B-spline surface due to mismatch in control points: "
-                  f"{len(ps)} != {numPointsU * numPointsV}")
+            logger.warning("Skipping B-spline surface due to mismatch in control points: %d != %d", len(ps), numPointsU * numPointsV)
             continue
 
         # Create a B-spline surface using the list of GMSH points
@@ -372,7 +374,7 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: Optional[
                     return val
 
         # If no suitable value is found, return the original target
-        print(f"Warning: No bounds found within ±{tolerance} of {target_value}")
+        logger.warning("No bounds found within ±%s of %s", tolerance, target_value)
 
         return target_value
 
@@ -400,7 +402,7 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: Optional[
 
     # Confirmation message after successful import
 
-    print('B-spline surfaces have been imported!')
+    logger.info("B-spline surfaces have been imported")
     # Return the list of surface IDs and the final bounding box
     return surfaces, bounds
 
@@ -516,7 +518,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             # skip invalid wells
             if len(points) < 2:
 
-                print("Skipping degenerate well")
+                logger.debug("Skipping degenerate well")
                 continue
 
             # create lines
@@ -789,8 +791,8 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
                 except Exception as e:
 
-                    print(
-                        f"Triangle creation failed for triangulation {pid}:",
+                    logger.warning(
+                        "Triangle creation failed for triangulation %s:", pid,
                         e
                     )
 
@@ -829,7 +831,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
             if axis_len < 1e-10:
 
-                print(f"Skipping degenerate shaft {i}")
+                logger.debug("Skipping degenerate shaft %d", i)
                 continue
 
             shaft["center"] = (x, y, z)
@@ -921,10 +923,10 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                 # Now zip with ovv
                 zip_info = list(zip(zip_inputs, ovv))
 
-                print("before/after fragment relations:", ref_index)
+                logger.debug("before/after fragment relations: %s", ref_index)
 
                 for e in zip_info:
-                    print("parent " + str(e[0]) + " -> child " + str(e[1]))
+                    logger.debug("parent %s -> child %s", e[0], e[1])
 
                 zipped_list = list(zip_info)  # Convert zip object to a list
 
@@ -937,8 +939,8 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     # Filter to get only 3D volumes from ov
     fragmented_volumes : List[Tuple[int, int]] = [entity for entity in ov if entity[0] == 3]
 
-    print(f"Number of volumes created: {len(fragmented_volumes)}")
-    print("Volume tags:", [tag for dim, tag in fragmented_volumes])
+    logger.debug("Number of volumes created: %d", len(fragmented_volumes))
+    logger.debug("Volume tags: %s", [tag for dim, tag in fragmented_volumes])
 
     gmsh.option.setNumber("Mesh.AngleToleranceFacetOverlap", 1e-4)
 
@@ -1050,10 +1052,10 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
             # Now zip with ovv
             zip_info = list(zip(zip_inputs, ovv))
-            print("before/after fragment relations:", ref_index)
+            logger.debug("before/after fragment relations: %s", ref_index)
 
             for e in zip_info:
-                print("parent " + str(e[0]) + " -> child " + str(e[1]))
+                logger.debug("parent %s -> child %s", e[0], e[1])
 
             zipped_list = list(zip_info)  # Convert zip object to a list
 
@@ -1218,26 +1220,21 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     #######################
     # TRIANGULATED SURFACES
     #######################
-    print("\n==============================")
-    print("BUILD TRIANGULATED GROUPS")
-    print("==============================")
+    logger.debug("BUILD TRIANGULATED GROUPS")
 
     tri_group_tags = []
     tri_surface_tags = []
 
     if triangulations is not None and len(triangulations) > 0:
         fragment_parents = [(3, v)] + tool_entities
-        print("\nfragment_parents:")
-        print(fragment_parents)
+        logger.debug("fragment_parents: %s", fragment_parents)
 
         # Build:
         # original surface -> fragmented child surfaces
         tri_id_to_children = {}
 
-        print("\nFragment mapping from ovv:\n")
-
         for parent, children in zip(fragment_parents, ovv):
-            print(f"parent {parent} -> child {children}")
+            logger.debug("parent %s -> child %s", parent, children)
             dim, parent_id = parent
             # only 2D surfaces
 
@@ -1273,35 +1270,31 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             tri_id_to_children[parent_id] = child_surfaces
 
         # DEBUG
-        print("\ntri_id_to_children:")
-        print(tri_id_to_children)
-        print("\ntri_surface_to_child_fragments:")
-        print(tri_surface_to_child_fragments)
+        logger.debug("tri_id_to_children: %s", tri_id_to_children)
+        logger.debug("tri_surface_to_child_fragments: %s", tri_surface_to_child_fragments)
 
         # regroup by triangulation pid
         for pid, original_surfaces in tri_surface_to_child_fragments.items():
 
-            print("\n--------------------------------")
-            print(f"PID = {pid}")
-            print(f"original_surfaces = {original_surfaces}")
+            logger.debug("PID = %s, original_surfaces = %s", pid, original_surfaces)
 
             merged_children = []
             # gather fragmented children
 
             for surf in original_surfaces:
 
-                print(f"  surface {surf}")
+                logger.debug("  surface %s", surf)
 
                 if surf in tri_id_to_children:
 
                     children = tri_id_to_children[surf]
-                    print(f"    children = {children}")
+                    logger.debug("    children = %s", children)
 
                     merged_children.extend(children)
 
                 else:
 
-                    print("    no children -> keep original")
+                    logger.debug("    no children -> keep original")
 
                     try:
 
@@ -1314,7 +1307,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             # remove duplicates
             merged_children = sorted(set(merged_children))
 
-            print(f"merged_children = {merged_children}")
+            logger.debug("merged_children = %s", merged_children)
             # keep only valid existing surfaces
             existing_surfaces = []
 
@@ -1325,9 +1318,9 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                     existing_surfaces.append(s)
 
                 except:
-                    print(f"surface {s} does not exist")
+                    logger.debug("surface %s does not exist", s)
 
-            print(f"existing_surfaces = {existing_surfaces}")
+            logger.debug("existing_surfaces = %s", existing_surfaces)
 
             # create physical group
             if len(existing_surfaces) > 0:
@@ -1375,7 +1368,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         # Keep ONLY external surfaces
         boundary_surfaces = [s for s, count in surface_count.items() if count == 1]
 
-        print(f"Detected {len(boundary_surfaces)} external surfaces")
+        logger.debug("Detected %d external surfaces", len(boundary_surfaces))
         # lassify them by location
 
         boundary_groups = {
