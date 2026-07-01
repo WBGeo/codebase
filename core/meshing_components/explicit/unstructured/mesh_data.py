@@ -2271,8 +2271,7 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        input_data (InputData): Input data object containing surface points, orientations, mapping, faults, and extent.
-        geomodel_result (object): Output object from the geomodel interpolation, e.g. from `universal_cokriging_interpolator`.
+        geomodel_result (StructuralModelResults): Result of a structural geological model, containing a StructuralFrame with the interpolated lithology block, grid, and surface meshes.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
         shafts (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z), direction vectors (dx, dy, dz)

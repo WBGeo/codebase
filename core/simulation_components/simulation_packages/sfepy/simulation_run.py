@@ -209,7 +209,8 @@ def run_sfepy(
 
 
 # =========================================================
-# SAVE OUTPUT COMPONENT
+# SAVE OUTPUT COMPONENT — placeholder, not yet implemented
 # =========================================================
 def save_outputs(sim_output: SfepyOutputType) -> SfepyOutputType:
+    # TODO: implement output saving logic
     return sim_output
