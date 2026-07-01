@@ -1,7 +1,10 @@
+import logging
 import pandas as pd
 import pyvista as pv
 import numpy as np
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 from scipy.spatial import cKDTree
 from sklearn.cluster import HDBSCAN
 from numpy.typing import NDArray
@@ -239,7 +242,7 @@ def plot_cleaned_surfaces(cleaned_surfaces: List[Tuple[int, NDArray[np.floating]
     if output_file:
 
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
-        print(f"Plot saved to {output_file}")
+        logger.info("Plot saved to %s", output_file)
 
     else:
 
@@ -353,7 +356,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
         normal_surfaces = [(i, entry["vectors"]) for i, entry in enumerate(all_entries)]
 
         result = [False] * len(geo_grads) + [True] * len(fault_grads)
-        print(result)
+        logger.debug("Fault mask: %s", result)
 
     # If there are no faults: collect extended surface vertices from structural elements.
     # Extended meshes come from interpolation on a padded grid and naturally cross
@@ -406,7 +409,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
     if ref_surfaces:
 
         for ref_file, ref_points in ref_surfaces:
-            print(f"Using {ref_file} as reference")
+            logger.debug("Using %s as reference", ref_file)
             # Append reference surface and their normal vectors to cleaned_surfaces and cleaned_normals
 
             ref_surface_indices[ref_file] = len(cleaned_surfaces)
@@ -415,13 +418,13 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
             normal_subset: NDArray[np.float64] = normal_surfaces[ref_file]  # Extract the corresponding normals
 
             cleaned_normals.append((ref_file, normal_subset))
-            print(f"Reference surface {ref_file} added at index {ref_surface_indices[ref_file]}")
+            logger.debug("Reference surface %s added at index %d", ref_file, ref_surface_indices[ref_file])
 
         # Process other surfaces to remove overlapping points
         for idx, (file, points) in enumerate(surfaces):
 
             if file not in ref_surface_indices:  # Skip if it's already a reference surface
-                print(f"Processing {file} against reference surfaces")
+                logger.debug("Processing %s against reference surfaces", file)
 
                 # check if  plane has no offset with respect to fault ignore splitting the plane
                 # Extract z-values from the list of points
@@ -434,7 +437,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                 # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
                 # then it dose not remove the points near the fault and dose not seprate the surface into two parts
                 if abs(min_z -max_z) <= z_threshold:
-                    print(f"All points have almost the same z for {file}, skipping removing.")
+                    logger.debug("All points have almost the same z for %s, skipping removing.", file)
 
                     cleaned_surfaces.append((file, points))
 
@@ -450,7 +453,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
                     # Check against each reference surface
                     for ref_file, ref_points in ref_surfaces:
-                        print(f"Using {ref_file} as reference")
+                        logger.debug("Using %s as reference", ref_file)
 
                         # Get normal vectors of ref_points
                         normal_vec_ref = normal_surfaces[ref_file]
@@ -519,7 +522,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                             # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
                             # then it dose not remove the points near the fault and dose not seprate the surface into two parts
                             if abs(min_z -max_z) <= z_threshold:
-                                print(f"All points have almost the same z for {file}, skipping removing.")
+                                logger.debug("All points have almost the same z for %s, skipping removing.", file)
                                 continue
 
                             else:
@@ -540,7 +543,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     filtered_points: NDArray[np.float64] = points[mask]
 
                     if len(filtered_points) == 0:
-                        print(f"All points removed for {file}, skipping clustering.")
+                        logger.debug("All points removed for %s, skipping clustering.", file)
                         continue
 
                     # Filter corresponding normals using the same mask
@@ -566,7 +569,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
                         # Also store the corresponding normals in cleaned_normals
                             cleaned_normals.append((cluster_file, cluster_normals))
-        print(f"Reference surfaces are located at indices: {ref_surface_indices}", len(cleaned_surfaces))
+        logger.debug("Reference surfaces at indices: %s, total surfaces: %d", ref_surface_indices, len(cleaned_surfaces))
         # Optional
         # plot_cleaned_surfaces(cleaned_surfaces)
         # Find intersection points, add them to surfaces, and extrude them
