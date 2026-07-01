@@ -1,8 +1,11 @@
 
+import logging
 import warnings
 from typing import List
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 import pyvista as pv
 from core.object_components import MeshResults, StructuralModelResults
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector, InspectorHelper
@@ -89,7 +92,7 @@ def plot_mesh_3d(
         # Skip PolyData triangle surfaces
         # -------------------------------------------------
         if isinstance(block, pv.PolyData):
-            print("Skipping PolyData block")
+            logger.debug("Skipping PolyData block")
             skip_block = True
 
         # -------------------------------------------------

@@ -1,11 +1,13 @@
+import logging
 import meshio
-from typing import  List, Optional, Dict, Tuple, Set
+from typing import List, Optional, Dict, Tuple, Set, TYPE_CHECKING
 from numpy.typing import NDArray
 import numpy as np
 from collections import defaultdict
-from typing import TYPE_CHECKING
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 from core.object_components import MeshResults
+
+logger = logging.getLogger(__name__)
 
 class STLInputs:
     """
@@ -180,7 +182,7 @@ class STLInputs:
                 face_array :  NDArray[np.integer]= np.array(faces)
 
                 meshio.Mesh(points=self.nodes, cells=[("triangle", face_array)]).write(filename)
-                print(f"Interface faces between group {phys1} and {phys2} written to {filename}")
+                logger.info("Interface faces between group %s and %s written to %s", phys1, phys2, filename)
 
 
 def export_mesh_results_to_stl(mesh: MeshResults) -> BasicallyABufferedFile:

@@ -1,3 +1,4 @@
+import logging
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement,
     LinearWellRefinement,
@@ -6,6 +7,8 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     FunctionSourceRefinement,
 )
 import gmsh
+
+logger = logging.getLogger(__name__)
 import numpy as np
 from scipy.spatial import cKDTree
 
@@ -293,7 +296,7 @@ def build_fault_mesh_callback_from_fragments(fault_fragments, hmin=3.0, hmax=30.
             )
 
         except Exception as e:
-            print(f"Skipping fault surface {tag}: {e}")
+            logger.warning("Skipping fault surface %s: %s", tag, e)
             continue
 
     fault_points = np.asarray(fault_points, dtype=float)

@@ -1,7 +1,8 @@
-# Import your SimulationResults class
+import logging
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector
+from core.object_components import SimulationResults
 
-from core.object_components import SimulationResults  # adjust this path
+logger = logging.getLogger(__name__)
 
 import pyvista as pv
 import matplotlib.pyplot as plt
@@ -134,11 +135,11 @@ def print_variable_at_point(sim: SimulationResults, var_name, time, point):
     sampled = pt.sample(grid)
 
     if sampled.n_points == 0:
-        print(f"⚠️ Point {point} is outside mesh bounds {grid.bounds}")
+        logger.warning("Point %s is outside mesh bounds %s", point, grid.bounds)
         return None
 
     value = sampled[var_name][0]
-    print(f"{var_name} at point {point} at time {time}: {value}")
+    logger.info("%s at point %s at time %s: %s", var_name, point, time, value)
     return value
 
 # -------------------------------
