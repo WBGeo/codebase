@@ -1,4 +1,5 @@
 import logging
+from typing import Callable, List, Optional
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement,
     LinearWellRefinement,
@@ -7,10 +8,12 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     FunctionSourceRefinement,
 )
 import gmsh
-
-logger = logging.getLogger(__name__)
 import numpy as np
 from scipy.spatial import cKDTree
+
+logger = logging.getLogger(__name__)
+
+MeshSizeCallback = Callable[[int, int, float, float, float, float], float]
 
 class FieldIDGenerator:
     """
@@ -23,12 +26,12 @@ class FieldIDGenerator:
     def __init__(self):
         self._id = 0
 
-    def next(self):
+    def next(self) -> int:
         self._id += 1
         return self._id
 
 
-def build_well_refinement(zip_info, well_lines, refinement, field_gen):
+def build_well_refinement(zip_info, well_lines, refinement, field_gen) -> Optional[int]:
     """
     Creates mesh refinement fields around well trajectories.
     Supports both:
@@ -111,7 +114,7 @@ def build_well_refinement(zip_info, well_lines, refinement, field_gen):
         raise TypeError(type(w))
 
 
-def build_source_refinement(source_points, refinement, field_gen):
+def build_source_refinement(source_points, refinement, field_gen) -> Optional[int]:
     """
     Creates mesh refinement fields around source points.
 
@@ -162,7 +165,7 @@ def build_source_refinement(source_points, refinement, field_gen):
         raise TypeError(type(s))
 
 
-def build_triangulation_mesh_callback(triangulations, hmin=3.0, hmax=30.0, d1=50.0, d2=100.0,):
+def build_triangulation_mesh_callback(triangulations, hmin=3.0, hmax=30.0, d1=50.0, d2=100.0) -> MeshSizeCallback:
     """
     Creates a mesh size callback based on triangulation points.
     A KD-tree is used to compute the distance from any mesh node
@@ -203,7 +206,7 @@ def build_triangulation_mesh_callback(triangulations, hmin=3.0, hmax=30.0, d1=50
     return mesh_size_callback
 
 
-def build_ellipse_mesh_callback(ellipses, hmin=3.0, hmax=30.0, d1=30.0, d2=80.0,):
+def build_ellipse_mesh_callback(ellipses, hmin=3.0, hmax=30.0, d1=30.0, d2=80.0) -> Optional[MeshSizeCallback]:
     """
     Creates a mesh size callback around elliptical regions.
     Mesh size is controlled by distance from ellipse centers,
@@ -243,7 +246,7 @@ def build_ellipse_mesh_callback(ellipses, hmin=3.0, hmax=30.0, d1=30.0, d2=80.0,
     return mesh_size_callback
 
 
-def build_fault_mesh_callback_from_fragments(fault_fragments, hmin=3.0, hmax=30.0, d1=20.0, d2=60.0,):
+def build_fault_mesh_callback_from_fragments(fault_fragments, hmin=3.0, hmax=30.0, d1=20.0, d2=60.0) -> Optional[MeshSizeCallback]:
     """
     Creates a fault-based mesh refinement callback using OCC geometry.
     Surface points are sampled from fault fragments and interpolated
@@ -321,7 +324,7 @@ def build_fault_mesh_callback_from_fragments(fault_fragments, hmin=3.0, hmax=30.
 
 
 def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfaces=None, fault_fragments=None,
-    tri_cfg=None, ell_cfg=None, fault_cfg=None,):
+    tri_cfg=None, ell_cfg=None, fault_cfg=None) -> Optional[MeshSizeCallback]:
     """
     Combines triangulation, ellipse, and fault-based mesh refinements.
     Multiple refinement callbacks can be activated simultaneously.
@@ -397,7 +400,7 @@ def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfa
     return mesh_size_callback
 
 
-def build_refinement_fields(zip_info, well_lines, source_points, triangulations=None, refinement=None,):
+def build_refinement_fields(zip_info, well_lines, source_points, triangulations=None, refinement=None) -> List[int]:
     """
     Builds all active Gmsh background refinement fields.
     Generates refinement fields for:
@@ -432,7 +435,7 @@ def build_refinement_fields(zip_info, well_lines, source_points, triangulations=
     return active_fields
 
 
-def apply_background_fields(active_fields):
+def apply_background_fields(active_fields: List[int]) -> None:
     """
     Applies refinement fields as the Gmsh background mesh.
 
