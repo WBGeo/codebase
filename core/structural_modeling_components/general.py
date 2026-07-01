@@ -21,6 +21,7 @@ from __future__ import annotations
 import copy
 import itertools
 import colorsys
+import logging
 from typing import (
     Dict,
     Optional,
@@ -53,6 +54,8 @@ from core.structural_modeling_components.structural_objects.structural_objects i
     GeoMeshType,
     FaultMeshType,
 )
+
+logger = logging.getLogger(__name__)
 
 from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (
     interpolate_group_ordinary_kriging,
@@ -772,40 +775,33 @@ def compute_structural_model(
         # typing-only: pretend this is a FaultFrame
         ff = cast(FaultFrame, _TmpFF())
 
-        if verbose:
-            print("ℹ️ No fault_frame provided in StructuralFrame — running in single-domain mode.")
+        logger.info("No fault_frame provided in StructuralFrame — running in single-domain mode.")
 
     # 0) pre-flight validation — raise before touching any expensive computation
-    if verbose:
-        print("⓪ Validating interpolation inputs ...")
+    logger.info("Validating interpolation inputs ...")
     validate_interpolation_inputs(frame=frame, fault_frame=frame.fault_frame)
 
     # 1) per-domain interpolation, store results into per-domain slots
-    if verbose:
-        print("① Interpolation per domain ...")
+    logger.info("Interpolation per domain ...")
     run_interpolation_with_fault_domains(
         frame=frame,
         fault_frame=ff,
     )
 
     # 2) per-domain age masks
-    if verbose:
-        print("② Computing age masks per domain ...")
+    logger.info("Computing age masks per domain ...")
     set_scalar_masks_per_domain(frame)
 
     # 3) final lithology block combining domains
-    if verbose:
-        print("③ Building final lithology block ...")
+    logger.info("Building final lithology block ...")
     frame.lith_block = compute_lithology_block_with_domains(frame)
 
     # 4) per-domain meshes (optional)
     if extract_meshes:
-        if verbose:
-            print("④ Extracting per-domain masked meshes ...")
+        logger.info("Extracting per-domain masked meshes ...")
         extract_all_meshes_per_domain(frame=frame)
 
-    if verbose:
-        print("✅ Pipeline complete.")
+    logger.info("Pipeline complete.")
 
     # Return a StructuralModelResults object
     result = StructuralModelResults(
