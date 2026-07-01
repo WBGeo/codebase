@@ -31,8 +31,8 @@ from core.simulation_components.visualisation.results_visualisation import (
     plot_variable_at_a_time, plot_cross_section, plot_variable_along_line,
     print_variable_at_point, plot_variable_time_series)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
-    Refinement, LinearWellRefinement, FunctionWellRefinement,EllipseRefinement,
-   LinearSourceRefinement,FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
+    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
+    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
 #%%
 
 cwd = os.getcwd()
@@ -161,30 +161,19 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 #           cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
 # triangulations= load_triangulations_planes_from_csv(csv_files)
 
-# Refinement of mesh
-# refinement = Refinement()
-
-# Linear refinement near wells
-# refinement.wells=LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-# Function-based refinement near sources
-# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
-
-# Refinment around triangulated surfaces
-# refinement.triangulation = TriangulationRefinement(
-#    hmin=8.0,
-#    hmax=90.0,
-#    d1=50.0,
-#    d2=100.0,
-#    enabled=True
-# )
-
-# NOTE: Wells and sources support both linear and function-based refinement:
-#   - LinearWellRefinement / LinearSourceRefinement
-#   - FunctionWellRefinement / FunctionSourceRefinement
+# --- Optional: adaptive mesh refinement around objects ---
+# Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
-# Ellipse and fault refinement follow the same configuration pattern as
-# TriangulationRefinement, using hmin/hmax for mesh sizes and d1/d2 for
-# distance-based refinement control.
+# refinement = Refinement()
+# refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+# refinement.triangulation = TriangulationRefinement(hmin=8.0, hmax=90.0, d1=50.0, d2=100.0, enabled=True)
+#
+# Available types per object:
+#   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
+#                                       LinearSourceRefinement, FunctionSourceRefinement
+#   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
+#                                       (hmin/hmax = element sizes, d1/d2 = transition distances)
 
 
 # # Explicit unstructured mesh with objects
