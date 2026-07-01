@@ -1,6 +1,9 @@
+import logging
 import typing
 import re
 import gmsh
+
+logger = logging.getLogger(__name__)
 import meshio
 import numpy as np
 import pandas as pd
@@ -536,7 +539,7 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
         if raise_error:
             raise ValueError(msg)
         else:
-            print("Warning:", msg)
+            logger.warning("%s", msg)
             return points[mask]
 
     return points
@@ -597,7 +600,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
     gmsh.model.addPhysicalGroup(3, [tag], i + 1)
     gmsh.model.setPhysicalName(3, i + 1, f"Volume {i + 1}")
 
-    print((3, i + 1, f"Volume {i + 1}"), "physical")
+    logger.debug("Volume %d physical tag added", i + 1)
 
   gmsh.model.occ.synchronize()
 
@@ -885,7 +888,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
   # Inspect mesh blocks
   ####################
   for block in mesh_model.cells:
-    print(f"Cell type: {block.type}, Number of cells: {len(block.data)}")
+    logger.debug("Cell type: %s, Number of cells: %d", block.type, len(block.data))
 
   cells: List[meshio.CellBlock] = mesh_model.cells
   nodes: NDArray[np.float64] = mesh_model.points
@@ -893,13 +896,13 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
   tetra_blocks_all: List[meshio.CellBlock] = [
     block for block in cells if block.type == "tetra"]
 
-  print(f"Number of tetrahedral blocks: {len(tetra_blocks_all)}")
+  logger.debug("Number of tetrahedral blocks: %d", len(tetra_blocks_all))
 
 
 # #######################################
 # SHAFTS (separate tetra blocks like wells)
 ##########################################
-  print("Extracting shaft and regular tetra blocks")
+  logger.debug("Extracting shaft and regular tetra blocks")
 
   shaft_blocks_dict: Dict[int, List[meshio.CellBlock]] = {}
   regular_blocks: List[meshio.CellBlock] = []
@@ -960,7 +963,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
         meshio.CellBlock("tetra", merged_data)
     )
 
-    print(f"  Shaft {shaft_tag}: merged {len(merged_data)} tetra elements")
+    logger.debug("Shaft %s: merged %d tetra elements", shaft_tag, len(merged_data))
 
 
   ##############
@@ -968,11 +971,11 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
   #############
   for shaft_tag, blocks in shaft_blocks_dict.items():
     if blocks:
-        print(f"  Shaft {shaft_tag}: {len(blocks)} tetra blocks")
+        logger.debug("Shaft %s: %d tetra blocks", shaft_tag, len(blocks))
     else:
-        print(f"  Shaft {shaft_tag}: not found")
+        logger.debug("Shaft %s: not found", shaft_tag)
 
-  print(f"  Regular volume blocks: {len(regular_blocks)}")
+  logger.debug("Regular volume blocks: %d", len(regular_blocks))
 
 
   #####################
@@ -1103,7 +1106,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
             meshio.CellBlock("tetra", merged_data)
         )
 
-        print(f"  Shaft {shaft_tag}: merged {len(merged_data)} tetra elements")
+        logger.debug("Shaft %s: merged %d tetra elements", shaft_tag, len(merged_data))
 
 
   elif mapping_litho == LithoMappingMode.MANUAL:
@@ -1160,7 +1163,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
 
 
     # FINAL: mapping is valid
-    print("✔ Merge file validation passed")
+    logger.info("Merge file validation passed")
 
 
     # Merge blocks according to grouping
@@ -1237,7 +1240,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
             meshio.CellBlock("tetra", merged_data)
         )
 
-        print(f"  Shaft {shaft_tag}: merged {len(merged_data)} tetra elements")
+        logger.debug("Shaft %s: merged %d tetra elements", shaft_tag, len(merged_data))
 
 
   elif mapping_litho == LithoMappingMode.NONE:
@@ -1265,7 +1268,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
             meshio.CellBlock("tetra", merged_data)
         )
 
-        print(f"  Shaft {shaft_tag}: merged {len(merged_data)} tetra elements")
+        logger.debug("Shaft %s: merged %d tetra elements", shaft_tag, len(merged_data))
 
 
   #######################
@@ -1283,7 +1286,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
     if block.type not in {"line", "triangle", "vertex"}
   ]
 
-  print("Extracting wells, sources, fault surfaces, and triangulated surfaces (single loop)")
+  logger.debug("Extracting wells, sources, fault surfaces, and triangulated surfaces")
 
   found_any = False
 
@@ -1306,7 +1309,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
 
   fault_tri_blocks = {tag: [] for tag in fault_tags}
 
-  print(f"Detected fault tags: {fault_tags}")
+  logger.debug("Detected fault tags: %s", fault_tags)
 
   # Triangulated surfaces
   tri_surface_blocks = defaultdict(list)
@@ -1373,7 +1376,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
   #################################################
   for tag, blocks in fault_tri_blocks.items():
     if not blocks:
-        print(f"  Fault tag {tag} not found")
+        logger.debug("Fault tag %s not found", tag)
         continue
 
     # collect triangles that are inside the model extent
@@ -1402,10 +1405,10 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
     if kept_triangles:
         merged_data = np.vstack(kept_triangles)
         new_cells.append(meshio.CellBlock("triangle", merged_data))
-        print(f"  Fault tag {tag}: merged {len(merged_data)} triangles from {len(blocks)} blocks after filtering")
+        logger.debug("Fault tag %s: merged %d triangles from %d blocks", tag, len(merged_data), len(blocks))
         found_any = True
     else:
-        print(f"  Fault tag {tag}: no triangles inside bounding box after filtering")
+        logger.debug("Fault tag %s: no triangles inside bounding box after filtering", tag)
 
   ###########################
   # ADD TRIANGULATED SURFACES
@@ -1423,7 +1426,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
             meshio.CellBlock("triangle", merged_data)
         )
 
-        print(f"Triangulated surface {phys_tag}: {len(merged_data)} triangles")
+        logger.debug("Triangulated surface %s: %d triangles", phys_tag, len(merged_data))
 
         found_any = True
 
@@ -1434,11 +1437,11 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
 
     if blocks:
         new_cells.extend(blocks)
-        print(f"  Well tag {tag} added ({len(blocks)} line blocks)")
+        logger.debug("Well tag %s added (%d line blocks)", tag, len(blocks))
         found_any = True
 
     else:
-        print(f"  Well tag {tag} not found")
+        logger.debug("Well tag %s not found", tag)
 
 
   #############
@@ -1447,7 +1450,7 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
   if vertex_blocks:
 
     new_cells.extend(vertex_blocks)
-    print(f"  Added {len(vertex_blocks)} source point blocks")
+    logger.debug("Added %d source point blocks", len(vertex_blocks))
     found_any = True
 
   ########################
@@ -1491,14 +1494,14 @@ def mesh_generator(ov: List[Tuple[int, int]],  extent: List[float], well_tags: O
 
     new_cells.append(block)
 
-    print(f"  {name} merged ({len(block.data)} triangles)")
+    logger.debug("%s merged (%d triangles)", name, len(block.data))
 
     found_any = True
 
 
   # FINAL CHECK
   if not found_any:
-    print("  No surfaces, wells, or sources found")
+    logger.debug("No surfaces, wells, or sources found")
 
   if new_cells:
     return nodes, new_cells, cell_data
@@ -2045,7 +2048,7 @@ def load_planes_from_csv(plane_file: PlaneCSVDataType) -> PlaneData:
 
             # CHECK NUMBER OF COLUMNS FIRST
             if len(parts) != 4:
-                print(len(parts), parts, "partsss")
+                logger.debug("Unexpected parts count %d: %s", len(parts), parts)
                 raise ValueError(
                     f"Invalid plane line (expected 4 columns: id,x,y,z): {line}"
                 )
