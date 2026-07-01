@@ -1,16 +1,11 @@
+import io
 import numpy as np
 import pyvista as pv
 import meshio
-from typing import Union, List, Optional, Dict
+from typing import List, Optional, Dict
 from numpy.typing import NDArray
-from core.meshing_components.geometry.Elements import Elements
-from core.meshing_components.geometry.Nodes import Nodes
-from typing import Annotated
 from core.object_components import MeshResults
-import io
-
-
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 class VTMInputs:
     """
     Class for constructing and exporting VTK MultiBlock (.vtm) meshes.

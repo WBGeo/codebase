@@ -1,15 +1,8 @@
 import meshio
-import pyvista as pv
-from typing import Union, List, Optional, Dict, Any
 import numpy as np
-from numpy.typing import NDArray
-
-from core.meshing_components.geometry.Elements import Elements
-from core.meshing_components.geometry.Nodes import Nodes
-import numpy as np
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 import pyvista as pv
-from typing import Annotated
+from typing import List
+from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 from core.object_components import MeshResults
 
 
