@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 ####################
 # SAFE TIME EXTRACTOR
 ####################
-def extract_time(filename: str) -> Optional[float]:
+def extract_time(filename: str) -> Optional[Union[float, int]]:
 
     match = re.search(r"([\d\.]+)\.vtk$", filename)
 
@@ -86,12 +86,12 @@ def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResult
         if hasattr(mesh, "cells") and mesh.cells is not None:
             try:
                 cells = mesh.cells.copy()
-            except:
+            except Exception:
                 cells = np.array(mesh.cells)
         elif hasattr(mesh, "faces") and mesh.faces is not None:
             try:
                 cells = mesh.faces.copy()
-            except:
+            except Exception:
                 cells = np.array(mesh.faces)
         else:
             cells = None
