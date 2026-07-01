@@ -44,7 +44,7 @@ def plot_surfaces_individually(interpolated_surfaces: List[NDArray[np.float64]])
         plt.show()
 
 
-def plot_interpolated_surfaces(interpolated_surfaces, cmap="plasma", alpha=0.9):
+def plot_interpolated_surfaces(interpolated_surfaces: List[NDArray[np.float64]], cmap: str = "plasma", alpha: float = 0.9) -> None:
     """
     Plot a list of interpolated 3D surfaces.
     Each surface is assumed to be (N, 3): x, y, z.
