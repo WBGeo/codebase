@@ -8,7 +8,7 @@ from core.object_components import (
     StructuralModelResults
 )
 from core.structural_modeling_components import general, general_faults
-from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
+from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
 
 class TestDataPreprationModel2(unittest.TestCase):
 
@@ -79,7 +79,7 @@ class TestDataPreprationModel2(unittest.TestCase):
 
         geomodel = self.build_model()
 
-        cleaned_surfaces, ref_indices, grid_litho = data_prepration(
+        cleaned_surfaces, ref_indices, grid_litho = data_preparation(
             geomodel,
             DISTANCE_THRESHOLD=50,
             PROJECTION_THRESHOLD=60,
@@ -110,7 +110,7 @@ class TestDataPreprationModel2(unittest.TestCase):
 
         geomodel = self.build_model()
 
-        cleaned_surfaces, ref_indices, _ = data_prepration(
+        cleaned_surfaces, ref_indices, _ = data_preparation(
             geomodel,
             DISTANCE_THRESHOLD=50,
             PROJECTION_THRESHOLD=60,

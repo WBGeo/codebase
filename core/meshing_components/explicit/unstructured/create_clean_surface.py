@@ -302,7 +302,7 @@ def plot_surfaces_with_extrusions(cleaned_surfaces: List[Tuple[int, NDArray[np.f
     plotter.show()
 
 
-def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD: float = 50.0, PROJECTION_THRESHOLD: float = 60.0,
+def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD: float = 50.0, PROJECTION_THRESHOLD: float = 60.0,
     EXTRUSION_FACTOR: float = 100.0, z_threshold: float = 10.0) -> Tuple[List[Tuple[str | int, NDArray[np.float64]]],
     Dict[str | int, int], pd.DataFrame]:
     """

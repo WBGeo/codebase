@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
-from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
+from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
                                                                LinearSourceRefinement,FunctionSourceRefinement,)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
@@ -2401,7 +2401,7 @@ def create_unstructured_mesh_data(
         ref_surface_indices: Dict[int, int]
         grid_litho: pd.DataFrame
 
-        cleaned_surfaces, ref_surface_indices, grid_litho = data_prepration(geomodel_result, DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
+        cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(geomodel_result, DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
             PROJECTION_THRESHOLD=PROJECTION_THRESHOLD, EXTRUSION_FACTOR=EXTRUSION_FACTOR, z_threshold=z_threshold,
         )
 

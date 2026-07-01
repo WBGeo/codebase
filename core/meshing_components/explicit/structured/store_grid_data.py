@@ -76,7 +76,7 @@ def create_intermediate_layers(bottom_top_surfaces: NDArray[np.floating], output
         np.array: Updated array with intermediate layers between the bottom and top surfaces.
     """
 
-    # I# Subtract one from each refinement level so that the number of elements matches refinement_data
+    # Subtract one from each refinement level so that the number of elements matches refinement_data
     refinement_data = [v - 1 for v in refinement_data]
 
     # Extract bottom surface x, y, z values
@@ -114,7 +114,7 @@ def create_intermediate_layers(bottom_top_surfaces: NDArray[np.floating], output
     # Handle the bottom surface to the first layer
     z_output_first_layer: NDArray[np.floating] = output_array[0, 2 * n_gx * n_gy:]
 
-    # Size of devisions between bottom and the first intermediate layer
+    # Size of divisions between bottom and the first intermediate layer
     z_step: NDArray[np.floating] = -(z_bottom - z_output_first_layer) / (refinement_data[0] + 1)
 
     for j in range(refinement_data[0]):
@@ -142,7 +142,7 @@ def create_intermediate_layers(bottom_top_surfaces: NDArray[np.floating], output
         current_layer: NDArray[np.integer] = np.concatenate([x_bottom, y_bottom, z_output_current_layer, Id_column])
 
         updated_output_array[current_layer_index, :] = current_layer
-        # Calculate the devisions
+        # Calculate the divisions
 
         z_output_next_layer: NDArray[np.integer] = output_array[i + 1, 2 * n_gx * n_gy:]
         z_step = -(z_output_current_layer - z_output_next_layer) / (refinement_data[i+1] + 1)

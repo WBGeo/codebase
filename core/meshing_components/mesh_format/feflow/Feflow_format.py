@@ -445,7 +445,7 @@ class FeflowInputs:
                     f.write("\n")
 
             # Create all unique triangles from tets
-            FeFlowObj =C_FeFlow()
+            FeFlowObj = C_FeFlow()
             FeFlowObj.generateAllTriangles(tetra)
 
             if triangle_markers is not None and len(triangle_markers) > 0:
