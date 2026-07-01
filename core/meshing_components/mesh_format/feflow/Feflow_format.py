@@ -1,21 +1,16 @@
+import logging
 import meshio
-from typing import Union, List
-from numpy.typing import NDArray
-
+from typing import List
 import numpy as np
-from core.meshing_components.geometry.Elements import Elements
-from core.meshing_components.geometry.Nodes import Nodes
 import pyvista as pv
 from dataclasses import dataclass
-import numpy as np
-from dataclasses import dataclass
-from typing import List
-import importlib
 import tempfile
 import io
 import os
 from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
 from core.object_components import MeshResults
+
+logger = logging.getLogger(__name__)
 @dataclass
 class C_FeFlowTri:
     """
@@ -26,6 +21,7 @@ class C_FeFlowTri:
     deduplication. An internal index is used to track the triangle's
     position in generated lists.
     """
+
     nodes: List[int]
     index: int = 0
 
@@ -37,6 +33,7 @@ class C_FeFlowTri:
         n1, n2, n3: Node indices defining the triangle.
         index: Internal triangle index used for ordering and lookup.
         """
+
         self.nodes = sorted([int(n1), int(n2), int(n3)])
         self.index = index
 
@@ -53,6 +50,7 @@ class C_FeFlowEdg:
     An internal index is used to track the edge's position after
     deduplication.
     """
+
     nodes: List[int]
     index: int = 0
 
@@ -64,6 +62,7 @@ class C_FeFlowEdg:
         n1, n2: Node indices defining the edge.
         index: Internal edge index.
         """
+
         self.nodes = sorted([int(n1), int(n2)])
         self.index = index
 
@@ -82,6 +81,7 @@ class C_FeFlow:
     - mappings between user-defined surface/edge markers and
       internal triangle/edge indices.
     """
+
     def __init__(self):
 
         self.allTriangles: List[C_FeFlowTri] = []
@@ -100,18 +100,21 @@ class C_FeFlow:
         Args:
         tetrahedronlist: Array of tetrahedral elements with shape (N, 4).
         """
+
         self.allTriangles.clear()
         n_tet = len(tetrahedronlist)
 
         # Step 1: Create all tetra faces (match C++ exactly)
         for t in range(n_tet):
             a, b, c, d = map(int, tetrahedronlist[t])
+
             faces = [
                 (a, b, c),
                 (a, b, d),
                 (b, c, d),
                 (c, a, d),  # match C++ ordering
             ]
+
             for face in faces:
                 self.allTriangles.append(C_FeFlowTri(*face, len(self.allTriangles)))
 
@@ -146,8 +149,11 @@ class C_FeFlow:
         triangle_markers: Array of markers corresponding to each triangle.
         triangle_list: Array of triangle connectivities.
     """
+
         self.undefinedTriangles.clear()
+
         for t, mark in enumerate(triangle_markers):
+
             if mark == marker:
                 n1, n2, n3 = triangle_list[t]
                 self.undefinedTriangles.append(C_FeFlowTri(n1, n2, n3, 0))
@@ -161,13 +167,18 @@ class C_FeFlow:
         """
         Match marked triangles to the internally generated unique triangles.
         """
+
         self.definedTriangles.clear()
+
         all_tri_nodes = [tri.nodes for tri in self.allTrianglesWithoutDuplicates]
 
         last_pos = 0
+
         for undef in self.undefinedTriangles:
             undef_nodes_sorted = sorted(undef.nodes)
+
             for a in range(last_pos, len(all_tri_nodes)):
+
                 if undef_nodes_sorted == all_tri_nodes[a]:
                     self.definedTriangles.append(self.allTrianglesWithoutDuplicates[a])
                     last_pos = a
@@ -186,6 +197,7 @@ class C_FeFlow:
         Returns:
         list(int): Indices of matching triangles in the global triangle list.
         """
+
         if len(marker_triangles) == 0:
             return []
 
@@ -196,7 +208,9 @@ class C_FeFlow:
             triangle_markers=np.ones(len(marker_triangles), dtype=int),
             triangle_list=marker_triangles
         )
+
         self.generateDefinedTriangles()
+
         return [tri.index for tri in self.definedTriangles]
 
 
@@ -207,10 +221,12 @@ class C_FeFlow:
         Args:
         tetrahedronlist: Array of tetrahedral elements with shape (N, 4).
         """
+
         self.allEdges = []
+
         numberoftetrahedra = len(tetrahedronlist)
 
-        print("Generating edges from tetrahedra...")
+        logger.debug("Generating edges from tetrahedra...")
 
         for t in range(numberoftetrahedra):
             tet = tetrahedronlist[t]
@@ -230,7 +246,7 @@ class C_FeFlow:
                 sorted_edge = sorted(edge)
                 self.allEdges.append(C_FeFlowEdg(sorted_edge[0], sorted_edge[1], len(self.allEdges)))
 
-        print("Total edges generated (with duplicates):", len(self.allEdges))
+        logger.debug("Total edges generated (with duplicates): %d", len(self.allEdges))
 
         # Sort edges by node values and then original index
         self.allEdges.sort(key=lambda edg: (edg.nodes[0], edg.nodes[1], edg.index))
@@ -240,11 +256,12 @@ class C_FeFlow:
 
         for edg in self.allEdges:
             node_tuple = tuple(edg.nodes)
+
             if node_tuple not in seen:
                 self.allEdgesWithoutDuplicates.append(edg)
                 seen.add(node_tuple)
 
-        print("Total edges after deduplication:", len(self.allEdgesWithoutDuplicates))
+        logger.debug("Total edges after deduplication: %d", len(self.allEdgesWithoutDuplicates))
 
         # Re-index
         for i, edg in enumerate(self.allEdgesWithoutDuplicates):
@@ -253,7 +270,7 @@ class C_FeFlow:
         # Final sort for consistent lookup (optional)
         self.allEdgesWithoutDuplicates.sort(key=lambda edg: (edg.nodes[0], edg.nodes[1]))
 
-        print("Final edges ready:", len(self.allEdgesWithoutDuplicates))
+        logger.debug("Final edges ready: %d", len(self.allEdgesWithoutDuplicates))
 
 
     def generateMarkerEdges(self, marker_edges: np.ndarray):
@@ -266,15 +283,18 @@ class C_FeFlow:
         Returns:
         list(int): Indices of matching edges in the global edge list.
         """
+
         marker_edge_indices = []
         edge_set = {tuple(sorted(edge.nodes)): edge.index for edge in self.allEdgesWithoutDuplicates}
 
         for edge in marker_edges:
             sorted_edge = tuple(sorted(map(int, edge)))
+
             if sorted_edge in edge_set:
                 marker_edge_indices.append(edge_set[sorted_edge])
+
             else:
-                print(f"Warning: Edge {sorted_edge} not found in allEdgesWithoutDuplicates")
+                logger.warning("Edge %s not found in allEdgesWithoutDuplicates", sorted_edge)
 
         return marker_edge_indices
 
@@ -285,11 +305,7 @@ class FeflowInputs:
 
     This class supports only unstructured meshes
     """
-    def __init__(
-        self,
-        nodes,
-        elements: List[meshio.CellBlock],
-    ) -> None:
+    def __init__(self, nodes, elements: List[meshio.CellBlock],) -> None:
 
         # Normalize nodes to NumPy
         self.nodes = np.asarray(nodes, dtype=float)
@@ -299,9 +315,11 @@ class FeflowInputs:
 
         if not isinstance(elements, list):
             raise TypeError("elements_array must be List[meshio.CellBlock]")
+
         self.elements_block: List[meshio.CellBlock] = elements
 
         self.elements = elements
+
 
     def create_mesh(self):
         """
@@ -314,13 +332,17 @@ class FeflowInputs:
 
         # Filter supported feflow types
         cells = []
+
         for block in self.elements_block:
+
             if block.type == "hexahedron":
                 raise ValueError("Only unstructured meshes with tetrahedral elements are supported for FeFlow export.")
+
             elif block.type in {"line", "triangle", "quad", "tetra"}:
                 cells.append((block.type, block.data))
+
             else:
-                print(f"Skipping unsupported FEFLOW cell type: '{block.type}'")
+                logger.warning("Skipping unsupported FEFLOW cell type: '%s'", block.type)
 
 
         mesh = meshio.Mesh(points=self.nodes, cells=cells)
@@ -328,16 +350,9 @@ class FeflowInputs:
         return mesh
 
 
-    def plot_mesh(self):
-        """
-        Plots the 3D mesh using PyVista.
-
-        This method reads the Exodus file and visualizes the nodes and elements of the mesh.
-
-        """
-        # Get node coordinates and elements from the mesh
-        mesh = pv.read(self.output_filename)
-        # Plot the mesh
+    def plot_mesh(self, filename: str) -> None:
+        """Visualise a previously written FEFLOW mesh file using PyVista."""
+        mesh = pv.read(filename)
         mesh.plot(show_edges=True, color=True)
 
     def write(self, filename: str):
@@ -364,12 +379,15 @@ class FeflowInputs:
         edge_markers = []
 
         for idx, block in enumerate(elements):
+
             if block.type == "tetra":
                 tetra_all.append(block.data)
                 tetra_markers.append(np.full(len(block.data), idx + 1))  # use idx+1 as region ID
+
             elif block.type == "triangle":
                 triangle_all.append(block.data)
                 triangle_markers.append(np.full(len(block.data), idx + 1))  # same logic
+
             elif block.type == "line":
                 edge_all.append(block.data)
                 edge_markers.append(np.full(len(block.data), idx + 1))
@@ -411,11 +429,15 @@ class FeflowInputs:
             # ELEMENTALSETS
             if tetra_markers is not None:
                 f.write("ELEMENTALSETS\n")
+
                 for m in sorted(set(tetra_markers)):
                     f.write(f"     \"Region: Name: R{m}\"")
                     havewritten = 0
+
                     for t, mark in enumerate(tetra_markers):
+
                         if mark == m:
+
                             if (havewritten % 10) == 0:
                                 f.write("\n\t\t")
                             f.write(f"{t + 1} ")
@@ -423,7 +445,7 @@ class FeflowInputs:
                     f.write("\n")
 
             # Create all unique triangles from tets
-            FeFlowObj =C_FeFlow()
+            FeFlowObj = C_FeFlow()
             FeFlowObj.generateAllTriangles(tetra)
 
             if triangle_markers is not None and len(triangle_markers) > 0:
@@ -447,7 +469,9 @@ class FeflowInputs:
 
                     f.write(f'     "Surface: Name: S{m}"')
                     havewritten = 0
+
                     for tri in marker_triangle_indices:
+
                         if (havewritten % 10) == 0:
                             f.write("\n\t\t")
                         f.write(f"{tri + 1} ")
@@ -458,11 +482,13 @@ class FeflowInputs:
             # Create all unique edges from lines
             FeFlowObj.generateAllEdges(tetra)
             # DEBUG: check edges and markers
-            print("Edges array shape:", edges.shape)
+            logger.debug("Edges array shape: %s", edges.shape)
+
             if edge_markers is not None:
-                print("Edge markers unique:", np.unique(edge_markers))
+                logger.debug("Edge markers unique: %s", np.unique(edge_markers))
+
             else:
-                print("Edge markers is None")
+                logger.debug("Edge markers is None")
 
             if edge_markers is not None and len(edge_markers) > 0:
                 f.write("EDGESETS\n")
@@ -481,7 +507,9 @@ class FeflowInputs:
 
                     f.write(f'     "Polyline: Name: P{m}"')
                     havewritten = 0
+
                     for edge in marker_edge_indices:
+
                         if (havewritten % 10) == 0:
                             f.write("\n\t\t")
                         f.write(f"{edge + 1} ")
@@ -491,17 +519,11 @@ class FeflowInputs:
 
             f.write("END\n")
 
-        print(f" Feflow file '{filename}' written successfully.")
+        logger.info("Feflow file '%s' written successfully.", filename)
 
 
 
-# We have one singular export component now
-# @wbgeo_component(
-#     title="Download Mesh as Feflow",
-#     description="Export Mesh to Feflow",
-#     group="Export",
-#     identifier="wbgeo::expert_mesh_results_feflow",
-# )
+
 def export_mesh_results_to_feflow(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export a WBGeo MeshResults object to a FEFLOW (.fem) file.
@@ -510,7 +532,7 @@ def export_mesh_results_to_feflow(mesh: MeshResults) -> BasicallyABufferedFile:
     as an in-memory buffer for download.
     """
 
-    # ✅ Use FeflowInputs directly (no Exporters)
+    # Use FeflowInputs directly (no Exporters)
     feflow_in = FeflowInputs(mesh.nodes, mesh.elements)
 
     # Write to temporary file (FEFLOW requires a real file)

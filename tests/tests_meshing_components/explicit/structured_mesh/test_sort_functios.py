@@ -1,13 +1,11 @@
 import unittest
 import numpy as np
 import pandas as pd
-
 from core.meshing_components.explicit.structured.mesh_data import (
     sort_points_by_x_y,
     sort_surfaces_by_z,
     store_points_in_array
 )
-
 
 class TestSortingAndStorage(unittest.TestCase):
 
@@ -28,9 +26,7 @@ class TestSortingAndStorage(unittest.TestCase):
 
         return [df1, df2]
 
-    # -------------------------
     # sort_points_by_x_y
-    # -------------------------
     def test_sort_points_by_x_y(self):
         df = pd.DataFrame({
             "X": [2, 1, 2, 1],
@@ -40,13 +36,11 @@ class TestSortingAndStorage(unittest.TestCase):
 
         result = sort_points_by_x_y([df])[0]
 
-        # ✅ correct lexicographic expectation (X then Y)
+        # correct lexicographic expectation (X then Y)
         expected_order = [(1, 0), (1, 1), (2, 0), (2, 1)]
         self.assertEqual(list(zip(result["X"], result["Y"])), expected_order)
 
-    # -------------------------
     # sort_surfaces_by_z
-    # -------------------------
     def test_sort_surfaces_by_z(self):
         dfs = self.make_surfaces()
 
@@ -55,9 +49,7 @@ class TestSortingAndStorage(unittest.TestCase):
         self.assertAlmostEqual(sorted_dfs[0]["Z"].mean(), 5)
         self.assertAlmostEqual(sorted_dfs[1]["Z"].mean(), 10)
 
-    # -------------------------
     # store_points_in_array
-    # -------------------------
     def test_store_points_shape_and_values(self):
         dfs = self.make_surfaces()
 
@@ -93,6 +85,6 @@ class TestSortingAndStorage(unittest.TestCase):
         with self.assertRaises(ValueError):
             store_points_in_array(dfs)
 
-
+#######################################
 if __name__ == "__main__":
     unittest.main()

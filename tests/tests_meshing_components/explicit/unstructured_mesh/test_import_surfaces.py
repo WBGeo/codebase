@@ -1,24 +1,18 @@
 import unittest
 import numpy as np
 from unittest.mock import patch
-
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import (import_surfaces)
-
 
 class TestImportSurfaces(unittest.TestCase):
 
-    # -----------------------------
     # helper surface (valid grid)
-    # -----------------------------
     def make_surface(self):
         x = np.array([0, 0, 1, 1])
         y = np.array([0, 1, 0, 1])
         z = np.array([10, 10, 10, 10])
         return np.column_stack([x, y, z])
 
-    # -----------------------------
-    # 1. valid surface import
-    # -----------------------------
+    # valid surface import
     @patch("gmsh.model.occ.addPoint")
     @patch("gmsh.model.occ.addBSplineSurface")
     def test_valid_surface_import(self, mock_bspline, mock_point):
@@ -38,9 +32,7 @@ class TestImportSurfaces(unittest.TestCase):
         self.assertEqual(result_surfaces[0], 1)
         self.assertIsNotNone(bounds)
 
-    # -----------------------------
-    # 2. invalid surface skipped
-    # -----------------------------
+    # invalid surface skipped
     @patch("gmsh.model.occ.addPoint")
     @patch("gmsh.model.occ.addBSplineSurface")
     def test_invalid_surface_skipped(self, mock_bspline, mock_point):
@@ -57,9 +49,7 @@ class TestImportSurfaces(unittest.TestCase):
         self.assertEqual(len(result_surfaces), 0)
         self.assertIsNone(bounds)
 
-    # -----------------------------
-    # 3. bounds computation
-    # -----------------------------
+    # bounds computation
     @patch("gmsh.model.occ.addPoint")
     @patch("gmsh.model.occ.addBSplineSurface")
     def test_bounds_computation(self, mock_bspline, mock_point):
@@ -83,9 +73,7 @@ class TestImportSurfaces(unittest.TestCase):
         self.assertAlmostEqual(bounds[2], 0)
         self.assertAlmostEqual(bounds[3], 1)
 
-    # -----------------------------
-    # 4. no extent provided (FIXED)
-    # -----------------------------
+    # no extent provided (FIXED)
     @patch("gmsh.model.occ.addPoint")
     @patch("gmsh.model.occ.addBSplineSurface")
     def test_no_extent(self, mock_bspline, mock_point):
@@ -101,6 +89,6 @@ class TestImportSurfaces(unittest.TestCase):
         self.assertEqual(len(result_surfaces), 1)
         self.assertIsNotNone(bounds)
 
-
+###############################
 if __name__ == "__main__":
     unittest.main()

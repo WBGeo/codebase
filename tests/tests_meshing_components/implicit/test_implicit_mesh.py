@@ -4,17 +4,14 @@ import gzip
 import os
 import numpy as np
 import pandas as pd
-
 from core.object_components import InputData_StructuralElements, MeshResults
 from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
-
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
 
-
-# ------------------------
+##########################
 # Helper: load pkl or pkl.gz
-# ------------------------
+# #########################
 def load_pickle(path):
     if path.endswith(".gz"):
         with gzip.open(path, "rb") as f:
@@ -24,9 +21,9 @@ def load_pickle(path):
             return pickle.load(f)
 
 
-# ------------------------
+########
 # Paths
-# ------------------------
+########
 base_dir = os.path.dirname(__file__)
 
 data_dir = os.path.join(
@@ -37,9 +34,9 @@ data_dir = os.path.join(
 pkl_file = os.path.join(base_dir, "implicit_mesh.pkl.gz")
 
 
-# ------------------------
+############
 # Test case
-# ------------------------
+# ##########
 class ImplicitStructuredMeshTestCase(unittest.TestCase):
 
     @classmethod
@@ -84,17 +81,13 @@ class ImplicitStructuredMeshTestCase(unittest.TestCase):
             geomodel_result=self.structural_model_result
         )
 
-        # ------------------------
         # CORE MeshResults wrapper
-        # ------------------------
         mesh_gen_wrapped = MeshResults(
             nodes=mesh_generated.nodes,
             elements=mesh_generated.elements
         )
 
-        # ------------------------
         # Nodes
-        # ------------------------
         self.assertEqual(
             mesh_gen_wrapped.nodes.shape,
             self.mesh_pkl.nodes.shape,
@@ -106,9 +99,7 @@ class ImplicitStructuredMeshTestCase(unittest.TestCase):
             "Node coordinates mismatch"
         )
 
-        # ------------------------
-        # Elements (IMPORTANT: use SAME field name)
-        # ------------------------
+        # Elements
         self.assertEqual(
             len(mesh_gen_wrapped.elements),
             len(self.mesh_pkl.elements),
@@ -136,6 +127,6 @@ class ImplicitStructuredMeshTestCase(unittest.TestCase):
                 f"Element connectivity mismatch in block {i}"
             )
 
-
+########################################
 if __name__ == "__main__":
     unittest.main()

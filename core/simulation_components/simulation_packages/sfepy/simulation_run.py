@@ -1,3 +1,4 @@
+import logging
 import os
 import pathlib
 import typing
@@ -6,15 +7,39 @@ import subprocess
 import numpy as np
 import meshio
 
+from enum import StrEnum
+
+logger = logging.getLogger(__name__)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.object_components import MeshResults
 
 
-# =====================================================
-# TYPES (WBGeo SAFE)
-# =====================================================
+# =========================================================
+# INTERNAL ENUM (KEEP THIS — SAFE AND CLEAN)
+# =========================================================
+class MeshType(StrEnum):
+    UNSTRUCTURED = "unstr"
+    STRUCTURED = "str"
+    IMPLICIT = "imp"
 
+
+# =========================================================
+# WBGeo SAFE TYPE (IMPORTANT FIX)
+# =========================================================
+MeshTypeInput = typing.Annotated[
+    str,
+    AnnotatedScriptType(
+        name="MeshType",
+        identifier="MeshType",
+        controlled="Select|unstr|str|imp"
+    )
+]
+
+
+# =========================================================
+# INPUT TYPES
+# =========================================================
 SfepyInputFileType = typing.Annotated[
     str,
     AnnotatedScriptType(
@@ -25,7 +50,6 @@ SfepyInputFileType = typing.Annotated[
     )
 ]
 
-
 SfepyInputType = typing.Annotated[
     dict,
     AnnotatedScriptType(
@@ -33,7 +57,6 @@ SfepyInputType = typing.Annotated[
         identifier="SfepyInputType"
     )
 ]
-
 
 SfepyOutputType = typing.Annotated[
     dict,
@@ -44,9 +67,9 @@ SfepyOutputType = typing.Annotated[
 ]
 
 
-# =====================================================
+# =========================================================
 # INPUT COMPONENT
-# =====================================================
+# =========================================================
 @wbgeo_component(
     description='Input data for SfePy simulation',
     title='SfePy Input',
@@ -62,7 +85,7 @@ def sfepy_input_data(
         'examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py',
     output_dir: typing.Optional[str] = None
 ) -> SfepyInputType:
-    # resolve up to the codebase directory
+
     datadir = pathlib.Path(__file__).parent.parent.parent.parent.parent.resolve()
     full_input_path = os.path.join(datadir, input_file)
 
@@ -73,9 +96,9 @@ def sfepy_input_data(
     }
 
 
-# =====================================================
-# SIMULATION COMPONENT
-# =====================================================
+# =========================================================
+# SIMULATION COMPONENT (FIXED)
+# =========================================================
 @wbgeo_component(
     description='Simulation using Sfepy',
     title='Simulating with Sfepy',
@@ -88,12 +111,24 @@ def sfepy_input_data(
 def run_sfepy(
     sfepy_input_or_file: typing.Union[SfepyInputType, str],
     mesh_test: MeshResults,
+    mesh_type: MeshTypeInput = "unstr",
     output_dir: typing.Optional[str] = None
 ) -> SfepyOutputType:
 
-    # -------------------------------------------------
+    # =====================================================
+    # NORMALIZE MESH TYPE (STRING -> ENUM)
+    # =====================================================
+    try:
+        mesh_type_enum = MeshType(mesh_type)
+    except ValueError:
+        raise ValueError(
+            f"Invalid mesh_type='{mesh_type}'. "
+            f"Valid options are: {[m.value for m in MeshType]}"
+        )
+
+    # =====================================================
     # INPUT HANDLING
-    # -------------------------------------------------
+    # =====================================================
     if isinstance(sfepy_input_or_file, dict):
         input_file = sfepy_input_or_file["input_file"]
         if output_dir is None:
@@ -101,25 +136,28 @@ def run_sfepy(
     else:
         input_file = sfepy_input_or_file
 
-    # -------------------------------------------------
+    # =====================================================
     # OUTPUT DIRECTORY
-    # -------------------------------------------------
+    # =====================================================
     is_temp = False
 
     if output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="sfepy_output_")
         is_temp = True
-        print(f"[INFO] Temp output: {output_dir}")
+        logger.info("Temp output: %s", output_dir)
     else:
         os.makedirs(output_dir, exist_ok=True)
-        print(f"[INFO] User output: {output_dir}")
+        logger.info("User output: %s", output_dir)
 
     os.environ["SFEpy_OUTPUT_DIR"] = output_dir
 
-    # -------------------------------------------------
+    # =====================================================
     # EXPORT MESH
-    # -------------------------------------------------
-    exo_buffer = export_mesh_results_to_exodus(mesh_test)
+    # =====================================================
+    exo_buffer = export_mesh_results_to_exodus(
+        mesh_test,
+        type=mesh_type_enum
+    )
 
     with tempfile.NamedTemporaryFile(suffix=".exo", delete=False) as tmp_exo:
         tmp_exo_path = tmp_exo.name
@@ -127,6 +165,7 @@ def run_sfepy(
 
     mesh = meshio.read(tmp_exo_path, file_format="exodus")
 
+    # add material IDs
     mat_ids = [
         np.full(len(cell_block.data), i, dtype=int)
         for i, cell_block in enumerate(mesh.cells)
@@ -139,46 +178,39 @@ def run_sfepy(
     mesh.write(tmp_mesh_path, file_format="medit")
     os.environ["TEMP_MESH_FILE"] = tmp_mesh_path
 
-    # -------------------------------------------------
+    # =====================================================
     # RUN SFEpy
-    # -------------------------------------------------
-    print("[INFO] Running SfePy...")
+    # =====================================================
+    logger.info("Running SfePy...")
     process = subprocess.Popen(
         ["sfepy-run", input_file],
         env=os.environ,
         cwd=os.getcwd()
     )
     process.wait()
-    print("[INFO] SfePy finished.")
+    logger.info("SfePy finished.")
 
-    # -------------------------------------------------
-    # CLEAN TEMP FILES
-    # -------------------------------------------------
+    # =====================================================
+    # CLEANUP
+    # =====================================================
     for tmp_file in [tmp_exo_path, tmp_mesh_path]:
         try:
             os.remove(tmp_file)
-        except:
+        except OSError:
             pass
 
-    # -------------------------------------------------
-    # RETURN (WBGeo SAFE DICT)
-    # -------------------------------------------------
+    # =====================================================
+    # RETURN
+    # =====================================================
     return {
         "output_dir": output_dir,
         "is_temp": is_temp
     }
 
 
-# =====================================================
-# SAVE OUTPUT COMPONENT
-# =====================================================
-# @wbgeo_component(
-#     title="Save outputs of simulation",
-#     description="Save outputs",
-#     group="Outputs",
-#     identifier="wbgeo::save_outputs",
-#     return_name="simulation_output",
-# )
+# =========================================================
+# SAVE OUTPUT COMPONENT — placeholder, not yet implemented
+# =========================================================
 def save_outputs(sim_output: SfepyOutputType) -> SfepyOutputType:
-    # todo: Why is this component necessary?
+    # TODO: implement output saving logic
     return sim_output

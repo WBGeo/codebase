@@ -1,7 +1,11 @@
 
+import logging
 import warnings
 from typing import List
 
+import numpy as np
+
+logger = logging.getLogger(__name__)
 import pyvista as pv
 from core.object_components import MeshResults, StructuralModelResults
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector, InspectorHelper
@@ -32,6 +36,7 @@ def plot_mesh_3d(
     Returns:
         The configured PyVista Plotter instance.
     """
+
     warnings.filterwarnings(
         "ignore",
         message="Points is not a float type. This can cause issues when transforming or applying "
@@ -41,51 +46,132 @@ def plot_mesh_3d(
 
     frame = geomodel_result.structural_frame
 
-    # Collect (name, color) youngest→oldest across all structural groups only.
-    # Faults are meshed as surfaces (triangles), not volumes, so they have no
-    # corresponding MultiBlock entry and must not be included here.
-    # structural_elements is ordered youngest→oldest; mesh blocks are ordered by
-    # ascending surface_id (oldest→youngest), so we reverse before assigning.
+    # -------------------------------------------------
+    # BUILD LABELS + COLORS
+    # -------------------------------------------------
     labels_fwd: List[str] = []
     colors_fwd: List[str] = []
 
     idx = 0
+
     for group in frame.structural_groups:
+
         for elem in group.structural_elements:
+
             labels_fwd.append(elem.name)
+
             colors_fwd.append(
-                elem.color if elem.color is not None
+                elem.color
+                if elem.color is not None
                 else _FALLBACK_COLORS[idx % len(_FALLBACK_COLORS)]
             )
+
             idx += 1
 
-    # Blocks are ordered bottom→top: basement first (block 0), then geological
-    # layers from oldest to youngest. structural_elements is youngest→oldest,
-    # so reverse it and prepend the basement entry.
-    labels: List[str] = ["basement"] + list(reversed(labels_fwd))
-    colors: List[str] = ["#808080"] + list(reversed(colors_fwd))
+    labels = ["basement"] + list(reversed(labels_fwd))
+    colors = ["#808080"] + list(reversed(colors_fwd))
 
-    plotter = pv.Plotter(off_screen=not show_plotter)
-
+    # -------------------------------------------------
+    # SAFE BLOCK SELECTION
+    # Ignore ALL triangle blocks
+    # -------------------------------------------------
     n_blocks = mesh_results.mesh.n_blocks
-    plotted: List[int] = []
+
+    block_indices = []
+
     for i in range(n_blocks):
+
         block = mesh_results.mesh[i]
+
         if block is None:
             continue
-        color = colors[i] if i < len(colors) else _FALLBACK_COLORS[i % len(_FALLBACK_COLORS)]
-        plotter.add_mesh(block, show_edges=True, style=style, color=color)
+
+        skip_block = False
+
+        # -------------------------------------------------
+        # Skip PolyData triangle surfaces
+        # -------------------------------------------------
+        if isinstance(block, pv.PolyData):
+            logger.debug("Skipping PolyData block")
+            skip_block = True
+
+        # -------------------------------------------------
+        # Skip blocks containing only triangle cells
+        # -------------------------------------------------
+        else:
+
+            try:
+                cell_types = np.unique(block.celltypes)
+
+
+                # VTK_TRIANGLE = 5
+                if len(cell_types) == 1 and cell_types[0] == 5:
+                    skip_block = True
+
+            except Exception:
+                pass
+
+        if skip_block:
+            continue
+
+        block_indices.append(i)
+
+    # -------------------------------------------------
+    # PLOTTING
+    # -------------------------------------------------
+    plotter = pv.Plotter(off_screen=not show_plotter)
+
+    plotted: List[int] = []
+
+    for i in block_indices:
+
+        block = mesh_results.mesh[i]
+
+        if block is None:
+            continue
+
+        color = (
+            colors[i]
+            if i < len(colors)
+            else _FALLBACK_COLORS[i % len(_FALLBACK_COLORS)]
+        )
+
+        plotter.add_mesh(
+            block,
+            show_edges=True,
+            style=style,
+            color=color,
+        )
+
         plotted.append(i)
 
-    # Legend ordered youngest on top → oldest → basement at the bottom,
-    # which is the reverse of the block plot order (bottom→top).
+    # -------------------------------------------------
+    # LEGEND
+    # -------------------------------------------------
     legend_entries = [
-        [labels[i] if i < len(labels) else f"Block {i}",
-         colors[i] if i < len(colors) else _FALLBACK_COLORS[i % len(_FALLBACK_COLORS)]]
+        [
+            labels[i] if i < len(labels) else f"Block {i}",
+            colors[i]
+            if i < len(colors)
+            else _FALLBACK_COLORS[i % len(_FALLBACK_COLORS)],
+        ]
         for i in reversed(plotted)
     ]
-    plotter.add_legend(legend_entries, size=(0.13, 0.13), loc='lower right', face='circle')
+
+    if legend_entries:
+
+        plotter.add_legend(
+            legend_entries,
+            size=(0.13, 0.13),
+            loc="lower right",
+            face="circle",
+        )
+
+    # -------------------------------------------------
+    # VIEW SETTINGS
+    # -------------------------------------------------
     plotter.show_bounds(grid=True)
+
     plotter.camera.view_angle = 30.0
     plotter.camera.azimuth = 25.0
     plotter.camera.elevation = -15.0

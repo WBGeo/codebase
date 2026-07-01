@@ -1,11 +1,9 @@
 import unittest
 import numpy as np
 from types import SimpleNamespace
-
 from core.meshing_components.explicit.structured.mesh_data import (
     create_surface_grid
 )
-
 
 class TestCreateSurfaceGrid(unittest.TestCase):
 
@@ -86,6 +84,6 @@ class TestCreateSurfaceGrid(unittest.TestCase):
                 base_xy
             )
 
-
+########################################
 if __name__ == "__main__":
     unittest.main()

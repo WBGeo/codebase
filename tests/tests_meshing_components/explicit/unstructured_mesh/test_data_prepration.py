@@ -1,17 +1,14 @@
 import unittest
 import os
 import pandas as pd
-
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.object_components import (
     InputData_StructuralElements,
     InputData_FaultElements,
     StructuralModelResults
 )
-
 from core.structural_modeling_components import general, general_faults
-from core.meshing_components.explicit.unstructured.create_clean_surface import data_prepration
-
+from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
 
 class TestDataPreprationModel2(unittest.TestCase):
 
@@ -36,9 +33,7 @@ class TestDataPreprationModel2(unittest.TestCase):
         self.surface_df = pd.read_csv(self.surface_path)
         self.orient_df = pd.read_csv(self.orient_path)
 
-    # -----------------------------
     # FULL PIPELINE FIXTURE
-    # -----------------------------
     def build_model(self):
 
         data_faults = InputData_FaultElements(
@@ -79,14 +74,12 @@ class TestDataPreprationModel2(unittest.TestCase):
 
         return StructuralModelResults(structural_frame=frame)
 
-    # -----------------------------
     # TEST 1: FULL RUN
-    # -----------------------------
     def test_data_prepration_full_run(self):
 
         geomodel = self.build_model()
 
-        cleaned_surfaces, ref_indices, grid_litho = data_prepration(
+        cleaned_surfaces, ref_indices, grid_litho = data_preparation(
             geomodel,
             DISTANCE_THRESHOLD=50,
             PROJECTION_THRESHOLD=60,
@@ -101,9 +94,7 @@ class TestDataPreprationModel2(unittest.TestCase):
 
         self.assertTrue(hasattr(grid_litho, "shape") or isinstance(grid_litho, pd.DataFrame))
 
-    # -----------------------------
     # TEST 2: lith_block MUST EXIST
-    # -----------------------------
     def test_lith_block_exists(self):
 
         geomodel = self.build_model()
@@ -114,14 +105,12 @@ class TestDataPreprationModel2(unittest.TestCase):
             "lith_block is None → structural model failed before data_prepration"
         )
 
-    # -----------------------------
     # TEST 3: STRUCTURE CONSISTENCY
-    # -----------------------------
     def test_ref_surface_indices(self):
 
         geomodel = self.build_model()
 
-        cleaned_surfaces, ref_indices, _ = data_prepration(
+        cleaned_surfaces, ref_indices, _ = data_preparation(
             geomodel,
             DISTANCE_THRESHOLD=50,
             PROJECTION_THRESHOLD=60,
@@ -132,6 +121,6 @@ class TestDataPreprationModel2(unittest.TestCase):
         # ref indices should not be empty if faults exist
         self.assertIsInstance(ref_indices, dict)
 
-
+##################################
 if __name__ == "__main__":
     unittest.main()

@@ -1,12 +1,9 @@
 import unittest
 import numpy as np
-
 from core.meshing_components.explicit.unstructured.mesh_data  import classify_boundary_nodes, build_point_sets
-
 
 class TestBoundaryClassification(unittest.TestCase):
 
-    # ---------------------------------------------------
     def setUp(self):
         # simple cube domain
         self.extent = (0.0, 10.0, 0.0, 10.0, 0.0, 10.0)
@@ -20,7 +17,6 @@ class TestBoundaryClassification(unittest.TestCase):
 
         self.nodes = np.array(self.nodes)
 
-    # ---------------------------------------------------
     def test_classify_boundary_nodes_basic(self):
 
         groups = classify_boundary_nodes(self.nodes, self.extent, tol_ratio=1e-6)
@@ -37,7 +33,6 @@ class TestBoundaryClassification(unittest.TestCase):
         # node at xmin=0 must be in left
         self.assertTrue(any(self.nodes[i][0] == 0.0 for i in groups["left"]))
 
-    # ---------------------------------------------------
     def test_all_boundaries_present(self):
 
         groups = classify_boundary_nodes(self.nodes, self.extent)
@@ -47,7 +42,6 @@ class TestBoundaryClassification(unittest.TestCase):
         for k in expected_keys:
             self.assertIn(k, groups)
 
-    # ---------------------------------------------------
     def test_tolerance_effect(self):
 
         # very strict tolerance → fewer boundary nodes
@@ -61,7 +55,6 @@ class TestBoundaryClassification(unittest.TestCase):
             len(groups_strict["left"])
         )
 
-    # ---------------------------------------------------
     def test_build_point_sets_valid(self):
 
         groups = classify_boundary_nodes(self.nodes, self.extent)
@@ -78,7 +71,6 @@ class TestBoundaryClassification(unittest.TestCase):
         for v in point_sets.values():
             self.assertIsInstance(v, np.ndarray)
 
-    # ---------------------------------------------------
     def test_build_point_sets_invalid_index(self):
 
         groups = {
@@ -89,6 +81,6 @@ class TestBoundaryClassification(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_point_sets(groups, n_nodes=10)
 
-
+####################################
 if __name__ == "__main__":
     unittest.main()

@@ -44,6 +44,7 @@ def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, 
 
     xi: NDArray[np.floating] = np.linspace(min_x, max_x, nx)
     yi: NDArray[np.floating] = np.linspace(min_y, max_y, ny)
+
     XI: NDArray[np.floating]
     YI: NDArray[np.floating]
     XI, YI = np.meshgrid(xi, yi)
@@ -89,16 +90,21 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
                         * index 2: list of NumPy arrays containing combined
                           surface vertices for each structural element
     """
+
     frame = geomodel_result.structural_frame
 
     combined_vertices: List[np.ndarray] = []
+
     # colors: List[str] = []  # hex color per element, same order as combined_vertices
     for group in frame.structural_groups:
+
         for elem in group.structural_elements:
             try:
                 verts, _ = elem.get_mesh(GeoMeshType.COMBINED)
+
             except KeyError:
                 continue
+
             if verts is not None and len(verts) > 0:
                 combined_vertices.append(np.asarray(verts))
                 # colors.append(elem.color)
@@ -118,11 +124,9 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
                  color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Meshing',
-                 identifier='create_structured_mesh_data',  # a unique identifier
+                 identifier='wbgeo::create_structured_mesh_data',
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
-
-
 
 def create_structured_mesh_data(geomodel_result: StructuralModelResults,
                                 refinement_data: RefinementData = (25,21,16,5,6),  #TODO: This needs a proper default
@@ -153,6 +157,7 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
     # Extent
     if extent is None or len(extent) == 0:
         extent = np.asarray(geomodel_result.structural_frame.grid.extent, dtype=float)
+
     else:
         extent = np.asarray(extent, dtype=float)
 
@@ -170,6 +175,7 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
             name: grid
             for name, grid in raw_surfaces.items()
         }
+
     else:
         interpolated_surfaces, n_gx, n_gy = create_surface_grid(
             geomodel_adapter , extent

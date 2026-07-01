@@ -1,17 +1,13 @@
 import unittest
 import numpy as np
-
 from scipy.spatial import cKDTree
 from core.meshing_components.explicit.structured.mesh_data import (
     resample_preserve_z_nearest
 )
 
-
 class TestResamplePreserveZNearest(unittest.TestCase):
 
-    # ---------------------------------------------------
-    # 1. Basic shape test
-    # ---------------------------------------------------
+    # Basic shape test
     def test_output_shape(self):
         points = np.array([
             [0, 0, 1],
@@ -27,9 +23,7 @@ class TestResamplePreserveZNearest(unittest.TestCase):
 
         self.assertEqual(result.shape, (nx * ny, 3))
 
-    # ---------------------------------------------------
-    # 2. Empty input should fail
-    # ---------------------------------------------------
+    # Empty input should fail
     def test_empty_input_raises(self):
         points = np.empty((0, 3))
         extent = [0, 10, 0, 10, 0, 10]
@@ -37,9 +31,7 @@ class TestResamplePreserveZNearest(unittest.TestCase):
         with self.assertRaises(ValueError):
             resample_preserve_z_nearest(points, 3, 3, extent)
 
-    # ---------------------------------------------------
-    # 3. Exact nearest-neighbor mapping (core test)
-    # ---------------------------------------------------
+    # Exact nearest-neighbor mapping (core test)
     def test_exact_nearest_mapping(self):
         """
         Grid points match input exactly → deterministic result
@@ -72,9 +64,7 @@ class TestResamplePreserveZNearest(unittest.TestCase):
         # Z must come from nearest points
         np.testing.assert_allclose(result[:, 2], expected_z)
 
-    # ---------------------------------------------------
-    # 4. Nearest-neighbor correctness using brute-force check
-    # ---------------------------------------------------
+    # Nearest-neighbor correctness using brute-force check
     def test_nearest_neighbor_correctness(self):
         """
         Compare KDTree result against manual brute-force check
@@ -101,9 +91,7 @@ class TestResamplePreserveZNearest(unittest.TestCase):
 
         np.testing.assert_allclose(result[:, 2], expected_z)
 
-    # ---------------------------------------------------
-    # 5. Z values must come from original dataset
-    # ---------------------------------------------------
+    # Z values must come from original dataset
     def test_z_values_are_subset(self):
         points = np.array([
             [0, 0, 5],
@@ -119,9 +107,7 @@ class TestResamplePreserveZNearest(unittest.TestCase):
 
         self.assertTrue(np.all(np.isin(result[:, 2], points[:, 2])))
 
-    # ---------------------------------------------------
-    # 6. Deterministic output (important for regression)
-    # ---------------------------------------------------
+    #  Deterministic output (important for regression)
     def test_deterministic_output(self):
         points = np.random.rand(10, 3)
         extent = [0, 1, 0, 1, 0, 1]
@@ -131,6 +117,6 @@ class TestResamplePreserveZNearest(unittest.TestCase):
 
         np.testing.assert_allclose(r1, r2)
 
-
+#####################################
 if __name__ == "__main__":
     unittest.main()

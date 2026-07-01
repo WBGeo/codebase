@@ -1,16 +1,11 @@
+import io
 import numpy as np
 import pyvista as pv
 import meshio
-from typing import Union, List, Optional, Dict
+from typing import List, Optional, Dict
 from numpy.typing import NDArray
-from core.meshing_components.geometry.Elements import Elements
-from core.meshing_components.geometry.Nodes import Nodes
-from typing import Annotated
 from core.object_components import MeshResults
-import io
-
-
-from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile
+from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 class VTMInputs:
     """
     Class for constructing and exporting VTK MultiBlock (.vtm) meshes.
@@ -36,7 +31,9 @@ class VTMInputs:
 
         if not isinstance(elements, list):
             raise TypeError("elements_array must be List[meshio.CellBlock]")
+
         self.elements_block: List[meshio.CellBlock] = elements
+
         self.output_filename: Optional[str] = output_filename
 
         self.elements = elements
@@ -69,6 +66,7 @@ class VTMInputs:
 
         if meshio_type not in mapping:
             raise ValueError(f"Unsupported meshio cell type: {meshio_type}")
+
         return mapping[meshio_type]
 
 
@@ -119,13 +117,7 @@ class VTMInputs:
         mesh: pv.MultiBlock = pv.read(self.output_filename)
         mesh.plot(show_edges=True)
 
-# We have one singular export component now
-# @wbgeo_component(
-#     title="Download Mesh as VTM ZIP",
-#     description="Export Mesh to VTM inside a ZIP (like Exporters.export_vtm)",
-#     group="Export",
-#     identifier="wbgeo::expert_mesh_results_vtm_zip",
-# )
+
 def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
     """
     Export the given MeshResults object as a VTK MultiBlock (.vtm) dataset
@@ -166,4 +158,5 @@ def export_mesh_results_to_vtm(mesh: MeshResults) -> BasicallyABufferedFile:
 
         zip_buffer.seek(0)
         zip_buffer.filename = f"{mesh_name}.vtm.zip"
+
         return zip_buffer

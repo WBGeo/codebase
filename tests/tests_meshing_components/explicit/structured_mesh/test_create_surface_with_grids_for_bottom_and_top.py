@@ -1,10 +1,8 @@
 import unittest
 import numpy as np
-
 from core.meshing_components.explicit.structured.mesh_data import (
     create_surfaces_with_grids_for_bottom_and_top
 )
-
 
 class TestBottomTopSurfaces(unittest.TestCase):
 
@@ -28,7 +26,6 @@ class TestBottomTopSurfaces(unittest.TestCase):
         expected_shape = (2, 3 * n_gx * n_gy)
         self.assertEqual(result.shape, expected_shape)
 
-    # ---------------------------------------------------------
     def test_bottom_surface_constant_z(self):
         """
         Bottom surface must have all z = min_z
@@ -51,7 +48,6 @@ class TestBottomTopSurfaces(unittest.TestCase):
 
         self.assertTrue(np.all(bottom_z == min_z))
 
-    # ---------------------------------------------------------
     def test_top_surface_constant_z(self):
         """
         Top surface must have all z = max_z
@@ -74,7 +70,6 @@ class TestBottomTopSurfaces(unittest.TestCase):
 
         self.assertTrue(np.all(top_z == max_z))
 
-    # ---------------------------------------------------------
     def test_xy_grid_consistency(self):
         """
         Ensure both surfaces share identical X/Y structure
@@ -102,6 +97,6 @@ class TestBottomTopSurfaces(unittest.TestCase):
         np.testing.assert_array_equal(bottom_x, top_x)
         np.testing.assert_array_equal(bottom_y, top_y)
 
-
+##########################################
 if __name__ == "__main__":
     unittest.main()

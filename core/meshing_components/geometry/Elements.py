@@ -1,16 +1,16 @@
 import numpy as np
+from numpy.typing import NDArray
 from core.meshing_components.geometry.Nodes import Nodes
 
 class Elements(Nodes):
-    def __init__(self, element_array, node_array):
-        """
+
+    """
         Initializes the Elements class.
 
         Args:
             element_array (np.ndarray): Array of elements with columns [element_id, node_id_1, ..., node_id_n, surface_id].
             node_array (np.ndarray): Array of nodes with columns [node_id, x, y, z, surface_id].
-        """
-
+    """
 
     def __init__(self, element_array, node_array):
 
@@ -22,24 +22,25 @@ class Elements(Nodes):
         self.element_node_ids = self.element_array[:, 1:-1].astype(int)
         self.surface_ids = self.element_array[:, -1].astype(int)
 
-    # -------------------------
+    #################
     # basic getters
-    # -------------------------
-    def get_element_ids(self):
+    ################
+    def get_element_ids(self) -> NDArray[np.int64]:
         return self.element_ids
 
-    def get_element_node_ids(self):
+    def get_element_node_ids(self) -> NDArray[np.int64]:
         return self.element_node_ids
 
-    def total_elements(self):
+    def total_elements(self) -> int:
         return len(self.element_ids)
 
-    # -------------------------
+    ##########################
     # boundary helpers (FIXED)
-    # -------------------------
+    #########################
     def el_front(self):
 
         min_y = np.min(self.coordinates[:, 1])
+
         front_elements = []
 
         for element in self.element_array:
@@ -53,6 +54,7 @@ class Elements(Nodes):
     def el_back(self):
 
         max_y = np.max(self.coordinates[:, 1])
+
         back_elements = []
 
         for element in self.element_array:
@@ -62,6 +64,7 @@ class Elements(Nodes):
                 back_elements.append(int(element[0]))
 
         return np.array(back_elements)
+
 
     def el_bottom(self):
 
@@ -76,6 +79,7 @@ class Elements(Nodes):
 
         return np.array(bottom_elements)
 
+
     def el_top(self):
 
         max_z = np.max(self.coordinates[:, 2])
@@ -88,6 +92,7 @@ class Elements(Nodes):
                 top_elements.append(int(element[0]))
 
         return np.array(top_elements)
+
 
     def el_right(self):
 
@@ -102,6 +107,7 @@ class Elements(Nodes):
 
         return np.array(right_elements)
 
+
     def el_left(self):
 
         min_x = np.min(self.coordinates[:, 0])
@@ -115,9 +121,10 @@ class Elements(Nodes):
 
         return np.array(left_elements)
 
-    # -------------------------
+
+    ############
     # grouping
-    # -------------------------
+    ############
     def element_by_surface_id(self):
 
         elements_by_surface_id = {}
@@ -127,6 +134,6 @@ class Elements(Nodes):
 
         return elements_by_surface_id
 
-    def get_elements_by_surface_id(self, surface_id):
 
+    def get_elements_by_surface_id(self, surface_id):
         return self.element_node_ids[self.surface_ids == surface_id]

@@ -1,8 +1,6 @@
 import re
 import unittest
 import os
-import numpy as np
-
 from core.meshing_components.explicit.unstructured.mesh_data import (
     load_planes_from_csv,
     validate_planes
@@ -74,7 +72,7 @@ class LoadPlanesTestCase(unittest.TestCase):
         ):
             validate_planes(planes, self.extent)
 
-    # ----------------- CSV loader tests -----------------
+    # CSV loader tests
     def test_missing_value(self):
         with self.assertRaisesRegex(
             ValueError,
@@ -112,6 +110,6 @@ class LoadPlanesTestCase(unittest.TestCase):
                 data_dir + "invalid_planes_not_enough_points.csv"
             )
 
-
+##########################################
 if __name__ == "__main__":
     unittest.main()

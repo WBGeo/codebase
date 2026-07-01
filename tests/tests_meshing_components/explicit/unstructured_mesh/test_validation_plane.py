@@ -1,21 +1,17 @@
 import unittest
 import numpy as np
-
 from core.meshing_components.explicit.unstructured.mesh_data  import (
     fit_plane,
     max_point_plane_distance,
     validate_planes
 )
 
-
 class TestPlaneValidation(unittest.TestCase):
 
     def setUp(self):
         self.extent = [0, 10, 0, 10, 0, 10]
 
-    # -------------------------
     # fit_plane
-    # -------------------------
     def test_fit_plane_basic(self):
         # Points on plane z = 5
         pts = np.array([
@@ -37,9 +33,7 @@ class TestPlaneValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             fit_plane(pts)
 
-    # -------------------------
     # max_point_plane_distance
-    # -------------------------
     def test_max_distance_zero(self):
         pts = np.array([
             [0, 0, 5],
@@ -64,9 +58,7 @@ class TestPlaneValidation(unittest.TestCase):
         dist = max_point_plane_distance(pts, normal, p0)
         self.assertAlmostEqual(dist, 1.0)
 
-    # -------------------------
     # validate_planes: valid case
-    # -------------------------
     def test_validate_planes_valid(self):
         plane = [
             0, 0, 5,
@@ -78,9 +70,7 @@ class TestPlaneValidation(unittest.TestCase):
         # Should NOT raise
         validate_planes([plane], self.extent)
 
-    # -------------------------
     # validate_planes: outside extent
-    # -------------------------
     def test_validate_planes_outside_extent(self):
         plane = [
             0, 0, 5,
@@ -92,9 +82,7 @@ class TestPlaneValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_planes([plane], self.extent)
 
-    # -------------------------
     # validate_planes: non-planar
-    # -------------------------
     def test_validate_planes_non_planar(self):
         plane = [
             0, 0, 5,
@@ -106,9 +94,7 @@ class TestPlaneValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_planes([plane], self.extent, tol=1e-10)
 
-    # -------------------------
     # validate_planes: dict input
-    # -------------------------
     def test_validate_planes_dict_input(self):
         plane = {
             "coords": [
@@ -121,9 +107,7 @@ class TestPlaneValidation(unittest.TestCase):
 
         validate_planes([plane], self.extent)
 
-    # -------------------------
     # multiple planes
-    # -------------------------
     def test_multiple_planes(self):
         planes = [
             [0, 0, 5, 1, 0, 5, 0, 1, 5],
@@ -132,6 +116,6 @@ class TestPlaneValidation(unittest.TestCase):
 
         validate_planes(planes, self.extent)
 
-
+####################################
 if __name__ == "__main__":
     unittest.main()

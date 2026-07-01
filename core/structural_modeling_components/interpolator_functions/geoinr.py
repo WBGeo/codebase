@@ -10,6 +10,7 @@ This module contains:
 
 from __future__ import annotations
 
+import logging
 import warnings
 import time
 from typing import Any, Dict, Optional, Tuple, TypeAlias
@@ -23,6 +24,8 @@ import torch.autograd as autograd
 import torch.nn as nn
 
 
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -215,8 +218,7 @@ class ConcatMLP(nn.Module):
         elif activation == "PReLU":
             self.activation = nn.PReLU()
         else:
-            # Keep print behavior unchanged; in production you might raise instead.
-            print(
+            logger.warning(
                 "Activation function not recognized. Using Softplus, ReLU, LeakyReLU, "
                 "Tanh, Sigmoid, ELU."
             )
@@ -505,8 +507,8 @@ def stratigraphic_ConcatMLP(
 
     t2_train = time.time()
 
-    print(f"Training losses | Loss_i: {min_loss_i.item()}, Loss_o: {min_loss_o.item()}")
-    print(f"each epoch training time :  {(t2_train - t1_train) / epochs} seconds")
+    logger.info("Training losses | Loss_i: %s, Loss_o: %s", min_loss_i.item(), min_loss_o.item())
+    logger.info("Mean epoch training time: %.4f s", (t2_train - t1_train) / epochs)
 
     # model for inference
     best_model = ConcatMLP(
@@ -529,7 +531,6 @@ def stratigraphic_ConcatMLP(
     # get the iso values for extracting the stratigraphic surfaces
     iso_values = np.unique(interface_data[:, 0])
 
-    print(f"Inference time: {t2_inference - t1_inference} seconds")
-    print("------Finish-------")
+    logger.info("Inference time: %.4f s", t2_inference - t1_inference)
 
     return predictions.ravel(), iso_values

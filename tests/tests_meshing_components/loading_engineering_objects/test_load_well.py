@@ -1,7 +1,6 @@
 import re
 import unittest
 import os
-import numpy as np
 
 from core.meshing_components.explicit.unstructured.mesh_data import (
     load_wells_from_csv,
@@ -9,7 +8,6 @@ from core.meshing_components.explicit.unstructured.mesh_data import (
 )
 
 data_dir = os.path.dirname(__file__) + "/data/wells/"
-
 
 class LoadWellsTestCase(unittest.TestCase):
     """Tests loading and validating wells from CSV, including extent checks."""
@@ -59,7 +57,7 @@ class LoadWellsTestCase(unittest.TestCase):
                 os.path.join(data_dir, "invalid_wells_non_numeric_vertex.csv")
             )
 
-    # ----------------- Extent validation test -----------------
+    # Extent validation test
     def test_point_outside_extent(self):
         # Well with a point outside the extent
         wells_outside = [
@@ -72,6 +70,6 @@ class LoadWellsTestCase(unittest.TestCase):
             validate_wells(wells_outside, self.extent)
 
 
-
+##########################################
 if __name__ == '__main__':
     unittest.main()

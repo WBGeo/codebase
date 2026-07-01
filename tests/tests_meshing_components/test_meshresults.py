@@ -1,16 +1,12 @@
 import unittest
 import numpy as np
 import meshio
-
 from core.object_components import MeshResults
-
 
 class TestMeshResults(unittest.TestCase):
 
     def setUp(self):
-        # -----------------------------
         # Simple tetra mesh
-        # -----------------------------
         self.nodes = np.array([
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -25,9 +21,7 @@ class TestMeshResults(unittest.TestCase):
             )
         ]
 
-    # =====================================================
-    # 🧱 Initialization test
-    # =====================================================
+    # Initialization test
     def test_init(self):
         mesh = MeshResults(
             nodes=self.nodes,
@@ -37,9 +31,7 @@ class TestMeshResults(unittest.TestCase):
         self.assertEqual(mesh.nodes.shape, (4, 3))
         self.assertEqual(len(mesh.elements), 1)
 
-    # =====================================================
-    # 🔹 to_meshio conversion
-    # =====================================================
+    # to_meshio conversion
     def test_to_meshio(self):
         mesh = MeshResults(
             nodes=self.nodes,
@@ -53,9 +45,7 @@ class TestMeshResults(unittest.TestCase):
         self.assertEqual(len(meshio_mesh.cells), 1)
         self.assertEqual(meshio_mesh.cells[0].type, "tetra")
 
-    # =====================================================
-    # 🔹 point_sets + cell_data handling
-    # =====================================================
+    # point_sets + cell_data handling
     def test_optional_data(self):
         point_sets = {"boundary": np.array([0, 1], dtype=np.int64)}
         cell_data = {"region": [np.array([1], dtype=np.int64)]}
@@ -72,9 +62,7 @@ class TestMeshResults(unittest.TestCase):
         self.assertIn("boundary", meshio_mesh.point_sets)
         self.assertIn("region", meshio_mesh.cell_data)
 
-    # =====================================================
-    # 🔹 VTMInputs builder
-    # =====================================================
+    # VTMInputs builder
     def test_vtm_in_property(self):
         mesh = MeshResults(
             nodes=self.nodes,
@@ -89,9 +77,7 @@ class TestMeshResults(unittest.TestCase):
         # Ensure it's reused (cached)
         self.assertIs(mesh.vtm_in, vtm)
 
-    # =====================================================
-    # 🔹 mesh property (PyVista MultiBlock)
-    # =====================================================
+    # mesh property (PyVista MultiBlock)
     def test_mesh_property(self):
         mesh = MeshResults(
             nodes=self.nodes,
@@ -106,9 +92,7 @@ class TestMeshResults(unittest.TestCase):
         # Should be cached
         self.assertIs(mesh.mesh, pv_mesh)
 
-    # =====================================================
-    # 🔹 mesh setter
-    # =====================================================
+    # mesh setter
     def test_mesh_setter(self):
         mesh = MeshResults(
             nodes=self.nodes,
@@ -120,6 +104,6 @@ class TestMeshResults(unittest.TestCase):
 
         self.assertEqual(mesh.mesh, dummy)
 
-
+#########################################
 if __name__ == "__main__":
     unittest.main()

@@ -41,7 +41,7 @@ MeshFormatType_A = typing.Annotated[
   title="Download Mesh",
   description="Export Mesh to a selection of formats",
   group="Export",
-  identifier="wbgeo::expert_mesh_results",
+  identifier="wbgeo::export_mesh_results",
 )
 def export_mesh_results(mesh: MeshResults, format: MeshFormatType_A = MeshFormatType.Exodus) -> BasicallyABufferedFile:
   if format == MeshFormatType.VTU:

@@ -1,20 +1,18 @@
+import logging
 import pandas as pd
 import pyvista as pv
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import cKDTree
 
+logger = logging.getLogger(__name__)
+from scipy.spatial import cKDTree
 from sklearn.cluster import HDBSCAN
 from numpy.typing import NDArray
 from typing import List, Tuple, Union, Dict, Optional, Any
 from core.object_components import StructuralModelResults
-
-import colorcet as cc
-from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
-from core.object_components import StructuralModelResults
-from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
 from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
-from scipy.spatial import cKDTree
+from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
+
 
 def get_normals(near_points: NDArray[np.floating], points: NDArray[np.floating], normal_vec: Tuple[int, NDArray[np.floating]],
         ) -> NDArray[np.floating]:
@@ -30,10 +28,14 @@ def get_normals(near_points: NDArray[np.floating], points: NDArray[np.floating],
     NDArray[float]): Normal vectors corresponding to `near_points`.
 
     """
+
     # Find indices of near_points in points
     indices = np.where((points[:, None] == near_points).all(axis=2))[0]
     # Get corresponding normal vectors
+
     return normal_vec[1][indices]
+
+
 
 
 def calculate_normals(points: NDArray[np.float64], cleaned_surfaces: List[Tuple[Union[int, str], NDArray[np.float64]]],
@@ -54,33 +56,40 @@ def calculate_normals(points: NDArray[np.float64], cleaned_surfaces: List[Tuple[
     Returns:
         norm (Array): contains the normal vectors corresponding to `points`, in the same order.
     """
-    # Find the desired surface and its normal vectors by searching for its lable
-
+    surface_points = None
+    normal_points = None
 
     for label, surface in cleaned_surfaces:
-        if label== file_index:
-            surface_points=surface
+        if label == file_index:
+            surface_points = surface
+            break
+
     for label, normal in cleaned_normals:
-        if label== file_index:
-            normal_points=normal
+        if label == file_index:
+            normal_points = normal
+            break
 
+    if surface_points is None:
+        raise ValueError(
+            f"Surface '{file_index}' not found in cleaned_surfaces"
+        )
 
-    # Find the indices of points in surface_points
-    indices: List[int] = []
+    if normal_points is None:
+        raise ValueError(
+            f"Normals for surface '{file_index}' not found in cleaned_normals"
+        )
+
+    indices = []
+
     for p in points:
-        # Check if point p is in surface_points, and get its index
-        match_index = np.where(np.all(surface_points == p, axis=1))[0]
+        match_index = np.where(
+            np.all(surface_points == p, axis=1)
+        )[0]
 
         if match_index.size > 0:
             indices.append(match_index[0])
 
-    # Save normal vectors to norm_array
-    norm_array: List[NDArray[np.float64]] = []
-    for j in indices:
-        norm_array.append(normal_points[j])
-
-    norm: NDArray[np.float64] = np.vstack(norm_array)
-    return norm
+    return normal_points[indices]
 
 
 def correct_extrusion_direction(points: NDArray[np.float64], normals: NDArray[np.float64], file: Union[int, str],
@@ -88,7 +97,6 @@ def correct_extrusion_direction(points: NDArray[np.float64], normals: NDArray[np
     EXTRUSION_FACTOR: float = 100.0, num_steps: int = 5) -> NDArray[np.float64]:
     """
     Extrude surface points along a corrected direction perpendicular to their normals.
-
     For each point, a perpendicular vector is constructed from its normal, and
     the extrusion direction is chosen based on proximity to reference (fault)
     intersection points versus nearby surface points.
@@ -108,6 +116,7 @@ def correct_extrusion_direction(points: NDArray[np.float64], normals: NDArray[np
 
     intersection_tree = cKDTree(intersection_points)
     near_point_tree = cKDTree(nearest_points_dict[file])
+
     step_size: float = EXTRUSION_FACTOR / num_steps
     extruded_points: List[NDArray[np.float64]] = []
 
@@ -117,32 +126,32 @@ def correct_extrusion_direction(points: NDArray[np.float64], normals: NDArray[np
         normal = normals[i]
         normal = normal / np.linalg.norm(normal)
 
-        # --- Use original formula for most surfaces ---
+        # Use original formula for most surfaces
         perpendicular_vector: NDArray[np.float64] = np.array([-normal[2], 0, normal[0]])
-
         perpendicular_vector /= np.linalg.norm(perpendicular_vector)
 
-        # --- Decide extrusion direction ---
+        # Decide extrusion direction
         test_point: NDArray[np.float64]  = point + EXTRUSION_FACTOR * perpendicular_vector
+
         d2, _ = intersection_tree.query(test_point)
         d3, _ = near_point_tree.query(test_point)
 
         if d3 < d2:
             d2: float
             d3: float
+
             perpendicular_vector *= -1
 
         extrusion_path = [point + j * step_size * perpendicular_vector for j in range(num_steps + 1)]
+
         extruded_points.append(extrusion_path)
 
     return np.array(extruded_points)
 
 
-
 def plot_surfaces_excluding_ref(surfaces: List[Tuple[int, NDArray[np.float64]]], result: List[bool]) -> None:
     """
     Plot geological surfaces in two groups: reference (fault) surfaces and non-fault surfaces.
-
     Surfaces marked as faults in `result` are plotted separately from regular surfaces
     to allow visual inspection of fault geometry and spatial separation.
 
@@ -156,36 +165,45 @@ def plot_surfaces_excluding_ref(surfaces: List[Tuple[int, NDArray[np.float64]]],
     """
 
     ref_surfaces: List[Tuple[int, NDArray[np.float64]]]  = [(i, surfaces[i][1]) for i, is_fault in enumerate(result) if is_fault]
+
     non_ref_surfaces: List[Tuple[int, NDArray[np.float64]]]  = [(i, surfaces[i][1]) for i, is_fault in enumerate(result) if not is_fault]
+
     fig = plt.figure(figsize=(14, 6))
 
     # Plot non-fault surfaces
+
     ax1 = fig.add_subplot(121, projection='3d')
+
     for sid, points in non_ref_surfaces:
+
         ax1.scatter(points[:, 0], points[:, 1], points[:, 2], s=1, label=f"Surface {sid}")
+
     ax1.set_title("Non-Fault (Regular) Surfaces")
     ax1.set_xlabel("X")
     ax1.set_ylabel("Y")
     ax1.set_zlabel("Z")
+
     # Plot fault (reference) surfaces
     if ref_surfaces:
+
         ax2 = fig.add_subplot(122, projection='3d')
+
         for sid, ref_points in ref_surfaces:
             ax2.scatter(ref_points[:, 0], ref_points[:, 1], ref_points[:, 2], s=1, label=f"Fault {sid}")
+
         ax2.set_title("Fault (Reference) Surfaces")
         ax2.set_xlabel("X")
         ax2.set_ylabel("Y")
         ax2.set_zlabel("Z")
 
     plt.tight_layout()
-    plt.show()
 
+    plt.show()
 
 
 def plot_cleaned_surfaces(cleaned_surfaces: List[Tuple[int, NDArray[np.floating]]], output_file: Optional[str] = None) -> None:
     """
     Plot cleaned 3D surfaces and annotate each surface with its surface ID.
-
     Each surface is visualized as a 3D scatter plot, and its ID is displayed at the centroid (mean XYZ position) of the surface points.
 
     Args:
@@ -197,28 +215,37 @@ def plot_cleaned_surfaces(cleaned_surfaces: List[Tuple[int, NDArray[np.floating]
     Returns:
         None. Displays or saves a Matplotlib figure.
     """
+
     fig = plt.figure(figsize=(12, 10))
+
     ax = fig.add_subplot(111, projection='3d')
 
     for surface_id, surface_points in cleaned_surfaces:
+
             # Scatter plot the surface
             ax.scatter(surface_points[:, 0], surface_points[:, 1], surface_points[:, 2],
                     label=f"Surface {surface_id}", s=1)
 
             # Annotate at the mean point of surface
             center = surface_points.mean(axis=0)
+
             ax.text(center[0], center[1], center[2], f"{surface_id}", fontsize=10, color='black')
 
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
+
     ax.set_title("Cleaned Surfaces with IDs")
+
     ax.legend(loc='upper right', fontsize='small')
 
     if output_file:
+
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
-        print(f"Plot saved to {output_file}")
+        logger.info("Plot saved to %s", output_file)
+
     else:
+
         plt.show()
 
 
@@ -226,7 +253,6 @@ def plot_surfaces_with_extrusions(cleaned_surfaces: List[Tuple[int, NDArray[np.f
     intersection_points: Optional[List[NDArray[np.floating]]] = None, point_size: int = 5) -> None:
     """
     Visualize cleaned surfaces together with extruded point paths and optional intersection points using PyVista.
-
     Surface points are rendered as semi-transparent point clouds. Extruded points
     (e.g., paths generated by normal-based extrusion) are automatically flattened
     to (N, 3) before visualization to ensure compatibility with PyVista.
@@ -248,27 +274,35 @@ def plot_surfaces_with_extrusions(cleaned_surfaces: List[Tuple[int, NDArray[np.f
 
     # Plot all surfaces
     for idx, (file, points) in enumerate(cleaned_surfaces):
+
         cloud = pv.PolyData(points)
+
         plotter.add_mesh(cloud, point_size=point_size, render_points_as_spheres=True, opacity=0.7, label=f'Surface {idx}')
 
     # Plot extruded points
     if extruded_points and len(extruded_points) > 0:
+
         extruded_all = np.vstack([p.reshape(-1, 3) if p.ndim == 3 else p for p in extruded_points])
+
         extruded_cloud = pv.PolyData(extruded_all)
+
         plotter.add_mesh(extruded_cloud, color='red', point_size=point_size, render_points_as_spheres=True, label='Extruded Points')
 
     # Plot intersection points if provided
     if intersection_points and len(intersection_points) > 0:
+
         intersection_all = np.vstack([p.reshape(-1, 3) if p.ndim == 3 else p for p in intersection_points])
+
         intersection_cloud = pv.PolyData(intersection_all)
+
         plotter.add_mesh(intersection_cloud, color='black', point_size=point_size, render_points_as_spheres=True, label='Intersection Points')
 
     plotter.add_legend()
+
     plotter.show()
 
 
-
-def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD: float = 50.0, PROJECTION_THRESHOLD: float = 60.0,
+def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD: float = 50.0, PROJECTION_THRESHOLD: float = 60.0,
     EXTRUSION_FACTOR: float = 100.0, z_threshold: float = 10.0) -> Tuple[List[Tuple[str | int, NDArray[np.float64]]],
     Dict[str | int, int], pd.DataFrame]:
     """
@@ -293,6 +327,7 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
     frame = geomodel_result.structural_frame
     fault_frame = frame.fault_frame
+
     has_faults = fault_frame is not None and len(fault_frame.fault_elements) > 0
 
     # Build grid_litho from the evaluated lithology block and grid coordinates.
@@ -309,31 +344,53 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
         # each mapping element_name → {"points": (N,3), "vectors": (N,3)}.
         # Fault surfaces use "extended" meshes (from padded interpolation) so they
         # naturally cross the GMSH bounding box for volume fragmentation.
+
+
         geo_grads, fault_grads = surface_mesh_gradients.get_surface_mesh_gradients(
-            geomodel_result, mesh_type=GeoMeshType.UNMASKED, fault_mesh_type=FaultMeshType.EXTENDED
-        )
+        geomodel_result, mesh_type=GeoMeshType.EXTENDED, fault_mesh_type=FaultMeshType.EXTENDED_MASKED
+            )
 
         all_entries = list(geo_grads.values()) + list(fault_grads.values())
         surfaces = [(i, entry["points"]) for i, entry in enumerate(all_entries)]
+
         normal_surfaces = [(i, entry["vectors"]) for i, entry in enumerate(all_entries)]
+
         result = [False] * len(geo_grads) + [True] * len(fault_grads)
-        print(result)
+        logger.debug("Fault mask: %s", result)
 
     # If there are no faults: collect extended surface vertices from structural elements.
     # Extended meshes come from interpolation on a padded grid and naturally cross
     # the model bounding box, enabling GMSH volume fragmentation.
     else:
+
         raw_surfaces = []
+
         for group in frame.structural_groups:
+
             for elem in group.structural_elements:
                 try:
-                    verts, _ = elem.get_mesh(GeoMeshType.EXTENDED)
+                    verts, _ = elem.get_mesh("extended")
+
                 except KeyError:
-                    verts, _ = elem.get_mesh(GeoMeshType.UNMASKED)
+                    verts, _ = elem.get_mesh("unmasked")
+
                 if verts is not None and len(verts) > 0:
                     raw_surfaces.append(verts)
+
         surfaces = [(i, surface) for i, surface in enumerate(raw_surfaces)]
         result = [False] * len(surfaces)
+
+    # ---- SAFETY CHECK  ----
+    n_surfaces = len(surfaces)
+    # Give error when the number of vertices are very large
+    ##max_allowed = 10 * 100 * 100 * 90
+    ##estimated_cost = n_surfaces * len(frame.lith_block.flatten())
+    ##if estimated_cost > max_allowed:
+    ##    raise ValueError(
+    ##    f"Structural model too large:\n"
+    ##    f"  total = {estimated_cost:,} (resolution of structrual model)\n"
+    ##    f"  limit = {max_allowed:,}"
+    ##)
 
     # Save fault surfaces in ref_surfaces
     ref_surfaces = [surfaces[i] for i, is_fault in enumerate(result) if is_fault]
@@ -342,28 +399,33 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
     ref_surface_indices: Dict[str | int, int]  = {}
     # Call the plotting function
     ## plot_surfaces_excluding_ref(surfaces, result)
-
     # Remove overlapped points and store the surfaces in cleaned_surfaces and their normals in cleaned_normals
     # This step is only done if there is any fault in the model
+
     cleaned_surfaces: List[Tuple[str | int, NDArray[np.float64]]] = []
     cleaned_normals: List[Tuple[str | int, NDArray[np.float64]]] = []
-    if ref_surfaces:
-        for ref_file, ref_points in ref_surfaces:
-            print(f"Using {ref_file} as reference")
 
+
+    if ref_surfaces:
+
+        for ref_file, ref_points in ref_surfaces:
+            logger.debug("Using %s as reference", ref_file)
             # Append reference surface and their normal vectors to cleaned_surfaces and cleaned_normals
+
             ref_surface_indices[ref_file] = len(cleaned_surfaces)
             cleaned_surfaces.append((ref_file, ref_points))
-            normal_subset: NDArray[np.float64] = normal_surfaces[ref_file]  # Extract the corresponding normals
-            cleaned_normals.append(normal_subset)
 
-            print(f"Reference surface {ref_file} added at index {ref_surface_indices[ref_file]}")
+            normal_subset: NDArray[np.float64] = normal_surfaces[ref_file]  # Extract the corresponding normals
+
+            cleaned_normals.append((ref_file, normal_subset))
+            logger.debug("Reference surface %s added at index %d", ref_file, ref_surface_indices[ref_file])
 
         # Process other surfaces to remove overlapping points
         for idx, (file, points) in enumerate(surfaces):
 
             if file not in ref_surface_indices:  # Skip if it's already a reference surface
-                print(f"Processing {file} against reference surfaces")
+                logger.debug("Processing %s against reference surfaces", file)
+
                 # check if  plane has no offset with respect to fault ignore splitting the plane
                 # Extract z-values from the list of points
                 z_values: NDArray[np.float64] = [point[2] for point in points]
@@ -375,23 +437,31 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                 # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
                 # then it dose not remove the points near the fault and dose not seprate the surface into two parts
                 if abs(min_z -max_z) <= z_threshold:
-                    print(f"All points have almost the same z for {file}, skipping removing.")
+                    logger.debug("All points have almost the same z for %s, skipping removing.", file)
+
                     cleaned_surfaces.append((file, points))
 
+                    cleaned_normals.append(
+                        (file, normal_surfaces[file][1])
+                    )
+
                     continue
+
                 else:
                     filtered: List[NDArray[np.float64]] = []
                     dist_po: List[NDArray[np.float64]] = []
 
                     # Check against each reference surface
                     for ref_file, ref_points in ref_surfaces:
-                        print(f"Using {ref_file} as reference")
+                        logger.debug("Using %s as reference", ref_file)
+
                         # Get normal vectors of ref_points
                         normal_vec_ref = normal_surfaces[ref_file]
                         normals_points=get_normals(ref_points, ref_points, normal_vec_ref)
-                        # Create a k-d tree from the current surface points
-                        points_tree = cKDTree(points)
 
+                        # Create a k-d tree from the current surface points
+
+                        points_tree = cKDTree(points)
 
                         # Find all current surface points that are within DISTANCE_THRESHOLD of any reference point
                         indices_list: List[List[int]] = points_tree.query_ball_point(ref_points, r=DISTANCE_THRESHOLD)
@@ -401,40 +471,43 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
                         # Extract points within the distance
                         nearest_to_ref: NDArray[np.float64] = points[indices.astype(int)]
+
                         # Find the normal vectors of these near points to reference surface
                         normal_vec_point: NDArray[np.float64] = normal_surfaces[file]
                         normals_ref_points: NDArray[np.float64] = get_normals(nearest_to_ref, points, normal_vec_point)
 
                         # Build KDTree for ref_points (to find nearest ref_point for each nearest_to_ref point)
-                        ref_tree = cKDTree(ref_points)
 
+                        ref_tree = cKDTree(ref_points)
                         filtered_in: List[NDArray[np.float64]] = []
+
                         for i, pt in enumerate(nearest_to_ref):
                             # For each point near the reference surface, find its nearest reference point
+
                             dist_in, nearest_idx = ref_tree.query(pt)
-
                             # Get the normal of this nearest reference point
-                            normal_ref = normals_points[nearest_idx]
 
+                            normal_ref = normals_points[nearest_idx]
                             # Get the normal of the nearest_to_ref point
                             normal_near = normals_ref_points[i]
 
                             # Compute the dot product of the two normals
                             dot_product = np.dot(normal_ref, normal_near)
-
                             # Check if the normals are parallel
-                            if abs(dot_product) > 0.95:
 
+                            if abs(dot_product) > 0.95:
                                 filtered_in.append(pt)
                                 dist_po.append(dist_in)
 
-
                         #max_dist = max(dist_po)
                         max_dist: float = DISTANCE_THRESHOLD
+
                         # Remove points in distance less than max_dist (to keep the filtered points in uniform distance)
                         for i, pt in enumerate(nearest_to_ref):
                             # Find the nearest ref_point for each nearest_to_ref point
+
                             dist_in, nearest_idx = ref_tree.query(pt)
+
                             if dist_in <= max_dist:
                                 filtered_in.append(pt)
 
@@ -442,17 +515,18 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                         z_values: List[np.float64] = [point[2] for point in filtered_in]
 
                         # Get maximum z
-                        max_z:float = max(z_values)
-                        min_z:float = min(z_values)
+                        if len(nearest_to_ref)>0:
+                            max_z:float = max(z_values)
+                            min_z:float = min(z_values)
 
-                        # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
-                        # then it dose not remove the points near the fault and dose not seprate the surface into two parts
-                        if abs(min_z -max_z) <= z_threshold:
-                            print(f"All points have almost the same z for {file}, skipping removing.")
-                            continue
-                        else:
-                            filtered.append(filtered_in)
+                            # This part is for checking if the surface cutting fault has the same z (no layering difference on both sides of faukts)
+                            # then it dose not remove the points near the fault and dose not seprate the surface into two parts
+                            if abs(min_z -max_z) <= z_threshold:
+                                logger.debug("All points have almost the same z for %s, skipping removing.", file)
+                                continue
 
+                            else:
+                                filtered.append(filtered_in)
 
                     if len(filtered) > 0:
                         filtered_array = np.vstack(filtered)
@@ -469,9 +543,9 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     filtered_points: NDArray[np.float64] = points[mask]
 
                     if len(filtered_points) == 0:
-                        print(f"All points removed for {file}, skipping clustering.")
-
+                        logger.debug("All points removed for %s, skipping clustering.", file)
                         continue
+
                     # Filter corresponding normals using the same mask
                     filtered_normals: NDArray[np.float64] = normal_surfaces[file][1][mask]
 
@@ -484,26 +558,24 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
                     # Store separated clusters
                     for label in unique_labels:
+
                         if label != -1:  # Ignore noise (-1)
+
                             cluster_points = filtered_points[labels == label]
                             cluster_normals = filtered_normals[labels == label]  # Corresponding normals for the cluster
 
                             cluster_file = f"{file}_surface_{label}"  # Unique name for the cluster
-
-
                             cleaned_surfaces.append((cluster_file, cluster_points))
 
                         # Also store the corresponding normals in cleaned_normals
                             cleaned_normals.append((cluster_file, cluster_normals))
-
-        print(f"Reference surfaces are located at indices: {ref_surface_indices}", len(cleaned_surfaces))
+        logger.debug("Reference surfaces at indices: %s, total surfaces: %d", ref_surface_indices, len(cleaned_surfaces))
         # Optional
-        #plot_cleaned_surfaces(cleaned_surfaces)
-
-
+        # plot_cleaned_surfaces(cleaned_surfaces)
         # Find intersection points, add them to surfaces, and extrude them
         nearest_points_dict: Dict[Any, NDArray[np.floating]] = {}
         intersection_points: List[NDArray[np.floating]] = []
+
         for i, (file, points) in enumerate(cleaned_surfaces):
 
             # Skip surfaces that are reference surfaces
@@ -515,16 +587,19 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
 
                     # Build a KDTree for the reference surface points for fast nearest-neighbor queries
                     ref_tree = cKDTree(ref_points)
+
                     # Find nearest reference points to all points on the current surface within the threshold
                     distances_ref, indices_ref = ref_tree.query(points, distance_upper_bound=PROJECTION_THRESHOLD)
 
                     # Build a KDTree for the current surface points
                     points_tree = cKDTree(points)
+
                     # Find all current surface points that are within PROJECTION_THRESHOLD of any reference point
                     indices_list: List[List[int]] = points_tree.query_ball_point(ref_points, r=PROJECTION_THRESHOLD)
                     indices: NDArray[np.integer]  = np.unique(np.hstack(indices_list))
                     nearest_to_ref: NDArray[np.floating] = points[indices.astype(int)]  # Points on current surface near reference
 
+                    nonempty = sum(len(x) > 0 for x in indices_list)
                     # Skip if there are no points close to the reference surface
                     if nearest_to_ref.size == 0:
                         continue
@@ -537,7 +612,6 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     distances_point, indices_point = points_tree.query(ref_points, distance_upper_bound=PROJECTION_THRESHOLD)
                     close_points_mask: NDArray[np.bool_]  = distances_point <= PROJECTION_THRESHOLD
                     nearest_or_points: NDArray[np.floating] = np.unique(points[indices_point[close_points_mask]], axis=0)  # Current surface points near ref
-
                     # Skip if either set is empty
                     if nearest_or_points.size == 0 or nearest_ref_points.size == 0:
                         continue
@@ -549,8 +623,10 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     for y in unique_y:
                         # Subset of current surface points at this y-coordinate
                         subset: NDArray[np.floating] = nearest_or_points[nearest_or_points[:, 1] == y]
+
                         # Subset of reference points at this y-coordinate
                         fault_subset: NDArray[np.floating] = nearest_ref_points[nearest_ref_points[:, 1] == y]
+
                         if len(fault_subset) == 0:
                             continue  # Skip if no reference points at this y
 
@@ -574,11 +650,13 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     # Check if the surface is clustered: skip if too many points are very close
                     close_points_mask = distances_point <= (DISTANCE_THRESHOLD / 4)
                     nearest_thres_points: NDArray[np.floating] = np.unique(points[indices_point[close_points_mask]], axis=0)
+
                     if nearest_thres_points.size != 0:
                         continue
 
                     # Calculate normals for the selected points on the surface
                     surface_normals: NDArray[np.floating] = calculate_normals(nearest_or_points, cleaned_surfaces, cleaned_normals, file)
+
                     # Keep track of reference points for extrusion
                     intersection_points.extend(nearest_ref_points)
 
@@ -586,29 +664,31 @@ def data_prepration(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD:
                     extruded_intersection_points: NDArray[np.floating] = correct_extrusion_direction(
                         nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR
                     )
+
                     # Add extruded points for this reference surface to the list
                     all_extruded_points_for_current_surface.append(extruded_intersection_points)
 
                 # Combine all extruded points with the current surface points
                 if all_extruded_points_for_current_surface:
+
                     extruded_combined: NDArray[np.floating] = np.vstack(all_extruded_points_for_current_surface)
                     updated_points: NDArray[np.floating] = np.vstack([points, extruded_combined.reshape(-1, 3)])
                     # Update the surface with the new set of points
                     cleaned_surfaces[i] = (file, updated_points)
 
-
-
         # Optionally, visualize all surfaces including extruded points
         #plot_surfaces_with_extrusions(
+
         #    cleaned_surfaces=cleaned_surfaces,
         #    intersection_points=intersection_points,
+
         #    extruded_points=all_extruded_points_for_current_surface,  # or your full list of extruded points
+
         #    point_size=5
         #    )
 
-
-
     else:
+
       cleaned_surfaces =surfaces
 
     return cleaned_surfaces, ref_surface_indices, grid_litho

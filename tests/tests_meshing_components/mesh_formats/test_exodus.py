@@ -4,8 +4,9 @@ import meshio
 import io
 
 from core.meshing_components.mesh_format.exodus.Exo_format import (
-    ExosInputs,
-    export_mesh_results_to_exodus
+    ExodusInput,
+    export_mesh_results_to_exodus,
+    MeshType
 )
 from core.object_components import MeshResults
 
@@ -15,9 +16,7 @@ class TestExportMeshResultsToExodus(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
 
-        # -----------------------------
-        # Create a simple tetra mesh
-        # -----------------------------
+        # Simple tetra mesh
         cls.nodes = np.array([
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -36,87 +35,60 @@ class TestExportMeshResultsToExodus(unittest.TestCase):
             "left": np.array([0, 2], dtype=int)
         }
 
-        # -----------------------------
-        # Build MeshResults object
-        # -----------------------------
         cls.mesh_results = MeshResults(
             nodes=cls.nodes,
             elements=cls.elements,
             point_sets=cls.point_sets
         )
 
-    # =====================================================
-    # Test ExosInputs initialization
-    # =====================================================
-    def test_exos_inputs_creation(self):
+    # -----------------------------
+    # ExodusInput creation test
+    # -----------------------------
+    def test_exodus_input_creation(self):
 
-        exo = ExosInputs(
-            self.nodes,
-            self.elements,
-            point_sets=self.point_sets
+        exo = ExodusInput(
+            mesh=self.mesh_results,
+            mesh_type=MeshType.STRUCTURED
         )
 
-        self.assertEqual(exo.nodes.shape, (4, 3))
-        self.assertEqual(len(exo.elements), 1)
-        self.assertIn("left", exo.point_sets)
+        self.assertEqual(exo.mesh.nodes.shape, (4, 3))
+        self.assertEqual(len(exo.mesh.elements), 1)
 
-    # =====================================================
-    # Test mesh creation
-    # =====================================================
-    def test_create_mesh(self):
+        self.assertEqual(exo.mesh_type, MeshType.STRUCTURED)
+        self.assertEqual(exo.mesh_type.value, "str")
 
-        exo = ExosInputs(
-            self.nodes,
-            self.elements,
-            point_sets=self.point_sets
-        )
-
-        mesh = exo.create_mesh()
-
-        self.assertIsInstance(mesh, meshio.Mesh)
-        self.assertEqual(mesh.points.shape[0], 4)
-        self.assertEqual(len(mesh.cells), 1)
-
-    # =====================================================
-    # Test full export pipeline
-    # =====================================================
+    # -----------------------------
+    # Full export pipeline test
+    # -----------------------------
     def test_export_mesh_results_to_exodus(self):
 
-        result = export_mesh_results_to_exodus(self.mesh_results)
+        result = export_mesh_results_to_exodus(
+            self.mesh_results,
+            type="str"   # KEEPING "type" as requested
+        )
 
-        # -----------------------------
-        # Check return type
-        # -----------------------------
         self.assertIsInstance(result, io.BytesIO)
-
-        # -----------------------------
-        # Check filename attribute
-        # -----------------------------
         self.assertTrue(hasattr(result, "filename"))
         self.assertTrue(result.filename.endswith(".exo"))
 
-        # -----------------------------
-        # Basic sanity: buffer not empty
-        # -----------------------------
-        result.seek(0, 2)  # go to end
+        result.seek(0, 2)
         size = result.tell()
 
         self.assertGreater(size, 0, "Exported file is empty")
 
-    # =====================================================
-    # Test invalid node input
-    # =====================================================
-    def test_invalid_nodes(self):
-
-        bad_nodes = np.array([[1.0, 2.0]])  # invalid shape
+    # -----------------------------
+    # Invalid mesh type test
+    # -----------------------------
+    def test_invalid_mesh_type(self):
 
         with self.assertRaises(ValueError):
-            ExosInputs(
-                bad_nodes,
-                self.elements,
-                point_sets=self.point_sets
+
+            ExodusInput(
+                mesh=self.mesh_results,
+                mesh_type="invalid_type"
             )
 
 
+##############################################
 if __name__ == "__main__":
     unittest.main()

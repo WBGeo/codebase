@@ -1,19 +1,15 @@
 import unittest
 import numpy as np
-
-from core.meshing_components.explicit.unstructured.mesh_data  import (
+from core.meshing_components.explicit.unstructured.mesh_data import (
     validate_triangulation
 )
-
 
 class TestValidateTriangulation(unittest.TestCase):
 
     def setUp(self):
         self.extent = (0, 10, 0, 10, 0, 10)
 
-    # -------------------------
-    # VALID CASE (returns None)
-    # -------------------------
+    # VALID CASE
     def test_valid_points(self):
         pts = np.array([
             [1, 1, 1],
@@ -22,35 +18,32 @@ class TestValidateTriangulation(unittest.TestCase):
         ])
 
         result = validate_triangulation(pts, self.extent)
-        self.assertIsNone(result)   # ✅ FIX
 
-    # -------------------------
+        self.assertIsInstance(result, np.ndarray)
+        self.assertTrue(np.array_equal(result, pts))
+
     # INVALID TYPE
-    # -------------------------
     def test_invalid_type(self):
         pts = [[1, 1, 1], [2, 2, 2]]
 
         with self.assertRaises(TypeError):
             validate_triangulation(pts, self.extent)
 
-    # -------------------------
-    # INVALID SHAPE
-    # -------------------------
+    # INVALID SHAPE (1D)
     def test_invalid_shape(self):
         pts = np.array([1, 2, 3])
 
         with self.assertRaises(ValueError):
             validate_triangulation(pts, self.extent)
 
+    # INVALID SHAPE (2D wrong cols)
     def test_invalid_shape_2(self):
         pts = np.array([[1, 2], [3, 4]])
 
         with self.assertRaises(ValueError):
             validate_triangulation(pts, self.extent)
 
-    # -------------------------
     # POINTS OUTSIDE (RAISE)
-    # -------------------------
     def test_points_outside_raise(self):
         pts = np.array([
             [1, 1, 1],
@@ -61,9 +54,7 @@ class TestValidateTriangulation(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_triangulation(pts, self.extent, raise_error=True)
 
-    # -------------------------
     # POINTS OUTSIDE (FILTER)
-    # -------------------------
     def test_points_outside_filter(self):
         pts = np.array([
             [1, 1, 1],
@@ -80,9 +71,7 @@ class TestValidateTriangulation(unittest.TestCase):
 
         self.assertTrue(np.array_equal(filtered, expected))
 
-    # -------------------------
     # ALL POINTS OUTSIDE
-    # -------------------------
     def test_all_points_outside(self):
         pts = np.array([
             [20, 20, 20],
@@ -91,11 +80,10 @@ class TestValidateTriangulation(unittest.TestCase):
 
         filtered = validate_triangulation(pts, self.extent, raise_error=False)
 
+        self.assertIsInstance(filtered, np.ndarray)
         self.assertEqual(len(filtered), 0)
 
-    # -------------------------
     # POINTS ON BOUNDARY (VALID)
-    # -------------------------
     def test_points_on_boundary(self):
         pts = np.array([
             [0, 0, 0],
@@ -104,8 +92,10 @@ class TestValidateTriangulation(unittest.TestCase):
         ])
 
         result = validate_triangulation(pts, self.extent)
-        self.assertIsNone(result)   # ✅ FIX
 
+        self.assertIsInstance(result, np.ndarray)
+        self.assertTrue(np.array_equal(result, pts))
 
+##########################################
 if __name__ == "__main__":
     unittest.main()
