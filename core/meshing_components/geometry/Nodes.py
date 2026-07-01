@@ -1,4 +1,6 @@
 import numpy as np
+from numpy.typing import NDArray
+from typing import Dict
 from core.meshing_components.geometry.Points import Points
 
 class Nodes(Points):
@@ -19,17 +21,15 @@ class Nodes(Points):
         self.y_coords = self.coordinates[:, 1]
         self.z_coords = self.coordinates[:, 2]
 
-    def get_node_ids(self):
+    def get_node_ids(self) -> NDArray[np.int64]:
         """Returns the node IDs."""
         return self.node_ids
 
-
-
-    def total_nodes(self):
+    def total_nodes(self) -> int:
         """Returns the total number of nodes."""
         return len(self.node_ids)
 
-    def nodes_on_boundaries(self):
+    def nodes_on_boundaries(self) -> Dict[str, NDArray[np.int64]]:
         """Returns a dictionary categorizing nodes on each boundary."""
 
         boundaries = {}

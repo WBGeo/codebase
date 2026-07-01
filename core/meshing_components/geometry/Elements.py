@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 from core.meshing_components.geometry.Nodes import Nodes
 
 class Elements(Nodes):
@@ -24,13 +25,13 @@ class Elements(Nodes):
     #################
     # basic getters
     ################
-    def get_element_ids(self):
+    def get_element_ids(self) -> NDArray[np.int64]:
         return self.element_ids
 
-    def get_element_node_ids(self):
+    def get_element_node_ids(self) -> NDArray[np.int64]:
         return self.element_node_ids
 
-    def total_elements(self):
+    def total_elements(self) -> int:
         return len(self.element_ids)
 
     ##########################
