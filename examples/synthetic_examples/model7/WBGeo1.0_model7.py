@@ -2,6 +2,10 @@
 from examples.pydantic_nodesapi_simulation import register_as_test_nodes_api
 register_as_test_nodes_api()
 
+# Uncomment the two lines below to enable detailed log output from all WBGeo components.
+# import logging
+# logging.basicConfig(level=logging.DEBUG)
+
 # Importing necessary libraries
 import pandas as pd
 import os

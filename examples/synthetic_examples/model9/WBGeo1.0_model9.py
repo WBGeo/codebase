@@ -1,3 +1,7 @@
+# Uncomment the two lines below to enable detailed log output from all WBGeo components.
+# import logging
+# logging.basicConfig(level=logging.DEBUG)
+
 # Importing necessary libraries
 import pandas as pd
 import os
