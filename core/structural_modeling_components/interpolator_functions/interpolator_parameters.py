@@ -3,11 +3,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Dict, FrozenSet, List, Optional, Tuple, Union, Literal
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
-from matplotlib.colors import BoundaryNorm, ListedColormap
 from pydantic import BaseModel, Field, PrivateAttr
 
 # -----------------------------------------------------------------------------
@@ -379,26 +376,16 @@ def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
     # Without knowing orientation count/quality, keep moderate.
     alpha = 0.1
 
-    # Softplus beta:
     # Keep at 1.0 for smoothness; bump slightly for sharper transitions if desired.
     beta = 1.0
 
-    # Mild regularization for larger problems
-    weight_decay = 0.0 if n < 3000 else 1e-4
-
-    # TODO: Special parameters excluded for now to keep the default configuration simple and stable
     return GeoINRParams(
         beta=beta,
         alpha=alpha,
         hidden_dim=hidden_dim,
         n_hidden_layers=n_hidden_layers,
-        activation="Softplus",
-        # concat=False,
         epochs=epochs,
         lr=lr,
-        weight_decay=weight_decay,
-        # seed=None,
-        # verbose=False,
     )
 
 
