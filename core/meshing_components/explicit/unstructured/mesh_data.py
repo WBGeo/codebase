@@ -30,10 +30,11 @@ class LithoMappingMode(StrEnum):
     MANUAL = "manual"
 
 LithoMappingModeType = typing.Annotated[
-    str,
+    LithoMappingMode,
     AnnotatedScriptType(
         name="LithoMappingMode",
         identifier="LithoMappingModeType",
+        controlled="Select|auto|none|manual"
     ),
 ]
 
