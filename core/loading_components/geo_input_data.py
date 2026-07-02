@@ -92,7 +92,7 @@ def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
 GroupNames = typing.Annotated[
   typing.List[str], AnnotatedScriptType(name='Group Names', color='aqua',
                                         identifier='wbgeo::GroupNames',
-                                        controlled='List|GroupName')]
+                                        controlled='List|GroupName|footer=Order of the groups is important.')]
 
 
 @wbgeo_type(name='StructuralInputSmartInputOptions', color='orange',
@@ -120,7 +120,7 @@ def structural_input_smart_options(surface_points_file: SurfaceCSVFileDataType,
 
   return CtrlGroup(id='root', inner=[
     CtrlOrderedGrouping(id='groups',
-                        label='Assign Groups, the ordering within the groups is relevant too.',
+                        label='Ordering fo groups by age  - from top (youngest) to bottom (oldest). Ordering of elements within groups follows the same rule - make sure to order from top (youngest) to bottom (oldest).',
                         groups=group_options,
                         items=formations,
                         defaultValue=dv,
