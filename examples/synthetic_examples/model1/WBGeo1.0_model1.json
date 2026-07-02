@@ -32,8 +32,8 @@
           "fixed_value": "[\"Strat_Series1\"]"
         },
         "4": {
-          "smartinput_value": "{\"root.groups\":{\"<None>\":[],\"Strat_Series1\":[\"rock1\",\"rock2\"]}}",
-          "smartinput_form": "{\"id\": \"root\", \"inner\": [{\"label\": \"Assign Groups, the ordering within the groups is relevant too\", \"description\": null, \"id\": \"groups\", \"groups\": [\"<None>\", \"Strat_Series1\"], \"items\": [\"rock1\", \"rock2\"], \"defaultValue\": {\"<None>\": [\"rock1\", \"rock2\"], \"Strat_Series1\": []}, \"smart_type\": \"order\"}], \"smart_type\": \"group\"}"
+          "smartinput_value": "{\"root.groups\":{\"<Excluded>\":[],\"Strat_Series1\":[\"rock1\",\"rock2\"]}}",
+          "smartinput_form": "true"
         }
       }
     },

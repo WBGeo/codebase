@@ -32,8 +32,8 @@
           "fixed_value": "[\"Strat_Series2\",\"Strat_Series1\"]"
         },
         "4": {
-          "smartinput_value": "{\"root.groups\":{\"<None>\":[\"fault\"],\"Strat_Series2\":[\"rock4\",\"rock3\"],\"Strat_Series1\":[\"rock2\",\"rock1\"]}}",
-          "smartinput_form": "{\"id\": \"root\", \"inner\": [{\"label\": \"Assign Groups, the ordering within the groups is relevant too\", \"description\": null, \"id\": \"groups\", \"groups\": [\"<None>\", \"Strat_Series1\", \"Strat_Series2\"], \"items\": [\"fault\", \"rock1\", \"rock2\", \"rock3\", \"rock4\"], \"defaultValue\": {\"<None>\": [\"fault\", \"rock1\", \"rock2\", \"rock3\", \"rock4\"], \"Strat_Series2\": [], \"Strat_Series1\": []}, \"smart_type\": \"order\"}], \"smart_type\": \"group\"}"
+          "smartinput_value": "{\"root.groups\":{\"<Exclude>\":[\"fault\"],\"Strat_Series2\":[\"rock4\",\"rock3\"],\"Strat_Series1\":[\"rock2\",\"rock1\"]}}",
+          "smartinput_form": "true"
         }
       }
     },
@@ -50,6 +50,10 @@
         },
         "2": {
           "fixed_value": "examples/synthetic_examples/model2/input_data/geological_data/model2_orientations_df.csv"
+        },
+        "3": {
+          "smartinput_value": "{\"root.fault_selection\":{\"<Exclude>\":[\"rock1\",\"rock2\",\"rock3\",\"rock4\"],\"<Faults>\":[\"fault\"]}}",
+          "smartinput_form": true
         }
       }
     },
