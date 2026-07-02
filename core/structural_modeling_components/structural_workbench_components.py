@@ -46,6 +46,7 @@ class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
 
 class StructuralFrameInputOptions_Root(pydantic.BaseModel):
   frame: typing.Dict[str, StructuralFrameInputOptions_Frame]
+  faults: typing.Dict[str, str] = {} # fault -> group name
 
 
 @wbgeo_type(name='StructuralFrameInputOptions', color='orange',
@@ -91,8 +92,7 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
     pass
   # interpolator_parameters.default_ok_params(frame[key].context) if frame is not None else None
 
-  return CtrlGroup(id='root', inner=[
-    CtrlGroup(id='frame', inner=[
+  ret = [CtrlGroup(id='frame', inner=[
                                   CtrlLabel(label='Frame Options: ')] + [
                                   CtrlGroup(id=key, inner=[
                                                             CtrlLabel(
@@ -138,9 +138,17 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
                                                           ]),
 
                                             ) for key in group_names
-                                ]),
+                                ])]
+  if fault_model is not None:
+    fault_options = ["<All>"] + [str(k) for k in data_elements.mapping_object.keys()]
+    ret.append(CtrlGroup(id='faults', inner=
+    [CtrlLabel(label='Fault Activity By Group: ')]
+    +
+    [CtrlSelect(label=fault_elem.name, id=fault_elem.name, options=fault_options) for
+     fault_elem in fault_model.fault_frame.fault_elements]
+                         ))
+  return CtrlGroup(id='root', inner=ret)
     # CtrlGroup(id='faults', inner=[CtrlLabel(label='Faults: (WIP) ')]) # show nothing for faults
-  ])
 
 
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options_to_data',
@@ -204,7 +212,12 @@ def structural_modeling(
         # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
         frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
 
-  # todo: also faults with smart inputs?
+  # Apply fault set_fault_activity_by_group
+  if options and options.root and options.root.faults:
+    for fault_name, group_name in options.root.faults.items():
+      if group_name != '<All>':
+        frame.set_fault_activity_by_group(fault_name=fault_name, group_name=group_name)
+
 
   structural_model_result = general.compute_structural_model(
     frame,
