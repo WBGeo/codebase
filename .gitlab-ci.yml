@@ -78,6 +78,7 @@ pages:
     - mkdir -p htmlcov # create folder, if test did not run (on a MR)
     - mv htmlcov/ public/coverage
     # mirror to github
+    - mkdir gh-pages
     - cd gh-pages
     - git init
     - git remote add origin "git@github.com:WBGeo/wbgeo.github.io.git"
