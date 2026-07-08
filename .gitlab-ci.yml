@@ -55,6 +55,21 @@ pages:
         PAGES_PREFIX: 'mr-$CI_MERGE_REQUEST_IID' # Prefix with the mr-<iid>, like `mr-123`
   dependencies:
     - test
+  before_script:
+    ## Install ssh-agent if not already installed, it is required by Docker.
+    ## (change apt-get to yum if you use an RPM-based image)
+    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client git -y )'
+    ## Run ssh-agent (inside the build environment)
+    - eval $(ssh-agent -s)
+    ## Give the right permissions, otherwise ssh-add will refuse to add files
+    ## Add the SSH key stored in SSH_PRIVATE_KEY file type CI/CD variable to the agent store
+    - chmod 400 "$GITHUB_DOCS_DEPLOY_KEY"
+    - ssh-add "$GITHUB_DOCS_DEPLOY_KEY"
+    ## Create the SSH directory and give it the right permissions
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - git config --global user.name "CI"
+    - git config --global user.email "ci@wbgeo.github.io"
   script:
     # add __init__.py files, required for docs
     - find core -type d -exec touch {}/__init__.py \;
@@ -62,6 +77,19 @@ pages:
     - mkdocs build --site-dir public
     - mkdir -p htmlcov # create folder, if test did not run (on a MR)
     - mv htmlcov/ public/coverage
+    # mirror to github
+    - cd gh-pages
+    - git init
+    - git remote add origin "git@github.com:WBGeo/wbgeo.github.io.git"
+    - git fetch --depth=1 origin gh-pages || true
+    - git checkout --orphan gh-pages
+    # cleanup old
+    - git rm -rf . || true
+    # copy docs & add
+    - cp -r ../public/. .
+    - git add .
+    - git commit -m "Deploy ${CI_COMMIT_SHA}"
+    - git push --force origin gh-pages
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     paths:
