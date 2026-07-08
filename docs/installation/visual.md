@@ -1,9 +1,9 @@
-# Complete Installation
+# Visual Editor Installation
 
 This document outlines an installation guide for using the workbench with 
 its visual editor.
-See the [developer's guide](../developers/index.md) for how to install the development
-dependencies.
+See the [codebase installation](codebase.md) for how to install the codebase 
+to be use-able in Python scripts.
 
 ### Step 0: Install Docker
 
@@ -16,31 +16,10 @@ recommend [Docker Desktop](https://docs.docker.com/desktop/) to you.
 
    * ![Windows: Switch to linux containers](../img/windows_docker.png)
 
-### Step 1: Create a personal access token:
 
-Currently, the images are deployed to a private GitLab registry.
-Thus, we have to tell our docker installation how to download these.
+### Step 1: Download the docker-compose.yml
 
-* Create
-  a [personal access token (PAT)](https://git.rwth-aachen.de/-/user_settings/personal_access_tokens)
-  with `read_api` permissions (`read_registry` is not sufficient) on the
-  git.rwth-aachen.de instance  (click the link for the correct location)
-* It has to have access to the [wbgeo](https://git.rwth-aachen.de/wbgeo/) group
-  and its subprojects
-   * a project scoped token is not sufficient
-* The same PAT can be used for the development guide.
-
-### Step 2: Login with docker
-
-Run `docker login registry.git.rwth-aachen.de` in a CLI and enter your GitLab
-username as the username,
-and the personal access token as the password.
-
-You should see a `Login succeeded` message.
-
-### Step 3: Download the docker-compose.yml
-
-Download the [docker-compose.yml](https://git.rwth-aachen.de/wbgeo/codebase/-/blob/main/docker-compose.yml?ref_type=heads) file to your machine to a
+Download the [docker-compose.yml](https://github.com/wbgeo/codebase/blob/main/docker-compose.yml) file to your machine to a
 location of your choice.
 
 This file tells docker how to orchestrate the containers required to run the
@@ -49,7 +28,7 @@ workbench editor.
 (In case you have already checked out the repository:
 You can use the docker-compose.yml directory in your git project instead)
 
-### Step 4: Start the workbench editor
+### Step 2: Start the workbench editor
 
 Switch to a CLI (e.g. cmd) and change into the directory of the downloaded file.
 (If you are unsure where your file is:
@@ -61,23 +40,29 @@ Run the `docker compose up` command in the CLI.
 In case you receive an `error during connect` error: Ensure Docker (Desktop) is
 running.
 
-### Step 5: Done
+### Step 3: Done
 
 Open [http://localhost:8080](http://localhost:8080) in your browser.
 You might have to wait for the console to pause its output/the backend to be
 ready.
 
+## How to use your own data with the graphical interface:
+
+By default, the docker setup mounts a `own_data` directory,
+which allows you to use your own input files.
+(Internally, they are mounted to _examples/own_data_.)
+
 ## How to update the graphical interface:
 
-Run `docker compose pull`, but step 4 should update the images automatically.  
+Run `docker compose pull`, but Step 2 should update the images automatically.  
 Certain updates might require you to also update the _docker-compose.yml_ file,
-in which case you will have to perform steps 3 and 4 again.
+in which case you will have to perform Steps 1 and 2 again.
 
 ## How to reset the graphical interface:
 
 In case the application fails to start after an update, etc.:
 Run `docker compose down` to reset the interface.
-Then continue with step 4 to start the interface again
+Then continue with Step 2 to start the interface again
 
 ## How to use a local codebase
 
@@ -95,12 +80,11 @@ services:
 Change the `./path/to/my/codebase/` path to point to codebase directory.
 
 (Special case: If you are using the docker-compose.yml from the codebase's
-directory,
-uncomment option A instead.)
+directory, uncomment the `# option 1` lines instead.)
 
 Now the container will start with your local codebase.
-Restart the py_runner container `docker compose restart py_runner` to after
-changes to your local codebase.
+After making changes to your local codebase, restart the py_runner container
+with `docker compose restart py_runner` to apply them.
 
 In case you have modified the component signatures, you have to reset the stored
 components in the database: use

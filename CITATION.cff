@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "WBGeo: Workbench for Digital Geosystems"
+license: EUPL-1.2
+year: 2025
+repository-code: https://wbgeo.github.io/
+authors:
+  - family-names: von Harten
+    given-names: Jan
+  - family-names: Baes
+    given-names: Marzieh
+  - family-names: Lüpges
+    given-names: Alexander
+  - family-names: Wellmann
+    given-names: Florian
+  - family-names: Cacace
+    given-names: Mauro
+  - family-names: Degen
+    given-names: Denise
+  - family-names: Scheck-Wenderoth
+    given-names: Magdalena
+  - family-names: Rumpe
+    given-names: Bernhard
+  - family-names: Niederau
+    given-names: Jan
+  - family-names: Rolf
+    given-names: Tobias

@@ -40,9 +40,19 @@ test:
 pages:
   image: python:3.12
   stage: deploy
+  variables:
+    PAGES_PREFIX: "" # No prefix by default (main)
+  pages:  # specifies that this is a Pages job and publishes the default public directory
+    path_prefix: "$PAGES_PREFIX"
+  environment:
+    name: "Pages ${PAGES_PREFIX}"
+    url: $CI_PAGES_URL
   rules:
-    - when: always
-      if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH # Run on default branch (with default PAGES_PREFIX)
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" # Conditionally change the prefix for Merge Requests
+      when: manual # Run pages manually on Merge Requests
+      variables:
+        PAGES_PREFIX: 'mr-$CI_MERGE_REQUEST_IID' # Prefix with the mr-<iid>, like `mr-123`
   dependencies:
     - test
   script:
@@ -50,6 +60,7 @@ pages:
     - find core -type d -exec touch {}/__init__.py \;
     - pip install mkdocs-material mkdocstrings[python] mkdocs-gen-files mkdocs-literate-nav
     - mkdocs build --site-dir public
+    - mkdir -p htmlcov # create folder, if test did not run (on a MR)
     - mv htmlcov/ public/coverage
   cache:
     key: ${CI_COMMIT_REF_SLUG}

@@ -10,14 +10,14 @@ def create_surfaces_with_grids_for_bottom_and_top(min_x: float, max_x: float, mi
     Generate two 3D surface grids (bottom and top) over a specified x-y range at given z levels.
 
     Args:
-        - min_x (float): Minimum x-coordinate of the grid.
-        - max_x (float): Maximum x-coordinate of the grid.
-        - min_y (float): Minimum y-coordinate of the grid.
-        - max_y (float): Maximum y-coordinate of the grid.
-        - min_z (float): z-coordinate for the bottom surface.
-        - max_z (float): z-coordinate for the top surface.
-        - n_gx (int): Number of grid points along the x-axis.
-        - n_gy (int): Number of grid points along the y-axis.
+        min_x (float): Minimum x-coordinate of the grid.
+        max_x (float): Maximum x-coordinate of the grid.
+        min_y (float): Minimum y-coordinate of the grid.
+        max_y (float): Maximum y-coordinate of the grid.
+        min_z (float): z-coordinate for the bottom surface.
+        max_z (float): z-coordinate for the top surface.
+        n_gx (int): Number of grid points along the x-axis.
+        n_gy (int): Number of grid points along the y-axis.
 
     Returns:
         numpy.ndarray: A 2x(3 * n_gx * n_gy) array containing:
@@ -65,12 +65,12 @@ def create_intermediate_layers(bottom_top_surfaces: NDArray[np.floating], output
     Creates intermediate layers of points between the bottom and top surfaces based on refinement data.
 
     Args:
-        - bottom_top_surfaces (np.array): Array containing two rows. The first row is the bottom surface, and
+        bottom_top_surfaces (np.array): Array containing two rows. The first row is the bottom surface, and
                                         the second row is the top surface.
-        - output_array (np.array): Array of shape (n_surfaces, 3 * n_gx * n_gy), containing multiple surfaces.
-        - refinement_data (list): List of refinement data to scale z-differences between layers.
-        - n_gx (int): Grid size in x direction.
-        - n_gy (int): Grid size in y direction.
+        output_array (np.array): Array of shape (n_surfaces, 3 * n_gx * n_gy), containing multiple surfaces.
+        refinement_data (list): List of refinement data to scale z-differences between layers.
+        n_gx (int): Grid size in x direction.
+        n_gy (int): Grid size in y direction.
 
     Returns:
         np.array: Updated array with intermediate layers between the bottom and top surfaces.

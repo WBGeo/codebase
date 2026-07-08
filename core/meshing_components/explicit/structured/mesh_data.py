@@ -138,7 +138,7 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
     Generates a geological mesh and returns a MeshData object.
 
     Args:
-        geomodel_result :Results of geological modeling.
+        geomodel_result: Results of geological modeling.
         refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
         mesh_division (MeshDev): Resolution in x and y directions.

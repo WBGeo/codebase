@@ -1,6 +1,6 @@
 # Structural Modeling
 
-The structural modeling component reconstructs 3D geological structure from sparse field observations. Structural modeling in general can be approached in many ways; this workbench uses **implicit methods**, where the geometry is represented as the isosurfaces of a continuously interpolated scalar field rather than as explicit surfaces built by hand. The scalar field is fitted to surface contact points and (optionally) orientation measurements, and the result is a volumetric lithology model together with surface meshes that represent the boundaries between lithological units.
+The structural modeling component reconstructs 3D geological structure from sparse field observations. Structural modeling in general can be approached in many ways; this Workbench uses **implicit methods**, where the geometry is represented as the isosurfaces of a continuously interpolated scalar field rather than as explicit surfaces built by hand. The scalar field is fitted to surface contact points and (optionally) orientation measurements, and the result is a volumetric lithology model together with surface meshes that represent the boundaries between lithological units.
 
 ---
 
@@ -40,7 +40,7 @@ A `RegularGrid` defines the 3D computation domain as a regular axis-aligned voxe
 
 > **Workbench component:** `Input data for Structural Elements`
 
-Surface points are required. Orientations are optional — whether they are needed depends on the interpolation method chosen later (see the interpolation methods table). The mapping is loaded from a JSON file. Together they form the `InputData_StructuralElements` object that feeds the model.
+Surface points are required. Orientations are optional — whether they are needed depends on the interpolation method chosen later (see the interpolation methods table). The mapping described above is provided as a Python dictionary or configured directly in the visual interface (visual DSL). Together they form the `InputData_StructuralElements` object that feeds the model.
 
 The required columns are:
 - Surface points: `X`, `Y`, `Z`, `formation`
@@ -78,9 +78,9 @@ This step combines configuration and computation. The input data, grid, and — 
 
 The computation runs the following steps in sequence:
 
-1. **Validation** — checks that every group has sufficient input data for its chosen method and, where faults are present, that orientations are available in the correct fault domains. All issues are reported together before any expensive computation begins.
+1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it). All issues are reported together before any expensive computation begins.
 2. **Interpolation** — each stratigraphic group is interpolated independently. When faults are active for a group, the interpolation is run completely separately in each fault domain using only the data points that fall within that domain. The resulting scalar fields are then stitched together.
-3. **Age masks** — a mask is computed per group that defines where that group is the youngest present (i.e. it has not been eroded by a younger unconformity above it).
+3. **Age masks** — a boolean mask is computed per group that represents its depositional extent: the oldest group underlies the entire domain (mask is True everywhere), while younger groups are only present where they were deposited. When assembling the lithology block, younger groups take precedence over older ones wherever their mask is True — this is what produces unconformable contacts between groups.
 4. **Lithology block** — the scalar fields and age masks are combined into a single 3D integer array where each voxel is assigned to a formation.
 5. **Surface meshes** — isosurfaces are extracted from the scalar fields using marching cubes. Four mesh types are stored per element: `masked` (respects unconformities and fault domains), `unmasked` (full isosurface through the entire grid), `combined` (derived from the lithology block), and `extended` (extrapolated beyond the grid boundary, used as input for 3D mesh generation).
 
@@ -95,16 +95,129 @@ The computation runs the following steps in sequence:
 
 All methods produce the same output format (scalar field + per-element isovalues) and can be set per stratigraphic group. The exposed parameters listed below are a subset of the full configuration space — each underlying library (SciPy, PyKrige, GemPy, LoopStructural, PyTorch) has many additional options that are not yet surfaced.
 
-| Method | Orientations required | Library | Currently adjustable parameters |
-|---|---|---|---|
-| **Radial Basis Function (RBF)** | No | [SciPy](https://scipy.org/) | `kernel`, `smoothing`, `epsilon`, `neighbors` |
+| Method | Orientations required | Library                                                          | Currently adjustable parameters |
+|---|---|------------------------------------------------------------------|---|
+| **Radial Basis Function (RBF)** | No | [SciPy](https://scipy.org/)                                      | `kernel`, `smoothing`, `epsilon`, `neighbors` |
 | **Ordinary Kriging (OK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | `variogram_model`, `range`, `sill`, `nugget`, `anisotropy_scaling_x/y/z`, `neighbors` |
 | **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK plus `drift_terms` |
-| **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/) | None currently exposed |
-| **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/) | `nelements`, `solver`, `damp`, `tol` |
-| **GeoINR** | Yes | [PyTorch](https://pytorch.org/) (custom) | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
+| **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None currently exposed |
+| **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
+| **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
 
 Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and sill for kriging methods, `nelements` for FDI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
+
+---
+
+## Visualisation and Inspection
+
+> **Workbench:** Where available, these are exposed as inspector functions with limited functionality in the visual interface (visual DSL) — parameters are fixed; the codebase functions below expose the full set of options.
+
+The following components allow quick inspection of input data and model results without leaving the Workbench.
+
+### Preview raw input data
+
+> **Workbench components:** `Plot Input Data 3D`, `Plot Fault Input Data 3D`
+
+Before running the model, surface points and orientations can be previewed directly — no `StructuralFrame` required.
+
+- **`plot_input_data_3D(input_data)`** — 3D plot of structural surface points and orientations, colored by formation.
+    - **`input_data`**: An `InputData_StructuralElements` object.
+    - **`show_orientations`** *(optional)*: If `True`, draws orientation arrows. Default `True`.
+    - **`arrow_scale`** *(optional)*: Length of the orientation arrows. Defaults to 5% of the data's bounding box diagonal.
+    - **`point_size`** *(optional)*: Size of the surface point markers. Default `8`.
+    - **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
+    - **`show`** *(optional)*: If `True`, opens the interactive window immediately. Default `True`.
+- **`plot_fault_input_data_3D(input_data)`** — the same, for fault input data (`InputData_FaultElements`), colored by fault name instead of formation. Same parameters as above.
+
+```python
+plot_input_data_3D(data_structural_elements)
+plot_fault_input_data_3D(data_faults)
+```
+
+### Inspect the structural model
+
+> **Workbench components:** `Detailed Report`, `Plot Model Result 2D`, `Plot Model Result 3D`
+
+These act on a `StructuralModelResults` object (see [Output](#output) below).
+
+`Detailed Report` prints a text summary of the structural frame — group count, surface point and orientation counts, and per-group interpolation method and parameters:
+
+```python
+structural_model_result.structural_frame.detailed_report()
+```
+
+`Plot Model Result 3D` — `plot_structural_model_3D(frame, ...)`:
+
+- **`frame`**: The `StructuralFrame` to visualise, e.g. `structural_model_result.structural_frame`.
+- **`mesh_type`** *(optional)*: Which geological surface mesh to render — `"masked"`, `"unmasked"`, `"combined"`, or `"extended"` (see [Output](#output)). Default `"masked"`.
+- **`fault_mesh_type`** *(optional)*: Mesh type for fault surfaces. Defaults to `mesh_type` if not set.
+- **`show_surface_meshes`** *(optional)*: Render the per-element surface meshes. Default `True`.
+- **`show_points`** *(optional)*: Render input surface points. Default `True`.
+- **`show_orientations`** *(optional)*: Render orientation arrows. Default `True`.
+- **`fault_opacity`** *(optional)*: Opacity of fault surface meshes. Default `0.35`.
+- **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
+- **`off_screen`** *(optional)*: Render off-screen with no window — required before calling `.screenshot()` without `show()`. Default `False`.
+- **`show`** *(optional)*: If `True`, opens the interactive window immediately; set `False` to add further actors before displaying. Default `True`.
+
+The Workbench version calls this with `mesh_type="masked"` and `show_surface_meshes=True`.
+
+```python
+plot_structural_model_3D(structural_model_result.structural_frame, mesh_type="masked", fault_opacity=0.5)
+```
+
+`Plot Model Result 2D` — `plot_structural_model_2D(frame, ...)`:
+
+- **`frame`**: The `StructuralFrame` to visualise.
+- **`axis`** *(optional)*: Axis to slice along — `"x"`, `"y"`, or `"z"`. Default `"y"`.
+- **`index`** *(optional)*: Slice index along the chosen axis. Defaults to the mid-point.
+- **`show_result`** *(optional)*: Overlay the lithology block as a colored background. Default `True`.
+- **`show_fault_contours`** *(optional)*: Overlay fault isolines. Default `True`.
+- **`show_input_data`** *(optional)*: Overlay input surface points and orientation arrows. Default `True`.
+- **`title_suffix`** *(optional)*: Text appended to the plot title. Default `""`.
+
+```python
+plot_structural_model_2D(structural_model_result.structural_frame, axis="x", index=20)
+```
+
+### Inspect the fault model
+
+> **Workbench components:** `Detailed Fault Report`, `Plot Fault Model Result 2D`, `Plot Fault Model Result 3D`
+
+These act on a `FaultModelResults` object.
+
+`Detailed Fault Report`:
+
+```python
+fault_model_result.fault_frame.detailed_report()
+```
+
+`Plot Fault Model Result 3D` — `plot_fault_model_3D(fault_frame, ...)`:
+
+- **`fault_frame`**: The `FaultFrame` to visualise, e.g. `fault_model_result.fault_frame`.
+- **`mesh_type`** *(optional)*: Which fault surface mesh to render — `"masked"`, `"unmasked"`, `"extended"`, or `"extended_masked"` (see [Output](#output)). Default `"unmasked"`.
+- **`show_surface_meshes`** *(optional)*: Render fault surface meshes. Default `True`.
+- **`show_input_data`** *(optional)*: Render input surface points and orientation arrows. Default `True`.
+- **`show_domain_map`** *(optional)*: Render translucent fault domain blocks. Default `True`.
+- **`domain_opacity`** *(optional)*: Opacity of the domain blocks. Default `0.15`.
+- **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
+- **`show`** *(optional)*: If `True`, opens the interactive window immediately. Default `True`.
+
+```python
+plot_fault_model_3D(fault_model_result.fault_frame, show_domain_map=True, domain_opacity=0.2)
+```
+
+`Plot Fault Model Result 2D` — `plot_fault_model_2D(fault_frame, ...)`:
+
+- **`fault_frame`**: The `FaultFrame` to visualise.
+- **`axis`** *(optional)*: Axis to slice along — `"x"`, `"y"`, or `"z"`. Default `"y"`.
+- **`index`** *(optional)*: Slice index along the chosen axis. Defaults to the mid-point.
+- **`show_results`** *(optional)*: Plot the fault domain map and isolines, if present. Default `True`.
+- **`show_input_data`** *(optional)*: Plot input surface points, if available. Default `True`.
+- **`show_fault_contours`** *(optional)*: Overlay fault isolines. Default `True`.
+
+```python
+plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)
+```
 
 ---
 
@@ -117,6 +230,7 @@ Default parameters are estimated automatically from the spatial distribution of 
 - **Scalar fields** — one 3D float array per stratigraphic group, shaped `(nx, ny, nz)`.
 - **Lithology block** — a 3D integer array shaped `(nx, ny, nz)`, where each voxel holds the formation ID of the youngest formation present at that location (0 = basement / no formation).
 - **Surface meshes** — vertices and triangle faces per formation, stored under the mesh type keys `masked`, `unmasked`, `combined`, `extended`.
-- **Fault surface meshes** — `unmasked` and `extended` meshes for each fault element.
+- **Fault surface meshes** — `masked`, `unmasked`, `extended` and `extended_masked` meshes for each fault element.
+- **All intermediate results** — scalar values per element, age masks per group, and the fault domain map are stored on the structural frame within the result object and can be accessed programmatically for further analysis or visualisation.
 
 The `StructuralModelResults` object is the direct input to the meshing components.

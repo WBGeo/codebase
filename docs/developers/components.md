@@ -39,8 +39,8 @@ The picture shows the visualization of this component.
 | input_checks   | (optional) | The pre-checks (see below)                                                                          |
 | color          | (optional) | The color of the component                                                                          |
 | border_color   | (optional) | The border color of the component                                                                   |
-| group          | (optional) | TODO                                                                                                |
-| tags           | (optional) | TODO                                                                                                |
+| group          | (optional) | The group this component belongs to                                                                 |
+| tags           | (optional) | For internal description                                                                            |
 | return_name    | (optional) | The name of the output port, default "result"                                                       |
 | is_object_type | (optional) | Some components should be presented like the result (e.g. the loading component), defaults to False |
 
@@ -284,5 +284,5 @@ By using an annotated input type, with an annotation to `SmartInput`,
 Parameters in the smart-input helper component functions with the same name and type 
 as the real component will be passed along.
 
-TODO: Describe the frontend and link to the available smart controls
+Please take a look at the smart controls file to see a list of available controls.
 

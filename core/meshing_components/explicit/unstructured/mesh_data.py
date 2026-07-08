@@ -443,7 +443,7 @@ def validate_ellipses(ellipses: List[Dict], extent: Optional[List[float]] = None
         extent: [xmin, xmax, ymin, ymax, zmin, zmax]
 
     Raises:
-        ValueError if any ellipse fails validation
+        ValueError: if any ellipse fails validation
     """
 
     for idx, e in enumerate(ellipses, start=1):

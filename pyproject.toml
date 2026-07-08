@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs", "hatch-requirements-txt"]
+build-backend = "hatchling.build"
+[project]
+name = "wbgeo"
+dynamic = ["version", "dependencies"]
+description = "The codebase of wbgeo"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
+]
+
+[project.urls]
+Homepage = "https://wbgeo.github.io/"
+
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["core"]

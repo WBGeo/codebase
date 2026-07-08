@@ -1,24 +1,21 @@
-
-### Types
+# Types
 
 The workbench, by default, supports various built-in types.
-In the following table, the existing
+In the following table, the existing and supported python types are presented.
 
-| Python-Type | Description                                                                                             |
-|-------------|---------------------------------------------------------------------------------------------------------|
-| `bool`      | A boolean value, represented as a checkbox in the UI                                                    
-| `int`       | A numeric, integer value, represented as a number field in the UI                                       
-| `float`     | A floating point numeric value, represented as an number field allowing floating point values in the UI 
-| `str`       | A text value, represented as a text field in the UI                                                     
-| `List[?]`   | A list of values, without an input representation in the UI                                             
-
-TODO: file input ("upload")
-
+| Python-Type   | Description                                                                                             |
+|---------------|---------------------------------------------------------------------------------------------------------|
+| `bool`        | A boolean value, represented as a checkbox in the UI                                                    
+| `int`         | A numeric, integer value, represented as a number field in the UI                                       
+| `float`       | A floating point numeric value, represented as an number field allowing floating point values in the UI 
+| `str`         | A text value, represented as a text field in the UI                                                     
+| `List[?]`     | A list of values, without an input representation in the UI                                             
+| `Optional[?]` | An optional value, requires a default (e.g., `Optional[str] = None`)                                    
 
 #### Annotating existing types
 
 To help users by giving a type a semantic meaning,
-we can annotate types using `AnnotatedScriptType`, like in the following exmaple
+we can annotate types using `AnnotatedScriptType`, like in the following example:
 
 ````python
 from py_api_wbgeo.nodesapi import AnnotatedScriptType
@@ -31,20 +28,21 @@ The UI will handle them like their own type (due to the unique identifier),
 yet they are handled like their original type during the execution.
 For example, a special type for file paths could be added.
 
-TOOD: identifier
+The identifier must be unique.
+(We recommend a namespaced identifier to avoid naming collisions.)
 
 The `AnnotatedScriptType` accepts the following parameters:
 
-| parameter  | required   | description                                   |
-|------------|------------|-----------------------------------------------|
-| identifier | required   | todo                                          |
-| name       | required   | The human-readable name of this type          |
-| color      | (optional) | The color of this type                        |
+| parameter  | required   | description                                  |
+|------------|------------|----------------------------------------------|
+| identifier | required   | A unique identifier of this type             |
+| name       | required   | The human-readable name of this type         |
+| color      | (optional) | The color of this type                       |
 | controlled | (optional) | If present, a value can be entered via the UI |
 
 
 The UI additionally supports special input controls via the `controlled` parameter.
-By default, a parameters default value is used.
+By default, no special input controls are added.
 
 | Controlled=             | Description                                                 |
 |-------------------------|-------------------------------------------------------------|

@@ -4,7 +4,7 @@ site_url: https://wbgeo.pages.rwth-aachen.de/codebase
 repo_url: https://git.rwth-aachen.de/wbgeo
 theme:
   name: material
-  logo: 'fontawesome/solid/desktop'
+  logo: 'img/logo.png'
   features:
     - navigation.instant
     - search.highlight
@@ -13,6 +13,10 @@ theme:
     - navigation.footer
 markdown_extensions:
   - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -36,19 +40,14 @@ nav:
     - Codebase: installation/codebase.md
   - Components:
       - components/index.md
-      - Data Loading: components/data_loading/index.md
       - Structural Modeling: components/structural_modeling/Manual_structural_modeling.md
-      - Meshing: components/meshing/index.md
+      - Meshing: components/meshing/Manual_meshing.md
       - Process Simulation: components/simulation/Manual_simulation.md
-      - Visualization: components/visualization/index.md
+      - Visualization: components/visualization/Manual_visualization.md
   - Developer's Guide:
       - developers/index.md
-      - Installation: developers/installation.md
       - Components: developers/components.md
       - Types: developers/types.md
       - Local execution: developers/local.md
-  - Code Reference: reference/
-  - Examples: Examples.md
-  - Publications: Publications.md
 
 copyright: '(c) https://git.rwth-aachen.de/wbgeo/'

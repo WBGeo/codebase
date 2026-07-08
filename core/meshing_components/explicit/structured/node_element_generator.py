@@ -9,15 +9,15 @@ def adjust_z_values(all_points_array: NDArray[np.floating], n_gx: int,n_gy: int,
     Adjusts z-values of points in consecutive rows if they are within a tolerance distance.
 
     Args:
-        - all_points_array (np.array): Array containing points for each surface and its intermediate points, where:
+        all_points_array (np.array): Array containing points for each surface and its intermediate points, where:
                                      - x = all_points_array[:, :n_gx * n_gy]
                                      - y = all_points_array[:, n_gx * n_gy: 2 * n_gx * n_gy]
                                      - z = all_points_array[:, 2 * n_gx * n_gy: 3 * n_gx * n_gy]
                                      - ids = all_points_array[:, -n_gx * n_gy:]
-        - n_gx (int): Grid size in x direction.
-        - n_gy (int): Grid size in y direction.
-        - z_threshold (float): Value for moving a point in z direction.
-        - tolerance (float): Tolerance for comparing location of two points.
+        n_gx (int): Grid size in x direction.
+        n_gy (int): Grid size in y direction.
+        z_threshold (float): Value for moving a point in z direction.
+        tolerance (float): Tolerance for comparing location of two points.
 
     Returns:
         np.array: Adjusted array with updated z values.
@@ -66,9 +66,9 @@ def create_hexahedral_elements_with_nodes(adjusted_array: NDArray[np.floating], 
     Saves both elements and nodes data.
 
     Args:
-        - adjusted_array (np.array): Array of points with shape (n_layers, 3 * n_gx * n_gy + 1).
-        - n_gx (int): Grid size in the x direction.
-        - n_gy (int): Grid size in the y direction.
+        adjusted_array (np.array): Array of points with shape (n_layers, 3 * n_gx * n_gy + 1).
+        n_gx (int): Grid size in the x direction.
+        n_gy (int): Grid size in the y direction.
 
     Returns:
         tuples containing:

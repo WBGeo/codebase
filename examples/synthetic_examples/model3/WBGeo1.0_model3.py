@@ -151,7 +151,7 @@ structural_model_result = general.compute_structural_model(
 
 # Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame)
-plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True, mesh_type="extended")
+plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
 
 #%%
 
