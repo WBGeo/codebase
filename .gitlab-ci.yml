@@ -68,6 +68,7 @@ pages:
     ## Create the SSH directory and give it the right permissions
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
+    - echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
     - git config --global user.name "CI"
     - git config --global user.email "ci@wbgeo.github.io"
   script:
