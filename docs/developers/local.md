@@ -1,4 +1,6 @@
-# Running the examples locally
+# Local execution
+## Running the examples locally
+
 You can either use Intellij with its python console to run the examples,
 or modify your `PYTHONPATH` environment variable:
 
@@ -6,19 +8,17 @@ or modify your `PYTHONPATH` environment variable:
 # linux
 cd codebase
 export PYTHONPATH="$PWD:$PYTHONPATH"
-python examples/WBGeo123.py
+python examples/synthetic_examples/model1/WBGeo1.0_model1.py
 ````
 
 ````powershell
 # powershell
 cd codebase
 $env:PYTHONPATH = "$PWD;" + $env:PYTHONPATH
-python examples/WBGeo123.py
+python examples/synthetic_examples/model1/WBGeo1.0_model1.py
 ````
 
-# Running the visual frontend locally
+## Running the visual frontend locally
 
-TODO
-
-* Note: Currently a runner does not update existing components or type definitions. 
-You can either restart the backend or click the button on the `/gui/Reset/Reset` page.
+See the [visual editor installation guide](../installation/visual.md) for how to use
+a local codebase.

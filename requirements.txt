@@ -1,5 +1,6 @@
 
 --extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://git.rwth-aachen.de/api/v4/projects/129570/packages/pypi/simple
 annotated-types>=0.7.0
 certifi>=2024.7.4
 charset-normalizer>=3.4.3
@@ -50,7 +51,7 @@ python-dotenv==1.0.1
 pytz==2024.1
 pyvista==0.44.1
 pyvistaqt==0.11.1
-py_api_wbgeo>=0.8.6
+py_api_wbgeo>=0.8.8
 requests>=2.32.3
 resqpy~=5.1.13
 ruamel.yaml.clib==0.2.8

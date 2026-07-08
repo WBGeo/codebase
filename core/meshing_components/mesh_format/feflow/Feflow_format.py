@@ -321,7 +321,7 @@ class FeflowInputs:
         self.elements = elements
 
 
-    def create_mesh(self):
+    def create_mesh(self) -> meshio.Mesh:
         """
         Creates a mesh using the meshio library and saves it to the specified output file.
 

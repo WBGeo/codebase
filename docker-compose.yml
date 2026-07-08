@@ -1,6 +1,6 @@
 services:
   frontend:
-    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/frontend:latest
+    image: registry.git.rwth-aachen.de/wbgeo/container-registry/frontend:latest
     pull_policy: always
     ports:
       - "8080:80"
@@ -8,35 +8,36 @@ services:
       - backend
     environment:
       UMLP_DEPLOYED_DOMAIN: ":80"
+  
   backend:
-    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/backend:latest
+    image: registry.git.rwth-aachen.de/wbgeo/container-registry/backend:latest
     pull_policy: always
     environment:
       S3_HOST: "minio:9000"
     depends_on:
       - minio
+      # database, in case a persistent database container is used as well
+  
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-02-28T09-55-16Z
-    command: server /data --console-address ":9001"
+    image: rustfs/rustfs:1.0.0-beta.8
     expose:
-      - "9000"
-      - "9001"
+      - "9000" # API endpoint
+      - "9001" # Web-Console
     ports:
       - "127.0.0.1:9001:9001"
       - "127.0.0.1:9002:9000"
-    healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
     environment:
-      MINIO_ROOT_USER: wbgeoM1n10admin
-      MINIO_ROOT_PASSWORD: g@bJ!&NS8K^!
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: true
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_ACCESS_KEY: wbgeoM1n10admin
+      RUSTFS_SECRET_KEY: g@bJ!&NS8K^!
     volumes:
       - "./docker/storage:/data:rw"
   
   py_runner:
-    image: registry.git.rwth-aachen.de/monticore/umlp-anwendungen/wbgeo/pyrunner:latest
+    image: registry.git.rwth-aachen.de/wbgeo/container-registry/pyrunner:latest
     restart: on-failure
     pull_policy: always
     depends_on:
@@ -46,10 +47,21 @@ services:
       LIQUIDEARTH_TOKEN: "" # TODO place your token here to use it by default
       MINIO_HOST: "minio:9000"
       BACKEND_HOST: "backend:8081"
-#    volumes:
-      # for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
+      PREPARE_TEMPLATES: "false" # Whether templates should be pre-executed on start
+    volumes:
+      # option 1, for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
       # if this file is located at the root of the "codebase" project, the defaults work
-#      - "./core/:/usr/src/app/codebase/core/"
-#      - "./examples/:/usr/src/app/codebase/examples/"
+      #      - "./core/:/usr/src/app/codebase/core/"
+      #      - "./examples/:/usr/src/app/codebase/examples/"
+      
       # option 2 - if the codebase is in a different folder, you can also use this format
-#      - "./path/to/my/codebase/:/usr/src/app/codebase/"
+      #      - "./path/to/my/codebase/:/usr/src/app/codebase/"
+      
+      # option 3 - to only include your own data directory (with input CSV files)
+      - "./own_data/:/usr/src/app/codebase/examples/own_data/"
+      
+      # cache installed python packages even across image updates
+      - "pythonDepCache:/opt/venv"
+
+volumes:
+  pythonDepCache: # a cache for installed python packages

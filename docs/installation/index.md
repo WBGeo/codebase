@@ -1,6 +1,24 @@
 # Installation Guide
 
-We differentiate between 3 kinds of installations:
- * The complete ready-to-use workbench, with a visual editor: [Complete Installation](visual.md)
- * Only the codebase, to be used from python files: [codebase](codebase.md)
- * The develop dependencies, not suitable for most cases : [development dependencies](../developers/installation.md)
+WBGeo can be used in two ways — choose the one that fits your use case:
+
+---
+
+## :material-application: Visual Workflow Editor (Docker)
+
+**For:** users who want to build and run geoscientific workflows through a browser-based visual interface, without writing Python code.
+
+WBGeo runs inside a Docker container and is accessible at [http://localhost:8080](http://localhost:8080) once started. No Python environment setup is required.
+
+[Visual Editor Installation](visual.md){ .md-button .md-button--primary }
+
+---
+
+## :material-language-python: Python Codebase
+
+**For:** users who want to work directly with WBGeo in Python scripts or notebooks — e.g., to run structural modeling, meshing, or simulation components programmatically.
+
+[Codebase Installation](codebase.md){ .md-button .md-button--primary }
+
+---
+

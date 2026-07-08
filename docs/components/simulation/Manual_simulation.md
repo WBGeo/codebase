@@ -1,479 +1,210 @@
-# 1. Simulation
+# Simulation
 
-> ! This file was automatically converted to MarkDown
+The simulation component connects the Workbench to numerical solvers. Since the meshing component exports to multiple standard formats, the Workbench can interface with a range of commercial and open-source simulation packages. In the current version, **SfePy** (Simple Finite Elements in Python) is integrated as an open-source, Python-based multi-physics finite element framework. Meshes generated within the Workbench are passed directly to SfePy at runtime, without manual file management.
 
-Since the meshing component supports export to multiple standard formats, the Workbench
-can interface with a wide range of commercial and open-source simulation packages. This
-flexibility allows users to integrate different numerical solvers into the modeling workflow
-depending on the problem requirements and available software infrastructure.
-In the current version of the Workbench, SfePy (Simple Finite Elements in Python), an open-
-source, Python-based multi-physics finite element framework, is integrated.
-The solver can directly import meshes generated within the Workbench. In the following
-sections, we describe how to set up and run a simulation using this software package. To
-demonstrate the workflow and illustrate the integration process, we consider a simple
-hydrothermal benchmark model as an example. This example highlights the complete
-procedure—from importing generated mesh and parameter definition to solver execution and
+To demonstrate the workflow, the examples use a simple hydrothermal benchmark model that covers the complete procedure — from mesh import and parameter definition to solver execution and result visualisation.
 
-## result visualization—within the automated Workbench environment.
+---
 
-## 1. 1. Running simulations
+## Workflow
 
-## 1. 1 .1. Sfepy ( simulation_run() )
+### 1. Prepare the SfePy input file
 
-_SfePy_ uses a _Python_ input file with the extension _.py_ to define the complete simulation setup,
-including the mesh, regions, materials, fields, variables, equations, solvers, and output settings.
-A detailed description of the input file structure and available options can be found in the
-official _SfePy_ user guide and manual available on the _SfePy_ website.
-To run an _SfePy_ model within the Workbench, certain parts of the input file must be defined in
-a way that allows dynamic interaction with the Workbench environment.
-First, the mesh definition must read the mesh filename from an environment variable. This
-enables the Workbench to pass the automatically generated mesh to _SfePy_ at runtime. The
-following lines should be included in the input file:
+> **Workbench component:** `SfePy Input`
 
-_import os
+SfePy is configured through a Python script (`.py`) that defines the mesh, regions, materials, fields, variables, equations, solvers, and output settings. A full reference for the input file format is available in the [SfePy documentation](https://sfepy.org/doc-devel/index.html).
+
+To run an SfePy model within the Workbench, two parts of the input file must be defined dynamically.
+
+**Mesh filename** — must be read from an environment variable so the Workbench can pass the generated mesh at runtime:
+
+```python
+import os
 import meshio
-filename_mesh = os.environ.get("TEMP_MESH_FILE", "filename.mesh")_
-
-Here, " _filename.mesh_ " acts as a fallback default value. During execution through
-_simulation_run(),_ the Workbench sets the environment variable _TEMP_MESH_FILE_ to the
-actual mesh file exported from the meshing module. This ensures that the solver always uses
-the correct, automatically generated mesh without manual modification of the input script.
-Second, the output directory must also be defined dynamically to ensure that results are written
-to the appropriate project folder created by the Workbench. This can be achieved as follows:
-
-_output_dir = os.environ.get("SFEpy_OUTPUT_DIR", "output")
-os.makedirs(output_dir, exist_ok=True)_
-
-Again, " _output_ " serves as a default directory if the environment variable is not set. When the
-model is executed from the Workbench, the _SFEpy_OUTPUT_DIR_ variable is automatically
-defined, ensuring that all result files are stored in the designated simulation folder.
-In addition, the output directory must be referenced in the solver options section of the _SfePy_
-input file. For example:
-
-
-_options = {'nls': 'newton',
-'ls': 'ls',
-'ts': 'ts',
-'save_times': 'all',
-'output_dir': output_dir,
-}_
-
-By linking _output_dir_ in the options dictionary, _SfePy_ writes all result files into the _output_dir_
-managed by the Workbench.
-With these two dynamic components—the mesh filename and the output directory—the _SfePy_
-input file becomes fully compatible with the automated Workbench workflow. The remaining
-parts of the input file, such as material properties, boundary conditions, governing equations,
-and solver settings, can be defined in the standard _SfePy_ format according to the specific
-hydrothermal or multi-physics problem under consideration.
-The function _run_sfepy()_ is designed to execute an _SfePy_ simulation within the Workbench
-environment using an automatically generated mesh. It handles mesh conversion, environment
-configuration, solver execution, output management, and cleanup in a structured and automated
-way.
-The function takes three arguments: _input_file_ , which is the _SfePy Python_ input script;
-_mesh_test_ , which represents the internal mesh object generated by the Workbench; and an
-optional _output_dir_ , which defines where simulation results should be stored.
-The first part of the function manages the output directory. If no output directory is provided,
-a temporary directory is created using _Python_ ’s tempfile module. In this case, a flag
-( _auto_output_ ) is set to indicate that the directory was automatically generated. If the user
-provides an output directory, the function ensures that it exists by creating it if necessary. The
-selected output directory is then passed to _SfePy_ via the environment variable
-_SFEpy_OUTPUT_DIR_ , allowing the input file to dynamically retrieve and use this location for
-writing results.
-Next, the mesh generated inside the Workbench is exported to _Exodus_ format using the
-_export_mesh_results_to_exodus()_ function. The exported mesh data is written into a temporary
-_.exo_ file on disk. After exporting the mesh, the function converts the _Exodus_ file into a _SfePy_ -
-compatible format using the _meshio_ library. The mesh is read from the temporary _Exodus_ file,
-and material IDs are assigned to each cell block. These material identifiers are stored in the
-_cell_data_ dictionary under the key " _mat_id_ ", which allows _SfePy_ to distinguish between
-different material regions during simulation. The mesh is then written to a second temporary
-file in the Medit .mesh format, which _SfePy_ can directly read. The path to this temporary mesh
-file is passed to the solver via the environment variable _TEMP_MESH_FILE_.
-Once the mesh preparation is complete, the function launches the _SfePy_ simulation using the
-subprocess module. The command “ _Sfepy-run input_file_ ” is executed in the current working
-directory, and the process waits until the simulation finishes. Because the required environment
-variables were set earlier, the input file can dynamically retrieve both the mesh file and the
-output directory.
-After the simulation completes, the function lists all files generated in the output directory.
-This provides immediate feedback about the produced result files, such as _VTK_ outputs.
-In the final stage, the function performs cleanup operations. Temporary helper files, including
-the temporary _Exodus_ file and the temporary _Medit_ mesh file, are removed to avoid leaving
-unnecessary intermediate files on the system. The output directory itself is only removed if it
-was automatically created; if the user explicitly provided an output directory, it is preserved.
-Finally, the function returns the path to the output directory, allowing further post-processing
-or visualization steps within the Workbench workflow.
-
-
-## 1.2. Storing outputs in a uniform format
-
-Different simulation packages export results in different file formats and internal data
-structures. For consistent post-processing, visualization, and comparison of results within the
-Workbench, it is therefore essential to unify these heterogeneous outputs into a common
-internal representation.
-Currently, the Workbench supports two major output formats: _Exodus_ and _VTK_. Since these
-formats differ in structure, metadata handling, and storage of time-dependent fields, their
-contents are converted into a standardized data container. This ensures that all downstream
-processes, i.e., visualization and analysis, operate independently of the original solver and file
-format.
-To achieve this, simulation outputs are stored in a unified data class called _SimulationResults._
-This class acts as a time-dependent container for geometry, topology, and associated field
-variables.
-The _SimulationResults_ class stores data per timestep using dictionaries keyed by time. Each
-timestep contains the complete mesh description and all associated result fields. The structure
-is defined as follows:
-
-- _nodes_by_time_ : stores the nodal coordinates for each timestep as a _NumPy_ array of
-  shape ( _n_nodes, 3_ ).
-- _cells_by_time_ : stores the cell connectivity for each timestep.
-- _celltypes_by_time_ : stores the _VTK_ - style cell type identifiers corresponding to each
-  element.
-- _node_data_by_time_ : stores node-based variables (e.g., temperature, pressure,
-  displacement) as dictionaries mapping variable names to _NumPy_ arrays for each
-  timestep.
-- _cell_data_by_time_ : stores element-based variables (e.g., stress, material IDs, fluxes) in
-  a similar dictionary structure.
-  By organizing the data in this way, the Workbench provides a solver-independent internal
-  representation of simulation results. Whether the original output file is in _Exodus_ or _VTK_
-  format, it is parsed and mapped into this standardized structure. This approach offers several
-  advantages. It decouples post-processing routines from solver-specific formats, simplifies the
-  implementation of visualization modules, enables consistent time-series handling, and
-  facilitates comparison between different simulation engines.
-  In the following sections, the procedures for reading and converting _Exodus_ and _VTK_ outputs
-  into the _SimulationResults_ structure are described in detail.
-
-## 1.2.1 Importing mesh from VTK files
-
-## ( load_vtk_results() )
-
-The function _load_vtk_results()_ is responsible for reading simulation results stored in _VTK_
-format from a given output directory and converting them into the unified _SimulationResults_
-data structure used by the Workbench.
-At the beginning, the provided output directory path is converted into an absolute path to ensure
-consistency and avoid potential issues related to relative paths. The function then recursively
-scans the directory and all its subdirectories to locate files with the _.vtk_ extension. All detected
-_VTK_ files are collected into a list, which is subsequently sorted. Sorting ensures that the files
-are processed in a consistent and predictable order, typically corresponding to increasing
-simulation time.
-
-
-A new _SimulationResults_ object is then created to store the extracted data. For each _VTK_ file
-found in the directory, the function attempts to extract the simulation time from the filename.
-It does this by splitting the filename and interpreting the second-to-last segment as a floating-
-point number. If this conversion fails, the filename itself is used as the time identifier. This
-mechanism allows the function to handle both time-stepped outputs (for example,
-_solution.0.0.vtk, solution.1.0.vtk)_ and non-standard naming conventions.
-Each _VTK_ file is read using _PyVista_. From the loaded mesh object, the function extracts the
-nodal coordinates, cell connectivity, and cell type information. These geometric and
-topological components are stored in the corresponding dictionaries of the _SimulationResults_
-instance, using the extracted time value as the key. In addition to the mesh structure, all point-
-based data arrays are collected from the _VTK_ file and stored in the _node_data_by_time_
-dictionary. Similarly, all cell-based data arrays are stored in the _cell_data_by_time_ dictionary.
-Each dataset is converted into a _NumPy_ array to ensure consistent numerical handling within
-the Workbench.
-After all _VTK_ files have been processed, a confirmation message is printed indicating
-successful loading.
-Finally, the function includes an automatic cleanup mechanism. It checks whether the output
-directory is located inside the system’s temporary directory. If this is the case, the directory is
-removed after loading the data. This behavior prevents the accumulation of temporary
-simulation outputs created during automated runs. If the directory is not part of the system’s
-temporary path, it is preserved, assuming it was intentionally specified by the user.
-The function then returns the populated _SimulationResults_ object, which provides a
-standardized, time-dependent representation of the _VTK_ simulation results for further post-
-processing and visualization within the Workbench.
-
-## 1.2.2 Importing mesh from Exodus files
-
-## ( load_exodus_results() )
-
-The function _load_exodus_results()_ is responsible for reading simulation results stored in
-_Exodus II_ format from a given file and converting them into the unified _SimulationResults_ data
-structure used by the Workbench.
-At the beginning, the provided file path is converted into an absolute path to ensure consistency
-and avoid potential issues related to relative paths. A message is printed to indicate which
-_Exodus_ file is being loaded.
-The function then creates a _vtkExodusIIReader_ object, which is responsible for reading _Exodus_
-files. _UpdateInformation()_ is called to read metadata from the file, such as the available point
-(nodal) and element (cell) variables and the timesteps, without loading all the data yet.
-Next, all point and cell result arrays are enabled using loops over the reader’s available arrays.
-This ensures that every variable stored in the _Exodus_ file is read. The reader is also configured
-to generate unique global IDs for nodes and elements, as well as an object ID array for cells,
-which helps in tracking entities consistently across timesteps.
-The function retrieves all available timesteps from the _Exodus_ file and prints them. A new
-_SimulationResults_ object is created to store the extracted data.
-The function then loops over each timestep. For each time step, the reader is updated to that
-specific time using _VTK_ ’s streaming pipeline mechanism. The output of the reader is wrapped
-as a _PyVista_ object for easier manipulation.
-Since _Exodus_ files can contain nested multi-block structures, a helper function, _iter_leaf_blocks_
-is used to recursively extract all leaf meshes, which are the actual mesh pieces containing points
-and cells. Any empty meshes are ignored. If no valid meshes are found for a timestep, an error
-
-
-is raised. The collected leaf meshes are then combined into a single mesh for that timestep
-using _PyVista_ ’s _combine()_ method.
-From the combined mesh, the function extracts nodal coordinates, cell connectivity, and cell
-type information. These geometric and topological components are stored in the corresponding
-dictionaries of the _SimulationResults_ instance using the timestep as the key. Additionally, all
-point-based (nodal) and cell-based (element) variable arrays are collected and converted into
-_NumPy_ arrays for consistent numerical handling. These are stored in the _node_data_by_time_
-and _cell_data_by_time_ dictionaries of the _SimulationResults_ object.
-After processing all timesteps, a confirmation message is printed indicating that all data has
-been successfully loaded.
-Finally, the function includes an optional cleanup mechanism. It checks whether the _Exodus_
-file resides in the system’s temporary directory. If this is the case, the entire directory
-containing the file is removed after reading, which prevents the accumulation of temporary
-simulation outputs. If the file is not in a temporary directory, it is preserved, assuming it was
-intentionally specified by the user.
-The function then returns the fully populated _SimulationResults_ object, which provides a
-standardized, time-dependent representation of the _Exodus_ simulation results for further post-
-processing, analysis, or visualization within the Workbench.
-
-## 1.3. Quick visualization/inspection
-
-Besides visualization within _LiquidEarth_ , numerical results can also be explored using several
-quick visualization/inspection utilities. These tools allow users to:
-
-- Plot a field variable at a given time step
-- Plot a variable on a cross-section at a given time
-- Plot a variable along a specified line at a given time
-- Plot the time series of a variable at a given spatial location
-- Print the magnitude of a variable at a specific location and time
-  To generate plots of a field variable at a given time — whether on the full domain, on a cross-
-  section, or along a line — a _PyVista_ mesh object must first be reconstructed from the stored
-  simulation results.
-  The function build_grid_from_class() performs this reconstruction. It converts the internal
-  SimulationResults data structure into a PyVista mesh object corresponding to a selected
-  simulation time.
-  The function takes two input arguments: _sim,_ a _SimulationResults_ object containing the stored
-  geometry and variable data for all timesteps of a simulation; and _time,_ a floating-point value
-  representing the specific simulation time step to be reconstructed.
-  The function first verifies that the requested time step exists in the stored results. If the specified
-  time is not available in _sim.nodes_by_time_ , a _ValueError_ is raised to prevent reconstruction of
-  a non-existent state.
-  It then retrieves the nodal coordinates, element connectivity, and cell type information
-  associated with that time step from the _SimulationResults_ object. The nodal coordinates define
-  the geometry of the mesh, while the cell connectivity and cell types define its topology.
-  If no cell connectivity information is present (i.e., if cells is None or empty), a _PolyData_ object
-  is created using only the nodal coordinates. This represents a point-based dataset without full
-  element topology. Otherwise, a complete _UnstructuredGrid_ object is constructed using the
-  cells, cell types, and node coordinates, representing the full finite element mesh.
-  Once the geometric structure has been reconstructed, all node-based variables stored in
-  _sim.node_data_by_time_ for the selected time step are attached to the mesh as point data arrays.
-
-
-Similarly, all cell-based variables stored in _sim.cell_data_by_time_ are attached as cell data
-arrays.
-The function then returns the fully reconstructed _PyVista_ mesh corresponding to the requested
-time step. This mesh contains both the geometry and all associated simulation variables,
-making it ready for visualization, analysis, and further post-processing.
-
-### 1.3.1 Plotting a variable at a given time ( plot_variable_at_a_time() )
-
-The function _plot_variable_at_a_time()_ provides a quick 3D visualization of a selected
-simulation variable at a specific time step using _PyVista_.
-The input parameters are: _sim_ which is a _SimulationResults_ object that contains the mesh and
-associated result data for all time steps; _var_name_ , a string specifying the name of the variable
-to be visualized (for example displacement, stress, temperature, etc.); _time_ , the specific time
-step at which the variable should be plotted; _cmap_ , which is an optional argument specifiying
-the colormap used for visualization (default is " _viridis_ "); _show_edges_ , a boolean that controls
-whether mesh edges are displayed in the plot, which can help in visualizing element
-boundaries; and _scale_ , a tuple of three scaling factors applied to the _x, y_ , and _z_ coordinates
-respectively, allowing geometric scaling of the model before visualization.
-The function first builds the mesh corresponding to the requested time step by calling
-_build_grid_from_class()_. This reconstructs the _PyVista_ grid including geometry and associated
-data arrays for that specific time. It then checks whether the requested variable exists in either
-the point data ( _grid.point_data_ ) or the cell data ( _grid.cell_data_ ). If the variable is not found, a
-_ValueError_ is raised to prevent plotting invalid data.
-For visualization, the geometric surface of the mesh is extracted using _extract_geometry()_. This
-ensures that only the outer surface of the model is rendered, which improves clarity and
-performance for volumetric meshes. The surface coordinates are then scaled by multiplying
-them with the provided scale factors, allowing optional geometric exaggeration or unit
-adjustments.
-A _PyVista_ Plotter object is created to manage the rendering window. The surface is added to
-the plot using the selected scalar variable and colormap. If _show_edges_ is enabled, element
-edges are displayed on top of the surface. A scalar bar is added to indicate the range and
-distribution of the selected variable. Additionally, a descriptive title showing the variable name
-and time step is displayed at the top of the visualization window.
-Finally, axes and a background grid are shown to provide spatial reference, and the plot is
-rendered.
-
-#### Note: Example of using plot_variable_at_a_time() :
-
-```
-plot_variable_at_a_time(data_by_time, "T", 0, cmap="coolwarm", show_edges=True
-scale=(1,1,1))
-```
-```
-Here, data_by_time is a SimulationResults object in which the simulation results are stored
-(for example, data_by_time = load_vtk_results(output_dir) ). The function plots the
-temperature field (indicated by " T ") at time step “ 0 ”. The " coolwarm " colormap is used for
-visualization, and mesh edges are displayed in the plot. A uniform scaling factor of 1 is
-applied in all three spatial dimensions ( x, y, z ).
+filename_mesh = os.environ.get("TEMP_MESH_FILE", "filename.mesh")
 ```
 
-### 1.3.2 Plotting a variable on a cross-section at a given time
+The string `"filename.mesh"` is a fallback default used when running the script outside the Workbench. During execution through `simulation_run()`, the Workbench sets `TEMP_MESH_FILE` to the actual mesh file path.
 
-### ( plot_cross_section() )
+**Output directory** — must also be read from an environment variable so that results are written to the project folder created by the Workbench:
 
-The function _plot_cross_section()_ visualizes a cross-sectional slice of a selected simulation
-variable at a specific time step using _PyVista_. It allows inspection of the internal distribution
-of a variable by cutting the 3D model with a plane.
-The input parameters are: _sim_ , a _SimulationResults_ object containing the mesh and associated
-result data for all time steps; _var_name_ , a string defining the name of the variable to visualize;
-_time_ , specifying the time step at which the variable should be evaluated; _origin,_ defining the
-slicing plane: origin is a 3D point through which the plane passes; _normal_ , a 3D vector defining
-the plane’s orientation; _cmap_ , an optional parameter which defines the colormap used for
-visualization (default is " _viridis_ "); _show_edges,_ a boolean controling whether element edges
-are displayed on the slice; and _scale,_ a tuple of scaling factors applied to the _x, y_ , and _z_
-coordinates of the sliced geometry.
-The function first reconstructs the mesh for the selected time step using
-_build_grid_from_class()._ It then verifies that the requested variable exists either in the point
-data ( _grid.point_data_ ) or the cell data ( _grid.cell_data_ ). If the variable is not found, a
-_ValueError_ is raised to prevent invalid visualization.
-A planar slice of the mesh is created using _grid.slice()._ This operation cuts the mesh with the
-defined plane and returns the resulting intersection geometry. The coordinates of the sliced
-mesh are optionally scaled using the provided scaling factors.
-A _PyVista Plotter_ object is then created for rendering. If the slicing operation results in a dataset
-with no cells (for example, if the slice only intersects points), the function adjusts rendering
-settings to display points as spheres with a defined size. This ensures that even degenerate or
-very thin intersections remain visible.
-The sliced mesh is added to the plot using the selected scalar variable and colormap. A
-horizontal scalar bar is added to show the value range of the variable. A descriptive title
-indicating the variable name and time step is displayed at the top of the window. Axes and a
-background grid are shown to provide spatial reference. Finally, the plot is rendered
-interactively.
-
-#### Note: Example of using plot_cross_section():
-
-```
-plot_cross_section(data_by_time,"p", 0, origin=(540,20,100), normal=(1,0,0),
-cmap="coolwarm", show_edges=True, scale=(1,1,1))
-```
-```
-Here, data_by_time is a SimulationResults object in which the simulation results are stored
-(for example, data_by_time = load_vtk_results(output_dir) ). This command plots a cross-
-sectional slice of the variable " p " from the simulation results stored in data_by_time at time
-step “ 0 ”. The slice is made through the point ( 540, 20, 100 ) with a plane oriented
-perpendicular to the x-axis ( 1, 0, 0 ), showing the internal distribution of " p " within the 3D
-model. The " coolwarm " colormap is used for visualization, and mesh edges are displayed
-in the plot. A uniform scaling factor of 1 is applied in all three spatial dimensions ( x, y, z ).
+```python
+output_dir = os.environ.get("SFEpy_OUTPUT_DIR", "output")
+os.makedirs(output_dir, exist_ok=True)
 ```
 
-### 1.3.3 Plotting a variable along a line at a given time
+This directory must then be referenced in the solver options section of the input file:
 
-### ( plot_variable_along_line())
-
-The function _plot_variable_along_line()_ visualizes the variation of a selected simulation
-variable along a straight line between two points at a specific time step. Instead of showing a
-3D field, it produces a 2D plot of the variable value versus distance along the line, which is
-useful for profile analysis and quantitative evaluation.
-The input parameters are: _sim_ , a _SimulationResults_ object containing the mesh and associated
-result data for all time steps; _var_name,_ a string specifying the name of the variable to be
-evaluated; _time_ , defining the time step at which the variable should be sampled; _p0_ and _p1,_ the
-3D coordinates of the start and end points of the sampling line; and _n_samples_ , defining the
-number of subdivisions along the line (default is _200_ ), controlling the resolution of the
-sampling.
-The function first reconstructs the mesh for the requested time step using
-_build_grid_from_class()._ It then checks whether the specified variable exists in either the point
-data or cell data of the grid. If the variable is not found, a _ValueError_ is raised to prevent invalid
-sampling.
-A straight line between _p0_ and _p1_ is created using _PyVista_ with the specified resolution. The
-line is then sampled against the simulation grid using _line.sample()._ This interpolates the
-variable values from the mesh onto the points along the line. If the sampling operation produces
-no points (for example, if the line lies completely outside the mesh domain), a _RuntimeError_
-is raised to indicate that the chosen line does not intersect the model.
-From the sampled result, the variable values are extracted together with the automatically
-computed _Distance_ array, which represents the cumulative distance from the starting point
-along the line. These two arrays are then plotted using _Matplotlib_ , with distance on the
-horizontal axis and the variable values on the vertical axis. The plot includes axis labels, a
-descriptive title indicating the variable and time step, and a grid for readability.
-
-### 1.3.4 Printing a variable at a Point at a given time
-
-### ( print_variable_at_point())
-
-The function _print_variable_at_point()_ evaluates and prints the value of a selected simulation
-variable at a specific spatial point and time step. It is designed for quick numerical inspection
-rather than graphical visualization.
-The input parameters are: _sim_ , a _SimulationResults_ object containing the mesh and associated
-result data for all time steps; _var_name,_ a string specifying the name of the variable to evaluate;
-_time_ , defining the time step at which the variable should be accessed; and _point,_ a 3D coordinate
-( _x, y, z_ ) representing the spatial location where the variable should be sampled.
-
-#### Note: Example of using plot_variable_along_line ():
-
-```
-plot_variable_along_line(data_by_time,"p", 0, p0=(500,20,0), p1=(500,20,1000),
-n_samples=2 0 )
-```
-```
-Here, data_by_time is the data class in which the simulation results are stored (for example,
-data_by_time = load_vtk_results(output_dir) ). This command plots the variation of the
-variable " p " at time step “ 0 “ along a line specified by p0 and p1 with the number of
-sampling of 20.
+```python
+options = {
+    'nls': 'newton',
+    'ls': 'ls',
+    'ts': 'ts',
+    'save_times': 'all',
+    'output_dir': output_dir,
+}
 ```
 
-The function first reconstructs the mesh corresponding to the selected time step by calling
-_build_grid_from_class()._ It then verifies that the requested variable exists either in the point
-data ( _grid.point_data_ ) or cell data ( _grid.cell_data_ ). If the variable is not available, a _ValueError_
-is raised to prevent invalid evaluation.
-To evaluate the variable at the specified location, the function creates a _PyVista PolyData_
-object containing the single query point. This point dataset is then sampled against the
-simulation grid using _sample()._ This operation interpolates the variable value from the
-surrounding mesh elements to the given point location.
-If the sampling result contains no points, it indicates that the query point lies outside the mesh
-domain. In that case, a warning message is printed showing the point coordinates and the mesh
-bounds, and the function returns _None_.
-If the point lies inside the mesh, the interpolated value of the requested variable is extracted
-and printed together with the point coordinates and time step.
+With these two dynamic components in place, the rest of the input file — material properties, boundary conditions, governing equations, and solver settings — can be defined in the standard SfePy format.
 
-### 1.3.5 Plotting time Series at a Point ( plot_variable_time_series())
+### 2. Run the simulation
 
-The function _plot_variable_time_series()_ visualizes the temporal evolution of a selected
-simulation variable at a fixed spatial point. Instead of showing spatial distribution at one time
-step, this function tracks how the variable changes over all available time steps and presents
-the result as a 2D time-history plot.
-The input parameters are: _sim_ , a _SimulationResults_ object that stores mesh and result data
-organized by time steps.; _var_name_ , a string specifying the name of the variable to evaluate;
-_point_ , a 3D coordinate ( _x, y, z_ ) representing the spatial location where the variable should be
-monitored over time; _decimals_ , an optional parameter controlling the number of decimal places
-displayed on the y-axis of the plot (default is _3_ ).
-The function first retrieves and sorts all available time steps from _sim.nodes_by_time.keys()._ It
-then initializes an empty list to store the sampled values. For each time step, the mesh is
-reconstructed using _build_grid_from_class()._ The function checks whether the requested
-variable exists in either the point data or the cell data of the grid. If the variable is missing at
-any time step, a _ValueError_ is raised.
-To evaluate the variable at the specified point, a _PyVista PolyData_ object containing the single
-query point is created and sampled against the grid. This interpolates the variable value from
-the surrounding mesh elements. If the point lies outside the mesh at a given time step, no
-sampled points are returned, and a _NaN_ value is appended to the list to indicate missing data.
-Otherwise, the interpolated value is stored.
-After looping over all time steps, the collected values are converted into a _NumPy_ array. A
-_Matplotlib_ figure is then created to plot the variable values versus time. The time steps are
-shown on the horizontal axis and the variable values on the vertical axis. The plot includes
-markers for each time step, axis labels, a descriptive title indicating the variable and spatial
+> **Workbench component:** `Simulating with Sfepy`
 
-#### Note: Example of using print_variable_at_point():
+Running SfePy within the Workbench requires three inputs:
 
-```
-print_variable_at_point(data_by_time,"p", 0, point=(500,20,500))
-```
-```
-Here, data_by_time is the data class in which the simulation results are stored (for example,
-data_by_time = load_vtk_results(output_dir) ). This command prints the value of the
-variable " p " from the simulation results stored in data_by_time at time step “ 0 “ at the
-location of ( 50 0, 20, 500 ).
+- **Input file path** — path to the SfePy `.py` configuration script.
+- **Mesh type** — `"unstr"` for unstructured, `"str"` for structured, or `"imp"` for implicit meshes.
+- **Output directory** *(optional)* — directory where simulation results will be stored. If not specified, results are written to a temporary directory created automatically by the Workbench.
+
+In the codebase, the mesh object generated by the Workbench is passed as an additional argument internally. In the visual interface (visual DSL) this is handled automatically and does not need to be provided manually.
+
+Example call in the codebase:
+
+```python
+Sim_out = run_sfepy(
+    cwd + "/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py",
+    mesh_implicit,
+    mesh_type="imp",
+    output_dir="results",
+)
 ```
 
-point, and a grid for readability. The y-axis formatting is controlled by the decimals parameter
-to ensure consistent numeric precision.
+### 3. Load results
 
-#### Note: Example of using plot_variable_time_series ():
+> **Workbench component:** `Load VTK results`
 
-```
-plot_variable_time_series(data_by_time,"p", point=(500,20,500))
-```
-```
-Here, data_by_time is the data class in which the simulation results are stored (for example,
-data_by_time = load_vtk_results(output_dir) ). This command plots the time series of the
-variable " p " from the simulation results stored in data_by_time at location of ( 500,20,500 ).
+Before visualising results, they must be loaded into the Workbench using `load_vtk_results()` or `load_exodus_results()`, depending on the output format. Two output formats are supported: **VTK** and **Exodus**.
+
+If the simulation was run within the Workbench, no path needs to be specified — results are managed automatically. To visualise results from a simulation run outside the Workbench, provide the path to the output directory or file explicitly.
+
+```python
+data_by_time = load_vtk_results(Sim_out)                  # from a simulation run within the Workbench
+data_by_time = load_vtk_results("../../model_results/")   # from an external output directory
 ```
 
+`load_exodus_results()` works analogously for Exodus output.
+
+---
+
+## Visualisation and Inspection
+
+> **Workbench:** Where available, these are exposed as inspector functions with limited functionality in the visual interface (visual DSL) — parameters are fixed; the codebase functions below expose the full set of options.
+
+The following components allow quick exploration of simulation results without leaving the Workbench. All of them operate on a `sim` object containing the mesh and all time-dependent simulation data. In the visual interface (visual DSL), `sim` is passed automatically by the system; in the codebase it is the first argument to each function.
+
+### Plot a variable at a time step
+
+> **Workbench component:** `Plot Variable p at a time`
+
+Produces a 3D visualisation of a selected simulation variable at a specific time step using PyVista.
+
+- **`var_name`**: Variable to visualise, e.g. `"temperature"`, `"displacement"`, `"stress"`.
+- **`time`**: Time step at which to plot.
+- **`cmap`** *(optional)*: Colormap, default `"viridis"`.
+- **`show_edges`** *(optional)*: If `True`, displays mesh element boundaries.
+- **`scale`** *(optional)*: Tuple `(sx, sy, sz)` to scale the geometry along each axis.
+
+Example call in the codebase:
+
+```python
+plot_variable_at_a_time(data_by_time, "T", 0, cmap="coolwarm", show_edges=True, scale=(10, 10, 10))
+```
+
+Here, `data_by_time` is the `SimulationResults` object (e.g. from `load_vtk_results()`). This plots the temperature field (`"T"`) at time step `0`, using the `"coolwarm"` colormap with mesh edges shown, scaled by a factor of 10 in all three spatial dimensions.
+
+### Plot a variable on a cross-section
+
+> **Workbench component:** `Plot Variable T along a cross_section`
+
+Produces a 3D visualisation of a planar cross-section through the model at a specific time step. Useful for inspecting internal distributions by cutting through the model with a plane.
+
+- **`var_name`**: Variable to visualise.
+- **`time`**: Time step at which to evaluate.
+- **`origin`**: A 3D point the slicing plane passes through.
+- **`normal`**: A 3D vector defining the orientation of the slicing plane.
+- **`cmap`** *(optional)*: Colormap, default `"viridis"`.
+- **`show_edges`** *(optional)*: If `True`, displays mesh edges on the sliced surface.
+- **`scale`** *(optional)*: Tuple `(sx, sy, sz)` scaling factors applied to the sliced geometry.
+
+Example call in the codebase:
+
+```python
+plot_cross_section(data_by_time, "p", 0, origin=(540, 20, 100), normal=(1, 0, 0), cmap="coolwarm", show_edges=True, scale=(1, 1, 1))
+```
+
+Here, `data_by_time` is the `SimulationResults` object. This plots a cross-sectional slice of `"p"` at time step `0`, through the point `(540, 20, 100)` with a plane oriented perpendicular to the x-axis `(1, 0, 0)`.
+
+### Plot a variable along a line
+
+> **Workbench component:** `Plot Variable p along a line`
+
+Produces a 2D profile of a variable versus distance along a straight line between two points. Useful for quantitative comparison of results along a transect.
+
+- **`var_name`**: Variable to evaluate.
+- **`time`**: Time step at which to sample.
+- **`p0`**: 3D coordinates of the starting point.
+- **`p1`**: 3D coordinates of the ending point.
+- **`n_samples`** *(optional)*: Number of sampling points along the line, default `200`.
+
+The horizontal axis shows distance along the line; the vertical axis shows the variable value.
+
+Example call in the codebase:
+
+```python
+plot_variable_along_line(data_by_time, "p", 0, p0=(500, 20, 0), p1=(500, 20, 1000), n_samples=20)
+```
+
+Here, `data_by_time` is the `SimulationResults` object. This plots the variation of `"p"` at time step `0` along the line from `p0` to `p1`, sampled at 20 points.
+
+### Plot a time series at a point
+
+Tracks the temporal evolution of a variable at a fixed spatial location and presents the result as a 2D time-history plot.
+
+- **`var_name`**: Variable to evaluate.
+- **`point`**: 3D coordinate `(x, y, z)` of the monitoring location.
+- **`decimals`** *(optional)*: Decimal places for y-axis formatting, default `3`.
+
+The horizontal axis shows time; the vertical axis shows the variable value.
+
+Example call in the codebase:
+
+```python
+plot_variable_time_series(data_by_time, "p", point=(500, 20, 500))
+```
+
+Here, `data_by_time` is the `SimulationResults` object. This plots the time series of `"p"` at location `(500, 20, 500)`.
+
+### Print a variable at a point
+
+Evaluates and prints the value of a variable at a specific spatial point and time step. Intended for quick numerical inspection rather than graphical visualisation.
+
+- **`var_name`**: Variable to evaluate.
+- **`time`**: Time step at which to access the variable.
+- **`point`**: 3D coordinate of the sampling location.
+
+The value is printed together with the point coordinates.
+
+Example call in the codebase:
+
+```python
+print_variable_at_point(data_by_time, "p", 0, point=(500, 20, 500))
+```
+
+Here, `data_by_time` is the `SimulationResults` object. This prints the value of `"p"` at time step `0` and location `(500, 20, 500)`.
+
+---
+
+## Output
+
+> **Workbench:** The `results` output port of `Load VTK results` or `Load Exodus file` carries the loaded results. It can be inspected in-place using `Plot Variable p at a time`, `Plot Variable T along a cross_section`, and `Plot Variable p along a line`.
+
+`load_vtk_results()` and `load_exodus_results()` both return a `SimulationResults` object — a time-dependent container for geometry, topology, and result fields, with every field keyed by simulation time:
+
+- **`nodes_by_time`** — nodal coordinates for each timestep, shaped `(n_nodes, 3)`.
+- **`cells_by_time`** — cell connectivity for each timestep.
+- **`celltypes_by_time`** — VTK-style cell type identifiers for each element.
+- **`node_data_by_time`** — node-based variables (e.g. temperature, pressure, displacement), as `{variable_name: array}` dictionaries per timestep.
+- **`cell_data_by_time`** — element-based variables (e.g. stress, material IDs), in the same structure as `node_data_by_time`.
+
+`SimulationResults` is the `sim` object used throughout Visualisation and Inspection above.

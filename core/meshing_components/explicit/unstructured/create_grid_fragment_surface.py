@@ -136,7 +136,7 @@ def create_surface_grid(cleaned_surfaces: List[Tuple[int, NDArray[np.float64]]],
 
     Args:
         cleaned_surfaces (List[Tuple[int, NDArray[np.float64]]]):
-        List of tuples containing:
+            List of tuples containing:
                 - surface ID (int)
                 - array of shape (N, 3) with columns [x, y, z]
         smooth (float, optional):
@@ -436,7 +436,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         triangulations (List[np.ndarray], optional): List of point arrays to create triangulated surfaces.
         mesh_size (float, optional): Target mesh size for surfaces and volumes. Default is 20.0.
         curve_mesh_size (float, optional): Finer mesh size applied to curves and embedded lines. Default is 5.0.
-        refinement : Optional: Refinement configuration controlling meshes around wells, sources, faults, etc.
+        refinement (Optional): Refinement configuration controlling meshes around wells, sources, faults, etc.
     Returns:
         ov (List[Tuple[int, int]]): Original 3D entities (volumes) before fragmentation. Each tuple is (dimension, tag).
         well_tags (List[int]): Physical group tags assigned to all well trajectories after fragmentation.
