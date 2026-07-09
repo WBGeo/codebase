@@ -26,28 +26,10 @@ workbench can be used directly through this Python backend, or through its visua
 
 | Path | Contents |
 |---|---|
-| [`core/`](core) | The component library — see the breakdown below |
+| [`core/`](core) | The component library (structural modeling, meshing, simulation, visualization, and shared infrastructure) |
 | [`examples/`](examples) | Synthetic example workflows (`synthetic_examples/model1` … `model9`) and real-world case studies (`case_studies/`) |
 | [`tests/`](tests) | Test suite, one subpackage per `core/` component |
 | [`docs/`](docs) | Documentation source, built with MkDocs and published at [wbgeo.github.io](https://wbgeo.github.io/) |
-
-### `core/`
-
-WBGeo's four modeling steps, plus the shared infrastructure they're built on:
-
-| Component | Description |
-|---|---|
-| [`structural_modeling_components/`](core/structural_modeling_components) | Reconstruct 3D geological structure — stratigraphy, unconformities, faults — from surface points and orientations, using implicit interpolation methods (RBF, Kriging, and others). |
-| [`meshing_components/`](core/meshing_components) | Generate 3D watertight meshes (structured, unstructured, or implicit) from a structural model, and export them to common mesh formats (VTK, Exodus, Abaqus, ANSYS, FEFLOW, GMSH, STL, RESQML, ...). |
-| [`simulation_components/`](core/simulation_components) | Interface with numerical solvers — currently [SfePy](https://sfepy.org/) — using meshes produced by the previous step. |
-| [`liquidEarth_components/`](core/liquidEarth_components) | Push results into [LiquidEarth](https://www.terranigma-solutions.com/liquidearth) for immersive XR/VR/AR visualization. |
-| [`loading_components/`](core/loading_components) | Load geological input data (surface points, orientations, faults) and grid definitions from CSV/JSON files into the pipeline. |
-| [`object_components.py`](core/object_components.py) | Shared typed data objects passed between components (`StructuralModelResults`, `MeshResults`, `SimulationResults`, ...). |
-| [`utility/`](core/utility) | Shared Pydantic type adapters (e.g. for `pandas.DataFrame`, `meshio.CellBlock`) used throughout `core/`. |
-
-Every component is registered with `@wbgeo_component`/`@wbgeo_type` (from `py_api_wbgeo`), which is
-what makes it independently callable both from plain Python and from the visual interface — see
-the [developer's guide](https://wbgeo.github.io/developers/) for how to add new ones.
 
 ---
 
