@@ -54,6 +54,8 @@ WBGeo is organized around four modeling steps, which can be assembled into a pip
 
     ![Process simulation result](img/gallery_model2_simulation.png){ style="border: 1px solid #ddd; border-radius: 4px; width: 85%;" }
 
+    <small>*(WIP: Process Simulation is partially under development and not yet part of the public release)*</small>
+
 4. :material-eye-outline: **Visualization**
 
     Standard 2D and 3D visualization and link to immersive XR, VR, AR visualization using [LiquidEarth](https://www.terranigma-solutions.com/liquidearth).
