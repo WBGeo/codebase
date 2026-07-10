@@ -14,9 +14,25 @@ from enum import Enum, StrEnum
 logger = logging.getLogger(__name__)
 
 class MeshType(StrEnum):
+    """
+    Selects which code path ExodusInput.write() / export_mesh_results_to_exodus()
+    take when converting a MeshResults to Exodus format -- specifically, how to
+    split mesh.elements into real volume blocks vs. blocks to strip, and which
+    side-set builder to use. This is a configuration knob for the exporter, not
+    the same thing as (and can legitimately diverge from) a mesh's true
+    provenance -- see core.object_components.MeshType for that.
+    """
     UNSTRUCTURED = "unstr"
     STRUCTURED = "str"
     IMPLICIT = "imp"
+    #: For a mesh_results.elements list that's already known to contain only
+    #: real volume elements (no boundary/side/fault-surface blocks needing
+    #: to be stripped) -- e.g. pre-filtered by the caller. Behaves exactly
+    #: like STRUCTURED/IMPLICIT in write() (all_blocks used as-is, no
+    #: slicing) -- added as its own value specifically so a caller doesn't
+    #: have to mislabel a mesh's true origin (e.g. claim an
+    #: unstructured-origin mesh is "imp") just to get that behavior.
+    VOLUME_ONLY = "volume_only"
 
 
 ######################
@@ -367,7 +383,7 @@ class ExodusInput:
                 boundary_blocks
             )
 
-        elif self.mesh_type in [MeshType.STRUCTURED, MeshType.IMPLICIT]:
+        elif self.mesh_type in [MeshType.STRUCTURED, MeshType.IMPLICIT, MeshType.VOLUME_ONLY]:
             volume_blocks = all_blocks
             side_sets = self.build_side_sets_from_elements(
                 volume_blocks

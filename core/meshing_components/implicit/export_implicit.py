@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 from py_api_wbgeo.nodesapi import wbgeo_component
 from core.meshing_components.explicit.unstructured.mesh_data import classify_boundary_nodes, \
   build_point_sets
-from core.object_components import MeshResults, StructuralModelResults, ExtentData
+from core.object_components import MeshResults, StructuralModelResults, ExtentData, MeshType
 
 
 @wbgeo_component(
@@ -118,5 +118,6 @@ def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, ext
         nodes=points,
         elements=cells,
         cell_data=cell_data,
-        point_sets=point_sets
+        point_sets=point_sets,
+        mesh_type=MeshType.IMPLICIT,
     )

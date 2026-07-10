@@ -12,7 +12,7 @@ from scipy.spatial import cKDTree
 from typing import Sequence, Tuple, List, Mapping, Optional, Dict, Set, Any
 from numpy.typing import NDArray
 from core.object_components import StructuralModelResults, ExtentData
-from core.object_components import MeshResults
+from core.object_components import MeshResults, MeshType
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
@@ -2749,4 +2749,5 @@ def create_unstructured_mesh_data(
         nodes=nodes,
         point_sets=point_sets,
         cell_data=cell_data,
+        mesh_type=MeshType.UNSTRUCTURED,
 )

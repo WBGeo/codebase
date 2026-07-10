@@ -6,7 +6,7 @@ from core.meshing_components.explicit.structured.store_grid_data import create_s
 from core.meshing_components.explicit.structured.store_grid_data import create_intermediate_layers
 from core.meshing_components.explicit.structured.node_element_generator import adjust_z_values, \
     create_hexahedral_elements_with_nodes
-from core.object_components import StructuralModelResults, MeshResults, ExtentData
+from core.object_components import StructuralModelResults, MeshResults, ExtentData, MeshType
 from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType
 import typing
 from typing import List, Tuple, Dict
@@ -275,6 +275,7 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
         nodes=nodes[:, 1:4] if nodes.shape[1] == 4 else nodes,  # remove node_id column if present
         elements=cells,
         cell_data=cell_data,
-        point_sets=point_sets
+        point_sets=point_sets,
+        mesh_type=MeshType.STRUCTURED,
     )
 
