@@ -27,6 +27,11 @@ from core.meshing_components.mesh_format.mesh_export import (
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
+from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+    HydrothermalProblemBuilder, RockUnitProperties, FluidProperties)
+from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+from core.simulation_components.simulation_visualization.simulation_visualization import (
+    plot_variable_at_a_time, plot_cross_section, plot_builder_materials)
 
 #%%
 
@@ -264,3 +269,53 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
+
+#%%
+
+# Process simulation with SfePy on the unstructured mesh.
+
+rock_properties = {
+    "basement": RockUnitProperties(name="basement", porosity=0.05, permeability=1e-15, k_solid=3.0, rho_c_solid=2.2e6),
+    "rock1": RockUnitProperties(name="rock1", porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6),
+    "rock2": RockUnitProperties(name="rock2", porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6),
+    "rock3": RockUnitProperties(name="rock3", porosity=0.15, permeability=1e-14, k_solid=2.0, rho_c_solid=2.1e6),
+    "rock4": RockUnitProperties(name="rock4", porosity=0.15, permeability=1e-14, k_solid=2.0, rho_c_solid=2.1e6),
+}
+fluid = FluidProperties()
+
+# Sealing fault (low k/porosity/permeability vs. host rock); flip higher for a conduit instead.
+fault_zone_properties = RockUnitProperties(
+    name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2.3e6
+)
+
+builder = HydrothermalProblemBuilder(
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    rock_properties=rock_properties,
+    fluid=fluid,
+    include_flow=False,
+    fault_zone_properties=fault_zone_properties,
+    fault_zone_n_voxels=1,
+    num_steps=2,
+)
+
+#%%
+
+# Pre-flight check: confirms the fault zone and rock_properties landed on the right cells.
+plot_builder_materials(builder)
+
+#%%
+
+data_by_time = run_simulation_sfepy(builder)
+
+#%%
+
+# Visualize simulation results
+final_time = max(data_by_time.nodes_by_time.keys())
+plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=False)
+plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=False)
+
+# normal=(0, 1, 0): the fault plane is Y-invariant, so this actually cuts across it.
+plot_cross_section(
+    data_by_time, "T", final_time, origin=(1250, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+)
