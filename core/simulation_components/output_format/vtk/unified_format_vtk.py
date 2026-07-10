@@ -4,7 +4,6 @@ import shutil
 import pyvista as pv
 import numpy as np
 import re
-from core.simulation_components.simulation_packages.sfepy.simulation_run import SfepyOutputType
 from py_api_wbgeo.nodesapi import wbgeo_component
 from core.object_components import SimulationResults
 from typing import Optional, Union
@@ -48,7 +47,7 @@ def extract_time(filename: str) -> Optional[Union[float, int]]:
     identifier='wbgeo::load_VTK_results',
     return_name='results',
 )
-def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResults:
+def load_vtk_results(sim_input: Union[dict, str]) -> SimulationResults:
 
     # NORMALIZE INPUT (DICT OR DIRECT PATH)
     if isinstance(sim_input, str):
