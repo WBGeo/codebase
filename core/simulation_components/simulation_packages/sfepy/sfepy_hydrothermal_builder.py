@@ -1,7 +1,7 @@
 """
-Experimental: auto-generates SfePy input file(s) for a simplified, single-phase
-Darcy flow + advective-conductive heat transport problem, inferring rock units
-and boundary regions directly from a WBGeo MeshResults + StructuralModelResults
+Auto-generates SfePy input file(s) for a simplified, single-phase Darcy flow
++ advective-conductive heat transport problem, inferring rock units and
+boundary regions directly from a WBGeo MeshResults + StructuralModelResults
 pair, instead of a hand-written static file with hardcoded regions.
 
 This is the input-data side only: HydrothermalProblemBuilder builds the
@@ -20,11 +20,11 @@ degC in the same matrix), and no amount of preconditioner tuning fixed it.
 Segregating matches the actual physics anyway: temperature depends on the
 flow field, but pressure never depends on temperature in this model.
 
-Wired up as Workbench components in sfepy_hydrothermal_run.py
-(build_hydrothermal_problem, run_simulation_sfepy, export_simulation_results).
-Per-rock-unit/fluid/fault-zone property editing via a SmartInput sidebar
-(matching structural_workbench_components.py's interpolation-options pattern)
-is deferred -- see build_hydrothermal_problem's docstring for why.
+Wired up as Workbench components in simulation_workbench_components.py
+(build_hydrothermal_problem, run_hydrothermal_simulation,
+export_simulation_results), including a SmartInput sidebar for per-rock-unit,
+fluid, and fault-zone property editing (matching
+structural_workbench_components.py's interpolation-options pattern).
 """
 import logging
 from typing import Dict, List, Optional, Tuple
@@ -114,6 +114,50 @@ MESH_TYPE_CODES = {
     MeshType.STRUCTURED: "str",
     MeshType.UNSTRUCTURED: "unstr",
 }
+
+
+def check_mesh_has_known_type(mesh_results: MeshResults) -> None:
+    """
+    Pre-check: mesh_results must carry its own provenance (mesh_type),
+    normally set automatically by create_implicit_structured_mesh/
+    create_structured_mesh_data/create_unstructured_mesh_data. Used both as
+    a Workbench input_checks pre-check (build_hydrothermal_problem) and
+    internally in HydrothermalProblemBuilder.__post_init__ -- pre-checks can
+    be skipped by a caller (see docs/developers/components.md), so it's
+    also enforced there.
+    """
+    if mesh_results.mesh_type is None:
+        raise ValueError(
+            "mesh_results.mesh_type is None -- HydrothermalProblemBuilder needs to know "
+            "which meshing component produced this mesh (create_implicit_structured_mesh, "
+            "create_structured_mesh_data, or create_unstructured_mesh_data), which normally "
+            "set this automatically. If mesh_results was constructed manually (e.g. in a "
+            "test), set mesh_type explicitly to one of MeshType's members."
+        )
+
+
+def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
+    """
+    Pre-check: mesh_results must carry a per-block lithology mapping
+    (cell_data["block_id"]). Implicit and structured meshes always have
+    this; unstructured meshes only get it when create_unstructured_mesh_data
+    was called with mapping_litho="automatic_centers" or "automatic_corners"
+    (not "manual" or "none", neither of which produce a block_id tag). Used
+    both as a Workbench input_checks pre-check (build_hydrothermal_problem)
+    and internally in HydrothermalProblemBuilder._map_mat_id_to_lithology --
+    pre-checks can be skipped by a caller (see docs/developers/components.md),
+    so it's also enforced there.
+    """
+    cell_data = mesh_results.cell_data or {}
+    if "block_id" not in cell_data:
+        raise ValueError(
+            "mesh_results has no lithology mapping (cell_data['block_id']) -- "
+            "HydrothermalProblemBuilder needs the mesh's per-block lithology mapping. "
+            "For unstructured meshes, make sure create_unstructured_mesh_data was called "
+            "with mapping_litho='automatic_centers' or 'automatic_corners' (not 'manual' "
+            "or 'none', neither of which produce a block_id tag). Implicit and structured "
+            "meshes always carry this tag."
+        )
 
 
 def enumerate_rock_units(geomodel_result: StructuralModelResults) -> List[Tuple[int, str]]:
@@ -243,14 +287,7 @@ class HydrothermalProblemBuilder:
         if self.linear_solver not in LINEAR_SOLVERS:
             raise ValueError(f"linear_solver must be one of {LINEAR_SOLVERS}, got {self.linear_solver!r}")
 
-        if self.mesh_results.mesh_type is None:
-            raise ValueError(
-                "mesh_results.mesh_type is None -- HydrothermalProblemBuilder needs to know "
-                "which meshing component produced this mesh (create_implicit_structured_mesh, "
-                "create_structured_mesh_data, or create_unstructured_mesh_data), which normally "
-                "set this automatically. If mesh_results was constructed manually (e.g. in a "
-                "test), set mesh_type explicitly to one of MeshType's members."
-            )
+        check_mesh_has_known_type(self.mesh_results)
         self.mesh_type = self.mesh_results.mesh_type
 
         self.fluid = self.fluid or FluidProperties()
@@ -343,15 +380,8 @@ class HydrothermalProblemBuilder:
         mapping's keys instead of range(len(mesh_results.elements)) for
         exactly this reason.
         """
+        check_mesh_has_lithology_mapping(self.mesh_results)
         cell_data = self.mesh_results.cell_data or {}
-        if "block_id" not in cell_data:
-            raise ValueError(
-                "mesh_results.cell_data has no 'block_id' -- HydrothermalProblemBuilder "
-                "needs the mesh's per-block lithology mapping. For unstructured meshes, "
-                "make sure create_unstructured_mesh_data was called with "
-                "mapping_litho='automatic_centers' or 'automatic_corners' (not 'manual' or 'none', neither "
-                "of which produce a block_id tag)."
-            )
         mapping = {
             mat_id: int(np.unique(block_ids)[0])
             for mat_id, block_ids in enumerate(cell_data["block_id"])

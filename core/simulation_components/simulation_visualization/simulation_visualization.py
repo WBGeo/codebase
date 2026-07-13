@@ -1,8 +1,8 @@
 """
-Visualization for the experimental SfePy hydrothermal simulation sandbox:
-plotting SimulationResults (3D snapshots, cross-sections, before/after
-diffs) and a pre-flight material-assignment check for
-HydrothermalProblemBuilder before running a solve that can take a while.
+Visualization for the SfePy hydrothermal simulation pipeline: plotting
+SimulationResults (3D snapshots, cross-sections, before/after diffs) and a
+pre-flight material-assignment check for HydrothermalProblemBuilder before
+running a solve that can take a while.
 
 Consolidated into one file (previously split across results_visualisation.py,
 comparison_plots.py, builder_visualisation.py) -- these are all facets of

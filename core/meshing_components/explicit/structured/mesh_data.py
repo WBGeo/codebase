@@ -118,6 +118,25 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
     )
 
 
+def pre_check_no_faults_for_structured_mesh(geomodel_result: StructuralModelResults) -> None:
+    """
+    Pre-check: explicit structured meshing does not support faulted
+    structural models. It builds a mesh without error either way (the
+    structured mesh generator has no fault-awareness at all), but a
+    structured mesh + active fault has been observed not to converge when
+    later solved with SfePy (implicit/unstructured are both fine) -- see
+    project_sfepy_hydrothermal_builder memory's 3-way mesh-type comparison.
+    Raises to block the connection outright rather than silently producing
+    a mesh that looks fine but is unusable downstream.
+    """
+    fault_frame = geomodel_result.structural_frame.fault_frame
+    if fault_frame is not None and fault_frame.fault_elements:
+        raise ValueError(
+            "Structured meshing does not support structural models with faults. "
+            "Use the implicit or unstructured mesh instead."
+        )
+
+
 # Register this function as a component
 @wbgeo_component(description='Provides structured mesh',
                  title='Create Structured Mesh',  # The title shown in the GUI
@@ -126,6 +145,7 @@ def prepare_surface_vertices_from_geomodel(geomodel_result: StructuralModelResul
                  group='Meshing',
                  identifier='wbgeo::create_structured_mesh_data',
                  return_name='Mesh',  # the name for the returned-port
+                 input_checks=[pre_check_no_faults_for_structured_mesh],
                  )  # inputs are handled via the method signature
 
 def create_structured_mesh_data(geomodel_result: StructuralModelResults,
@@ -138,7 +158,8 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
     Generates a geological mesh and returns a MeshData object.
 
     Args:
-        geomodel_result: Results of geological modeling.
+        geomodel_result: Results of geological modeling. Must not contain
+            faults -- see pre_check_no_faults_for_structured_mesh.
         refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
         mesh_division (MeshDev): Resolution in x and y directions.
@@ -152,7 +173,14 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
                   [node_id, x, y, z]
                 - elements_structured: array of shape (n_elements, 10) with columns
                   [element_id, node0, ..., node7, block_id]
+
+    Raises:
+        ValueError: geomodel_result's structural model contains faults.
     """
+    # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
+    # so also enforced here rather than relying solely on the Workbench's
+    # input_checks catching the connection.
+    pre_check_no_faults_for_structured_mesh(geomodel_result)
 
     # Extent
     if extent is None or len(extent) == 0:

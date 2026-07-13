@@ -7,15 +7,14 @@ Workbench's component/connector model: HydrothermalProblemBuilder is the
 input-data-generator component, run_simulation_sfepy() here is the run
 component that takes it as input.
 
-This sandbox owns its own "run sfepy" step (_run_sfepy_input_file below)
-rather than depending on the colleague's run_sfepy()
-(simulation_packages/sfepy/simulation_run.py) -- that function never checks
-the sfepy-run subprocess's return code, so a crashed/errored solve silently
-looks like success (see _run_sfepy_input_file's docstring for the specifics
-and the fixes). This sandbox is intended to eventually replace that module
-entirely, so the fix belongs here rather than as a workaround layered on
-top of it. Still depends on export_mesh_results_to_exodus (mesh
-export/format-conversion logic, owned by meshing, not simulation).
+This module owns its own "run sfepy" step (_run_sfepy_input_file below)
+rather than the previous implementation's run_sfepy() (formerly
+simulation_packages/sfepy/simulation_run.py, now removed) -- that function
+never checked the sfepy-run subprocess's return code, so a crashed/errored
+solve silently looked like success (see _run_sfepy_input_file's docstring
+for the specifics and the fixes). Still depends on
+export_mesh_results_to_exodus (mesh export/format-conversion logic, owned
+by meshing, not simulation).
 """
 import io
 import logging
@@ -118,9 +117,9 @@ def _run_sfepy_input_file(
     instead of their host lithology's -- this is the only place mat_id
     actually gets assigned, so it's the one place that override can happen.
 
-    Own replacement for the colleague's run_sfepy() (simulation_run.py) --
-    this sandbox is intended to eventually replace that module entirely, so
-    the actual "run sfepy" mechanics live here rather than depending on it.
+    Replacement for the previous implementation's run_sfepy() (formerly
+    simulation_packages/sfepy/simulation_run.py, now removed) -- the actual
+    "run sfepy" mechanics live here instead.
 
     Same core approach: MeshResults -> Exodus buffer -> meshio round-trip
     (tags each cell block with a `mat_id` matching its positional index --

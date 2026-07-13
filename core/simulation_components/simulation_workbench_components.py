@@ -19,6 +19,7 @@ from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartIn
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
     HydrothermalProblemBuilder, RockUnitProperties, FluidProperties, enumerate_rock_units,
+    check_mesh_has_known_type, check_mesh_has_lithology_mapping,
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
     run_simulation_sfepy as _run_simulation_sfepy,
@@ -117,6 +118,7 @@ SmartHydrothermalOptions = typing.Annotated[
     group='Simulation',
     identifier='wbgeo::simulation_build_hydrothermal_problem',
     return_name='hydrothermal_problem',
+    input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping],
 )
 def build_hydrothermal_problem(
     mesh_results: MeshResults,
@@ -156,7 +158,18 @@ def build_hydrothermal_problem(
     :param linear_solver_i_max: Max iterations for the iterative linear solver.
     :param linear_solver_eps_r: Relative residual tolerance for the iterative linear solver.
     :return: The hydrothermal problem definition, ready for Run Hydrothermal Simulation.
+
+    Raises:
+        ValueError: mesh_results has no known mesh_type, or no lithology mapping
+            (cell_data['block_id']) -- see check_mesh_has_known_type/
+            check_mesh_has_lithology_mapping for details.
     """
+    # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
+    # so also enforced here rather than relying solely on the Workbench's
+    # input_checks catching the connection.
+    check_mesh_has_known_type(mesh_results)
+    check_mesh_has_lithology_mapping(mesh_results)
+
     rock_properties = options.root.rock_properties if options and options.root.rock_properties else None
     fluid = options.root.fluid if options else None
     if enable_fault_zone:
