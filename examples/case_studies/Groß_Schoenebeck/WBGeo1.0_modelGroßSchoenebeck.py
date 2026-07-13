@@ -152,7 +152,7 @@ mesh_explicit_unstr = create_unstructured_mesh_data(
     smooth=30,
     curve_mesh_size=5,
     extent=[401377.0, 409314.0, 5859433.0, 5865390.0, -3678.0, -4453.0],
-    mapping_litho='none', # it can be 'manual', 'auto' or 'none' (default: auto)
+    mapping_litho='none', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
 
 )
 

@@ -25,41 +25,45 @@ MESH_ENGINEERING_COLOR = '#99b3cc'
 MESH_ENGINEERING_GROUP = 'Engineering Objects'
 
 class LithoMappingMode(StrEnum):
-    AUTO = "auto"
     NONE = "none"
     MANUAL = "manual"
-    # Experimental: same per-block lithology assignment as AUTO, but voting
-    # on each raw block's individual *cell centroids* against grid_litho
-    # instead of its *node* coordinates. Nodes sit on block boundaries --
-    # exactly where a fault plane tends to be -- so a fault-adjacent
-    # block's node vote can be genuinely ambiguous regardless of how good
-    # the voting algorithm is; cell centroids are guaranteed-interior
-    # points, so they don't have that failure mode. Purely additive/opt-in
-    # -- does not change AUTO's existing behavior.
+    # Per-block lithology vote taken on each raw block's individual *cell
+    # centroids* against grid_litho. Cell centroids are guaranteed-interior
+    # points, so a fault-adjacent block's vote isn't confused by nodes
+    # sitting exactly on a block boundary -- exactly where a fault plane
+    # tends to be -- unlike AUTOMATIC_CORNERS. The default, since it
+    # generally performs better (see the comparison below).
     #
     # Verified on model2 (deliberately mismatched resolution: structural
     # grid voxel ~3x the mesh_size, to stress-test this): overall
     # cell-level accuracy against ground truth was 73.3% for
-    # AUTOMATIC_DEV vs. 68.1% for AUTO (~16% relative reduction in
-    # misclassified cells). Not a clean win on every lithology individually
-    # (one lithology was actually more accurate under AUTO), but better
-    # overall, and produced fewer/less-severe low-confidence blocks (1
-    # warning at 68% vs. 2 warnings at 59% each). At matched
-    # structural-grid/mesh resolution, both methods were equivalent
-    # (clean 5-blocks-for-5-lithologies either way) -- the accuracy gap
-    # specifically shows up when the structural grid is coarse relative to
-    # the mesh, which neither method can fully fix (see
+    # AUTOMATIC_CENTERS vs. 68.1% for AUTOMATIC_CORNERS (~16% relative
+    # reduction in misclassified cells). Not a clean win on every lithology
+    # individually (one lithology was actually more accurate under
+    # AUTOMATIC_CORNERS), but better overall, and produced fewer/less-severe
+    # low-confidence blocks (1 warning at 68% vs. 2 warnings at 59% each).
+    # At matched structural-grid/mesh resolution, both methods were
+    # equivalent (clean 5-blocks-for-5-lithologies either way) -- the
+    # accuracy gap specifically shows up when the structural grid is coarse
+    # relative to the mesh, which neither method can fully fix (see
     # _check_lithology_mapping_reliability, which warns about this
     # directly). See project_meshing_lithology_mapping memory for the full
     # investigation.
-    AUTOMATIC_DEV = "automatic_dev"
+    AUTOMATIC_CENTERS = "automatic_centers"
+    # Per-block lithology vote taken on each raw block's *node* coordinates
+    # against grid_litho. Nodes sit on block boundaries -- exactly where a
+    # fault plane tends to be -- so a fault-adjacent block's node vote can
+    # be genuinely ambiguous regardless of how good the voting algorithm
+    # is. Kept for comparison/backwards compatibility; AUTOMATIC_CENTERS is
+    # recommended instead (see its own comment above for the comparison).
+    AUTOMATIC_CORNERS = "automatic_corners"
 
 LithoMappingModeType = typing.Annotated[
     LithoMappingMode,
     AnnotatedScriptType(
         name="LithoMappingMode",
         identifier="LithoMappingModeType",
-        controlled="Select|auto|none|manual|automatic_dev"
+        controlled="Select|automatic_centers|automatic_corners|manual|none"
     ),
 ]
 
@@ -73,7 +77,7 @@ def _check_lithology_mapping_reliability(
     mode_name: str,
 ) -> None:
     """
-    Log warnings for signs that mapping_litho="auto"/"automatic_dev"'s
+    Log warnings for signs that mapping_litho="automatic_centers"/"automatic_corners"'s
     per-block lithology mapping may be unreliable for this run. Both modes
     are a geometric nearest-neighbor vote against the structural model's
     grid_litho, which degrades when that grid is coarse relative to the
@@ -641,7 +645,7 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
 def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Optional[List[int]],
     source_tag: Optional[List[int]], shaft_tags: Optional[List[int]], tri_group_tags: Optional[List[int]], tri_surface_tags: Optional[List[int]],
     grid_litho: pd.DataFrame, mesh_size: float = 20.0, curve_mesh_size: float = 5.0,
-    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTO.value, merge_file: Optional[str] = None) -> MeshResults:
+    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value, merge_file: Optional[str] = None) -> MeshResults:
 
   """
     Generate an unstructured 3D tetrahedral mesh using Gmsh and export it
@@ -665,14 +669,14 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
         gmsh_flag (bool):  If True, enables writing the GMSH original mesh to the disk (default=False)
         mapping_litho (str): Controls lithological processing mode.
             Options:
-                - "auto"     : apply lithological mapping from structural models to the mesh (default)
+                - "automatic_centers" : apply lithological mapping from structural models to the
+                  mesh, voting on each raw block's cell centroids (default -- generally more
+                  reliable near a fault plane than "automatic_corners", since cell centroids
+                  are guaranteed-interior points, unlike nodes which sit on block boundaries)
+                - "automatic_corners" : same as "automatic_centers" but votes on each raw
+                  block's node coordinates instead; kept for comparison/backwards compatibility
                 - "none"  : skip lithological mapping
                 - "manual"   : merge lithology blocks using information provided by user
-                - "automatic_dev" : experimental -- same as "auto" but votes on each
-                  raw block's cell centroids instead of its node coordinates, which
-                  are more reliable near a fault plane (nodes sit on block
-                  boundaries, exactly where a fault tends to be; cell centroids are
-                  guaranteed-interior points)
      merge_file (str, optional): Directory path containing merge definition file.
             Used only when mapping_litho="manual".
     Returns:
@@ -1101,7 +1105,7 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
     regular_blocks[i] for i in sorted_indices
 ]
 
-  # Populated by the AUTO/AUTOMATIC_DEV branches below (by object identity,
+  # Populated by the AUTOMATIC_CENTERS/AUTOMATIC_CORNERS branches below (by object identity,
   # not index -- new_cells gets more non-lithology blocks appended to it
   # after this point: shafts, wells, sources, fault surfaces, triangulated
   # surfaces, boundary surfaces). Used right before this function returns
@@ -1112,7 +1116,7 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   # lithology-id semantics, and NONE explicitly skips lithology mapping.
   litho_block_id_by_identity: Dict[int, int] = {}
 
-  if mapping_litho == LithoMappingMode.AUTO:
+  if mapping_litho == LithoMappingMode.AUTOMATIC_CORNERS:
 
     # Lithology assignment (ONLY regular blocks)
     grid_coords: NDArray[np.float64] = grid_litho.iloc[:, :3].to_numpy()
@@ -1162,7 +1166,7 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
 
     _check_lithology_mapping_reliability(
         litho_to_blocks, vote_purities_by_lithology,
-        grid_litho_values, grid_coords, mesh_size, "auto",
+        grid_litho_values, grid_coords, mesh_size, "automatic_corners",
     )
 
     merged_regular_blocks: List[meshio.CellBlock] = []
@@ -1240,14 +1244,14 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
         logger.debug("Shaft %s: merged %d tetra elements", shaft_tag, len(merged_data))
 
 
-  elif mapping_litho == LithoMappingMode.AUTOMATIC_DEV:
+  elif mapping_litho == LithoMappingMode.AUTOMATIC_CENTERS:
 
-    # Same overall structure as AUTO (per-block vote -> merge by lithology
-    # -> sort by depth), but the vote itself is taken on each block's
-    # individual *cell centroids* (guaranteed-interior points) instead of
-    # its *node* coordinates (which sit on block boundaries -- exactly
-    # where a fault plane tends to be, and can give a genuinely ambiguous
-    # nearest-neighbor vote no matter how good the algorithm is).
+    # Same overall structure as AUTOMATIC_CORNERS (per-block vote -> merge
+    # by lithology -> sort by depth), but the vote itself is taken on each
+    # block's individual *cell centroids* (guaranteed-interior points)
+    # instead of its *node* coordinates (which sit on block boundaries --
+    # exactly where a fault plane tends to be, and can give a genuinely
+    # ambiguous nearest-neighbor vote no matter how good the algorithm is).
     grid_coords: NDArray[np.float64] = grid_litho.iloc[:, :3].to_numpy()
     grid_litho_values: NDArray[np.int64] = grid_litho.iloc[:, 3].to_numpy()
 
@@ -1282,7 +1286,7 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
 
     _check_lithology_mapping_reliability(
         litho_to_blocks, vote_purities_by_lithology,
-        grid_litho_values, grid_coords, mesh_size, "automatic_dev",
+        grid_litho_values, grid_coords, mesh_size, "automatic_centers",
     )
 
     merged_regular_blocks: List[meshio.CellBlock] = []
@@ -1324,7 +1328,7 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
     ]
 
     # Propagate the real lithology id for each of these blocks out to
-    # cell_data["block_id"] -- see the matching comment in the AUTO branch.
+    # cell_data["block_id"] -- see the matching comment in the AUTOMATIC_CORNERS branch.
     for block, lith in zip(
         sorted_regular_blocks, [merged_regular_lith_ids[i] for i in sorted_indices]
     ):
@@ -1747,7 +1751,7 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
     found_any = True
 
 
-  # Propagate the real per-block lithology id (AUTO/AUTOMATIC_DEV only --
+  # Propagate the real per-block lithology id (AUTOMATIC_CENTERS/AUTOMATIC_CORNERS only --
   # see litho_block_id_by_identity above) out to cell_data["block_id"],
   # matching the convention create_structured_mesh_data/
   # create_implicit_structured_mesh already use, so callers can trust the
@@ -2525,7 +2529,7 @@ def create_unstructured_mesh_data(
     extent: Optional[ExtentData] = None,
     smooth: float = 1e-5,
     gmsh_flag: bool = False,
-    mapping_litho: LithoMappingModeType = LithoMappingMode.AUTO.value,
+    mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     merge_file: Optional[str] = None,
     refinement: Optional[Refinement] = None,
 ) -> MeshResults:
@@ -2562,14 +2566,14 @@ def create_unstructured_mesh_data(
         gmsh_flag (bool):  If True, enables writing the GMSH original mesh to the disk (default=False)
         mapping_litho (str): Controls lithological processing mode.
             Options:
-                - "auto"     : apply lithological mapping from structural models to the mesh (default)
+                - "automatic_centers" : apply lithological mapping from structural models to the
+                  mesh, voting on each raw block's cell centroids (default -- generally more
+                  reliable near a fault plane than "automatic_corners", since cell centroids
+                  are guaranteed-interior points, unlike nodes which sit on block boundaries)
+                - "automatic_corners" : same as "automatic_centers" but votes on each raw
+                  block's node coordinates instead; kept for comparison/backwards compatibility
                 - "none"  : skip lithological mapping
                 - "manual"   : merge lithology blocks using information provided by user
-                - "automatic_dev" : experimental -- same as "auto" but votes on each
-                  raw block's cell centroids instead of its node coordinates, which
-                  are more reliable near a fault plane (nodes sit on block
-                  boundaries, exactly where a fault tends to be; cell centroids are
-                  guaranteed-interior points)
         merge_file (str, optional): Directory path containing merge definition file.
             Used only when mapping_litho="manual".
         refinement (Refinement, optional): Adaptive mesh refinement settings. Supports local refinement around wells, sources, faults, ellipses,
@@ -2602,16 +2606,16 @@ def create_unstructured_mesh_data(
                 "none does not require merge_file"
             )
 
-    elif mapping_litho == LithoMappingMode.AUTO:
+    elif mapping_litho == LithoMappingMode.AUTOMATIC_CENTERS:
         if merge_file is not None:
             raise ValueError(
-                "auto does not require merge_file"
+                "automatic_centers does not require merge_file"
             )
 
-    elif mapping_litho == LithoMappingMode.AUTOMATIC_DEV:
+    elif mapping_litho == LithoMappingMode.AUTOMATIC_CORNERS:
         if merge_file is not None:
             raise ValueError(
-                "automatic_dev does not require merge_file"
+                "automatic_corners does not require merge_file"
             )
 
 

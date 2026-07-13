@@ -258,7 +258,7 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 #     EXTRUSION_FACTOR=80,
 #     z_threshold=10,
 #     gmsh_flag= True,  # to save original gmsh configuration (defaut is False)
-#     mapping_litho='manual', # it can be 'manual', 'auto' or 'none' (default: auto)
+#     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
 #     merge_file = cwd + "/examples/synthetic_examples/model8/input_data/block_groups.csv", # Only if mapping_litho='manual'
 #     refinement=refinement,
 # )

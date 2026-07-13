@@ -316,8 +316,8 @@ class HydrothermalProblemBuilder:
         trusting MeshResults.cell_data["block_id"] directly -- all three mesh
         types (implicit/structured/unstructured) now carry it reliably (see
         create_structured_mesh_data / create_implicit_structured_mesh /
-        create_unstructured_mesh_data with mapping_litho="auto" or
-        "automatic_dev"; project_meshing_lithology_mapping memory has the
+        create_unstructured_mesh_data with mapping_litho="automatic_centers" or
+        "automatic_corners"; project_meshing_lithology_mapping memory has the
         investigation and fix that made this trustworthy for unstructured
         meshes too -- it used to silently omit the tag, which is why this
         builder previously carried its own independent cKDTree-based
@@ -349,7 +349,7 @@ class HydrothermalProblemBuilder:
                 "mesh_results.cell_data has no 'block_id' -- HydrothermalProblemBuilder "
                 "needs the mesh's per-block lithology mapping. For unstructured meshes, "
                 "make sure create_unstructured_mesh_data was called with "
-                "mapping_litho='auto' or 'automatic_dev' (not 'manual' or 'none', neither "
+                "mapping_litho='automatic_centers' or 'automatic_corners' (not 'manual' or 'none', neither "
                 "of which produce a block_id tag)."
             )
         mapping = {
