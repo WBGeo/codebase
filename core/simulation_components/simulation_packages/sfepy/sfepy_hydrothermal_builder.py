@@ -20,33 +20,36 @@ degC in the same matrix), and no amount of preconditioner tuning fixed it.
 Segregating matches the actual physics anyway: temperature depends on the
 flow field, but pressure never depends on temperature in this model.
 
-Not wired up as a Workbench component yet -- see plan doc
-(transient-sprouting-wolf.md) for context and scope boundaries.
+Wired up as Workbench components in sfepy_hydrothermal_run.py
+(build_hydrothermal_problem, run_simulation_sfepy, export_simulation_results).
+Per-rock-unit/fluid/fault-zone property editing via a SmartInput sidebar
+(matching structural_workbench_components.py's interpolation-options pattern)
+is deferred -- see build_hydrothermal_problem's docstring for why.
 """
 import logging
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pyvista as pv
+from pydantic import BaseModel
+from pydantic.dataclasses import dataclass
 from scipy.ndimage import binary_dilation
 from scipy.spatial import cKDTree
 
+from py_api_wbgeo.nodesapi import wbgeo_type
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults, MeshType
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class FluidProperties:
+class FluidProperties(BaseModel):
     """Single global fluid shared across all rock units (single-phase assumption)."""
     mu: float = 1.0e-3            # dynamic viscosity, Pa*s (water at ~20 C)
     k_fluid: float = 0.6          # thermal conductivity, W/(m*K)
     rho_c_fluid: float = 4.186e6  # volumetric heat capacity, J/(m^3*K)
 
 
-@dataclass
-class RockUnitProperties:
+class RockUnitProperties(BaseModel):
     """Per-rock-unit physical properties for the simplified Darcy + heat model."""
     name: str
     porosity: float = 0.15
@@ -113,6 +116,28 @@ MESH_TYPE_CODES = {
 }
 
 
+def enumerate_rock_units(geomodel_result: StructuralModelResults) -> List[Tuple[int, str]]:
+    """
+    Ordered (lithology_id, formation_name), oldest(1)->youngest(N), plus
+    basement(0). A module-level function (not just a method on
+    HydrothermalProblemBuilder) so it can also be used to enumerate rock
+    unit names for a smart-options form before a builder is constructed
+    (see simulation_workbench_components.py).
+    """
+    frame = geomodel_result.structural_frame
+    units: List[Tuple[int, str]] = [(0, "basement")]
+    # structural_groups/elements are stored youngest->oldest
+    for group in reversed(frame.structural_groups):
+        for elem in reversed(group.structural_elements):
+            if elem.id is not None:
+                units.append((elem.id, elem.name))
+    units.sort(key=lambda t: t[0])
+    return units
+
+
+@wbgeo_type(name='Hydrothermal Problem', color='#e07a5f',
+            identifier='HydrothermalProblemBuilder')
+@dataclass
 class HydrothermalProblemBuilder:
     """
     Builds SfePy problem-description files for a coupled Darcy flow + heat
@@ -184,63 +209,41 @@ class HydrothermalProblemBuilder:
     meaningfully and only near the fault, as expected.
     """
 
-    def __init__(
-        self,
-        mesh_results: MeshResults,
-        geomodel_result: StructuralModelResults,
-        rock_properties: Optional[Dict[str, RockUnitProperties]] = None,
-        fluid: Optional[FluidProperties] = None,
-        include_flow: bool = True,
-        fault_zone_properties: Optional[RockUnitProperties] = None,
-        fault_zone_n_voxels: int = 1,
-        t0: float = 0.0,
-        t1: Optional[float] = None,
-        num_steps: int = 1,
-        p_top: float = 0.0,
-        p_bottom: float = 100e4,
-        t_top: float = 10.0,
-        t_bottom: float = 60.0,
-        linear_solver: str = "iterative",
-        linear_solver_i_max: int = 500,
-        linear_solver_eps_r: float = 1e-8,
-    ):
+    mesh_results: MeshResults
+    geomodel_result: StructuralModelResults
+    rock_properties: Optional[Dict[str, RockUnitProperties]] = None
+    fluid: Optional[FluidProperties] = None
+    include_flow: bool = True
+    fault_zone_properties: Optional[RockUnitProperties] = None
+    fault_zone_n_voxels: int = 1
+    t0: float = 0.0
+    t1: Optional[float] = None
+    num_steps: int = 1
+    p_top: float = 0.0
+    p_bottom: float = 100e4
+    t_top: float = 10.0
+    t_bottom: float = 60.0
+    linear_solver: str = "iterative"
+    linear_solver_i_max: int = 500
+    linear_solver_eps_r: float = 1e-8
+
+    def __post_init__(self):
         """
-        Args:
-            mesh_results: The mesh to solve on -- its `.mesh_type` (set automatically
-                by create_implicit_structured_mesh/create_structured_mesh_data/
-                create_unstructured_mesh_data) determines mesh-type-specific handling
-                throughout (see class docstring).
-            geomodel_result: The structural model mesh_results was generated from --
-                supplies rock unit names/ids (_enumerate_rock_units) and, if
-                fault_zone_properties is set, the fault geometry/activity used to
-                build the fault-zone cell mask.
-            rock_properties: Per-lithology-name overrides; any rock unit not given
-                here falls back to `RockUnitProperties(name=<unit name>)`'s defaults
-                (see _fill_defaults).
-            fluid: Shared single-phase fluid properties; defaults to `FluidProperties()`.
-            include_flow: If False, skips the pressure/Darcy stage entirely and solves
-                pure heat conduction (see class docstring).
-            fault_zone_properties / fault_zone_n_voxels: Opt-in fault damage-zone
-                support (see class docstring); both ignored (no fault zone) if
-                fault_zone_properties is None.
-            t0 / t1 / num_steps: Heat stage's transient time range and step count.
-                t1 defaults to a data-driven diffusion timescale if not given (see
-                _default_diffusion_timescale) -- an inappropriately short t1 is a
-                real, previously-hit failure mode (see that method's docstring).
-            p_top / p_bottom / t_top / t_bottom: Dirichlet boundary values for
-                pressure (Pa) and temperature (°C) at the model's top/bottom.
-            linear_solver / linear_solver_i_max / linear_solver_eps_r: See
-                LINEAR_SOLVERS for the "direct" vs. "iterative" tradeoff;
-                i_max/eps_r only apply to "iterative".
+        Validates and fills in every derived/defaulted piece of state from
+        the fields above (see the class docstring for the constructor
+        argument semantics -- this is the same logic that used to live in
+        `__init__` before this became a pydantic dataclass/wbgeo_type, moved
+        here since a dataclass's generated `__init__` runs before
+        `__post_init__`).
 
         Raises:
             ValueError: linear_solver isn't a valid LINEAR_SOLVERS entry, or
                 mesh_results.mesh_type is None (see that check's message for why).
         """
-        if linear_solver not in LINEAR_SOLVERS:
-            raise ValueError(f"linear_solver must be one of {LINEAR_SOLVERS}, got {linear_solver!r}")
+        if self.linear_solver not in LINEAR_SOLVERS:
+            raise ValueError(f"linear_solver must be one of {LINEAR_SOLVERS}, got {self.linear_solver!r}")
 
-        if mesh_results.mesh_type is None:
+        if self.mesh_results.mesh_type is None:
             raise ValueError(
                 "mesh_results.mesh_type is None -- HydrothermalProblemBuilder needs to know "
                 "which meshing component produced this mesh (create_implicit_structured_mesh, "
@@ -248,21 +251,12 @@ class HydrothermalProblemBuilder:
                 "set this automatically. If mesh_results was constructed manually (e.g. in a "
                 "test), set mesh_type explicitly to one of MeshType's members."
             )
-        self.mesh_type = mesh_results.mesh_type
+        self.mesh_type = self.mesh_results.mesh_type
 
-        self.mesh_results = mesh_results
-        self.geomodel_result = geomodel_result
-        self.fluid = fluid or FluidProperties()
-        self.include_flow = include_flow
-        self.t0, self.num_steps = t0, num_steps
-        self.p_top, self.p_bottom = p_top, p_bottom
-        self.t_top, self.t_bottom = t_top, t_bottom
-        self.linear_solver = linear_solver
-        self.linear_solver_i_max = linear_solver_i_max
-        self.linear_solver_eps_r = linear_solver_eps_r
+        self.fluid = self.fluid or FluidProperties()
 
         self.rock_units: List[Tuple[int, str]] = self._enumerate_rock_units()
-        self.rock_properties: Dict[str, RockUnitProperties] = self._fill_defaults(rock_properties or {})
+        self.rock_properties: Dict[str, RockUnitProperties] = self._fill_defaults(self.rock_properties or {})
         self.mat_id_to_lithology: Dict[int, int] = self._map_mat_id_to_lithology()
 
         # Limited fault support: opt-in via fault_zone_properties. Faults
@@ -277,10 +271,8 @@ class HydrothermalProblemBuilder:
         # conduit) than an exact geometric split, and the only mesh-type-
         # agnostic option since SfePy itself has no fault/interface element
         # either (checked: only per-region material constants exist).
-        self.fault_zone_properties = fault_zone_properties
-        self.fault_zone_n_voxels = fault_zone_n_voxels
         self.fault_zone_cell_mask: Optional[np.ndarray] = None
-        if fault_zone_properties is not None:
+        if self.fault_zone_properties is not None:
             self.fault_zone_cell_mask = self._compute_fault_zone_cell_mask()
 
         # The extra SfePy/Exodus material group id for the fault zone --
@@ -298,23 +290,14 @@ class HydrothermalProblemBuilder:
         # conditioning (validated: t1=700s stalled the iterative solver at
         # relative residual ~0.79; a domain-appropriate t1 converged to
         # ~1e-13 with the exact same solver settings).
-        self.t1: float = t1 if t1 is not None else self._default_diffusion_timescale()
+        self.t1: float = self.t1 if self.t1 is not None else self._default_diffusion_timescale()
 
     # ------------------------------------------------------------------
     # Rock unit / lithology bookkeeping
     # ------------------------------------------------------------------
 
     def _enumerate_rock_units(self) -> List[Tuple[int, str]]:
-        """Ordered (lithology_id, formation_name), oldest(1)->youngest(N), plus basement(0)."""
-        frame = self.geomodel_result.structural_frame
-        units: List[Tuple[int, str]] = [(0, "basement")]
-        # structural_groups/elements are stored youngest->oldest
-        for group in reversed(frame.structural_groups):
-            for elem in reversed(group.structural_elements):
-                if elem.id is not None:
-                    units.append((elem.id, elem.name))
-        units.sort(key=lambda t: t[0])
-        return units
+        return enumerate_rock_units(self.geomodel_result)
 
     def _fill_defaults(self, given: Dict[str, RockUnitProperties]) -> Dict[str, RockUnitProperties]:
         """Fill in `RockUnitProperties(name=<unit>)` defaults for any rock unit in
