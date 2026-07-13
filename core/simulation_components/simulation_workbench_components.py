@@ -12,7 +12,8 @@ from typing import Dict, Optional
 
 import pydantic
 from py_api_wbgeo import smartcontrols
-from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, BasicallyABufferedFile
+from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, InspectorHelper, \
+    BasicallyABufferedFile
 from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartInputFormData
 
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
@@ -22,6 +23,9 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
     run_simulation_sfepy as _run_simulation_sfepy,
     export_simulation_results as _export_simulation_results,
+)
+from core.simulation_components.simulation_visualization.simulation_visualization import (
+    plot_variable_at_a_time, plot_cross_section_2D,
 )
 
 # -----------------------------------------------------------------------------
@@ -215,3 +219,34 @@ def export_simulation_results(simulation_result: SimulationResults, format: str 
     :return: A downloadable file containing the exported results.
     """
     return _export_simulation_results(simulation_result, format)
+
+
+# -----------------------------------------------------------------------------
+# Inspectors -- mirrors StructuralModelResults'/MeshResults' plot inspectors
+# (structural_workbench_components.py / meshing_visualization.py)
+# -----------------------------------------------------------------------------
+
+@wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_variable_at_a_time',
+                 title='Plot Variable (Final Time)',
+                 description='Plots temperature at the final solved time step.')
+@wbgeo_inspector()
+def inspect_simulation_result_plot_variable_at_a_time(
+    simulation_result: SimulationResults, _inspector: InspectorHelper):
+    final_time = max(simulation_result.nodes_by_time.keys())
+    plot_variable_at_a_time(simulation_result, "T", time=final_time, cmap="coolwarm", show_edges=True)
+
+
+@wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_cross_section_2D',
+                 title='Plot Cross Section 2D',
+                 description='Plots a temperature cross-section, comparing the initial and final time steps.')
+@wbgeo_inspector()
+def inspect_simulation_result_plot_cross_section_2D(
+    simulation_result: SimulationResults, _inspector: InspectorHelper):
+    # plot_cross_section_2D's own default origin=(0, 0, 0) sits right on the
+    # domain boundary -- mesh nodes are cell-centered (inset from the
+    # nominal domain edges), so that default slice can miss every node and
+    # raise. The mesh's own centroid is always a valid slice origin
+    # regardless of the model's actual extent.
+    first_time = min(simulation_result.nodes_by_time.keys())
+    origin = tuple(simulation_result.nodes_by_time[first_time].mean(axis=0))
+    plot_cross_section_2D(simulation_result, "T", origin=origin, cmap="coolwarm")
