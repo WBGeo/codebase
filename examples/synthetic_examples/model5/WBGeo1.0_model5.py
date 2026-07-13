@@ -29,7 +29,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
     HydrothermalProblemBuilder, RockUnitProperties, FluidProperties)
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
 from core.simulation_components.simulation_visualization.simulation_visualization import (
-    plot_variable_at_a_time, plot_cross_section, plot_cross_section_2D,
+    plot_variable_at_a_time, plot_cross_section_2D,
     plot_cross_section_difference_2D, plot_builder_materials)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,

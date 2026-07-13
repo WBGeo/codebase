@@ -193,55 +193,6 @@ def plot_variable_at_a_time(
     plotter.show()
 
 
-def plot_cross_section(
-    sim: SimulationResults,
-    var_name: str,
-    time: float,
-    origin: Tuple[float, float, float],
-    normal: Tuple[float, float, float],
-    cmap: str = "viridis",
-    show_edges: bool = False,
-    scale: Tuple[float, float, float] = (1, 1, 1),
-) -> None:
-    """
-    3D PyVista plot of a single planar slice (PyVista's own `grid.slice`)
-    through `sim` at `time`, colored by `var_name`. `origin`/`normal` define
-    the cutting plane -- pick `normal` so it actually cuts across whatever
-    feature you want visible (e.g. a fault plane lying in the X-Z plane needs
-    `normal=(0, 1, 0)`, not `(1, 0, 0)`, or the slice just shows a flat,
-    uninformative cut parallel to it). Falls back to rendering the slice's
-    points as spheres if the slice itself has no cells (e.g. the plane only
-    grazes the mesh), so a degenerate slice still shows something instead of
-    silently rendering empty.
-
-    Raises:
-        ValueError: `var_name` isn't present at `time` as point or cell data.
-    """
-    grid = build_grid_from_class(sim, time)
-
-    if var_name not in grid.point_data and var_name not in grid.cell_data:
-        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
-
-    slice_mesh = grid.slice(origin=origin, normal=normal)
-    slice_mesh.points *= scale
-
-    plotter = pv.Plotter()
-
-    render_kwargs = {}
-    if isinstance(slice_mesh, pv.PolyData) and slice_mesh.n_cells == 0:
-        render_kwargs = {"render_points_as_spheres": True, "point_size": 6}
-
-    plotter.add_mesh(
-        slice_mesh, scalars=var_name, cmap=cmap, show_edges=show_edges,
-        scalar_bar_args={"title": _variable_label(var_name), "vertical": False},
-        **render_kwargs,
-    )
-    plotter.add_text(f"{_variable_label(var_name)} cross-section at time {time}", font_size=20, position="upper_edge")
-    plotter.show_bounds(location="furthest", grid=True)
-    _apply_camera_convention(plotter)
-    plotter.show()
-
-
 # ----------------------------------------------------------------------
 # Comparison / diff plots -- isolate what actually changed between two
 # time steps, rather than relying on eyeballing two separate absolute
