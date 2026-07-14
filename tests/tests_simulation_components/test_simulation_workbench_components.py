@@ -153,10 +153,10 @@ def test_export_simulation_results_calls_through(monkeypatch):
 # -----------------------------------------------------------------------------
 # Inspector components -- only the pre-plot logic (final_time/origin
 # computation), not the actual rendering, matching this codebase's existing
-# convention of not unit-testing plot output. origin's mesh-centroid fallback
-# was a real bug fixed this session (plot_cross_section_2D's own default
+# convention of not unit-testing plot output. The mesh-centroid origin
+# fallback is a regression test: plot_cross_section_2D's own default
 # origin=(0,0,0) sits on the domain boundary and misses cell-centered mesh
-# nodes entirely) -- worth a regression test.
+# nodes entirely.
 # -----------------------------------------------------------------------------
 
 @pytest.mark.integration

@@ -161,10 +161,8 @@ def test_run_simulation_sfepy_fault_zone_with_flow_end_to_end(
 ):
     """
     include_flow=True + an active fault zone -- exercises
-    compute_darcy_velocity's fault-zone cell-splitting for real (not just the
-    generated input files' text), matching the exact combination verified
-    during the fault-zone feature's own development (see
-    project_sfepy_hydrothermal_builder memory).
+    compute_darcy_velocity's fault-zone cell-splitting for real, not just
+    the generated input files' text.
     """
     fault_zone_properties = RockUnitProperties(
         name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2.3e6

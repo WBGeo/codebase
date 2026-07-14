@@ -7,14 +7,8 @@ Workbench's component/connector model: HydrothermalProblemBuilder is the
 input-data-generator component, run_simulation_sfepy() here is the run
 component that takes it as input.
 
-This module owns its own "run sfepy" step (_run_sfepy_input_file below)
-rather than the previous implementation's run_sfepy() (formerly
-simulation_packages/sfepy/simulation_run.py, now removed) -- that function
-never checked the sfepy-run subprocess's return code, so a crashed/errored
-solve silently looked like success (see _run_sfepy_input_file's docstring
-for the specifics and the fixes). Still depends on
-export_mesh_results_to_exodus (mesh export/format-conversion logic, owned
-by meshing, not simulation).
+Depends on export_mesh_results_to_exodus (mesh export/format-conversion
+logic, owned by meshing, not simulation).
 """
 import io
 import logging
@@ -69,11 +63,6 @@ def _check_convergence(stdout: str, input_file: str) -> None:
     This only catches genuine non-convergence (SfePy itself reporting it
     exhausted i_max or gave up) -- a crashed/errored run is already caught
     separately by _run_sfepy_input_file's returncode check above this.
-    Before this check existed, a run that silently failed to converge
-    (exit code 0, but the solution wasn't actually valid) would have
-    looked identical to a real success -- the builder's own docstring
-    even said as much ("as with any iterative method, verify convergence
-    -- check the printed residual"), i.e. it used to be the caller's job.
     """
     failures = []
     for match in re.finditer(r"cond:\s*(-?\d+),\s*iter:\s*(\d+).*", stdout):
@@ -117,48 +106,36 @@ def _run_sfepy_input_file(
     instead of their host lithology's -- this is the only place mat_id
     actually gets assigned, so it's the one place that override can happen.
 
-    Replacement for the previous implementation's run_sfepy() (formerly
-    simulation_packages/sfepy/simulation_run.py, now removed) -- the actual
-    "run sfepy" mechanics live here instead.
+    Converts mesh_results to the format SfePy actually reads (MeshResults
+    -> Exodus buffer -> meshio round-trip, tagging each cell block with a
+    `mat_id` matching its positional index -- this is exactly what makes
+    Omega{mat_id} in the generated input files line up with
+    mesh_results.elements' block order -> Medit .mesh file), then launches
+    `sfepy-run` as a subprocess. The mesh path and output dir are passed to
+    that subprocess via its own environment (sfepy-run executes the input
+    file fresh in a separate process; unlike most of this builder's
+    config, the mesh path is only known after this conversion happens, not
+    at input-file-generation time, so it can't be embedded as a literal).
 
-    Same core approach: MeshResults -> Exodus buffer -> meshio round-trip
-    (tags each cell block with a `mat_id` matching its positional index --
-    this is exactly what makes Omega{mat_id} in the generated input files
-    line up with mesh_results.elements' block order) -> Medit .mesh file ->
-    sfepy-run subprocess. The mesh path and output dir are passed to that
-    subprocess via its own environment (sfepy-run executes the input file
-    fresh in a separate process; unlike most of this builder's config, the
-    mesh path is only known after this conversion happens, not at
-    input-file-generation time, so it can't be embedded as a literal).
+    Builds a local `env` dict for the subprocess rather than mutating the
+    real process-global `os.environ`, so nothing needs to be restored on
+    the parent side afterward. Checks the subprocess's return code and
+    captures stdout/stderr (`capture_output=True`), raising with the
+    captured output on failure -- a crashed/errored SfePy run otherwise
+    exits non-zero with no indication of why. Also checks solver
+    *convergence*, not just the return code (see _check_convergence()) --
+    a returncode of 0 only means SfePy didn't crash, not that the
+    nonlinear solve actually reached tolerance within `i_max` iterations.
 
-    Five real gaps fixed vs. the original:
-    - Return code was never checked at all -- a crashed/errored SfePy run
-      silently looked like success, and load_vtk_results() finding zero
-      .vtk files (several call frames away, logged at INFO level) was the
-      only symptom. Fixed: checks returncode, raises with the captured
-      output on failure.
-    - stdout/stderr were not captured (streamed directly to the parent's
-      console with no way to recover them programmatically). Fixed:
-      captured via subprocess.run(capture_output=True), so the actual SfePy
-      error ends up in the raised exception instead of just scrolling past.
-    - The original mutated the real process-global os.environ
-      (os.environ["SFEpy_OUTPUT_DIR"] = ..., etc.) and never cleaned it up
-      afterward. Fixed: builds a local env dict instead --
-      subprocess.run's env= only affects the child process, so there's
-      nothing to mutate or restore on the parent side at all.
-    - Solver *convergence* was never checked either -- a returncode of 0
-      only means SfePy didn't crash, not that the nonlinear solve actually
-      reached tolerance within i_max iterations; a silently non-converged
-      "solution" used to look identical to a real one. Fixed: see
-      _check_convergence() below.
-    - On Windows, mesh_type="unstructured" always broke this subprocess call
-      with FileNotFoundError: [WinError 2] -- GMSH's initialize()/finalize()
-      (run during unstructured mesh generation, earlier in the same process)
-      leaves Win32 CreateProcess's own executable search unable to find bare
-      command names, even though PATH itself is untouched and
-      shutil.which() still resolves them fine. Fixed: resolve "sfepy-run" to
-      its absolute path via shutil.which() before calling subprocess.run,
-      sidestepping CreateProcess's own search entirely.
+    On Windows, `sfepy-run` is resolved to its absolute path via
+    `shutil.which()` rather than passed as the bare command name: after
+    GMSH's `initialize()`/`finalize()` has run anywhere earlier in the
+    same process (i.e. after any `mesh_type="unstructured"` mesh
+    generation), Win32 `CreateProcess`'s own executable search stops
+    finding bare command names, raising `FileNotFoundError: [WinError 2]`,
+    even though `PATH` itself is untouched and `shutil.which()` still
+    resolves it correctly. Passing the resolved absolute path sidesteps
+    `CreateProcess`'s search entirely.
     """
     is_temp = output_dir is None
     if is_temp:
@@ -173,23 +150,21 @@ def _run_sfepy_input_file(
         # ourselves, rather than relying on Exo_format.py's own unstructured
         # export path, which strips a hardcoded NUM_SIDE_BLOCKS=6 trailing
         # blocks -- correct only when there are exactly 6 non-volume blocks
-        # total. With any fault present there are 7+ (one extra triangle
-        # block per fault), so that slice wrongly leaves a fault-surface
-        # triangle block mixed in with real tetrahedra, which SfePy then
-        # fails on (mixed 3-node/4-node elements in one region -- confirmed
-        # by reproducing on model2: "ValueError: Size of label 'j' for
-        # operand 1 (4) does not match previous terms (3)" during the heat
-        # solve). Once pre-filtered to tetra-only, use
-        # Exo_format.MeshType.VOLUME_ONLY for the export call -- it behaves
-        # exactly like "imp"/"str" there (volume_blocks = all_blocks, no
-        # slicing), added specifically so this doesn't have to mislabel the
-        # mesh's true origin as "imp" just to get that behavior (this mesh's
-        # real provenance stays "unstructured" -- see MeshResults.mesh_type
-        # -- this only affects which code path Exo_format.py's exporter
-        # takes). Boundary conditions (Gamma_Top/Gamma_Bottom) don't depend
-        # on this: they're built from mesh_results.point_sets directly in
-        # HydrothermalProblemBuilder._region_lines(), never from Exodus side
-        # sets, so switching export type here doesn't affect them.
+        # total. A faulted model has 7+ (one extra triangle block per
+        # fault), so that slice would wrongly leave a fault-surface
+        # triangle block mixed in with real tetrahedra, which SfePy cannot
+        # handle (mixed 3-node/4-node elements in one region). Once
+        # pre-filtered to tetra-only, use Exo_format.MeshType.VOLUME_ONLY
+        # for the export call -- it behaves exactly like "imp"/"str" there
+        # (volume_blocks = all_blocks, no slicing), without mislabeling the
+        # mesh's true origin as "imp" just to get that behavior (this
+        # mesh's real provenance stays "unstructured" -- see
+        # MeshResults.mesh_type -- this only affects which code path
+        # Exo_format.py's exporter takes). Boundary conditions
+        # (Gamma_Top/Gamma_Bottom) don't depend on this: they're built from
+        # mesh_results.point_sets directly in
+        # HydrothermalProblemBuilder._region_lines(), never from Exodus
+        # side sets, so switching export type here doesn't affect them.
         volume_elements = [block for block in mesh_results.elements if block.dim == 3]
         if len(volume_elements) != len(mesh_results.elements):
             mesh_results = mesh_results.model_copy(update={"elements": volume_elements})
@@ -292,13 +267,10 @@ def run_simulation_sfepy(
     inputs); this is the actual "run" component.
 
     Solved as two sequential SfePy runs rather than one combined system:
-    an earlier monolithic version (pressure and temperature in one
-    equations dict, solved together) turned out to be badly conditioned
-    for iterative solvers -- pressure (~1e6 Pa) and temperature (~10s of
-    degC) in the same matrix, which no amount of preconditioning fixed
-    (validated: relative residual stuck near 1.0 even with ILU +
-    diagonal scaling). Segregating matches the physics anyway (T depends
-    on the flow field, but p never depends on T), and each stage is a
+    mixing pressure (~1e6 Pa) and temperature (~10s of degC) in the same
+    matrix is badly conditioned for iterative solvers, regardless of
+    preconditioning. Segregating matches the physics anyway (T depends on
+    the flow field, but p never depends on T), and each stage is a
     well-conditioned single-physics problem on its own.
 
     No files are left behind by default: SfePy's own output directories

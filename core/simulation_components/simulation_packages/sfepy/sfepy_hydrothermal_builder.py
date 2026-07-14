@@ -68,39 +68,31 @@ class RockUnitProperties(BaseModel):
 
 #: Valid `linear_solver` keywords for HydrothermalProblemBuilder, and the
 #: tradeoff each one represents. Both stages (pressure, temperature) are
-#: solved as *separate*, single-physics linear systems (see module docstring)
-#: -- this fixed the original conditioning problem caused by mixing pressure
-#: (~1e6 Pa) and temperature (~10s of degC) in one combined system.
+#: solved as *separate*, single-physics linear systems (see module
+#: docstring) to avoid mixing pressure (~1e6 Pa) and temperature (~10s of
+#: degC) magnitudes in one combined system, which is badly conditioned for
+#: iterative solvers.
 #:
-#: The temperature stage had a *second*, separate conditioning problem even
-#: after segregation: its own equation combines rho_c_eff (~1e6) and k_eff
-#: (~1-5) terms, and with the arbitrarily short t1 the original hand-written
-#: example used (700 seconds), the transient term's matrix contribution
-#: (~rho_c_eff/dt) dwarfed the diffusive term's (~k_eff/L^2) by ~5-6 orders
-#: of magnitude -- an internal scale mismatch no amount of preconditioning
-#: fixed. Root cause: 700 seconds is negligible next to this model's actual
-#: thermal diffusion timescale (order of years, given its rock properties
-#: and cell size). Fixed by defaulting t1 to a data-driven diffusion
-#: timescale (see _default_diffusion_timescale()) instead of a fixed
-#: constant -- validated: with an appropriate t1, iterative heat convergence
-#: went from stalling at relative residual ~0.79 to converging to ~1e-13,
-#: using the exact same solver settings.
+#: The temperature stage's own equation combines rho_c_eff (~1e6) and k_eff
+#: (~1-5) terms, so an inappropriately short `t1` relative to the model's
+#: actual thermal diffusion timescale (order of years for typical rock
+#: properties and domain sizes) makes the transient term's matrix
+#: contribution (~rho_c_eff/dt) dwarf the diffusive term's (~k_eff/L^2) by
+#: many orders of magnitude -- an internal scale mismatch that defeats
+#: preconditioning regardless of solver choice. `t1` defaults to a
+#: data-driven diffusion timescale for exactly this reason (see
+#: _default_diffusion_timescale()) rather than a fixed constant.
 #:
 #: - "direct"    -- scipy_direct (sparse LU factorization). Exact (up to
-#:                  floating-point precision), no tuning needed, validated
-#:                  to converge cleanly for both stages. Does not scale to
-#:                  very large meshes -- a single combined (pre-segregation)
-#:                  240k-DOF system did not finish within 10 minutes; a
-#:                  single-stage direct solve at that same full model1
-#:                  resolution took ~7 minutes. Use for small/debug meshes.
+#:                  floating-point precision), no tuning needed. Does not
+#:                  scale to very large meshes -- expect multi-minute solves
+#:                  at full production resolution. Use for small/debug meshes.
 #: - "iterative" -- scipy_iterative (BiCGStab, ILU-preconditioned + diagonal
-#:                  scaling). DEFAULT. Scales much better to large meshes,
-#:                  and -- now that both the pressure/temperature split and
-#:                  the t1 timescale issue are fixed -- validated to
-#:                  converge cleanly for both stages. As with any iterative
-#:                  method, verify convergence (check the printed residual)
-#:                  for new rock/fluid parameter sets or a manually-supplied
-#:                  `t1` that deviates a lot from the diffusion timescale.
+#:                  scaling). DEFAULT. Scales much better to large meshes.
+#:                  As with any iterative method, verify convergence (check
+#:                  the printed residual) for new rock/fluid parameter sets
+#:                  or a manually-supplied `t1` that deviates a lot from the
+#:                  diffusion timescale.
 LINEAR_SOLVERS = ("direct", "iterative")
 
 
@@ -189,10 +181,9 @@ class HydrothermalProblemBuilder:
     Material regions and boundary regions are inferred automatically from
     the mesh and structural model.
 
-    Unlike the original hand-written example, temperature is actually
-    coupled to the Darcy flow: pressure is solved first, a Darcy velocity is
-    computed from its gradient, and that velocity enters the temperature
-    equation as a `dw_advect_div_free` advection term.
+    Temperature is coupled to the Darcy flow: pressure is solved first, a
+    Darcy velocity is computed from its gradient, and that velocity enters
+    the temperature equation as a `dw_advect_div_free` advection term.
 
     Set `include_flow=False` to skip the pressure stage entirely and solve
     pure heat conduction instead -- useful to validate the diffusion term in
@@ -211,11 +202,11 @@ class HydrothermalProblemBuilder:
     since that would just be a second place the same fact could go stale or
     disagree with the actual mesh. Raises clearly if `mesh_results.mesh_type`
     is `None` (e.g. a manually-constructed `MeshResults` in a test that never
-    set it). All three mesh types work end-to-end; note structured meshing
-    is not currently recommended for faulted models -- it has been observed
-    not to converge in that combination even where implicit/unstructured do,
-    on otherwise-identical settings (see project memory for details) -- but
-    works fine unfaulted.
+    set it). All three mesh types work end-to-end for unfaulted models; a
+    structured mesh paired with a faulted structural model is not supported
+    (blocked at the meshing stage, since that combination does not reliably
+    converge -- use implicit or unstructured meshing for faulted models
+    instead).
 
     Limited fault support: pass `fault_zone_properties` (a `RockUnitProperties`)
     to give cells near any fault their own separate material, instead of
@@ -244,13 +235,10 @@ class HydrothermalProblemBuilder:
     (`group_idx >= fault_activity[name]`, the same rule
     `effective_domain_components_for_group` in general.py uses for the real
     lith_block computation; basement is always treated as active, since it
-    sits below/outside every group). Verified: with
-    `fault_zone_properties` set identical to a model's (homogeneous) rock
-    properties, results are unchanged (to floating-point/solver-tolerance
-    noise) vs. not using a fault zone at all, confirming the region-
-    splitting and Darcy-velocity handoff are correct; with genuinely
-    different properties (e.g. a sealing fault), the result differs
-    meaningfully and only near the fault, as expected.
+    sits below/outside every group). Setting `fault_zone_properties`
+    identical to the surrounding rock's properties is a no-op on the
+    result (useful for isolating a suspected fault-zone effect by
+    comparison).
     """
 
     mesh_results: MeshResults
@@ -275,10 +263,7 @@ class HydrothermalProblemBuilder:
         """
         Validates and fills in every derived/defaulted piece of state from
         the fields above (see the class docstring for the constructor
-        argument semantics -- this is the same logic that used to live in
-        `__init__` before this became a pydantic dataclass/wbgeo_type, moved
-        here since a dataclass's generated `__init__` runs before
-        `__post_init__`).
+        argument semantics).
 
         Raises:
             ValueError: linear_solver isn't a valid LINEAR_SOLVERS entry, or
@@ -298,16 +283,15 @@ class HydrothermalProblemBuilder:
 
         # Limited fault support: opt-in via fault_zone_properties. Faults
         # aren't tagged anywhere on MeshResults for the mesh types that
-        # actually work here (implicit/structured only read lith_block) --
-        # see project_sfepy_hydrothermal_builder memory for the full
-        # investigation. So instead of a geometrically-exact fault surface,
-        # this treats a fault as a "damage zone" band of cells straddling
-        # its trace (n_voxels wide, on the *structural model's* grid) and
-        # gives them their own separate material -- a standard, simpler
-        # proxy for fault-zone hydraulics (gouge seal or fracture-enhanced
-        # conduit) than an exact geometric split, and the only mesh-type-
-        # agnostic option since SfePy itself has no fault/interface element
-        # either (checked: only per-region material constants exist).
+        # actually work here (implicit/structured only carry lith_block).
+        # So instead of a geometrically-exact fault surface, this treats a
+        # fault as a "damage zone" band of cells straddling its trace
+        # (n_voxels wide, on the *structural model's* grid) and gives them
+        # their own separate material -- a standard, simpler proxy for
+        # fault-zone hydraulics (gouge seal or fracture-enhanced conduit)
+        # than an exact geometric split, and the only mesh-type-agnostic
+        # option since SfePy itself has no fault/interface element either,
+        # only per-region material constants.
         self.fault_zone_cell_mask: Optional[np.ndarray] = None
         if self.fault_zone_properties is not None:
             self.fault_zone_cell_mask = self._compute_fault_zone_cell_mask()
@@ -324,9 +308,7 @@ class HydrothermalProblemBuilder:
         # t1 defaults to a data-driven thermal diffusion timescale rather
         # than an arbitrary constant -- see _default_diffusion_timescale()
         # for why an inappropriately short t1 breaks the heat equation's own
-        # conditioning (validated: t1=700s stalled the iterative solver at
-        # relative residual ~0.79; a domain-appropriate t1 converged to
-        # ~1e-13 with the exact same solver settings).
+        # conditioning.
         self.t1: float = self.t1 if self.t1 is not None else self._default_diffusion_timescale()
 
     # ------------------------------------------------------------------
@@ -348,37 +330,28 @@ class HydrothermalProblemBuilder:
 
     def _map_mat_id_to_lithology(self) -> Dict[int, int]:
         """
-        Map each mesh element block (mat_id, assigned by run_sfepy in the same
-        enumeration order as mesh_results.elements) to a lithology ID, by
-        trusting MeshResults.cell_data["block_id"] directly -- all three mesh
-        types (implicit/structured/unstructured) now carry it reliably (see
-        create_structured_mesh_data / create_implicit_structured_mesh /
-        create_unstructured_mesh_data with mapping_litho="automatic_centers" or
-        "automatic_corners"; project_meshing_lithology_mapping memory has the
-        investigation and fix that made this trustworthy for unstructured
-        meshes too -- it used to silently omit the tag, which is why this
-        builder previously carried its own independent cKDTree-based
-        resampling fallback here. That fallback is gone now that the mapping
-        is fixed at the source instead of worked around downstream).
+        Map each mesh element block (mat_id, assigned in the same
+        enumeration order as mesh_results.elements) to a lithology ID,
+        trusting MeshResults.cell_data["block_id"] directly -- see
+        check_mesh_has_lithology_mapping for which mesh types/mapping_litho
+        settings provide this tag.
 
         Non-volume blocks (block_id == -1, meshing's sentinel for a fault
         surface, well, source point, or boundary/"extended" surface block)
-        are dropped from the returned mapping rather than raising -- they're
-        never part of the actual FEM domain SfePy solves (confirmed: for
-        unstructured meshes, Exo_format.py's Exodus writer already excludes
-        them from the exported volume mesh; see
-        core/meshing_components/mesh_format/exodus/Exo_format.py's
-        `volume_blocks` split), so there's nothing to solve for them in the
-        first place. They always trail the real volume blocks positionally
-        (lithology-block merging always runs first when meshing builds
-        mesh_results.elements -- see mesh_data.py's block-append order), so
-        the remaining mapping's keys stay a contiguous 0..N-1 range exactly
-        matching mat_id 0..N-1 in the exported/solved mesh. Every other place
-        that used to assume "every raw block index has a lithology"
-        (_region_lines, build_pressure_input_file, build_heat_input_file,
-        compute_darcy_velocity, compute_cell_materials) now iterates this
-        mapping's keys instead of range(len(mesh_results.elements)) for
-        exactly this reason.
+        are dropped from the returned mapping rather than raising -- they
+        are never part of the actual FEM domain SfePy solves (Exo_format.py's
+        Exodus writer already excludes them from the exported volume mesh;
+        see core/meshing_components/mesh_format/exodus/Exo_format.py's
+        `volume_blocks` split), so there is nothing to solve for them. They
+        always trail the real volume blocks positionally (lithology-block
+        merging always runs first when meshing builds mesh_results.elements
+        -- see mesh_data.py's block-append order), so the remaining
+        mapping's keys stay a contiguous 0..N-1 range exactly matching
+        mat_id 0..N-1 in the exported/solved mesh. Every other place that
+        needs a lithology (_region_lines, build_pressure_input_file,
+        build_heat_input_file, compute_darcy_velocity, compute_cell_materials)
+        iterates this mapping's keys instead of
+        range(len(mesh_results.elements)) for exactly this reason.
         """
         check_mesh_has_lithology_mapping(self.mesh_results)
         cell_data = self.mesh_results.cell_data or {}
@@ -389,7 +362,7 @@ class HydrothermalProblemBuilder:
         return {mat_id: lith_id for mat_id, lith_id in mapping.items() if lith_id != -1}
 
     # ------------------------------------------------------------------
-    # Fault zone (limited support -- see __init__'s comment)
+    # Fault zone (limited support -- see the class docstring)
     # ------------------------------------------------------------------
 
     def _lithology_to_group_idx(self) -> Dict[int, int]:
@@ -549,15 +522,11 @@ class HydrothermalProblemBuilder:
         diffusive term (~k_eff/L^2) land at comparable magnitude in the
         assembled matrix.
 
-        An arbitrarily short t1 relative to this timescale (e.g. the
-        original hand-written example's t1=700 seconds, when this model's
-        own rock properties and cell size imply a diffusion time on the
-        order of years) makes the transient term dominate the matrix by
-        many orders of magnitude -- an internal scale mismatch that defeats
-        simple preconditioning even though the equation itself is fine
-        (validated: t1=700s stalled the iterative solver at relative
-        residual ~0.79; using this timescale instead converged to ~1e-13
-        with the exact same solver settings).
+        An arbitrarily short t1 relative to this timescale (typically on
+        the order of years, given realistic rock properties and domain
+        sizes) makes the transient term dominate the matrix by many orders
+        of magnitude -- an internal scale mismatch that defeats simple
+        preconditioning even though the equation itself is fine.
         """
         extent = self.geomodel_result.structural_frame.grid.extent
         length_scale = min(extent[1] - extent[0], extent[3] - extent[2], extent[5] - extent[4])
@@ -759,9 +728,7 @@ equations = {{
 
         Relies on mesh_results.elements' block order surviving through
         SfePy's mesh conversion and back out through the VTK it writes (the
-        same assumption run_sfepy's own mat_id tagging already depends on --
-        validated empirically: T/p boundary values in past runs matched the
-        configured boundary conditions exactly).
+        same assumption run_sfepy's own mat_id tagging already depends on).
         """
         nodes = pressure_sim.nodes_by_time[time]
         cells = pressure_sim.cells_by_time[time]
@@ -770,9 +737,9 @@ equations = {{
         grid.point_data["p"] = pressure_sim.node_data_by_time[time]["p"]
         # p is point (nodal) data; compute_derivative's output follows its
         # input's location (point in -> point out), and preference='cell'
-        # does NOT change that (verified empirically) -- so convert to cell
-        # data first (averaging nodal values per cell) to get a genuinely
-        # per-cell gradient/velocity out.
+        # does NOT change that -- so convert to cell data first (averaging
+        # nodal values per cell) to get a genuinely per-cell gradient/
+        # velocity out.
         grid = grid.point_data_to_cell_data()
         grid = grid.compute_derivative(scalars="p")
         grad_p = np.asarray(grid.cell_data["gradient"])
@@ -923,8 +890,7 @@ def ic_temp(coor, ic=None):
     # rate over the nominal domain height) -- mesh nodes are cell-centered,
     # inset from the nominal domain edges by half a cell on each side, so
     # using a fixed rate over the nominal height leaves a resolution-
-    # dependent mismatch at the boundary (e.g. ~5 C at a coarse 10^3 grid,
-    # ~1 C at model1's full 50^3 resolution) that then diffuses through the
+    # dependent mismatch at the boundary that then diffuses through the
     # domain over time -- pure conduction (include_flow=False) should be
     # exactly static since this IC already is the steady-state solution.
     z_min, z_max = float(np.min(coor[:, 2])), float(np.max(coor[:, 2]))

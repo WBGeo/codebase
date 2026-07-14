@@ -4,11 +4,6 @@ SimulationResults (3D snapshots, cross-sections, before/after diffs) and a
 pre-flight material-assignment check for HydrothermalProblemBuilder before
 running a solve that can take a while.
 
-Consolidated into one file (previously split across results_visualisation.py,
-comparison_plots.py, builder_visualisation.py) -- these are all facets of
-the same "look at this simulation pipeline" concern, not independent
-modules, and didn't need three separate files.
-
 PyVista styling (camera angle, show_bounds, legend face style) follows the
 conventions established in
 core.structural_modeling_components.structural_modeling_visualization
@@ -64,10 +59,9 @@ def _format_rock_properties(props: RockUnitProperties) -> str:
     plain notation for porosity/conductivity, which don't.
 
     Plain-ASCII labels (poro/perm/k_s/rhoc), not Greek symbols (phi/k/
-    lambda/rho*c) -- PyVista's legend text actor doesn't reliably render
-    non-ASCII glyphs (verified: phi/lambda/rho showed up blank or as the
-    wrong character in an actual rendered screenshot), so this isn't a
-    style choice, it's required for the text to display correctly.
+    lambda/rho*c) -- PyVista's legend text actor does not reliably render
+    non-ASCII glyphs, so this isn't a style choice, it's required for the
+    text to display correctly.
     """
     return (
         f"poro={props.porosity:g} "
@@ -152,9 +146,8 @@ def plot_variable_at_a_time(
     show_contours additionally draws isolines of var_name directly on the
     3D surface (via PyVista's own surf.contour(), which works on point
     data defined on a 2D surface just as well as the more common
-    isosurface-of-a-3D-volume use case -- verified empirically) -- a 3D
-    analogue of the contour lines plot_cross_section_2D already draws in
-    its 2D matplotlib slices.
+    isosurface-of-a-3D-volume use case) -- a 3D analogue of the contour
+    lines plot_cross_section_2D already draws in its 2D matplotlib slices.
     """
     grid = build_grid_from_class(sim, time)
 
@@ -162,8 +155,8 @@ def plot_variable_at_a_time(
         raise ValueError(f"Variable '{var_name}' not found at time {time}.")
 
     # algorithm=None (not the default "dataset_surface") -- the default
-    # produced an empty mesh (0 points) for this pipeline's SfePy-exported
-    # grids, verified empirically.
+    # produces an empty mesh (0 points) for this pipeline's SfePy-exported
+    # grids.
     surf = grid.extract_surface(algorithm=None)
     surf.points *= scale
 
@@ -174,8 +167,8 @@ def plot_variable_at_a_time(
         # add_mesh(scalars=...) already adds its own scalar bar -- setting
         # its title here (rather than a separate add_scalar_bar() call)
         # avoids a second, redundant bar with a mismatched colormap
-        # (verified empirically: add_scalar_bar() called separately doesn't
-        # pick up this mesh's own cmap).
+        # (add_scalar_bar() called separately doesn't pick up this mesh's
+        # own cmap).
         scalar_bar_args={"title": _variable_label(var_name)},
     )
     if show_contours:
@@ -185,7 +178,7 @@ def plot_variable_at_a_time(
         # show_scalar_bar=False: contour() leaves var_name as the returned
         # mesh's active scalars, which would otherwise add a second,
         # redundant scalar bar even though color= is a fixed solid color
-        # here, not scalars= -- verified empirically.
+        # here, not scalars=.
         plotter.add_mesh(contours, color=contour_color, line_width=2, show_scalar_bar=False)
     plotter.add_text(f"{_variable_label(var_name)} at time {time}", font_size=20, position="upper_edge")
     plotter.show_bounds(location="furthest", grid=True)

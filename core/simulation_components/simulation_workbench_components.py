@@ -55,7 +55,7 @@ class HydrothermalOptions_Root(pydantic.BaseModel):
     # that as a plain checkbox parameter (rather than an in-form toggle)
     # avoids relying on CtrlIf's condition-path scoping, which isn't
     # exercised anywhere else in this codebase against a dict-of-groups
-    # layout and couldn't be verified end-to-end here.
+    # layout.
     fault_zone_properties: RockUnitProperties = _DEFAULT_FAULT_ZONE_PROPERTIES
 
 

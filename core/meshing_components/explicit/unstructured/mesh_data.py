@@ -31,24 +31,12 @@ class LithoMappingMode(StrEnum):
     # centroids* against grid_litho. Cell centroids are guaranteed-interior
     # points, so a fault-adjacent block's vote isn't confused by nodes
     # sitting exactly on a block boundary -- exactly where a fault plane
-    # tends to be -- unlike AUTOMATIC_CORNERS. The default, since it
-    # generally performs better (see the comparison below).
-    #
-    # Verified on model2 (deliberately mismatched resolution: structural
-    # grid voxel ~3x the mesh_size, to stress-test this): overall
-    # cell-level accuracy against ground truth was 73.3% for
-    # AUTOMATIC_CENTERS vs. 68.1% for AUTOMATIC_CORNERS (~16% relative
-    # reduction in misclassified cells). Not a clean win on every lithology
-    # individually (one lithology was actually more accurate under
-    # AUTOMATIC_CORNERS), but better overall, and produced fewer/less-severe
-    # low-confidence blocks (1 warning at 68% vs. 2 warnings at 59% each).
-    # At matched structural-grid/mesh resolution, both methods were
-    # equivalent (clean 5-blocks-for-5-lithologies either way) -- the
-    # accuracy gap specifically shows up when the structural grid is coarse
-    # relative to the mesh, which neither method can fully fix (see
-    # _check_lithology_mapping_reliability, which warns about this
-    # directly). See project_meshing_lithology_mapping memory for the full
-    # investigation.
+    # tends to be -- unlike AUTOMATIC_CORNERS. The default: generally more
+    # accurate overall, especially near faults/unconformities, though the
+    # accuracy gap between the two modes only really shows up when the
+    # structural grid is coarse relative to the mesh -- neither mode fully
+    # fixes that mismatch on its own (see _check_lithology_mapping_reliability,
+    # which warns about it directly).
     AUTOMATIC_CENTERS = "automatic_centers"
     # Per-block lithology vote taken on each raw block's *node* coordinates
     # against grid_litho. Nodes sit on block boundaries -- exactly where a
@@ -84,11 +72,9 @@ def _check_lithology_mapping_reliability(
     mesh -- each structural grid point then "owns" a large physical
     region, so many mesh cells/nodes snap to the same nearest point
     regardless of which side of a real boundary (e.g. a fault) they're
-    actually on. Verified empirically (model2, deliberately mismatched
-    resolution -- structural grid voxel ~3x the mesh_size): overall
-    cell-level accuracy against ground truth dropped to ~68-73%, with one
-    lithology as low as ~33% -- vs. near-perfect at matched resolution.
-    None of these checks can fix a resolution mismatch, only flag it.
+    actually on, degrading accuracy well below the near-perfect results
+    seen at matched resolution. None of these checks can fix a resolution
+    mismatch, only flag it.
     """
     voxel_sizes = []
     for axis in range(3):
@@ -1110,10 +1096,10 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   # after this point: shafts, wells, sources, fault surfaces, triangulated
   # surfaces, boundary surfaces). Used right before this function returns
   # to build cell_data["block_id"], so mesh_generator's caller can trust
-  # the lithology mapping directly instead of having to re-derive it (see
-  # project_meshing_lithology_mapping memory). MANUAL/NONE don't populate
-  # this -- MANUAL groups by user-supplied indices with no inherent
-  # lithology-id semantics, and NONE explicitly skips lithology mapping.
+  # the lithology mapping directly instead of having to re-derive it.
+  # MANUAL/NONE don't populate this -- MANUAL groups by user-supplied
+  # indices with no inherent lithology-id semantics, and NONE explicitly
+  # skips lithology mapping.
   litho_block_id_by_identity: Dict[int, int] = {}
 
   if mapping_litho == LithoMappingMode.AUTOMATIC_CORNERS:
@@ -1755,8 +1741,7 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   # see litho_block_id_by_identity above) out to cell_data["block_id"],
   # matching the convention create_structured_mesh_data/
   # create_implicit_structured_mesh already use, so callers can trust the
-  # mapping directly instead of re-deriving it (see
-  # project_meshing_lithology_mapping memory). Sentinel -1 for every block
+  # mapping directly instead of re-deriving it. Sentinel -1 for every block
   # that isn't a lithology block (shafts, wells, sources, fault surfaces,
   # triangulated/boundary surfaces). Left out entirely for MANUAL/NONE --
   # litho_block_id_by_identity stays empty for both, so there's nothing

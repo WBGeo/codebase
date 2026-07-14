@@ -123,11 +123,10 @@ def pre_check_no_faults_for_structured_mesh(geomodel_result: StructuralModelResu
     Pre-check: explicit structured meshing does not support faulted
     structural models. It builds a mesh without error either way (the
     structured mesh generator has no fault-awareness at all), but a
-    structured mesh + active fault has been observed not to converge when
-    later solved with SfePy (implicit/unstructured are both fine) -- see
-    project_sfepy_hydrothermal_builder memory's 3-way mesh-type comparison.
-    Raises to block the connection outright rather than silently producing
-    a mesh that looks fine but is unusable downstream.
+    structured mesh with an active fault does not reliably converge when
+    later solved with SfePy, unlike implicit/unstructured meshing on the
+    same model. Raises to block the connection outright rather than
+    silently producing a mesh that looks fine but is unusable downstream.
     """
     fault_frame = geomodel_result.structural_frame.fault_frame
     if fault_frame is not None and fault_frame.fault_elements:
