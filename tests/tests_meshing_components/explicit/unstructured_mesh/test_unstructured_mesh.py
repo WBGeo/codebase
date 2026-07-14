@@ -163,6 +163,15 @@ class UnstructuredMeshTestCase(unittest.TestCase):
                 f"Block {i}: invalid node indices (negative)"
             )
 
+        # mapping_litho defaults to "automatic_centers" -- confirm the real
+        # lithology mapping (cell_data["block_id"]) is still produced under
+        # that default post-rename (see test_lithology_mapping_mode.py for
+        # the enum-level automatic_centers/automatic_corners rename checks;
+        # deliberately not a second real GMSH meshing call here -- observed
+        # GMSH physical-group-tag state bleeding across separate
+        # create_unstructured_mesh_data calls within one pytest process).
+        self.assertIn("block_id", mesh_generated.cell_data or {})
+
 ######################################
 if __name__ == "__main__":
     unittest.main()
