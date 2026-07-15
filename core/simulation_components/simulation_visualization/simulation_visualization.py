@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
+from matplotlib.ticker import FormatStrFormatter
 from scipy.interpolate import griddata
 
 from core.meshing_components.mesh_format.vtk.VTK_format import VTKInputs
@@ -426,6 +427,107 @@ def plot_cross_section_difference_2D(
     ax.set_aspect("equal")
     fig.colorbar(cf, ax=ax, orientation="vertical", label=f"Δ {_variable_label(var_name)}", fraction=0.046, pad=0.04)
     fig.suptitle(f"Δ {_variable_label(var_name)} cross-section (origin={origin}, normal={normal}): t={time_a} -> t={time_b}")
+    plt.show()
+
+
+# ----------------------------------------------------------------------
+# Point / line sampling -- ported from the previous implementation's
+# results_visualisation.py (plot_variable_along_line, print_variable_at_point,
+# plot_variable_time_series), which were dropped in the rewrite rather than
+# reimplemented; restored here on request since they're useful post-processing
+# tools not covered by the snapshot/cross-section plots above.
+# ----------------------------------------------------------------------
+
+def plot_variable_along_line(
+    sim: SimulationResults,
+    var_name: str,
+    time: float,
+    p0: Tuple[float, float, float],
+    p1: Tuple[float, float, float],
+    n_samples: int = 200,
+) -> None:
+    """
+    Sample var_name along the straight line from p0 to p1 at one time step
+    and plot it against distance along the line (via PyVista's own
+    pv.Line(...).sample(grid), which linearly interpolates from the mesh).
+    """
+    grid = build_grid_from_class(sim, time)
+    if var_name not in grid.point_data and var_name not in grid.cell_data:
+        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
+
+    line = pv.Line(p0, p1, resolution=n_samples)
+    sampled = line.sample(grid)
+    if sampled.n_points == 0:
+        raise RuntimeError("Line sampling produced no points -- check p0/p1 against the model's extent.")
+
+    values = sampled[var_name]
+    distances = sampled["Distance"]
+
+    plt.figure(figsize=(7, 4))
+    plt.plot(distances, values, "-k")
+    plt.xlabel("Distance along line")
+    plt.ylabel(_variable_label(var_name))
+    plt.title(f"{_variable_label(var_name)} along line at time {time}")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+def print_variable_at_point(
+    sim: SimulationResults,
+    var_name: str,
+    time: float,
+    point: Tuple[float, float, float],
+) -> Optional[float]:
+    """
+    Sample var_name at a single point at one time step (via PyVista point
+    sampling) and log it. Returns the sampled value, or None (with a
+    warning logged) if `point` falls outside the mesh's bounds.
+    """
+    grid = build_grid_from_class(sim, time)
+    if var_name not in grid.point_data and var_name not in grid.cell_data:
+        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
+
+    pt = pv.PolyData(np.array([point]))
+    sampled = pt.sample(grid)
+    if sampled.n_points == 0 or not np.any(sampled["vtkValidPointMask"]):
+        logger.warning("Point %s is outside mesh bounds %s", point, grid.bounds)
+        return None
+
+    value = float(sampled[var_name][0])
+    logger.info("%s at point %s at time %s: %s", var_name, point, time, value)
+    return value
+
+
+def plot_variable_time_series(
+    sim: SimulationResults,
+    var_name: str,
+    point: Tuple[float, float, float],
+    decimals: int = 3,
+) -> None:
+    """
+    Sample var_name at a single point across every saved time step and plot
+    the time series. A point outside the mesh's bounds at a given step is
+    plotted as a gap (NaN) rather than raising, so one bad step doesn't
+    prevent seeing the rest of the series.
+    """
+    times = sorted(sim.nodes_by_time.keys())
+    if not times:
+        raise ValueError("sim has no time steps.")
+
+    values = np.array([
+        value if (value := print_variable_at_point(sim, var_name, t, point)) is not None else np.nan
+        for t in times
+    ])
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(times, values, "-o", color="tab:red")
+    ax.set_xlabel("Time")
+    ax.set_ylabel(_variable_label(var_name))
+    ax.set_title(f"{_variable_label(var_name)} at point {point} over time")
+    ax.grid(True)
+    ax.yaxis.set_major_formatter(FormatStrFormatter(f"%.{decimals}f"))
+    plt.tight_layout()
     plt.show()
 
 

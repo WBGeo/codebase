@@ -47,11 +47,16 @@ Four files:
   `SimulationResults` (3D snapshots, cross-sections, before/after diffs) and a
   pre-flight material-assignment check for `HydrothermalProblemBuilder`
   (`plot_builder_materials`) that lets a wrong material/fault-zone assignment be
-  caught by eye before running a solve that can take a while. Three plotting
-  utilities from the previous implementation (`plot_variable_along_line`,
-  `print_variable_at_point`, `plot_variable_time_series`) were dropped rather than
-  reimplemented — not currently used anywhere, but flagging in case they're
-  actually wanted back.
+  caught by eye before running a solve that can take a while. Also includes three
+  point/line post-processing utilities ported from the previous implementation
+  (`plot_variable_along_line`, `print_variable_at_point`, `plot_variable_time_series`)
+  — initially dropped in the rewrite, restored on request since they're useful
+  post-processing tools not covered by the snapshot/cross-section plots.
+  `print_variable_at_point`'s out-of-bounds detection was fixed while porting it:
+  the original checked `sampled.n_points == 0`, which never actually triggers for a
+  single-point `PolyData` (PyVista's probe filter always returns one output point
+  per input point, valid or not); now checks `sampled["vtkValidPointMask"]` instead,
+  which is what actually distinguishes a valid sample from an out-of-bounds one.
 - **`simulation_workbench_components.py`** (`core/simulation_components/`, not
   under `simulation_packages/`) — the actual `@wbgeo_component`-decorated Workbench
   components (thin wrappers around the three files above). See section 4.
