@@ -1,6 +1,7 @@
 import json
 import math
 
+import meshio
 import numpy as np
 import pytest
 from pydantic_core import to_jsonable_python
@@ -17,6 +18,9 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
     map_mat_id_to_lithology,
     extract_referenced_groups,
     check_custom_sfepy_regions,
+    check_mesh_has_no_engineering_objects,
+    lithology_to_group_idx,
+    compute_fault_zone_cell_mask,
 )
 
 
@@ -156,6 +160,47 @@ def test_check_custom_sfepy_regions_does_not_raise_for_unused_group(model1_impli
     some_group = next(iter(valid))
     text = f"'Omega{some_group}': 'cells of group {some_group}',"
     check_custom_sfepy_regions(text, model1_implicit_mesh)  # must not raise
+
+
+def test_check_custom_sfepy_regions_accepts_extra_valid_group(model1_implicit_mesh):
+    # e.g. CustomSfepyBuilder.fault_group_id -- an id injected at run time,
+    # never present in mesh_results.cell_data at all.
+    injected_group = len(model1_implicit_mesh.elements)
+    text = f"'Omega_fault': 'cells of group {injected_group}',"
+    check_custom_sfepy_regions(text, model1_implicit_mesh, extra_valid_groups={injected_group})  # must not raise
+
+
+def test_check_custom_sfepy_regions_still_rejects_unknown_group_with_extra_valid_groups(model1_implicit_mesh):
+    injected_group = len(model1_implicit_mesh.elements)
+    text = "'Omega99': 'cells of group 99',"
+    with pytest.raises(ValueError, match="do not exist"):
+        check_custom_sfepy_regions(text, model1_implicit_mesh, extra_valid_groups={injected_group})
+
+
+# -----------------------------------------------------------------------------
+# check_mesh_has_no_engineering_objects (pre-check)
+# -----------------------------------------------------------------------------
+
+def test_check_mesh_has_no_engineering_objects_passes_for_real_mesh(model1_implicit_mesh):
+    check_mesh_has_no_engineering_objects(model1_implicit_mesh)  # must not raise
+
+
+def test_check_mesh_has_no_engineering_objects_raises_for_well(model1_implicit_mesh):
+    well_block = meshio.CellBlock("line", np.array([[0, 1]]))
+    mesh_with_well = model1_implicit_mesh.model_copy(update={
+        "elements": list(model1_implicit_mesh.elements) + [well_block],
+    })
+    with pytest.raises(ValueError, match="well/source block"):
+        check_mesh_has_no_engineering_objects(mesh_with_well)
+
+
+def test_check_mesh_has_no_engineering_objects_raises_for_source(model1_implicit_mesh):
+    source_block = meshio.CellBlock("vertex", np.array([[0]]))
+    mesh_with_source = model1_implicit_mesh.model_copy(update={
+        "elements": list(model1_implicit_mesh.elements) + [source_block],
+    })
+    with pytest.raises(ValueError, match="well/source block"):
+        check_mesh_has_no_engineering_objects(mesh_with_source)
 
 
 # -----------------------------------------------------------------------------
@@ -357,6 +402,20 @@ def test_fault_zone_detected_on_faulted_model(model2_implicit_mesh, model2_fault
     assert builder.fault_zone_cell_mask is not None
     assert builder.fault_zone_cell_mask.any()
     assert builder.fault_group_id == len(model2_implicit_mesh.elements)
+
+
+def test_standalone_fault_zone_functions_match_builder(model2_implicit_mesh, model2_faulted_structural_result):
+    """The refactor extracting lithology_to_group_idx/compute_fault_zone_cell_mask
+    out of HydrothermalProblemBuilder must not change what they compute."""
+    builder = HydrothermalProblemBuilder(
+        mesh_results=model2_implicit_mesh, geomodel_result=model2_faulted_structural_result,
+        fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1,
+    )
+    assert lithology_to_group_idx(model2_faulted_structural_result) == builder._lithology_to_group_idx()
+
+    mask = compute_fault_zone_cell_mask(model2_implicit_mesh, model2_faulted_structural_result, 1)
+    assert mask is not None
+    assert int(mask.sum()) == int(builder.fault_zone_cell_mask.sum()) == 764  # pinned regression number
 
 
 def test_fault_zone_none_on_fault_free_model(model1_implicit_mesh, model1_structural_result):

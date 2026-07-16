@@ -140,6 +140,39 @@ def test_run_simulation_sfepy_dispatches_custom_sfepy_builder(monkeypatch):
     assert received["problem"] is fake_problem
 
 
+def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, model1_implicit_mesh):
+    """_run_custom_sfepy_problem must hand its problem's fault_zone_cell_mask/
+    fault_group_id through to _run_sfepy_input_file, same as
+    _run_hydrothermal_problem already does -- this is what actually makes
+    the fault-zone relabeling take effect for a custom file."""
+    received = {}
+
+    def fake_run_sfepy_input_file(input_file, mesh_results, mesh_type_code, output_dir=None,
+                                   fault_zone_cell_mask=None, fault_group_id=None):
+        received["fault_zone_cell_mask"] = fault_zone_cell_mask
+        received["fault_group_id"] = fault_group_id
+        return {"output_dir": "unused", "is_temp": True}
+
+    sentinel_sim = SimulationResults()
+    sentinel_sim.nodes_by_time[0.0] = np.zeros((1, 3))
+
+    monkeypatch.setattr(sfepy_run, "_run_sfepy_input_file", fake_run_sfepy_input_file)
+    monkeypatch.setattr(sfepy_run, "load_vtk_results", lambda out: sentinel_sim)
+
+    fake_mask = np.array([True, False, True])
+    problem = CustomSfepyBuilder.__new__(CustomSfepyBuilder)
+    problem.input_file_contents = "regions = {}"
+    problem.mesh_results = model1_implicit_mesh
+    problem.mesh_type = model1_implicit_mesh.mesh_type
+    problem.fault_zone_cell_mask = fake_mask
+    problem.fault_group_id = 42
+
+    result = sfepy_run._run_custom_sfepy_problem(problem)
+    assert result is sentinel_sim
+    assert received["fault_group_id"] == 42
+    assert np.array_equal(received["fault_zone_cell_mask"], fake_mask)
+
+
 # -----------------------------------------------------------------------------
 # run_simulation_sfepy -- real end-to-end solve (slow: launches sfepy-run)
 # -----------------------------------------------------------------------------
@@ -270,4 +303,58 @@ def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, mo
     # Same homogeneous-properties/pure-conduction setup as
     # test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_properties:
     # the initial condition already IS the exact steady-state solution.
+    assert float(T.mean()) == pytest.approx(35.0, abs=1e-6)
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_run_simulation_sfepy_custom_builder_fault_zone_end_to_end(
+    model2_implicit_mesh, model2_faulted_structural_result, tmp_path
+):
+    """
+    Real end-to-end run of a CustomSfepyBuilder with fault_zone_n_voxels set,
+    on a real faulted mesh -- proves the extracted
+    lithology_to_group_idx/compute_fault_zone_cell_mask functions produce a
+    fault_group_id that SfePy can actually resolve (not just one
+    check_custom_sfepy_regions accepts). Reuses HydrothermalProblemBuilder's
+    own generated Omega_fault region text as the "custom" input, same trick
+    as test_run_simulation_sfepy_custom_builder_end_to_end -- homogeneous
+    properties (including the fault zone) so pure conduction stays exactly
+    static, same assertion pattern as
+    test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_properties.
+    """
+    rock_properties = {
+        name: RockUnitProperties(name=name) for name in ("basement", "rock1", "rock2", "rock3", "rock4")
+    }
+    fault_zone_properties = RockUnitProperties(name="fault_zone")
+
+    reference_builder = HydrothermalProblemBuilder(
+        mesh_results=model2_implicit_mesh,
+        geomodel_result=model2_faulted_structural_result,
+        rock_properties=rock_properties,
+        fault_zone_properties=fault_zone_properties,
+        fault_zone_n_voxels=1,
+        include_flow=False,
+        num_steps=1,
+    )
+    heat_file = str(tmp_path / "heat.py")
+    reference_builder.build_heat_input_file(heat_file)
+    input_file_contents = open(heat_file).read()
+
+    custom_builder = CustomSfepyBuilder(
+        input_file_contents=input_file_contents,
+        mesh_results=model2_implicit_mesh,
+        geomodel_result=model2_faulted_structural_result,
+        fault_zone_n_voxels=1,
+    )
+    # Sanity: both builders compute fault_group_id deterministically from
+    # the same mesh_results, so they must agree -- if the extraction
+    # refactor changed anything, this would already catch it.
+    assert custom_builder.fault_group_id == reference_builder.fault_group_id
+
+    result = run_simulation_sfepy(custom_builder)
+
+    assert result.nodes_by_time
+    final_time = max(result.nodes_by_time.keys())
+    T = result.node_data_by_time[final_time]["T"]
     assert float(T.mean()) == pytest.approx(35.0, abs=1e-6)

@@ -1,5 +1,7 @@
 import json
 
+import meshio
+import numpy as np
 import pytest
 from pydantic_core import to_jsonable_python
 
@@ -87,3 +89,64 @@ def test_custom_builder_survives_json_roundtrip(model1_implicit_mesh, model1_str
     assert rebuilt.input_file_contents == builder.input_file_contents
     assert rebuilt.mesh_type == builder.mesh_type
     assert rebuilt.mat_id_to_lithology == builder.mat_id_to_lithology
+    assert rebuilt.fault_zone_n_voxels == builder.fault_zone_n_voxels
+
+
+def test_rejects_mesh_with_well_block(model1_implicit_mesh):
+    well_block = meshio.CellBlock("line", np.array([[0, 1]]))
+    mesh_with_well = model1_implicit_mesh.model_copy(update={
+        "elements": list(model1_implicit_mesh.elements) + [well_block],
+    })
+    with pytest.raises(ValueError, match="well/source block"):
+        CustomSfepyBuilder(
+            input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=mesh_with_well,
+        )
+
+
+# -----------------------------------------------------------------------------
+# Fault zone (opt-in, same mechanism as HydrothermalProblemBuilder)
+# -----------------------------------------------------------------------------
+
+def test_fault_zone_n_voxels_defaults_to_none(model1_implicit_mesh):
+    builder = CustomSfepyBuilder(
+        input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=model1_implicit_mesh,
+    )
+    assert builder.fault_zone_n_voxels is None
+    assert builder.fault_zone_cell_mask is None
+    assert builder.fault_group_id is None
+
+
+def test_fault_zone_n_voxels_without_geomodel_result_raises(model1_implicit_mesh):
+    with pytest.raises(ValueError, match="geomodel_result is None"):
+        CustomSfepyBuilder(
+            input_file_contents=_valid_input_text(model1_implicit_mesh),
+            mesh_results=model1_implicit_mesh,
+            fault_zone_n_voxels=1,
+        )
+
+
+def test_fault_zone_detected_on_faulted_model(model2_implicit_mesh, model2_faulted_structural_result):
+    builder = CustomSfepyBuilder(
+        input_file_contents=_valid_input_text(model2_implicit_mesh),
+        mesh_results=model2_implicit_mesh,
+        geomodel_result=model2_faulted_structural_result,
+        fault_zone_n_voxels=1,
+    )
+    assert builder.fault_zone_cell_mask is not None
+    assert int(builder.fault_zone_cell_mask.sum()) == 764  # same pinned regression number as HydrothermalProblemBuilder
+    assert builder.fault_group_id == len(model2_implicit_mesh.elements)
+
+
+def test_custom_file_can_reference_fault_group(model2_implicit_mesh, model2_faulted_structural_result):
+    """A custom file referencing the fault group by its real (post-construction)
+    id must be accepted -- this only works because fault_group_id is passed
+    as an extra_valid_group to check_custom_sfepy_regions."""
+    fault_group_id = len(model2_implicit_mesh.elements)
+    text = _valid_input_text(model2_implicit_mesh) + f"\nregions['Omega_fault'] = 'cells of group {fault_group_id}'\n"
+    builder = CustomSfepyBuilder(
+        input_file_contents=text,
+        mesh_results=model2_implicit_mesh,
+        geomodel_result=model2_faulted_structural_result,
+        fault_zone_n_voxels=1,
+    )
+    assert builder.fault_group_id == fault_group_id

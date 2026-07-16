@@ -385,7 +385,11 @@ def _run_custom_sfepy_problem(
     velocity hand-off, no merge step, unlike _run_hydrothermal_problem's
     two-stage sequence. The file is assumed to already contain all
     staging/sequencing logic and to write out everything it needs in one
-    sfepy-run invocation.
+    sfepy-run invocation. problem.fault_zone_cell_mask/fault_group_id
+    (both None unless CustomSfepyBuilder.fault_zone_n_voxels was set) are
+    passed through to _run_sfepy_input_file the same way
+    _run_hydrothermal_problem already does -- the mat_id relabeling itself
+    is entirely generic, not HydrothermalProblemBuilder-specific.
 
     problem.input_file_contents is written to a fresh temp file here (not
     at CustomSfepyBuilder construction time) for the same reason
@@ -406,7 +410,10 @@ def _run_custom_sfepy_problem(
     try:
         with open(input_file, "w") as f:
             f.write(problem.input_file_contents)
-        out = _run_sfepy_input_file(input_file, problem.mesh_results, mesh_type_code, output_dir=None)
+        out = _run_sfepy_input_file(
+            input_file, problem.mesh_results, mesh_type_code, output_dir=None,
+            fault_zone_cell_mask=problem.fault_zone_cell_mask, fault_group_id=problem.fault_group_id,
+        )
         sim = load_vtk_results(out)
         if not sim.nodes_by_time:
             raise RuntimeError("Custom SfePy input file produced no SfePy output (0 VTK files).")

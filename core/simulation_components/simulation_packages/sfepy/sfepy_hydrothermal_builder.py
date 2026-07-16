@@ -153,6 +153,26 @@ def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
         )
 
 
+def check_mesh_has_no_engineering_objects(mesh_results: MeshResults) -> None:
+    """
+    Pre-check: mesh_results must not contain any well (dim==1, "line" block)
+    or source (dim==0, "vertex" block). CustomSfepyBuilder doesn't support
+    these yet -- today's mesh-export pre-filter (_run_sfepy_input_file, for
+    mesh_type_code == "unstr") already silently drops them before ever
+    reaching SfePy, which is a silent trap; this makes that unsupported
+    combination a loud rejection instead. Used both as a Workbench
+    input_checks pre-check (build_custom_sfepy_problem) and internally in
+    CustomSfepyBuilder.__post_init__ -- pre-checks can be skipped by a
+    caller (see docs/developers/components.md), so it's also enforced there.
+    """
+    bad = [b for b in mesh_results.elements if b.dim < 2]
+    if bad:
+        raise ValueError(
+            f"mesh_results has {len(bad)} well/source block(s) (dim < 2) -- "
+            f"CustomSfepyBuilder doesn't support these yet."
+        )
+
+
 def map_mat_id_to_lithology(mesh_results: MeshResults) -> Dict[int, int]:
     """
     Map each mesh element block (mat_id, assigned in the same enumeration
@@ -216,7 +236,9 @@ def extract_referenced_groups(input_file_contents: str) -> Set[int]:
     return {int(m) for m in _CELLS_OF_GROUP_RE.findall(input_file_contents)}
 
 
-def check_custom_sfepy_regions(input_file_contents: str, mesh_results: MeshResults) -> None:
+def check_custom_sfepy_regions(
+    input_file_contents: str, mesh_results: MeshResults, extra_valid_groups: Set[int] = frozenset(),
+) -> None:
     """
     Raises if a custom SfePy input file's text references a
     'cells of group N' that doesn't exist on mesh_results, via
@@ -227,11 +249,17 @@ def check_custom_sfepy_regions(input_file_contents: str, mesh_results: MeshResul
     is a semantic rock-unit id, and one lithology can span multiple
     mat_ids when e.g. a fault splits it into disconnected mesh blocks.
 
+    extra_valid_groups: additional group ids to accept beyond real
+    lithologies -- e.g. CustomSfepyBuilder.fault_group_id, an id
+    injected at run time (not present in mesh_results.cell_data at all)
+    for a "damage zone" of cells reassigned away from their host
+    lithology (see compute_fault_zone_cell_mask).
+
     Logs a warning (does not raise) if mesh_results has a group the file
     never references -- may be intentional (e.g. a group deliberately
     left unsolved), so not treated as an error.
     """
-    valid = set(map_mat_id_to_lithology(mesh_results).keys())
+    valid = set(map_mat_id_to_lithology(mesh_results).keys()) | set(extra_valid_groups)
     referenced = extract_referenced_groups(input_file_contents)
     unknown = referenced - valid
     if unknown:
@@ -267,6 +295,138 @@ def enumerate_rock_units(geomodel_result: StructuralModelResults) -> List[Tuple[
                 units.append((elem.id, elem.name))
     units.sort(key=lambda t: t[0])
     return units
+
+
+def lithology_to_group_idx(geomodel_result: StructuralModelResults) -> Dict[int, int]:
+    """
+    Lithology id -> the index into structural_frame.structural_groups it
+    belongs to, in the *same* convention frame.fault_activity/
+    effective_domain_components_for_group() (general.py) use: index 0 =
+    youngest group. Basement (lithology 0) deliberately excluded -- it
+    isn't part of any group, and is handled separately in
+    compute_fault_zone_cell_mask() (treated as always fault-affected,
+    since it sits below/outside every group a fault's activity could
+    possibly be restricted to).
+
+    Standalone module-level function so it's reusable by anything that
+    wants a fault-zone cell mask without going through
+    HydrothermalProblemBuilder (e.g. CustomSfepyBuilder).
+    """
+    frame = geomodel_result.structural_frame
+    mapping: Dict[int, int] = {}
+    for group_idx, group in enumerate(frame.structural_groups):
+        for elem in group.structural_elements:
+            if elem.id is not None:
+                mapping[elem.id] = group_idx
+    return mapping
+
+
+def fault_trace_on_grid(fault, active_mask: np.ndarray) -> np.ndarray:
+    """
+    Boolean array, same shape as the structural model's lith_block,
+    marking grid cells adjacent to `fault`'s zero-crossing surface --
+    i.e. where `fault.get_domain_mask()` (the "which side" mask, already
+    computed as scalar_field > scalar_value when the fault frame was
+    built) flips between one neighboring cell and the next along any
+    axis -- AND restricted to `active_mask` (see
+    compute_fault_zone_cell_mask()): the structural modeling component
+    supports *finite* faults that don't cut every stratigraphic group
+    (model9 is the clearest example; even model2's single fault could be
+    set to only affect its older group via set_fault_activity_by_index()).
+    Without this restriction, cells in a group the fault doesn't
+    actually reach would still show a "crossing" here -- get_domain_mask()
+    is a purely geometric quantity (scalar_field > scalar_value) that
+    doesn't know about fault_activity at all, only
+    effective_domain_components_for_group() (general.py) applies that
+    during the real lith_block computation, merging the fault's domains
+    back together (no real offset) for inactive groups.
+    """
+    domain_mask = fault.get_domain_mask()
+    crossing = np.zeros(domain_mask.shape, dtype=bool)
+    for axis in range(domain_mask.ndim):
+        diff = np.diff(domain_mask, axis=axis)
+        idx_lo = [slice(None)] * domain_mask.ndim
+        idx_hi = [slice(None)] * domain_mask.ndim
+        idx_lo[axis] = slice(0, -1)
+        idx_hi[axis] = slice(1, None)
+        crossing[tuple(idx_lo)] |= diff
+        crossing[tuple(idx_hi)] |= diff
+    return crossing & active_mask
+
+
+def compute_fault_zone_cell_mask(
+    mesh_results: MeshResults, geomodel_result: StructuralModelResults, fault_zone_n_voxels: int = 1,
+) -> Optional[np.ndarray]:
+    """
+    Boolean array, one entry per mesh cell (concatenated in
+    mesh_results.elements block order), True where that cell falls within
+    fault_zone_n_voxels of any fault's trace. None if there are no faults
+    in this structural model at all, or if the resulting mask is empty
+    (e.g. fault_zone_n_voxels too small relative to mesh resolution, or
+    fault_activity restricts every fault away from every group) -- both
+    logged as a warning rather than an error, since a caller's config
+    might be reused across faulted/unfaulted models.
+
+    Standalone module-level function (not just a method on
+    HydrothermalProblemBuilder) so it's reusable by any caller wanting the
+    same "damage zone" cell selection without HydrothermalProblemBuilder's
+    other machinery (rock-unit enumeration, auto-generated materials,
+    etc.) -- e.g. CustomSfepyBuilder, which only needs the cell selection
+    itself and leaves what to *do* with it entirely to the custom file.
+    """
+    frame = geomodel_result.structural_frame
+    fault_frame = getattr(frame, "fault_frame", None)
+    if fault_frame is None or not fault_frame.fault_elements:
+        logger.warning(
+            "fault_zone_n_voxels was given but this structural model has no "
+            "faults (structural_frame.fault_frame is empty/None) -- ignoring."
+        )
+        return None
+
+    # Per-voxel group index, in fault_activity's convention (0 =
+    # youngest group; basement gets a sentinel index one past the last
+    # real group, so `group_idx >= youngest_idx` is always True for it
+    # regardless of youngest_idx -- basement sits below/outside every
+    # group, so any fault reaching this deep affects it unconditionally).
+    lith_to_group = lithology_to_group_idx(geomodel_result)
+    n_groups = len(frame.structural_groups)
+    group_idx_grid = np.full(frame.lith_block.shape, n_groups, dtype=int)
+    for lith_id, group_idx in lith_to_group.items():
+        group_idx_grid[frame.lith_block == lith_id] = group_idx
+
+    fault_activity = frame.fault_activity or {}
+    combined_trace = np.zeros(frame.lith_block.shape, dtype=bool)
+    for fault in fault_frame.fault_elements:
+        # Same default (0 = fully active) set_fault_frame() uses when
+        # fault_activity isn't explicitly restricted.
+        youngest_idx = fault_activity.get(fault.name, 0)
+        active_mask = group_idx_grid >= youngest_idx
+        combined_trace |= fault_trace_on_grid(fault, active_mask)
+
+    if fault_zone_n_voxels > 0:
+        combined_trace = binary_dilation(combined_trace, iterations=fault_zone_n_voxels)
+
+    tree = cKDTree(frame.grid.grid_coordinates)
+    flat_trace = combined_trace.ravel()
+
+    cell_mask_chunks = []
+    for block in mesh_results.elements:
+        centroids = mesh_results.nodes[block.data].mean(axis=1)
+        _, idx = tree.query(centroids)
+        cell_mask_chunks.append(flat_trace[idx])
+    cell_mask = np.concatenate(cell_mask_chunks) if cell_mask_chunks else np.array([], dtype=bool)
+
+    if not cell_mask.any():
+        logger.warning(
+            "fault_zone_n_voxels was given but no mesh cells fell within "
+            "fault_zone_n_voxels=%d of any *active* fault trace -- ignoring (try a "
+            "larger fault_zone_n_voxels, check the mesh actually resolves this model's "
+            "faults, or check fault_activity isn't restricting every fault away from "
+            "every group it's meshed in).",
+            fault_zone_n_voxels,
+        )
+        return None
+    return cell_mask
 
 
 @wbgeo_type(name='Hydrothermal Problem', color='#e07a5f',
@@ -434,120 +594,13 @@ class HydrothermalProblemBuilder:
     # ------------------------------------------------------------------
 
     def _lithology_to_group_idx(self) -> Dict[int, int]:
-        """
-        Lithology id -> the index into structural_frame.structural_groups it
-        belongs to, in the *same* convention frame.fault_activity/
-        effective_domain_components_for_group() (general.py) use: index 0 =
-        youngest group. Basement (lithology 0) deliberately excluded -- it
-        isn't part of any group, and is handled separately in
-        _compute_fault_zone_cell_mask() (treated as always fault-affected,
-        since it sits below/outside every group a fault's activity could
-        possibly be restricted to).
-        """
-        frame = self.geomodel_result.structural_frame
-        mapping: Dict[int, int] = {}
-        for group_idx, group in enumerate(frame.structural_groups):
-            for elem in group.structural_elements:
-                if elem.id is not None:
-                    mapping[elem.id] = group_idx
-        return mapping
+        return lithology_to_group_idx(self.geomodel_result)
 
     def _fault_trace_on_grid(self, fault, active_mask: np.ndarray) -> np.ndarray:
-        """
-        Boolean array, same shape as the structural model's lith_block,
-        marking grid cells adjacent to `fault`'s zero-crossing surface --
-        i.e. where `fault.get_domain_mask()` (the "which side" mask, already
-        computed as scalar_field > scalar_value when the fault frame was
-        built) flips between one neighboring cell and the next along any
-        axis -- AND restricted to `active_mask` (see
-        _compute_fault_zone_cell_mask()): the structural modeling component
-        supports *finite* faults that don't cut every stratigraphic group
-        (model9 is the clearest example; even model2's single fault could be
-        set to only affect its older group via set_fault_activity_by_index()).
-        Without this restriction, cells in a group the fault doesn't
-        actually reach would still show a "crossing" here -- get_domain_mask()
-        is a purely geometric quantity (scalar_field > scalar_value) that
-        doesn't know about fault_activity at all, only
-        effective_domain_components_for_group() (general.py) applies that
-        during the real lith_block computation, merging the fault's domains
-        back together (no real offset) for inactive groups.
-        """
-        domain_mask = fault.get_domain_mask()
-        crossing = np.zeros(domain_mask.shape, dtype=bool)
-        for axis in range(domain_mask.ndim):
-            diff = np.diff(domain_mask, axis=axis)
-            idx_lo = [slice(None)] * domain_mask.ndim
-            idx_hi = [slice(None)] * domain_mask.ndim
-            idx_lo[axis] = slice(0, -1)
-            idx_hi[axis] = slice(1, None)
-            crossing[tuple(idx_lo)] |= diff
-            crossing[tuple(idx_hi)] |= diff
-        return crossing & active_mask
+        return fault_trace_on_grid(fault, active_mask)
 
     def _compute_fault_zone_cell_mask(self) -> Optional[np.ndarray]:
-        """
-        Boolean array, one entry per mesh cell (concatenated in
-        self.mesh_results.elements block order), True where that cell falls
-        within fault_zone_n_voxels of any fault's trace. None if there are
-        no faults in this structural model at all, or if the resulting mask
-        is empty (e.g. fault_zone_n_voxels too small relative to mesh
-        resolution, or fault_activity restricts every fault away from every
-        group) -- both logged as a warning rather than an error, since a
-        builder config might be reused across faulted/unfaulted models.
-        """
-        frame = self.geomodel_result.structural_frame
-        fault_frame = getattr(frame, "fault_frame", None)
-        if fault_frame is None or not fault_frame.fault_elements:
-            logger.warning(
-                "fault_zone_properties was given but this structural model has no "
-                "faults (structural_frame.fault_frame is empty/None) -- ignoring."
-            )
-            return None
-
-        # Per-voxel group index, in fault_activity's convention (0 =
-        # youngest group; basement gets a sentinel index one past the last
-        # real group, so `group_idx >= youngest_idx` is always True for it
-        # regardless of youngest_idx -- basement sits below/outside every
-        # group, so any fault reaching this deep affects it unconditionally).
-        lith_to_group = self._lithology_to_group_idx()
-        n_groups = len(frame.structural_groups)
-        group_idx_grid = np.full(frame.lith_block.shape, n_groups, dtype=int)
-        for lith_id, group_idx in lith_to_group.items():
-            group_idx_grid[frame.lith_block == lith_id] = group_idx
-
-        fault_activity = frame.fault_activity or {}
-        combined_trace = np.zeros(frame.lith_block.shape, dtype=bool)
-        for fault in fault_frame.fault_elements:
-            # Same default (0 = fully active) set_fault_frame() uses when
-            # fault_activity isn't explicitly restricted.
-            youngest_idx = fault_activity.get(fault.name, 0)
-            active_mask = group_idx_grid >= youngest_idx
-            combined_trace |= self._fault_trace_on_grid(fault, active_mask)
-
-        if self.fault_zone_n_voxels > 0:
-            combined_trace = binary_dilation(combined_trace, iterations=self.fault_zone_n_voxels)
-
-        tree = cKDTree(frame.grid.grid_coordinates)
-        flat_trace = combined_trace.ravel()
-
-        cell_mask_chunks = []
-        for block in self.mesh_results.elements:
-            centroids = self.mesh_results.nodes[block.data].mean(axis=1)
-            _, idx = tree.query(centroids)
-            cell_mask_chunks.append(flat_trace[idx])
-        cell_mask = np.concatenate(cell_mask_chunks) if cell_mask_chunks else np.array([], dtype=bool)
-
-        if not cell_mask.any():
-            logger.warning(
-                "fault_zone_properties was given but no mesh cells fell within "
-                "fault_zone_n_voxels=%d of any *active* fault trace -- ignoring (try a "
-                "larger fault_zone_n_voxels, check the mesh actually resolves this model's "
-                "faults, or check fault_activity isn't restricting every fault away from "
-                "every group it's meshed in).",
-                self.fault_zone_n_voxels,
-            )
-            return None
-        return cell_mask
+        return compute_fault_zone_cell_mask(self.mesh_results, self.geomodel_result, self.fault_zone_n_voxels)
 
     def compute_cell_materials(self) -> np.ndarray:
         """
@@ -1021,28 +1074,62 @@ class CustomSfepyBuilder:
     equations, only structural mismatches with the mesh. sfepy-run's own
     region resolution remains the final authority at run time.
 
-    Unlike HydrothermalProblemBuilder, no fault-zone injection, no
-    pressure/heat staging, no velocity handoff -- the file is assumed to
-    already contain everything it needs and gets run in a single
-    sfepy-run invocation (see run_simulation_sfepy in
-    sfepy_hydrothermal_run.py). On an unstructured mesh, the same
-    mesh_type_code == "unstr" pre-filter HydrothermalProblemBuilder relies
-    on (_run_sfepy_input_file, dropping non-volume blocks before Exodus
-    export) applies here too -- so a custom file cannot reference a
-    non-volume (fault-surface/boundary) block by group number on an
-    unstructured mesh, the same limitation HydrothermalProblemBuilder
-    already has.
+    Unlike HydrothermalProblemBuilder, no pressure/heat staging, no
+    velocity handoff -- the file is assumed to already contain everything
+    it needs and gets run in a single sfepy-run invocation (see
+    run_simulation_sfepy in sfepy_hydrothermal_run.py). On an unstructured
+    mesh, the same mesh_type_code == "unstr" pre-filter
+    HydrothermalProblemBuilder relies on (_run_sfepy_input_file, dropping
+    non-volume blocks before Exodus export) applies here too -- so a
+    custom file cannot reference a non-volume (fault-surface/boundary)
+    block by group number on an unstructured mesh, the same limitation
+    HydrothermalProblemBuilder already has. mesh_results with any
+    well/source (dim < 2) block is rejected outright at construction (see
+    check_mesh_has_no_engineering_objects) -- not supported yet.
+
+    fault_zone_n_voxels: optional opt-in for a "damage zone" cell
+    selection, the same mechanism HydrothermalProblemBuilder uses (see
+    compute_fault_zone_cell_mask) -- a band of cells straddling each
+    active fault's trace gets reassigned its own group id
+    (self.fault_group_id), referenceable from the custom file as
+    'cells of group {fault_group_id}' (e.g. as its own 'Omega_fault'
+    region). Unlike HydrothermalProblemBuilder, no material/equation is
+    auto-generated for this group -- the custom file's author decides
+    what to do with it; this only provides the cell selection. Requires
+    geomodel_result (raises if not given). None (default) leaves the
+    mesh's real lithology groups as the only ones available, exactly like
+    today.
     """
     input_file_contents: str
     mesh_results: MeshResults
     geomodel_result: Optional[StructuralModelResults] = None
+    fault_zone_n_voxels: Optional[int] = None
 
     def __post_init__(self):
         check_mesh_has_known_type(self.mesh_results)
+        check_mesh_has_no_engineering_objects(self.mesh_results)
         check_mesh_has_lithology_mapping(self.mesh_results)
         self.mesh_type = self.mesh_results.mesh_type
         self.mat_id_to_lithology = map_mat_id_to_lithology(self.mesh_results)
-        check_custom_sfepy_regions(self.input_file_contents, self.mesh_results)
+
+        self.fault_zone_cell_mask: Optional[np.ndarray] = None
+        self.fault_group_id: Optional[int] = None
+        if self.fault_zone_n_voxels is not None:
+            if self.geomodel_result is None:
+                raise ValueError(
+                    "fault_zone_n_voxels was given but geomodel_result is None -- "
+                    "computing the fault-zone cell mask needs the structural model."
+                )
+            self.fault_zone_cell_mask = compute_fault_zone_cell_mask(
+                self.mesh_results, self.geomodel_result, self.fault_zone_n_voxels,
+            )
+            if self.fault_zone_cell_mask is not None:
+                self.fault_group_id = len(self.mesh_results.elements)
+
+        check_custom_sfepy_regions(
+            self.input_file_contents, self.mesh_results,
+            extra_valid_groups={self.fault_group_id} if self.fault_group_id is not None else set(),
+        )
         if self.geomodel_result is not None:
             n_referenced = len(extract_referenced_groups(self.input_file_contents))
             n_lithologies = len(enumerate_rock_units(self.geomodel_result))

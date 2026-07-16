@@ -19,7 +19,7 @@ from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartIn
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties, enumerate_rock_units,
-    check_mesh_has_known_type, check_mesh_has_lithology_mapping,
+    check_mesh_has_known_type, check_mesh_has_lithology_mapping, check_mesh_has_no_engineering_objects,
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
     run_simulation_sfepy as _run_simulation_sfepy,
@@ -215,32 +215,43 @@ def build_hydrothermal_problem(
     group='Simulation',
     identifier='wbgeo::simulation_build_custom_sfepy_problem',
     return_name='sfepy_problem',
-    input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping],
+    input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping, check_mesh_has_no_engineering_objects],
 )
 def build_custom_sfepy_problem(
     input_file: BasicallyABufferedFile,
     mesh_results: MeshResults,
     geomodel_result: Optional[StructuralModelResults] = None,
+    fault_zone_n_voxels: Optional[int] = None,
 ) -> CustomSfepyBuilder:
     """
     :param input_file: A complete SfePy input file (.py) with its own staging/sequencing logic.
-    :param mesh_results: The mesh to solve on (implicit, structured, or unstructured).
+    :param mesh_results: The mesh to solve on (implicit, structured, or unstructured). Meshes
+        with wells/sources are rejected -- not supported yet.
     :param geomodel_result: Optional structural model, used for an additional soft sanity
-        check (referenced-group count vs. lithology count) -- not required.
+        check (referenced-group count vs. lithology count), and required if
+        fault_zone_n_voxels is set.
+    :param fault_zone_n_voxels: If set, gives cells within this many structural-grid voxels
+        of any active fault's trace their own group id (see the returned CustomSfepyBuilder's
+        fault_group_id) -- the same "damage zone" cell selection Build Hydrothermal Problem
+        uses, referenceable from the custom file as 'cells of group N'. No material/equation
+        is auto-generated for it; that's entirely up to the custom file. None (default)
+        leaves only the mesh's real lithology groups available, exactly like today.
     :return: The custom problem definition, ready for Run Custom SfePy Simulation. Not
         restricted to hydrothermal problems -- the file can define any SfePy physics; only
         the mesh/region bookkeeping is validated, not the equations themselves.
 
     Raises:
-        ValueError: mesh_results has no known mesh_type, no lithology mapping, the
-            uploaded file isn't valid UTF-8 text, or the file references a
-            'cells of group N' that doesn't exist on mesh_results.
+        ValueError: mesh_results has no known mesh_type, no lithology mapping, or contains
+            a well/source block; the uploaded file isn't valid UTF-8 text; the file
+            references a 'cells of group N' that doesn't exist on mesh_results; or
+            fault_zone_n_voxels is set with no geomodel_result.
     """
     # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
     # so also enforced here rather than relying solely on the Workbench's
     # input_checks catching the connection.
     check_mesh_has_known_type(mesh_results)
     check_mesh_has_lithology_mapping(mesh_results)
+    check_mesh_has_no_engineering_objects(mesh_results)
 
     # Read exactly once here, not as a separate input_checks pre-check:
     # BasicallyABufferedFile is stream-like (Union[io.IOBase, GeoTempFile]),
@@ -255,6 +266,7 @@ def build_custom_sfepy_problem(
 
     return CustomSfepyBuilder(
         input_file_contents=content, mesh_results=mesh_results, geomodel_result=geomodel_result,
+        fault_zone_n_voxels=fault_zone_n_voxels,
     )
 
 
