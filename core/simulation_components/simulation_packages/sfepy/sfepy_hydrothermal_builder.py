@@ -27,7 +27,8 @@ fluid, and fault-zone property editing (matching
 structural_workbench_components.py's interpolation-options pattern).
 """
 import logging
-from typing import Dict, List, Optional, Tuple
+import re
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import pyvista as pv
@@ -149,6 +150,103 @@ def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
             "with mapping_litho='automatic_centers' or 'automatic_corners' (not 'manual' "
             "or 'none', neither of which produce a block_id tag). Implicit and structured "
             "meshes always carry this tag."
+        )
+
+
+def map_mat_id_to_lithology(mesh_results: MeshResults) -> Dict[int, int]:
+    """
+    Map each mesh element block (mat_id, assigned in the same enumeration
+    order as mesh_results.elements) to a lithology ID, trusting
+    MeshResults.cell_data["block_id"] directly -- see
+    check_mesh_has_lithology_mapping for which mesh types/mapping_litho
+    settings provide this tag.
+
+    Non-volume blocks (block_id == -1, meshing's sentinel for a fault
+    surface, well, source point, or boundary/"extended" surface block) are
+    dropped from the returned mapping rather than raising -- they are
+    never part of the actual FEM domain SfePy solves (Exo_format.py's
+    Exodus writer already excludes them from the exported volume mesh; see
+    core/meshing_components/mesh_format/exodus/Exo_format.py's
+    `volume_blocks` split), so there is nothing to solve for them. They
+    always trail the real volume blocks positionally (lithology-block
+    merging always runs first when meshing builds mesh_results.elements --
+    see mesh_data.py's block-append order), so the remaining mapping's
+    keys stay a contiguous 0..N-1 range exactly matching mat_id 0..N-1 in
+    the exported/solved mesh.
+
+    Standalone module-level function (not just a method on
+    HydrothermalProblemBuilder) so CustomSfepyBuilder can reuse the exact
+    same mat_id/"cells of group N" numbering to validate a user-supplied
+    SfePy file against a mesh, without needing to construct a
+    HydrothermalProblemBuilder just to get it. Every place that needs a
+    lithology mapping (HydrothermalProblemBuilder._region_lines,
+    build_pressure_input_file, build_heat_input_file,
+    compute_darcy_velocity, compute_cell_materials,
+    check_custom_sfepy_regions) iterates this mapping's keys instead of
+    range(len(mesh_results.elements)) for exactly this reason.
+    """
+    check_mesh_has_lithology_mapping(mesh_results)
+    cell_data = mesh_results.cell_data or {}
+    mapping = {
+        mat_id: int(np.unique(block_ids)[0])
+        for mat_id, block_ids in enumerate(cell_data["block_id"])
+    }
+    return {mat_id: lith_id for mat_id, lith_id in mapping.items() if lith_id != -1}
+
+
+_CELLS_OF_GROUP_RE = re.compile(r"cells\s+of\s+group\s+(\d+)")
+
+
+def extract_referenced_groups(input_file_contents: str) -> Set[int]:
+    """
+    Best-effort scan of a SfePy input file's raw source text for every
+    'cells of group N' region-selector literal. Text-based, not
+    exec()-based: SfePy input files can use either a module-level
+    `regions = {...}` dict (what HydrothermalProblemBuilder generates) or
+    a top-level `define()` function -- exec()-then-read-the-`regions`-
+    attribute only works for the first style. A plain text search works
+    for both, and never executes untrusted uploaded code (unlike
+    exec()-ing an uploaded file at construction time, before any explicit
+    "Run" action). Known limitation: misses dynamically-built selector
+    strings (e.g. an f-string) and can't tell a real selector from a
+    similarly-worded comment -- acceptable since this is a soft
+    pre-flight sanity check, not the final authority (sfepy-run's own
+    region resolution is).
+    """
+    return {int(m) for m in _CELLS_OF_GROUP_RE.findall(input_file_contents)}
+
+
+def check_custom_sfepy_regions(input_file_contents: str, mesh_results: MeshResults) -> None:
+    """
+    Raises if a custom SfePy input file's text references a
+    'cells of group N' that doesn't exist on mesh_results, via
+    map_mat_id_to_lithology's mesh-block-index ("mat_id"/group) numbering
+    -- NOT enumerate_rock_units' lithology_id numbering, a different
+    space: mat_id is mesh block position (what SfePy's "group" actually
+    means once _run_sfepy_input_file tags the exported mesh), lithology_id
+    is a semantic rock-unit id, and one lithology can span multiple
+    mat_ids when e.g. a fault splits it into disconnected mesh blocks.
+
+    Logs a warning (does not raise) if mesh_results has a group the file
+    never references -- may be intentional (e.g. a group deliberately
+    left unsolved), so not treated as an error.
+    """
+    valid = set(map_mat_id_to_lithology(mesh_results).keys())
+    referenced = extract_referenced_groups(input_file_contents)
+    unknown = referenced - valid
+    if unknown:
+        raise ValueError(
+            f"Custom SfePy input file references group(s) {sorted(unknown)} via "
+            f"'cells of group N' that do not exist on mesh_results (valid groups: "
+            f"{sorted(valid)}). This usually means the file was written for a "
+            f"different mesh."
+        )
+    unused = valid - referenced
+    if unused:
+        logger.warning(
+            "mesh_results has group(s) %s this custom SfePy file's text never "
+            "references via 'cells of group N' -- if unintentional, part of the "
+            "mesh may be left unsolved.", sorted(unused),
         )
 
 
@@ -329,37 +427,7 @@ class HydrothermalProblemBuilder:
         return result
 
     def _map_mat_id_to_lithology(self) -> Dict[int, int]:
-        """
-        Map each mesh element block (mat_id, assigned in the same
-        enumeration order as mesh_results.elements) to a lithology ID,
-        trusting MeshResults.cell_data["block_id"] directly -- see
-        check_mesh_has_lithology_mapping for which mesh types/mapping_litho
-        settings provide this tag.
-
-        Non-volume blocks (block_id == -1, meshing's sentinel for a fault
-        surface, well, source point, or boundary/"extended" surface block)
-        are dropped from the returned mapping rather than raising -- they
-        are never part of the actual FEM domain SfePy solves (Exo_format.py's
-        Exodus writer already excludes them from the exported volume mesh;
-        see core/meshing_components/mesh_format/exodus/Exo_format.py's
-        `volume_blocks` split), so there is nothing to solve for them. They
-        always trail the real volume blocks positionally (lithology-block
-        merging always runs first when meshing builds mesh_results.elements
-        -- see mesh_data.py's block-append order), so the remaining
-        mapping's keys stay a contiguous 0..N-1 range exactly matching
-        mat_id 0..N-1 in the exported/solved mesh. Every other place that
-        needs a lithology (_region_lines, build_pressure_input_file,
-        build_heat_input_file, compute_darcy_velocity, compute_cell_materials)
-        iterates this mapping's keys instead of
-        range(len(mesh_results.elements)) for exactly this reason.
-        """
-        check_mesh_has_lithology_mapping(self.mesh_results)
-        cell_data = self.mesh_results.cell_data or {}
-        mapping = {
-            mat_id: int(np.unique(block_ids)[0])
-            for mat_id, block_ids in enumerate(cell_data["block_id"])
-        }
-        return {mat_id: lith_id for mat_id, lith_id in mapping.items() if lith_id != -1}
+        return map_mat_id_to_lithology(self.mesh_results)
 
     # ------------------------------------------------------------------
     # Fault zone (limited support -- see the class docstring)
@@ -926,3 +994,63 @@ equations = {{
         with open(output_path, "w") as f:
             f.write(content)
         return output_path
+
+
+@wbgeo_type(name='Custom SfePy Problem', color='#e07a5f', identifier='CustomSfepyBuilder')
+@dataclass
+class CustomSfepyBuilder:
+    """
+    Wraps a user-supplied, already-complete SfePy input file (with its own
+    internal staging/sequencing logic -- e.g. a hand-written GOLEM-style
+    coupled problem) instead of auto-generating one like
+    HydrothermalProblemBuilder does. Runs through the same
+    run_simulation_sfepy() and returns the same SimulationResults type.
+
+    input_file_contents is stored as text, not a file path: @wbgeo_type
+    instances are serialized/reconstructed between separate Workbench
+    component executions, and a temp file path would not survive that
+    round trip. The content is only written to disk transiently at run
+    time, matching how HydrothermalProblemBuilder's own generated input
+    files work.
+
+    Validated at construction against mesh_results (known mesh type,
+    known lithology mapping, and a best-effort static check that every
+    'cells of group N' the file references actually exists on the mesh --
+    see check_custom_sfepy_regions). This validation is deliberately not
+    exhaustive: it cannot catch wrong material properties or malformed
+    equations, only structural mismatches with the mesh. sfepy-run's own
+    region resolution remains the final authority at run time.
+
+    Unlike HydrothermalProblemBuilder, no fault-zone injection, no
+    pressure/heat staging, no velocity handoff -- the file is assumed to
+    already contain everything it needs and gets run in a single
+    sfepy-run invocation (see run_simulation_sfepy in
+    sfepy_hydrothermal_run.py). On an unstructured mesh, the same
+    mesh_type_code == "unstr" pre-filter HydrothermalProblemBuilder relies
+    on (_run_sfepy_input_file, dropping non-volume blocks before Exodus
+    export) applies here too -- so a custom file cannot reference a
+    non-volume (fault-surface/boundary) block by group number on an
+    unstructured mesh, the same limitation HydrothermalProblemBuilder
+    already has.
+    """
+    input_file_contents: str
+    mesh_results: MeshResults
+    geomodel_result: Optional[StructuralModelResults] = None
+
+    def __post_init__(self):
+        check_mesh_has_known_type(self.mesh_results)
+        check_mesh_has_lithology_mapping(self.mesh_results)
+        self.mesh_type = self.mesh_results.mesh_type
+        self.mat_id_to_lithology = map_mat_id_to_lithology(self.mesh_results)
+        check_custom_sfepy_regions(self.input_file_contents, self.mesh_results)
+        if self.geomodel_result is not None:
+            n_referenced = len(extract_referenced_groups(self.input_file_contents))
+            n_lithologies = len(enumerate_rock_units(self.geomodel_result))
+            if n_referenced < n_lithologies:
+                logger.warning(
+                    "File references %d group(s) via 'cells of group N' but the "
+                    "structural model defines %d lithologies -- expected if a "
+                    "lithology is split across disconnected mesh blocks (e.g. a "
+                    "fault), otherwise the file may be missing coverage.",
+                    n_referenced, n_lithologies,
+                )

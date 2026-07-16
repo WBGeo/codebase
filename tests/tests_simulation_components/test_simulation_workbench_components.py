@@ -1,3 +1,4 @@
+import io
 import json
 
 import matplotlib
@@ -9,13 +10,14 @@ import pytest
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    RockUnitProperties, FluidProperties,
+    RockUnitProperties, FluidProperties, CustomSfepyBuilder, map_mat_id_to_lithology,
 )
 import core.simulation_components.simulation_workbench_components as swc
 from core.simulation_components.simulation_workbench_components import (
     HydrothermalOptions, HydrothermalOptions_Root,
     build_hydrothermal_problem, hydrothermal_problem_smart_options,
     hydrothermal_problem_smart_options_to_data, run_hydrothermal_simulation,
+    build_custom_sfepy_problem, run_custom_sfepy_simulation,
     export_simulation_results, _DEFAULT_FAULT_ZONE_PROPERTIES,
 )
 
@@ -116,6 +118,41 @@ def test_smart_options_to_data_roundtrip():
 
 
 # -----------------------------------------------------------------------------
+# build_custom_sfepy_problem -- reads/decodes the uploaded file
+# -----------------------------------------------------------------------------
+
+def test_build_custom_sfepy_problem_reads_and_decodes_file(model1_implicit_mesh, model1_structural_result):
+    valid = map_mat_id_to_lithology(model1_implicit_mesh)
+    text = "\n".join(f"'Omega{m}': 'cells of group {m}'," for m in valid)
+    uploaded = io.BytesIO(text.encode("utf-8"))
+
+    problem = build_custom_sfepy_problem(
+        input_file=uploaded, mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+    )
+    assert isinstance(problem, CustomSfepyBuilder)
+    assert problem.input_file_contents == text
+
+
+def test_build_custom_sfepy_problem_rejects_mesh_with_no_lithology_mapping(
+    model1_implicit_mesh, model1_structural_result
+):
+    bad_mesh = model1_implicit_mesh.model_copy(update={"cell_data": None})
+    uploaded = io.BytesIO(b"'Omega0': 'cells of group 0',")
+    with pytest.raises(ValueError, match="no lithology mapping"):
+        build_custom_sfepy_problem(
+            input_file=uploaded, mesh_results=bad_mesh, geomodel_result=model1_structural_result,
+        )
+
+
+def test_build_custom_sfepy_problem_rejects_non_utf8_file(model1_implicit_mesh, model1_structural_result):
+    uploaded = io.BytesIO(b"\xff\xfe\x00\x01not valid utf-8")
+    with pytest.raises(ValueError, match="not valid UTF-8"):
+        build_custom_sfepy_problem(
+            input_file=uploaded, mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        )
+
+
+# -----------------------------------------------------------------------------
 # Thin wrappers -- call-through, without a real solve
 # -----------------------------------------------------------------------------
 
@@ -132,6 +169,21 @@ def test_run_hydrothermal_simulation_calls_through(monkeypatch):
     result = run_hydrothermal_simulation(fake_builder)
     assert result is sentinel_result
     assert received["builder"] is fake_builder
+
+
+def test_run_custom_sfepy_simulation_calls_through(monkeypatch):
+    sentinel_result = SimulationResults()
+    received = {}
+
+    def fake_run(problem):
+        received["problem"] = problem
+        return sentinel_result
+
+    monkeypatch.setattr(swc, "_run_simulation_sfepy", fake_run)
+    fake_problem = object()
+    result = run_custom_sfepy_simulation(fake_problem)
+    assert result is sentinel_result
+    assert received["problem"] is fake_problem
 
 
 def test_export_simulation_results_calls_through(monkeypatch):

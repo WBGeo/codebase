@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import meshio
 import numpy as np
@@ -28,6 +28,7 @@ from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_re
 from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
     HydrothermalProblemBuilder,
+    CustomSfepyBuilder,
     MESH_TYPE_CODES,
 )
 from core.simulation_components.simulation_visualization.simulation_visualization import build_grid_from_class
@@ -248,7 +249,7 @@ def _run_sfepy_input_file(
     return {"output_dir": output_dir, "is_temp": is_temp}
 
 
-def run_simulation_sfepy(
+def _run_hydrothermal_problem(
     builder: HydrothermalProblemBuilder, keep_files_dir: Optional[str] = None
 ) -> SimulationResults:
     """
@@ -258,6 +259,11 @@ def run_simulation_sfepy(
     flows directly out of create_unstructured_mesh_data() etc. and into
     downstream components, rather than a file path callers have to
     separately load.
+
+    The HydrothermalProblemBuilder-specific half of the public
+    run_simulation_sfepy() dispatcher below (see its docstring) -- kept as
+    its own function, not inlined, so this already-tested two-stage logic
+    stays untouched by the CustomSfepyBuilder branch.
 
     A standalone function taking the builder as input (not a method on it)
     to match the Workbench's @wbgeo_component style, where components are
@@ -369,6 +375,67 @@ def run_simulation_sfepy(
                     os.remove(p)
                 except OSError:
                     pass
+
+
+def _run_custom_sfepy_problem(
+    problem: CustomSfepyBuilder, keep_files_dir: Optional[str] = None
+) -> SimulationResults:
+    """
+    Run a CustomSfepyBuilder's file once and return the result -- no
+    velocity hand-off, no merge step, unlike _run_hydrothermal_problem's
+    two-stage sequence. The file is assumed to already contain all
+    staging/sequencing logic and to write out everything it needs in one
+    sfepy-run invocation.
+
+    problem.input_file_contents is written to a fresh temp file here (not
+    at CustomSfepyBuilder construction time) for the same reason
+    _run_hydrothermal_problem writes its generated input files at run
+    time: the content is what survives @wbgeo_type serialization, a temp
+    path would not.
+    """
+    def _path(name):
+        """Resolve a generated-file name to keep_files_dir if given, else a fresh temp path."""
+        if keep_files_dir is not None:
+            return os.path.join(keep_files_dir, name)
+        fd, p = tempfile.mkstemp(suffix=f"_{name}")
+        os.close(fd)
+        return p
+
+    input_file = _path("custom.py")
+    mesh_type_code = MESH_TYPE_CODES[problem.mesh_type]
+    try:
+        with open(input_file, "w") as f:
+            f.write(problem.input_file_contents)
+        out = _run_sfepy_input_file(input_file, problem.mesh_results, mesh_type_code, output_dir=None)
+        sim = load_vtk_results(out)
+        if not sim.nodes_by_time:
+            raise RuntimeError("Custom SfePy input file produced no SfePy output (0 VTK files).")
+        return sim
+    finally:
+        if keep_files_dir is None:
+            try:
+                os.remove(input_file)
+            except OSError:
+                pass
+
+
+def run_simulation_sfepy(
+    problem: Union[HydrothermalProblemBuilder, CustomSfepyBuilder], keep_files_dir: Optional[str] = None
+) -> SimulationResults:
+    """
+    Run either kind of SfePy problem and return a SimulationResults in the
+    same format regardless of which one was given -- a HydrothermalProblemBuilder
+    (auto-generated two-stage pressure/heat problem, see
+    _run_hydrothermal_problem) or a CustomSfepyBuilder (a user-supplied,
+    already-complete SfePy input file with its own internal
+    staging/sequencing logic, see _run_custom_sfepy_problem). One runner
+    for both, dispatching on type, so callers (and the Workbench) don't
+    need two separate "run" components with diverging behavior/result
+    shapes to keep in sync.
+    """
+    if isinstance(problem, CustomSfepyBuilder):
+        return _run_custom_sfepy_problem(problem, keep_files_dir)
+    return _run_hydrothermal_problem(problem, keep_files_dir)
 
 
 def export_simulation_results(sim: SimulationResults, format: str = "vtk") -> BasicallyABufferedFile:

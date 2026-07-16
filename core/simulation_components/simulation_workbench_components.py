@@ -18,7 +18,7 @@ from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartIn
 
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    HydrothermalProblemBuilder, RockUnitProperties, FluidProperties, enumerate_rock_units,
+    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties, enumerate_rock_units,
     check_mesh_has_known_type, check_mesh_has_lithology_mapping,
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
@@ -199,6 +199,66 @@ def build_hydrothermal_problem(
 
 
 @wbgeo_component(
+    description="Wraps a user-supplied, already-complete SfePy input file "
+                "(with its own internal staging/sequencing logic) instead of "
+                "auto-generating one -- for bringing an existing hand-written "
+                "SfePy problem into the Workbench. Validated as well as "
+                "possible against the mesh at build time (known mesh type, "
+                "known lithology mapping, and every 'cells of group N' the "
+                "file references actually exists on the mesh), but this "
+                "cannot catch wrong material properties or malformed "
+                "equations -- sfepy-run's own region resolution remains the "
+                "final authority at run time.",
+    title='Build Custom SfePy Problem',
+    color='#e07a5f',
+    border_color='#000000',
+    group='Simulation',
+    identifier='wbgeo::simulation_build_custom_sfepy_problem',
+    return_name='sfepy_problem',
+    input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping],
+)
+def build_custom_sfepy_problem(
+    input_file: BasicallyABufferedFile,
+    mesh_results: MeshResults,
+    geomodel_result: Optional[StructuralModelResults] = None,
+) -> CustomSfepyBuilder:
+    """
+    :param input_file: A complete SfePy input file (.py) with its own staging/sequencing logic.
+    :param mesh_results: The mesh to solve on (implicit, structured, or unstructured).
+    :param geomodel_result: Optional structural model, used for an additional soft sanity
+        check (referenced-group count vs. lithology count) -- not required.
+    :return: The custom problem definition, ready for Run Custom SfePy Simulation. Not
+        restricted to hydrothermal problems -- the file can define any SfePy physics; only
+        the mesh/region bookkeeping is validated, not the equations themselves.
+
+    Raises:
+        ValueError: mesh_results has no known mesh_type, no lithology mapping, the
+            uploaded file isn't valid UTF-8 text, or the file references a
+            'cells of group N' that doesn't exist on mesh_results.
+    """
+    # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
+    # so also enforced here rather than relying solely on the Workbench's
+    # input_checks catching the connection.
+    check_mesh_has_known_type(mesh_results)
+    check_mesh_has_lithology_mapping(mesh_results)
+
+    # Read exactly once here, not as a separate input_checks pre-check:
+    # BasicallyABufferedFile is stream-like (Union[io.IOBase, GeoTempFile]),
+    # and there's no guarantee a pre-check and this function body would be
+    # handed the same already-consumed stream -- CustomSfepyBuilder does
+    # all content-based validation against the decoded string instead.
+    raw = input_file.read()
+    try:
+        content = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+    except UnicodeDecodeError as e:
+        raise ValueError("Uploaded custom SfePy input file is not valid UTF-8 text.") from e
+
+    return CustomSfepyBuilder(
+        input_file_contents=content, mesh_results=mesh_results, geomodel_result=geomodel_result,
+    )
+
+
+@wbgeo_component(
     description='Runs the two-stage SfePy hydrothermal solve (steady-state '
                 'pressure, then transient advective-conductive heat transport) '
                 'for the given problem definition.',
@@ -215,6 +275,25 @@ def run_hydrothermal_simulation(hydrothermal_problem: HydrothermalProblemBuilder
     :return: Simulation results (temperature, and pressure if flow was included) for every solved time step.
     """
     return _run_simulation_sfepy(hydrothermal_problem)
+
+
+@wbgeo_component(
+    description='Runs a custom SfePy input file (from Build Custom SfePy '
+                'Problem) in a single sfepy-run invocation and returns its results '
+                'in the same format as Run Hydrothermal Simulation.',
+    title='Run Custom SfePy Simulation',
+    color='pink',
+    border_color='#000000',
+    group='Simulation',
+    identifier='wbgeo::simulation_run_custom_sfepy',
+    return_name='simulation_result',
+)
+def run_custom_sfepy_simulation(sfepy_problem: CustomSfepyBuilder) -> SimulationResults:
+    """
+    :param sfepy_problem: Problem definition from Build Custom SfePy Problem.
+    :return: Simulation results for every time step the custom file itself saved.
+    """
+    return _run_simulation_sfepy(sfepy_problem)
 
 
 @wbgeo_component(

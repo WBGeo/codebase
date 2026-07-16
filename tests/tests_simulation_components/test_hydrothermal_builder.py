@@ -14,6 +14,9 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
     check_mesh_has_known_type,
     check_mesh_has_lithology_mapping,
     enumerate_rock_units,
+    map_mat_id_to_lithology,
+    extract_referenced_groups,
+    check_custom_sfepy_regions,
 )
 
 
@@ -92,6 +95,67 @@ def test_map_mat_id_to_lithology_drops_non_volume_sentinel_blocks(model1_implici
     assert len(model1_implicit_mesh.elements) not in builder.mat_id_to_lithology or True
     # the appended sentinel block's mat_id (last index) must not be a key
     assert (len(mesh_with_extra_block.elements) - 1) not in builder.mat_id_to_lithology
+
+
+def test_map_mat_id_to_lithology_standalone_matches_builder(model1_implicit_mesh, model1_structural_result):
+    """The refactor extracting map_mat_id_to_lithology out of the builder
+    must not change what it computes."""
+    builder = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+    )
+    assert map_mat_id_to_lithology(model1_implicit_mesh) == builder.mat_id_to_lithology
+
+
+# -----------------------------------------------------------------------------
+# extract_referenced_groups / check_custom_sfepy_regions (CustomSfepyBuilder's
+# static validation)
+# -----------------------------------------------------------------------------
+
+def test_extract_referenced_groups_finds_all_matches():
+    text = "'Omega0': 'cells of group 0',\n'Omega5': 'cells of group 5',"
+    assert extract_referenced_groups(text) == {0, 5}
+
+
+def test_extract_referenced_groups_empty_for_no_matches():
+    assert extract_referenced_groups("no regions here at all") == set()
+
+
+def test_extract_referenced_groups_works_for_define_style_file():
+    # SfePy's alternative input-file style: a define() function instead of
+    # a module-level `regions = {...}` dict -- the text-regex approach must
+    # work for this style too, unlike an exec()-then-read-the-`regions`-
+    # attribute approach, which would find nothing (no top-level `regions`
+    # name exists in a define()-style file).
+    text = '''
+def define():
+    regions = {
+        'Omega0': 'cells of group 0',
+        'Omega1': 'cells of group 1',
+    }
+    return locals()
+'''
+    assert extract_referenced_groups(text) == {0, 1}
+
+
+def test_check_custom_sfepy_regions_passes_for_matching_groups(model1_implicit_mesh):
+    valid = map_mat_id_to_lithology(model1_implicit_mesh)
+    text = "\n".join(f"'Omega{m}': 'cells of group {m}'," for m in valid)
+    check_custom_sfepy_regions(text, model1_implicit_mesh)  # must not raise
+
+
+def test_check_custom_sfepy_regions_raises_for_unknown_group(model1_implicit_mesh):
+    text = "'Omega99': 'cells of group 99',"
+    with pytest.raises(ValueError, match="do not exist"):
+        check_custom_sfepy_regions(text, model1_implicit_mesh)
+
+
+def test_check_custom_sfepy_regions_does_not_raise_for_unused_group(model1_implicit_mesh):
+    # Referencing only a subset of the mesh's valid groups is a soft
+    # (logged) signal, not an error -- may be intentional.
+    valid = map_mat_id_to_lithology(model1_implicit_mesh)
+    some_group = next(iter(valid))
+    text = f"'Omega{some_group}': 'cells of group {some_group}',"
+    check_custom_sfepy_regions(text, model1_implicit_mesh)  # must not raise
 
 
 # -----------------------------------------------------------------------------

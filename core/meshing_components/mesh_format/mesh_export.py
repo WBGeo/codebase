@@ -5,7 +5,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile, Annot
 
 from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh_results_to_abaqus
 from core.meshing_components.mesh_format.ansys.Ansys_format import export_mesh_results_to_ansys
-from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus, exodus_type_for
 from core.meshing_components.mesh_format.feflow.Feflow_format import export_mesh_results_to_feflow
 from core.meshing_components.mesh_format.gmsh.GMSH_format import export_mesh_results_to_gmsh
 from core.meshing_components.mesh_format.stl.STL_format import export_mesh_results_to_stl
@@ -51,7 +51,13 @@ def export_mesh_results(mesh: MeshResults, format: MeshFormatType_A = MeshFormat
   elif format == MeshFormatType.ANSYS:
     return export_mesh_results_to_ansys(mesh)
   elif format == MeshFormatType.Exodus:
-    return export_mesh_results_to_exodus(mesh)
+    # Passes the mesh's own recorded type explicitly -- without this,
+    # export_mesh_results_to_exodus's default (MeshType.UNSTRUCTURED)
+    # applies regardless of the mesh's true type, which crashes outright
+    # for implicit/structured meshes (they only ever have 1 element block,
+    # fewer than the unstructured path's minimum) and silently produces
+    # weaker side-sets even after the dim-based fix.
+    return export_mesh_results_to_exodus(mesh, type=exodus_type_for(mesh))
   elif format == MeshFormatType.Feflow:
     return export_mesh_results_to_feflow(mesh)
   elif format == MeshFormatType.Gmsh:

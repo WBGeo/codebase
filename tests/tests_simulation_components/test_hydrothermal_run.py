@@ -5,8 +5,9 @@ import pytest
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    HydrothermalProblemBuilder, RockUnitProperties,
+    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties,
 )
+import core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run as sfepy_run
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
     _check_convergence,
     export_simulation_results,
@@ -91,6 +92,52 @@ def test_export_simulation_results_raises_for_no_time_steps():
     sim = SimulationResults()
     with pytest.raises(ValueError, match="no time steps"):
         export_simulation_results(sim)
+
+
+# -----------------------------------------------------------------------------
+# run_simulation_sfepy -- dispatch by problem type, no real solve needed
+# -----------------------------------------------------------------------------
+
+def test_run_simulation_sfepy_dispatches_hydrothermal_problem_builder(monkeypatch):
+    sentinel_result = SimulationResults()
+    received = {}
+
+    def fake_run_hydrothermal(builder, keep_files_dir=None):
+        received["builder"] = builder
+        received["keep_files_dir"] = keep_files_dir
+        return sentinel_result
+
+    def fake_run_custom(problem, keep_files_dir=None):
+        raise AssertionError("should not be called for a HydrothermalProblemBuilder")
+
+    monkeypatch.setattr(sfepy_run, "_run_hydrothermal_problem", fake_run_hydrothermal)
+    monkeypatch.setattr(sfepy_run, "_run_custom_sfepy_problem", fake_run_custom)
+
+    fake_builder = HydrothermalProblemBuilder.__new__(HydrothermalProblemBuilder)
+    result = run_simulation_sfepy(fake_builder, keep_files_dir="some/dir")
+    assert result is sentinel_result
+    assert received["builder"] is fake_builder
+    assert received["keep_files_dir"] == "some/dir"
+
+
+def test_run_simulation_sfepy_dispatches_custom_sfepy_builder(monkeypatch):
+    sentinel_result = SimulationResults()
+    received = {}
+
+    def fake_run_hydrothermal(builder, keep_files_dir=None):
+        raise AssertionError("should not be called for a CustomSfepyBuilder")
+
+    def fake_run_custom(problem, keep_files_dir=None):
+        received["problem"] = problem
+        return sentinel_result
+
+    monkeypatch.setattr(sfepy_run, "_run_hydrothermal_problem", fake_run_hydrothermal)
+    monkeypatch.setattr(sfepy_run, "_run_custom_sfepy_problem", fake_run_custom)
+
+    fake_problem = CustomSfepyBuilder.__new__(CustomSfepyBuilder)
+    result = run_simulation_sfepy(fake_problem)
+    assert result is sentinel_result
+    assert received["problem"] is fake_problem
 
 
 # -----------------------------------------------------------------------------
@@ -181,3 +228,46 @@ def test_run_simulation_sfepy_fault_zone_with_flow_end_to_end(
     final_time = max(result.nodes_by_time.keys())
     assert "T" in result.node_data_by_time[final_time]
     assert "p" in result.node_data_by_time[final_time]
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, model1_structural_result, tmp_path):
+    """
+    Real end-to-end run of a CustomSfepyBuilder. Reuses
+    HydrothermalProblemBuilder.build_heat_input_file's own generated text
+    as the "custom" input -- an already-trusted, real SfePy file with all
+    staging/sequencing self-contained (no velocity hand-off needed since
+    include_flow=False), giving genuine coverage of the whole custom
+    pathway (_run_custom_sfepy_problem -> _run_sfepy_input_file ->
+    load_vtk_results) without hand-authoring a new SfePy file here.
+    """
+    homogeneous = {
+        name: RockUnitProperties(name=name, porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6)
+        for name in ("basement", "rock1", "rock2")
+    }
+    reference_builder = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        rock_properties=homogeneous,
+        include_flow=False,
+        num_steps=1,
+    )
+    heat_file = str(tmp_path / "heat.py")
+    reference_builder.build_heat_input_file(heat_file)
+    input_file_contents = open(heat_file).read()
+
+    custom_builder = CustomSfepyBuilder(
+        input_file_contents=input_file_contents,
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+    )
+    result = run_simulation_sfepy(custom_builder)
+
+    assert result.nodes_by_time  # at least one saved time step
+    final_time = max(result.nodes_by_time.keys())
+    T = result.node_data_by_time[final_time]["T"]
+    # Same homogeneous-properties/pure-conduction setup as
+    # test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_properties:
+    # the initial condition already IS the exact steady-state solution.
+    assert float(T.mean()) == pytest.approx(35.0, abs=1e-6)

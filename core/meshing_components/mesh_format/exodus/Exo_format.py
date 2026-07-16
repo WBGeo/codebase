@@ -8,6 +8,7 @@ import os
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 from core.object_components import MeshResults
+from core.object_components import MeshType as ObjectMeshType
 from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 from enum import Enum, StrEnum
 
@@ -33,6 +34,33 @@ class MeshType(StrEnum):
     #: have to mislabel a mesh's true origin (e.g. claim an
     #: unstructured-origin mesh is "imp") just to get that behavior.
     VOLUME_ONLY = "volume_only"
+
+
+#: Maps a mesh's true provenance (core.object_components.MeshType, readable
+#: values) to this module's own short-code MeshType -- kept as an explicit
+#: mapping rather than a direct passthrough because the two enums use
+#: different string values ("implicit" vs "imp" etc.), so
+#: export_mesh_results_to_exodus's own MeshType(type.lower()) coercion would
+#: otherwise raise ValueError on a core.object_components.MeshType value.
+_OBJECT_TO_EXODUS_TYPE = {
+    ObjectMeshType.IMPLICIT: MeshType.IMPLICIT,
+    ObjectMeshType.STRUCTURED: MeshType.STRUCTURED,
+    ObjectMeshType.UNSTRUCTURED: MeshType.UNSTRUCTURED,
+}
+
+
+def exodus_type_for(mesh_results: MeshResults) -> MeshType:
+    """
+    The Exo_format.MeshType export path for mesh_results, from its own
+    recorded provenance (mesh_results.mesh_type) -- lets a caller pass the
+    correct type to export_mesh_results_to_exodus without needing its own
+    copy of this mapping. Falls back to MeshType.UNSTRUCTURED (matching
+    export_mesh_results_to_exodus's own existing default) if
+    mesh_results.mesh_type is None (e.g. a manually-constructed MeshResults
+    with no provenance set), preserving today's exact behavior for that
+    edge case.
+    """
+    return _OBJECT_TO_EXODUS_TYPE.get(mesh_results.mesh_type, MeshType.UNSTRUCTURED)
 
 
 ######################
@@ -368,15 +396,20 @@ class ExodusInput:
         # MESH TYPE HANDLING
         if self.mesh_type == MeshType.UNSTRUCTURED:
 
-            NUM_SIDE_BLOCKS = 6
-
-            if len(all_blocks) < NUM_SIDE_BLOCKS:
-                raise ValueError(
-                    f"Mesh has only {len(all_blocks)} blocks"
-                )
-
-            boundary_blocks = all_blocks[-NUM_SIDE_BLOCKS:]
-            volume_blocks = all_blocks[:-NUM_SIDE_BLOCKS]
+            # dim==3 (tetra/hexahedron/wedge) -> real volume elements;
+            # dim==2 (triangle/quad) -> boundary/fault-surface blocks,
+            # matched against volume-block faces below. dim==1 (wells) and
+            # dim==0 (sources) fall into neither bucket -- this matches
+            # today's de facto behavior already: they never match anything
+            # in build_side_sets_unstructured's face lookup (keyed to
+            # 3-node face tuples from 3D elements) regardless of how they
+            # were split, so this is a silent no-op both before and after
+            # this change, just no longer dependent on there coincidentally
+            # being exactly 6 non-volume blocks (which broke down for any
+            # fault count other than the one originally tested, or with
+            # wells/sources present).
+            volume_blocks = [b for b in all_blocks if b.dim == 3]
+            boundary_blocks = [b for b in all_blocks if b.dim == 2]
 
             side_sets = self.build_side_sets_unstructured(
                 volume_blocks,
