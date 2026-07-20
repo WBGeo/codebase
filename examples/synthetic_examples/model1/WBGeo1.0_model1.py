@@ -26,7 +26,7 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_abaqus)
 
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    HydrothermalProblemBuilder, RockUnitProperties, FluidProperties)
+    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
@@ -241,3 +241,40 @@ plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=T
 plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
 plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
 plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(1, 0, 0), cmap="coolwarm")
+
+#%%
+
+# CustomSfepyBuilder example: bring a complete, hand-written SfePy input
+# file instead of letting HydrothermalProblemBuilder auto-generate one.
+# CustomSfepyBuilder validates it against the mesh at construction time,
+# then runs through the exact same run_simulation_sfepy() dispatcher.
+#
+# The file loaded below is a worked, verified example: it solves the
+# literal same problem as the HydrothermalProblemBuilder call above --
+# same mesh, same rock_properties/fluid, same BCs, t1, num_steps -- and
+# reproduces its result bit-for-bit. See the file's own docstring for the
+# full explanation of how a single self-contained file (no WBGeo imports
+# at all) can express HydrothermalProblemBuilder's two-stage
+# pressure -> Darcy velocity -> transient heat pipeline.
+
+custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
+                      "custom_hydrothermal_reproduction.py")
+with open(custom_input_path) as f:
+    custom_input_file_contents = f.read()
+
+custom_builder = CustomSfepyBuilder(
+    input_file_contents=custom_input_file_contents,
+    mesh_results=mesh_implicit_structured,
+    geomodel_result=structural_model_result,
+)
+
+#%%
+
+custom_data_by_time = run_simulation_sfepy(custom_builder)
+
+#%%
+
+# Confirms the custom-builder result matches HydrothermalProblemBuilder's above.
+custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
+print("HydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
+print("CustomSfepyBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())

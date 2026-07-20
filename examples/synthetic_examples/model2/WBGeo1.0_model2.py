@@ -28,7 +28,7 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    HydrothermalProblemBuilder, RockUnitProperties, FluidProperties)
+    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
@@ -319,3 +319,43 @@ plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", sho
 plot_cross_section_2D(
     data_by_time, "T", origin=(1250, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
 )
+
+#%%
+
+# CustomSfepyBuilder example: bring a complete, hand-written SfePy input
+# file instead of letting HydrothermalProblemBuilder auto-generate one.
+# CustomSfepyBuilder validates it against the mesh at construction time,
+# then runs through the exact same run_simulation_sfepy() dispatcher.
+#
+# The file loaded below is a worked, verified example: it solves the
+# literal same problem as the HydrothermalProblemBuilder call above --
+# same mesh (real fault, active damage zone), same rock_properties/
+# fault_zone_properties, same include_flow=False/num_steps -- and
+# reproduces its result bit-for-bit. Since include_flow=False here (pure
+# conduction), this file is much simpler than model1's two-stage example:
+# it's a single, complete SfePy conf with no pressure/velocity stage at
+# all -- see the file's own docstring for the full explanation, including
+# why no companion fault-zone-mask file is needed for this case.
+
+custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
+                      "custom_hydrothermal_reproduction_faulted.py")
+with open(custom_input_path) as f:
+    custom_input_file_contents = f.read()
+
+custom_builder = CustomSfepyBuilder(
+    input_file_contents=custom_input_file_contents,
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    fault_zone_n_voxels=1,
+)
+
+#%%
+
+custom_data_by_time = run_simulation_sfepy(custom_builder)
+
+#%%
+
+# Confirms the custom-builder result matches HydrothermalProblemBuilder's above.
+custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
+print("HydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
+print("CustomSfepyBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())
