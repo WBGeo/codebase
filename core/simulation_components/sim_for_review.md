@@ -9,6 +9,14 @@ different reviewers:
    (`py_api_wbgeo`) — sections 3 and 4 are written specifically for you, so you can
    review just the parts that touch your area without reading the whole thing.
 
+This revision folds in everything since the previous review pass (through commit
+`a344086`): a second problem-definition path (`CustomSfepyBuilder`, section 2.1 —
+was "researched, not implemented," is now shipped), a fault-representation
+investigation with a concrete, proven answer (section 1.4), an Exodus export bug
+this branch's own `CustomSfepyBuilder` work surfaced and fixed (section 3.4 — this
+was the "export_exodus regression" review comment), and a real MemoryError found
+and fixed in unstructured meshing's surface-fitting step (section 3.6, new).
+
 ---
 
 # 1. Implementation
@@ -27,36 +35,62 @@ typed result.
 
 ## 1.2 Architecture
 
-Four files:
+Four files, one of which (the builder) now defines **two** problem-definition
+classes sharing one runner:
 
 - **`simulation_packages/sfepy/sfepy_hydrothermal_builder.py`** —
-  `HydrothermalProblemBuilder`. Takes a `MeshResults`, `StructuralModelResults`, and
-  physical properties (`RockUnitProperties` per lithology, `FluidProperties`), and
-  generates the actual SfePy problem-description `.py` files (regions, materials,
-  equations, solvers) as strings written to disk. This is the input-data-generator
-  component — its constructor arguments are the component's configurable inputs,
-  matching how other Workbench components work. It is itself a `@wbgeo_type`
-  (a pydantic dataclass) — see section 4.2.
-- **`simulation_packages/sfepy/sfepy_hydrothermal_run.py`** — `run_simulation_sfepy(builder)`,
-  the run component. Takes a builder, converts its mesh to the format SfePy actually
-  reads (Exodus → Medit, via meshio), launches `sfepy-run` as a subprocess, loads
-  the result back into a `SimulationResults` object. Also
-  `export_simulation_results()`, a "Download Simulation Results" component (VTK
-  only so far).
+  - `HydrothermalProblemBuilder`. Takes a `MeshResults`, `StructuralModelResults`, and
+    physical properties (`RockUnitProperties` per lithology, `FluidProperties`), and
+    generates the actual SfePy problem-description `.py` files (regions, materials,
+    equations, solvers) as strings written to disk. This is the input-data-generator
+    component — its constructor arguments are the component's configurable inputs,
+    matching how other Workbench components work. It is itself a `@wbgeo_type`
+    (a pydantic dataclass) — see section 4.2.
+  - `CustomSfepyBuilder` (new, section 2.1) — wraps a user-supplied, already-complete
+    SfePy input file instead of auto-generating one. Validated against the mesh at
+    construction time (known mesh type, known lithology mapping, no wells/sources,
+    every `'cells of group N'` the file references actually exists), then runs
+    through the same `run_simulation_sfepy()` as `HydrothermalProblemBuilder`. Also a
+    `@wbgeo_type` dataclass, same reason as above.
+  - Several standalone module-level functions factored out so both classes (and the
+    Workbench pre-check layer, section 4.4) can reuse the same logic without one
+    depending on the other: `map_mat_id_to_lithology`, `enumerate_rock_units`,
+    `lithology_to_group_idx`, `compute_fault_zone_cell_mask`,
+    `check_mesh_has_known_type`, `check_mesh_has_lithology_mapping`,
+    `check_mesh_has_no_engineering_objects`, `check_custom_sfepy_regions`.
+    `HydrothermalProblemBuilder`'s own equivalent private methods are now one-line
+    wrappers around these — a pure refactor, zero behavior change (re-verified via
+    the existing `HydrothermalProblemBuilder` test suite passing unmodified).
+- **`simulation_packages/sfepy/sfepy_hydrothermal_run.py`** — `run_simulation_sfepy(problem)`,
+  the run component. Dispatches on `isinstance(problem, CustomSfepyBuilder)`
+  (`_run_hydrothermal_problem` for the auto-generated two-stage case,
+  `_run_custom_sfepy_problem` for a custom file — one `sfepy-run` invocation, no
+  stage handoff) so both problem types share one runner, one result type, and the
+  Workbench needs only one "Run" component per builder rather than diverging
+  behavior to keep in sync. Also converts the mesh to the format SfePy actually
+  reads (Exodus → Medit, via meshio), and `export_simulation_results()`, a
+  "Download Simulation Results" component (VTK only so far).
 - **`simulation_visualization/simulation_visualization.py`** — plotting functions for
   `SimulationResults` (3D snapshots, cross-sections, before/after diffs) and a
-  pre-flight material-assignment check for `HydrothermalProblemBuilder`
-  (`plot_builder_materials`) that lets a wrong material/fault-zone assignment be
-  caught by eye before running a solve that can take a while. Also includes three
-  point/line post-processing utilities ported from the previous implementation
-  (`plot_variable_along_line`, `print_variable_at_point`, `plot_variable_time_series`)
-  — initially dropped in the rewrite, restored on request since they're useful
-  post-processing tools not covered by the snapshot/cross-section plots.
-  `print_variable_at_point`'s out-of-bounds detection was fixed while porting it:
-  the original checked `sampled.n_points == 0`, which never actually triggers for a
-  single-point `PolyData` (PyVista's probe filter always returns one output point
-  per input point, valid or not); now checks `sampled["vtkValidPointMask"]` instead,
-  which is what actually distinguishes a valid sample from an out-of-bounds one.
+  pre-flight material-assignment check, `plot_builder_materials(builder)`, that lets
+  a wrong material/fault-zone assignment be caught by eye before running a solve
+  that can take a while. Accepts either builder type now: for
+  `HydrothermalProblemBuilder` it shows the full `RockUnitProperties` summary per
+  material (porosity/permeability/k/rho·c) in the legend, same as before; for
+  `CustomSfepyBuilder` there's no such structured properties object to draw from (a
+  custom file writes its `materials` block directly in raw SfePy syntax), so the
+  legend falls back to bare material names — same coloring/grouping/fault-zone
+  section otherwise, both paths share one function body with an internal branch,
+  not two separate plot functions. Also includes three point/line post-processing
+  utilities ported from the previous implementation (`plot_variable_along_line`,
+  `print_variable_at_point`, `plot_variable_time_series`) — initially dropped in the
+  rewrite, restored on request since they're useful post-processing tools not
+  covered by the snapshot/cross-section plots. `print_variable_at_point`'s
+  out-of-bounds detection was fixed while porting it: the original checked
+  `sampled.n_points == 0`, which never actually triggers for a single-point
+  `PolyData` (PyVista's probe filter always returns one output point per input
+  point, valid or not); now checks `sampled["vtkValidPointMask"]` instead, which is
+  what actually distinguishes a valid sample from an out-of-bounds one.
 - **`simulation_workbench_components.py`** (`core/simulation_components/`, not
   under `simulation_packages/`) — the actual `@wbgeo_component`-decorated Workbench
   components (thin wrappers around the three files above). See section 4.
@@ -69,7 +103,10 @@ combined system: mixing pressure (~1e6 Pa) and temperature (~10s of °C) in one
 matrix is badly conditioned for iterative solvers, regardless of preconditioning.
 Segregating matches the physics anyway: temperature depends on the flow field, but
 pressure never depends on temperature in this model. Each stage is a
-well-conditioned single-physics problem on its own once segregated.
+well-conditioned single-physics problem on its own once segregated. This
+segregation, and everything else in this section, is specific to
+`HydrothermalProblemBuilder`'s own auto-generated physics — a `CustomSfepyBuilder`
+file can implement any physics/staging it wants (section 2.1).
 
 `t1` (the transient stage's end time) defaults to a data-driven thermal diffusion
 timescale (`L² / α`) rather than an arbitrary constant. An arbitrarily short `t1`
@@ -83,12 +120,17 @@ regardless of solver choice.
 validation against a known analytical steady-state profile before trusting the
 coupled result.
 
-## 1.4 Fault support (limited, opt-in)
+## 1.4 Fault support (limited, opt-in) — and why a full fault model isn't feasible today
 
 `fault_zone_properties` (a `RockUnitProperties`) gives cells near any fault their
 own separate material — a "damage zone" band `fault_zone_n_voxels` grid cells wide,
 computed on the structural model's grid via each fault's `get_domain_mask()`, then
 resampled onto mesh cells. Off by default; does not change behavior when unset.
+`CustomSfepyBuilder` gets the identical mechanism via its own `fault_zone_n_voxels`
+field (`compute_fault_zone_cell_mask`, shared with `HydrothermalProblemBuilder` —
+see 1.2) — a custom file references the resulting cell group exactly like any
+lithology group, via `'cells of group {fault_group_id}'`; no material/equation is
+auto-generated for it, that part is left entirely to the custom file's author.
 
 This is deliberately not a complete fault model: all faults in a structural model
 share one combined material region rather than per-fault properties, and only a
@@ -101,22 +143,54 @@ youngest_idx` rule the real `lith_block` computation uses
 restricting a fault to only its older stratigraphic group correctly excludes the
 younger group's cells from the fault zone (764 → 596 affected cells at test
 resolution), confirmed both numerically and visually via `plot_builder_materials`.
+Also verified at the official example's full resolution (125×50×50): 64,688 active
+fault-zone cells, reproduced bit-for-bit identically through both
+`HydrothermalProblemBuilder` and an independently-authored `CustomSfepyBuilder` file
+solving the same problem (section 1.7).
 
-SfePy itself has no fault/interface element for flow problems — checked the
-`terms/` and `examples/` directories directly; the only contact-mechanics module
-that exists is for elastic solid-body mechanical contact, not applicable here. The
-only real lever is per-region material constants, the same mechanism already used
-for lithology.
+**Why not a real fault surface (a 2D interface with its own jump condition), instead
+of a 3D damage-zone band?** This was investigated in depth for the
+`CustomSfepyBuilder` work and explicitly rejected, not just left unexplored:
+
+- SfePy itself has no fault/interface element for flow problems as a named,
+  pre-built term — checked the `terms/` and `examples/` directories directly; the
+  only contact-mechanics module that exists is for elastic solid-body mechanical
+  contact, not applicable here.
+- It *does* have a generic interface jump term, `dw_jump` (`SurfaceJumpTerm` in
+  `sfepy/terms/terms_surface.py`, `integration = 'facet'`) — the standard way to
+  represent a sealing/leaking fault plane as ∫ c·q·(p₁−p₂) across an internal
+  boundary. This is the term a real fault-surface representation would need.
+- `dw_jump` requires a **non-conforming** mesh: independent, duplicated degrees of
+  freedom on each side of the interface, not a single shared node. This was checked
+  empirically, not assumed — on a real faulted unstructured mesh (model2, ~1.7M
+  elements): zero near-duplicate node coordinates anywhere in the mesh (checked via
+  a cKDTree nearest-neighbor search), and 100% of the fault surface's own nodes are
+  shared by tetrahedra on *both* sides of the fault (checked per-node, via a
+  PCA-derived local normal to classify which side each neighboring tetrahedron is
+  on).
+- That's a direct consequence of how `create_unstructured_mesh_data` builds the
+  mesh: `gmsh.model.occ.fragment(...)` (OpenCASCADE boolean fragmentation, in
+  `create_grid_fragment_surface.py`) produces a watertight, conforming partition by
+  design — shared nodes at every internal boundary, including the fault plane. That
+  is the entire point of using `occ.fragment` (a single consistent volume mesh
+  across all lithology/fault domains), and changing it would be a different, far
+  larger meshing-architecture project, not a simulation-side fix.
+- So a real `dw_jump`-based fault surface is not obtainable from this pipeline's
+  mesh output today — not a "harder to implement," a "the mesh this depends on is
+  structurally the wrong shape for it." The damage-zone band (a 3D volume material,
+  no different in kind from any lithology's own volume term) has no such
+  requirement, which is why it's the only fault representation this pipeline
+  supports, for both builder types.
 
 ## 1.5 Lithology-to-mesh mapping — trusted from meshing, not re-derived
 
-`HydrothermalProblemBuilder` needs to know which lithology each mesh block
-corresponds to, and now trusts `MeshResults.cell_data["block_id"]` directly for all
-three mesh types, with one explicit `ValueError` at construction time if it's
-missing entirely. This used to require an independent cKDTree-based fallback for
-unstructured meshes specifically, because meshing computed the mapping internally
-but never wrote it to the output — that gap is now fixed at the source; see
-section 3.2 for the meshing-side details.
+Both builder types need to know which lithology each mesh block corresponds to,
+via the shared `map_mat_id_to_lithology` (section 1.2), which trusts
+`MeshResults.cell_data["block_id"]` directly for all three mesh types, with one
+explicit `ValueError` at construction time if it's missing entirely. This used to
+require an independent cKDTree-based fallback for unstructured meshes specifically,
+because meshing computed the mapping internally but never wrote it to the output —
+that gap is now fixed at the source; see section 3.2 for the meshing-side details.
 
 ## 1.6 Bugs found and fixed vs. the previous implementation
 
@@ -151,23 +225,39 @@ section 3.2 for the meshing-side details.
   now scans stdout for every such line (a transient run does one nonlinear solve
   per time step, so an earlier step failing while a later one happens to succeed
   must not go unnoticed) and raises with the specific failing line(s) if any
-  `cond != 0`.
+  `cond != 0`. This check applies uniformly to both builder types — it lives in
+  `_run_sfepy_input_file`, which both `_run_hydrothermal_problem` and
+  `_run_custom_sfepy_problem` call.
+
+Two more bugs were found and fixed later, while building `CustomSfepyBuilder` —
+both are meshing-side, so they're written up in section 3 (3.4 and 3.6) for the
+meshing reviewer, with only a cross-reference here: an Exodus export block-splitting
+bug with a hardcoded assumption that broke for non-standard block counts, and a
+real MemoryError in unstructured meshing's surface-fitting step at high structural
+grid resolution.
 
 ## 1.7 Verification approach
 
-**Automated test suite**: `tests/tests_simulation_components/` (61 tests). Coverage
-(via `coverage run --source=core.simulation_components -m pytest
-tests/tests_simulation_components/`): `sfepy_hydrothermal_builder.py` 99%,
-`sfepy_hydrothermal_run.py` 91%, `simulation_workbench_components.py` 96%,
-`simulation_visualization.py` 50% (the rest is `plot_*` rendering bodies,
-deliberately not unit-tested — matches this codebase's existing convention of not
-asserting on plot output). Covers: construction validation, rock-unit/fault-zone
-logic (including the exact 764/596 fault-cell-count regression from section 1.4),
-generated SfePy input-file text (validated via `compile()`, not a real solve, where
-possible), the JSON round-trip every `@wbgeo_type` gets between Workbench component
-executions, and several real end-to-end `sfepy-run` invocations (plain, pure-
-conduction-must-be-exactly-static, and fault+flow). Full repository suite: 534
-passed, 1 pre-existing unrelated skip, 0 failed.
+**Automated test suite**: `tests/tests_simulation_components/` (95 tests, all
+passing — 88 fast + 7 slow/end-to-end). Coverage (via `coverage run
+--source=core.simulation_components -m pytest tests/tests_simulation_components/`):
+`sfepy_hydrothermal_builder.py` 98%, `sfepy_hydrothermal_run.py` 90%,
+`simulation_workbench_components.py` 97%, `simulation_visualization.py` 40% (the
+rest is `plot_*` rendering bodies, deliberately not unit-tested — matches this
+codebase's existing convention of not asserting on plot output). Covers:
+construction validation for both builder types, rock-unit/fault-zone logic
+(including the exact 764/596/64,688 fault-cell-count regressions from section
+1.4), generated/uploaded SfePy input-file text (validated via `compile()`, not
+always a real solve, where possible), the JSON round-trip every `@wbgeo_type` gets
+between Workbench component executions, and several real end-to-end `sfepy-run`
+invocations (plain, pure-conduction-must-be-exactly-static, fault+flow, and a
+custom-builder fault-zone case). `test_custom_sfepy_builder.py` alone has 12 tests;
+`test_hydrothermal_run.py` and `test_simulation_workbench_components.py` add 8 more
+covering the dispatcher, the pre-checks, and end-to-end custom-file solves.
+
+**Full repository suite**: 579 passed, 1 pre-existing unrelated skip, 0 failed
+(`python -m pytest`, ~10 minutes, all markers including slow/integration tests
+across every component, not just simulation).
 
 **Manual/physical sanity checks**, still relevant beyond what the automated suite
 covers: running each example end-to-end and checking the result is physically
@@ -179,6 +269,33 @@ point/solver-tolerance noise — isolates the region-splitting and Darcy-velocit
 handoff plumbing from whether the physics itself is right); and the lithology-
 mapping accuracy comparison in section 3.2 (ground-truth cross-check via
 independent nearest-neighbor lookup, not just "did it run without error").
+
+**Exact-equivalence demonstration (new)**: for `CustomSfepyBuilder` specifically,
+"does this actually work, for real" was checked by literally reproducing
+`HydrothermalProblemBuilder`'s own generated input files by hand-equivalent means —
+writing a self-contained custom SfePy file (importing only `sfepy`/`numpy`/
+`pyvista`, zero WBGeo imports) that performs the same two-stage
+pressure→velocity→heat sequence as a module-level Python side effect (exploiting
+that `sfepy-run` genuinely `__import__()`s its input file, executing all top-level
+code before reading `regions`/`materials`/etc.) — then running it through the real
+`CustomSfepyBuilder`/`run_simulation_sfepy` pipeline and diffing against the
+reference. Done for both example models, at each model's own full official
+resolution and real (non-default) rock/fluid/fault-zone properties — not a
+simplified stand-in:
+- **model1** (no fault, implicit structured mesh, 50×50×50, `include_flow=True`,
+  3 heat steps): `T` matched to `0.0` max difference, node-for-node.
+- **model2** (real fault, active damage zone, unstructured mesh, 125×50×50,
+  `include_flow=False`, pure conduction, 2 heat steps): same, `0.0` max difference,
+  including the 64,688-cell fault zone.
+
+Both files are committed as worked examples
+(`examples/synthetic_examples/model{1,2}/input_data/simulation_files/`), wired into
+`WBGeo1.0_model1.py`/`WBGeo1.0_model2.py` right after each script's own
+`HydrothermalProblemBuilder` call, running both builders against the identical
+`structural_model_result`/mesh objects and printing both results' `T` mean for a
+direct side-by-side comparison. This is the concrete answer to "could a real user
+actually replicate what the builder does with the custom path" (section 2.1) —
+not a hypothetical.
 
 The convergence check itself (`_check_convergence`) is unit-tested against
 synthetic stdout strings (converged, non-converged, linesearch-failure, and a
@@ -197,51 +314,66 @@ perturbs the field away from that steady state.
 
 # 2. Limitations
 
-## 2.1 Custom SfePy input file support — researched, not implemented
+## 2.1 Custom SfePy input file support — now implemented (`CustomSfepyBuilder`)
 
-A user cannot currently upload their own raw SfePy input file instead of using
-`HydrothermalProblemBuilder` — only the built-in two-stage Darcy+heat physics is
-supported. This was researched in depth and explicitly deferred, not overlooked:
+A user can now bring a complete, hand-written SfePy input file instead of using
+`HydrothermalProblemBuilder`'s auto-generated one — `CustomSfepyBuilder` (section
+1.2), wired into the Workbench as **Build Custom SfePy Problem** / **Run Custom
+SfePy Simulation** (section 4.1). It is not restricted to hydrothermal physics
+either — the file can define any SfePy problem; only the mesh/region bookkeeping
+is validated (known mesh type, known lithology mapping, no wells/sources, every
+`'cells of group N'` referenced actually exists on the mesh — `check_custom_sfepy_regions`,
+a text-based scan of the file's source for that selector pattern, not an `exec()`
+of the file at construction time — see that function's docstring for why: SfePy
+input files can use either a module-level `regions = {...}` dict or a top-level
+`define()` function, and a text search works for both without ever executing
+untrusted uploaded code before an explicit "Run" action).
 
-- `_run_sfepy_input_file()` is already close to generic — it takes a file *path*,
-  doesn't inspect content, and does the mesh conversion independent of what's in
-  the file. `load_vtk_results()` is fully generic too. What's *not* generic is
-  `run_simulation_sfepy()`, which hardcodes the two-stage pressure→heat sequence
-  with the Darcy-velocity handoff in between.
-- SfePy itself has two mechanisms that would fit a "bring your own file" flow: the
-  `-d "key: value"` / `--define` CLI flag (calls a `define(**kwargs)` function in
-  the input file — SfePy's own idiomatic parameterization mechanism), and
-  `--solve-not --save-regions-as-groups` (builds the real SfePy `Problem` object,
-  resolving every region, without actually solving — a genuine pre-flight
-  validation using SfePy's own region-resolution code).
-- The natural design is a shared `Stage`/`get_stages()` interface that both
-  `HydrothermalProblemBuilder` and a hypothetical `CustomSfepyInput` class
-  implement (each stage knows how to produce its own input file and optionally
-  what to hand to the next stage), so `run_simulation_sfepy()` becomes one loop
-  over `.get_stages()` with zero knowledge of which kind of "problem" produced
-  them. A custom upload becomes a single trivial stage (hands back the given
-  file, no handoff). This would also make `--solve-not` pre-flight validation
-  available uniformly, for builder-generated files too, not just custom ones.
-- Important scope note: a custom upload is *not* how someone would replicate what
-  `HydrothermalProblemBuilder` already does — they would just use the builder
-  directly. The custom path only ever covers a single SfePy file / single physics
-  problem with no inter-stage dependency; the builder's own two-stage
-  pressure→heat pattern (stage 2 needs the Darcy velocity from stage 1) cannot be
-  expressed by one uploaded file at all. Replicating that pattern with genuinely
-  custom physics would mean writing a small Python class against the
-  `get_stages()` interface once it exists — a developer task, not a Workbench
-  upload.
-- Not implemented because it is a real restructuring (the stage-sequencing logic
-  needs to move from the runner into the builder) with no immediate use case
-  driving it. Start from the `Stage`/`get_stages()` refactor whenever this is
-  picked up.
+**The key remaining caveat, by design, not oversight**: `run_simulation_sfepy()`
+dispatches on type and calls either `_run_hydrothermal_problem` (the auto-generated
+two-stage pressure→heat sequence) or `_run_custom_sfepy_problem` (one `sfepy-run`
+invocation, no stage handoff at all) — there is no shared multi-stage orchestration
+mechanism between the two. A user wanting to replicate `HydrothermalProblemBuilder`'s
+own two-stage pattern (or any other multi-stage physics) with `CustomSfepyBuilder`
+must write that staging themselves, inside their own input file, as ordinary
+top-level Python — which works because `sfepy-run` (via
+`sfepy.base.conf.ProblemConf.from_file` → `sfepy.base.base.import_file`) genuinely
+imports the input file as a Python module, executing every top-level statement
+(including, e.g., solving an earlier stage in-process via SfePy's own library API —
+`ProblemConf.from_file` + `Problem.from_conf` + `.solve()` — and stashing the result
+somewhere the "official" conf below it can read) before ever reading the
+`regions`/`materials`/`equations` variables `sfepy-run` actually resolves. This is
+not a workaround or a trick specific to one example — it's a direct, general
+consequence of how SfePy loads input files, documented and demonstrated in the two
+worked examples referenced in section 1.7. It does mean the orchestration logic
+lives in the user's file rather than being reusable/composable the way
+`HydrothermalProblemBuilder`'s two Python methods (`build_pressure_input_file`,
+`build_heat_input_file`) are — there is no lower-effort path today for a multi-stage
+custom problem than writing that sequencing by hand each time.
 
-## 2.2 Two-stage physics only / partial fault support
+An earlier design alternative — a shared `Stage`/`get_stages()` interface that both
+builder types would implement, with `run_simulation_sfepy()` reduced to one generic
+loop over `.get_stages()` — was considered but not built. What's implemented instead
+(a simple `isinstance` dispatch, one non-generic runner function per builder type)
+is less abstract but was sufficient for what actually shipped; `Stage`/`get_stages()`
+remains a reasonable direction if a second built-in multi-stage physics ever needs
+to share plumbing with `HydrothermalProblemBuilder`, but nothing today depends on it.
 
-The pressure→heat segregation with a Darcy-velocity handoff between stages is
-specific to this builder (see 2.1 for the custom-physics story). Fault support is
-intentionally partial (see 1.4) — one shared material for all faults, no exact
-hanging-wall/footwall geometry.
+`CustomSfepyBuilder` also supports the same opt-in fault damage-zone mechanism as
+`HydrothermalProblemBuilder` (`fault_zone_n_voxels`, section 1.4) — a real fault
+surface representation is not available to either builder, for the meshing reason
+explained there, not a builder-specific gap.
+
+## 2.2 Fault support: damage-zone only, for both builder types
+
+See section 1.4 for the concrete investigation and proof: SfePy's own fault/
+interface term (`dw_jump`) requires a non-conforming mesh, and
+`create_unstructured_mesh_data`'s use of `occ.fragment` produces a conforming one
+by construction — not fixable from the simulation side without a materially
+different meshing approach. Both `HydrothermalProblemBuilder` and
+`CustomSfepyBuilder` are limited to the same damage-zone-band representation as a
+result: one shared material region for all faults, no per-fault properties, no
+exact hanging-wall/footwall split.
 
 ## 2.3 No Exodus export for `SimulationResults`
 
@@ -256,7 +388,8 @@ reached / linesearch gave up). It cannot catch a solve that satisfies Newton's
 tolerance trivially against a physically-wrong state — e.g. a badly-scaled system
 where the initial guess already nearly zeroes the residual for the wrong reason.
 Judging physical correctness, not just numerical convergence, still requires the
-sanity-checking approach described in section 1.7.
+sanity-checking approach described in section 1.7. Applies identically to both
+builder types (the check lives in the shared `_run_sfepy_input_file`, section 1.6).
 
 ## 2.5 Structured mesh + fault: blocked, not just discouraged
 
@@ -272,13 +405,26 @@ geometry/connectivity interacting badly with the fault-zone region split).
 This is no longer just a documentation note: `create_structured_mesh_data` now
 actively rejects a faulted `geomodel_result` (see section 3.3) — the underlying
 non-convergence problem still isn't fixed, but the combination can no longer be
-constructed through the normal Workbench path. A residual gap: `mesh_results` and
-`geomodel_result` are still two independent inputs to
-`HydrothermalProblemBuilder`/`build_hydrothermal_problem`, so a structured mesh
-built before this check existed (or from any other source) could still be paired
-with a faulted `geomodel_result` at that stage, recreating the problem. A second,
-redundant check there was proposed and deliberately not implemented (judged a
-fringe case for now) — see section 4.4.
+constructed through the normal Workbench path, for either builder type (the block
+happens at mesh-generation time, before either builder ever sees the mesh). A
+residual gap: `mesh_results` and `geomodel_result` are still two independent inputs
+at the builder level, so a structured mesh built before this check existed (or from
+any other source) could still be paired with a faulted `geomodel_result` there,
+recreating the problem. A second, redundant check at that level was proposed and
+deliberately not implemented (judged a fringe case for now) — see section 4.4.
+
+## 2.6 `CustomSfepyBuilder` does not support wells/sources
+
+`check_mesh_has_no_engineering_objects` rejects any mesh with a well/source block
+(`dim < 2`) outright, for `CustomSfepyBuilder` only. This is stricter than
+`HydrothermalProblemBuilder`, which never rejects such a mesh — it simply never
+generates any equation for those blocks, so they're silently left unsolved (an
+existing, unchanged behavior, not something this pass touched). For a custom file,
+where there is no way to know whether the file's author expected an engineering
+object to be usable, a loud rejection at construction time was judged safer than
+replicating that same silent gap for a case where the user has direct control over
+the input file and might reasonably expect it to matter. Not supported yet, not
+architecturally blocked — a future extension if there's a real use case.
 
 ---
 
@@ -304,7 +450,7 @@ real) all set it automatically now.
 (`tests/tests_meshing_components/mesh_formats/`) construct bare `MeshResults(nodes=...,
 elements=...)` directly to test export logic in isolation, with no need for
 provenance — making the field required would have forced pointless changes to all
-of them for no benefit. Full `tests/tests_meshing_components/` suite (240 tests,
+of them for no benefit. Full `tests/tests_meshing_components/` suite (240+ tests,
 including the additions from section 3.2/3.3) passes.
 
 `export_mesh_results_to_exodus`'s own `type` parameter
@@ -374,24 +520,41 @@ section 2.5's non-convergence finding: structured meshing builds a mesh without
 error for a faulted model (it has no fault-awareness at all), but that combination
 does not reliably converge when later solved with SfePy.
 
-## 3.4 `Exo_format.py`: new `VOLUME_ONLY` export type + a residual known risk
+## 3.4 `Exo_format.py`: hardcoded block-splitting bug — found and fixed
 
-Added `Exo_format.MeshType.VOLUME_ONLY = "volume_only"` — purely additive, behaves
-exactly like `STRUCTURED`/`IMPLICIT` in `write()` (`volume_blocks = all_blocks`, no
-slicing). Needed because `_run_sfepy_input_file()` pre-filters an unstructured
-mesh down to its tetra-only volume blocks before export (see 3.5), and needed a
-way to say "this mesh is already volume-only" without mislabeling its true
-`mesh_type` as `"imp"` just to get that code path. Doesn't touch or reorder any
-existing enum values, so no risk to existing tests depending on
-`"imp"`/`"str"`/`"unstr"`.
+`ExodusInput.write()`'s unstructured-mesh branch used to strip a hardcoded
+`NUM_SIDE_BLOCKS = 6` trailing blocks via a positional slice to separate volume
+blocks from boundary/fault/well/source blocks — correct only when there were
+exactly 6 non-volume blocks total. A model with multiple faults, wells, or sources
+could easily exceed 6, silently corrupting the exported mesh (a mixed
+`{'triangle', 'tetra'}` "volume" block, wrong element count) for any caller with a
+non-standard block count. **This is the "export_exodus regression" flagged in
+review** — found while building `CustomSfepyBuilder` (which, unlike
+`HydrothermalProblemBuilder`, has no fixed assumption about how many non-volume
+blocks a mesh might have) and fixed at the source: `write()` now classifies blocks
+by their actual dimensionality (`volume_blocks = [b for b in all_blocks if b.dim
+== 3]`, `boundary_blocks = [b for b in all_blocks if b.dim == 2]`) instead of a
+fixed count. Verified on a real faulted model2 mesh: the old slice-based logic
+would have produced exactly the corrupted-block symptom described above; the new
+logic correctly isolates the tetra-only volume blocks regardless of how many
+boundary/fault/well/source blocks exist alongside them.
 
-**Residual risk, not fixed**: `Exo_format.py`'s unstructured export path strips a
-hardcoded `NUM_SIDE_BLOCKS = 6` trailing blocks to get the real volume mesh —
-correct only when there are exactly 6 non-volume blocks total. A model with
-multiple faults, wells, or sources can easily exceed 6, silently corrupting the
-exported mesh for any caller relying on that path with a non-standard block count.
-This branch's own use of unstructured export works around it (see 3.5) but does
-not fix `Exo_format.py` itself.
+Added `Exo_format.MeshType.VOLUME_ONLY = "volume_only"` alongside this fix —
+purely additive, behaves exactly like `STRUCTURED`/`IMPLICIT` in `write()`
+(`volume_blocks = all_blocks`, no splitting needed). Needed because
+`_run_sfepy_input_file()` pre-filters an unstructured mesh down to its tetra-only
+volume blocks before export (see 3.5), and needed a way to say "this mesh is
+already volume-only" without mislabeling its true `mesh_type` as `"imp"` just to
+get that code path. Doesn't touch or reorder any existing enum values, so no risk
+to existing tests depending on `"imp"`/`"str"`/`"unstr"`.
+
+`export_mesh_results`'s Exodus branch had a related bug fixed at the same time: it
+called `export_mesh_results_to_exodus(mesh)` with no `type=` argument at all, which
+silently defaulted to `UNSTRUCTURED` regardless of the mesh's true type — crashing
+for implicit/structured meshes routed through that generic entry point. Fixed by
+adding `exodus_type_for(mesh_results) -> MeshType`, which reads the mesh's own
+`MeshResults.mesh_type` (section 3.1) to pick the right `Exo_format.MeshType`
+automatically.
 
 ## 3.5 GMSH + Windows `CreateProcess` conflict — root-caused, worked around in simulation code
 
@@ -420,13 +583,55 @@ whoever owns that infrastructure. A more thorough (unimplemented) fix would be f
 `create_unstructured_mesh_data` to run GMSH in a child process, so the parent
 process's `CreateProcess` behavior is never affected in the first place.
 
+## 3.6 Unstructured meshing: real MemoryError in surface-fitting — found and fixed (new)
+
+`create_surface_grid` (`core/meshing_components/explicit/unstructured/
+create_grid_fragment_surface.py`) fits a `scipy.interpolate.Rbf` per surface, then
+evaluates it over a grid to hand GMSH a B-spline-fittable point cloud.
+`Rbf.__call__` allocates one dense `(n_eval_points × n_source_points)` float64
+distance matrix internally, in a single call — at a fine-enough structural grid
+resolution, this produced a real, reproducible `MemoryError`
+(`Unable to allocate 2.08 GiB for an array with shape (25000, 11180)`) while
+building a model2 test mesh: the eval grid is capped at `250×100 = 25,000` points
+(`max_n_gx`/`max_n_gy`), but the number of *source* points (deduplicated raw
+surface points) scales directly with structural-grid resolution and is
+**uncapped** — 11,180 source points here, from a 125×50×50 structural grid.
+
+**Fixed**: `_evaluate_rbf_chunked(rbf, n_source_points, *coord_grids)` evaluates the
+grid in batches sized to keep each dense allocation under ~256 MB, instead of one
+allocation for the whole eval grid — same fitted weights, same distance function,
+just computed in smaller pieces and concatenated. Verified numerically equivalent
+to a direct (unchunked) call to float64 machine precision (differences on the
+order of 1e-10–1e-14, from summation-order non-associativity across chunk
+boundaries — not a correctness change). Re-verified the originally-crashing case:
+building the model2 mesh at full 125×50×50 resolution with real mesh settings
+(`tolerance=50, mesh_size=20, curve_mesh_size=5, ...`, matching
+`WBGeo1.0_model2.py`) now completes without error, on a machine with less free RAM
+(~3.5 GB) than the amount that originally crashed (~6.2 GB).
+
+**Residual risk, not fixed**: this only bounds the *evaluation*-side allocation.
+`Rbf`'s own *fit* step (solving for interpolation weights) still builds a dense
+`(n_source × n_source)` matrix internally — at 11,180 source points that's already
+~1 GB, and since source-point count is uncapped, a sufficiently fine structural
+grid could still hit a MemoryError at fit time, before evaluation is ever reached.
+Not yet observed in practice (fit-side cost only exceeded eval-side cost once
+`n_source` approached the eval-grid cap in the case that was fixed), but a
+denser/larger model than either example here could reach it. Two options if this
+becomes a real problem: cap/bin the number of source points before fitting (the
+existing dedup is exact-coincidence-only, not spatial downsampling), or switch from
+the legacy `scipy.interpolate.Rbf` to `scipy.interpolate.RBFInterpolator` with a
+`neighbors=` parameter (local/sparse RBF using only the k nearest source points per
+evaluation point, avoiding both the `O(N²)` fit and `O(M·N)` eval matrices
+entirely) — the latter would change results from exact to a well-controlled
+approximation, not a drop-in swap.
+
 ---
 
 # 4. Workbench wiring (`py_api_wbgeo` / DSL layer)
 
 This section is for whoever reviews the Workbench/DSL side specifically.
 
-## 4.1 New components
+## 4.1 Components
 
 `core/simulation_components/simulation_workbench_components.py` (new file — the
 old `simulation_workbench_components.py`-equivalent was deleted along with the
@@ -439,15 +644,25 @@ of its own:
   scalar settings (`include_flow`, `enable_fault_zone`, `fault_zone_n_voxels`,
   `t0`/`t1`/`num_steps`, boundary values, solver settings), returns a
   `HydrothermalProblemBuilder`.
-- **Run Hydrothermal Simulation** (`run_hydrothermal_simulation`) — thin wrapper
-  over `run_simulation_sfepy`.
+- **Build Custom SfePy Problem** (`build_custom_sfepy_problem`, new) — takes an
+  uploaded `input_file`, `mesh_results`, optional `geomodel_result`, and optional
+  `fault_zone_n_voxels`; decodes and validates the file (UTF-8, mesh/region
+  bookkeeping, section 2.1), returns a `CustomSfepyBuilder`. Not restricted to
+  hydrothermal physics.
+- **Run Hydrothermal Simulation** (`run_hydrothermal_simulation`) and **Run Custom
+  SfePy Simulation** (`run_custom_sfepy_simulation`, new) — both thin wrappers over
+  the same `run_simulation_sfepy` dispatcher (section 1.2); kept as two Workbench
+  components (matching each one's builder) rather than one polymorphic component,
+  for the same reason `build_*` is split in two: distinct input shapes
+  (`hydrothermal_problem: HydrothermalProblemBuilder` vs. `sfepy_problem:
+  CustomSfepyBuilder`) need distinct typed connector sockets in the DSL.
 - **Export Simulation Results** (`export_simulation_results`) — thin wrapper over
   the run-file function of the same name.
 - Two inspectors: **Plot Variable (Final Time)** and **Plot Cross Section 2D**,
   attached to `SimulationResults`, matching the existing
   `StructuralModelResults`/`MeshResults` inspector pattern.
 
-## 4.2 `HydrothermalProblemBuilder` as a `@wbgeo_type`
+## 4.2 `HydrothermalProblemBuilder`/`CustomSfepyBuilder` as `@wbgeo_type`s
 
 Converted from a plain Python class to a pydantic dataclass decorated with
 `@wbgeo_type` (needed so it can flow as a typed value between Workbench component
@@ -466,6 +681,15 @@ reason (so `Dict[str, RockUnitProperties]` round-trips through JSON) — matchin
 how the structural-modeling interpolator parameter types (`RBFParams`, etc.) are
 plain `BaseModel`s too, not `@wbgeo_type`s themselves.
 
+`CustomSfepyBuilder` is a `@wbgeo_type` dataclass of the same shape and for the
+same reason — its `input_file_contents: str` field (not a file path or open
+handle) is exactly what survives that JSON round trip; a temp file path assigned
+at construction time would not (this is also why `_run_custom_sfepy_problem`
+writes the content to a fresh temp file at *run* time, not construction time, same
+as `HydrothermalProblemBuilder`'s own generated files). Its own derived attributes
+(`mesh_type`, `mat_id_to_lithology`, `fault_zone_cell_mask`, `fault_group_id`)
+follow the identical non-declared/recomputed-in-`__post_init__` pattern.
+
 ## 4.3 SmartInput sidebar for rock/fluid/fault-zone properties
 
 `build_hydrothermal_problem`'s `options` parameter is a `SmartInput`-annotated
@@ -474,7 +698,10 @@ per-rock-unit properties, fluid properties, and fault-zone properties — mirror
 `structural_workbench_components.py`'s `structural_modeling_smart_options` pattern
 for per-group interpolation parameters (same shape of problem: the set of rock
 unit names is only known once `geomodel_result` is connected, so the form has to
-be built dynamically from it).
+be built dynamically from it). `build_custom_sfepy_problem` has no equivalent —
+by design, a custom file's own `materials` block already carries whatever
+properties its author wrote directly into the SfePy syntax, so there is nothing
+for a dynamic form to configure.
 
 `enable_fault_zone` is a **plain checkbox parameter**, not an in-form toggle
 (unlike the interpolation-method selector, which does use an in-form `CtrlIf`) —
@@ -495,13 +722,13 @@ PyPI); installable via
 `pip install "git+https://github.com/WBGeo/nodesapi.git@<version>#subdirectory=py_api"`
 (the installable package lives in a `py_api/` subdirectory, not the repo root).
 
-## 4.4 Two new blocked-path pre-checks (`input_checks`)
+## 4.4 Blocked-path pre-checks (`input_checks`)
 
-Both follow the `@wbgeo_component(input_checks=[...])` pattern from
+All follow the `@wbgeo_component(input_checks=[...])` pattern from
 docs/developers/components.md — blocking a Workbench connection that runs without
 error but was never actually intended, rather than leaving it as a silent trap.
-Both are wired as `input_checks=` **and** called explicitly inside the component
-function body (pre-checks can be skipped by a direct Python caller).
+Every one of these is wired as `input_checks=` **and** called explicitly inside the
+component function body (pre-checks can be skipped by a direct Python caller).
 
 1. **Structured meshing rejects faulted structural models** — section 3.3.
 2. **`build_hydrothermal_problem` rejects a mesh with no known `mesh_type` or no
@@ -512,24 +739,47 @@ function body (pre-checks can be skipped by a direct Python caller).
    `check_mesh_has_known_type`/`check_mesh_has_lithology_mapping` functions so the
    same validation is reused as a proper Workbench pre-check instead of only
    surfacing as a runtime construction error.
+3. **`build_custom_sfepy_problem` reuses both checks above, plus a third
+   (new)**: `check_mesh_has_no_engineering_objects` — section 2.6. Note this third
+   check is *not* applied to `build_hydrothermal_problem` — that path's existing,
+   unchanged behavior is to silently leave engineering-object blocks unsolved
+   rather than reject them, and this pass didn't change that (see 2.6 for why the
+   two paths differ here).
+
+   A related but distinct validation, `check_custom_sfepy_regions` (the
+   `'cells of group N'` sanity check, section 2.1), is **not** wired as a Workbench
+   `input_checks=` pre-check — it runs unconditionally inside
+   `CustomSfepyBuilder.__post_init__` instead, since it needs the *decoded file
+   content* (only available after `build_custom_sfepy_problem` has already read
+   the uploaded stream), not just the typed inputs a pre-check receives before the
+   component body runs.
 
 **Proposed, not implemented**: a redundant check specifically for "structured mesh
-+ faulted `geomodel_result`" at the `build_hydrothermal_problem` level too, since
-`mesh_results`/`geomodel_result` are two independent inputs there with nothing
-verifying they correspond to each other — see section 2.5. Deferred as a fringe
-case for now.
++ faulted `geomodel_result`" at the `build_hydrothermal_problem`/
+`build_custom_sfepy_problem` level too, since `mesh_results`/`geomodel_result` are
+two independent inputs there with nothing verifying they correspond to each
+other — see section 2.5. Deferred as a fringe case for now.
 
 ## 4.5 Test coverage for all of the above
 
 `tests/tests_simulation_components/test_simulation_workbench_components.py` covers
 `build_hydrothermal_problem`'s options-application logic, the SmartInput form
-build/parse round trip, the two `input_checks` pre-checks (at the underlying
-function level — `@wbgeo_component`'s `input_checks=` wiring itself can't be
-introspected outside a real Workbench backend instance, since the decorator is a
-no-op when none is registered), and the thin wrappers via `monkeypatch` (no real
-solve needed for those). `tests/tests_meshing_components/explicit/structured_mesh/test_structured_mesh.py`
-and the new `.../unstructured_mesh/test_lithology_mapping_mode.py` cover the
-meshing-side pieces from section 3.
+build/parse round trip, `build_custom_sfepy_problem`'s file-decoding and
+pre-checks, and the thin wrappers via `monkeypatch` (no real solve needed for
+those). `tests/tests_simulation_components/test_custom_sfepy_builder.py` (12
+tests) covers `CustomSfepyBuilder` construction/validation directly: basic
+construction, optional `geomodel_result`, each rejection path (unknown mesh type,
+no lithology mapping, unknown referenced group, well/source block present), the
+JSON round-trip, fault-zone-off-by-default and its `geomodel_result`-required
+guard, fault-zone detection on a real faulted model, and a custom file
+successfully referencing the fault group. `test_hydrothermal_run.py` adds the
+dispatcher test (`run_simulation_sfepy` routes to the right runner by type),
+fault-zone-args passthrough, and two real end-to-end `sfepy-run` invocations (plain
+custom file, and custom file with an active fault zone).
+`tests/tests_meshing_components/explicit/structured_mesh/test_structured_mesh.py`,
+`.../unstructured_mesh/test_lithology_mapping_mode.py`, and
+`.../unstructured_mesh/test_creare_surface_grid.py` (the last one covering
+`_evaluate_rbf_chunked`, section 3.6) cover the meshing-side pieces from section 3.
 
 Two incidental test-infrastructure issues surfaced and are worth knowing about:
 - `tests/test_component_signatures.py` had a real import-order fragility (fixed):
