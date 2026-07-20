@@ -18,14 +18,14 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import meshio
 import numpy as np
 
 from core.object_components import MeshResults, SimulationResults
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
-from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
+from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results, SfepyOutputType
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
     HydrothermalProblemBuilder,
     CustomSfepyBuilder,
@@ -91,10 +91,10 @@ def _run_sfepy_input_file(
     output_dir: Optional[str] = None,
     fault_zone_cell_mask: Optional[np.ndarray] = None,
     fault_group_id: Optional[int] = None,
-) -> Dict[str, object]:
+) -> SfepyOutputType:
     """
     Run a generated SfePy input file against mesh_results and return
-    {"output_dir": ..., "is_temp": ...} (same shape load_vtk_results()
+    a SfepyOutputType(output_dir, is_temp) (the shape load_vtk_results()
     already expects, so it's a drop-in replacement at the call site).
 
     fault_zone_cell_mask/fault_group_id (both from
@@ -246,7 +246,7 @@ def _run_sfepy_input_file(
             except OSError:
                 pass
 
-    return {"output_dir": output_dir, "is_temp": is_temp}
+    return SfepyOutputType(output_dir=output_dir, is_temp=is_temp)
 
 
 def _run_hydrothermal_problem(

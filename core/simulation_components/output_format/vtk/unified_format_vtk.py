@@ -4,11 +4,24 @@ import shutil
 import pyvista as pv
 import numpy as np
 import re
-from py_api_wbgeo.nodesapi import wbgeo_component
+from dataclasses import dataclass
+from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type
 from core.object_components import SimulationResults
 from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
+
+
+@wbgeo_type(name='SfepyOutputType', color='pink', identifier='SfepyOutputType')
+@dataclass
+class SfepyOutputType:
+    """
+    Where a completed SfePy run's raw VTK output lives, and whether
+    load_vtk_results() should delete it after loading -- the shape
+    _run_sfepy_input_file() returns and load_vtk_results() consumes.
+    """
+    output_dir: str
+    is_temp: bool = False
 
 
 ####################
@@ -47,15 +60,15 @@ def extract_time(filename: str) -> Optional[Union[float, int]]:
     identifier='wbgeo::load_VTK_results',
     return_name='results',
 )
-def load_vtk_results(sim_input: Union[dict, str]) -> SimulationResults:
+def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResults:
 
-    # NORMALIZE INPUT (DICT OR DIRECT PATH)
+    # NORMALIZE INPUT (SfepyOutputType OR DIRECT PATH)
     if isinstance(sim_input, str):
         output_dir = sim_input
         is_temp = False
     else:
-        output_dir = sim_input["output_dir"]
-        is_temp = sim_input.get("is_temp", False)
+        output_dir = sim_input.output_dir
+        is_temp = sim_input.is_temp
 
     vtk_files = []
     for root, _, files in os.walk(output_dir):
