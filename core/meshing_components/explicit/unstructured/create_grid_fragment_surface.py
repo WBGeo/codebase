@@ -121,6 +121,37 @@ def plot_all_surfaces_together(interpolated_surfaces: List[NDArray[np.float64]])
     plt.show()
 
 
+# scipy's Rbf.__call__ builds one dense (n_eval_points x n_source_points)
+# float64 distance matrix per call -- for a fine structural grid this can
+# reach tens of thousands of source points, and the eval grid can be up to
+# max_n_gx * max_n_gy points, which has produced real MemoryErrors (e.g.
+# 25000 x 11180 -> 2.08 GiB). Chunking the eval points bounds each dense
+# allocation to roughly this many bytes, with no change to the interpolated
+# result -- same fitted weights, same distance function, just evaluated in
+# smaller pieces and concatenated.
+_RBF_EVAL_CHUNK_BYTES = 256 * 1024 ** 2
+
+
+def _evaluate_rbf_chunked(rbf: Rbf, n_source_points: int, *coord_grids: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Evaluate a fitted scipy Rbf over one or more coordinate grids without
+    allocating the full (n_eval_points x n_source_points) dense distance
+    matrix in a single call. See _RBF_EVAL_CHUNK_BYTES for why.
+    """
+    shape = coord_grids[0].shape
+    flat_coords = [g.ravel() for g in coord_grids]
+    n_eval_points = flat_coords[0].size
+
+    chunk_size = max(1, _RBF_EVAL_CHUNK_BYTES // (n_source_points * 8))
+    if chunk_size >= n_eval_points:
+        return rbf(*coord_grids).reshape(shape)
+
+    chunks = [
+        rbf(*(c[start:start + chunk_size] for c in flat_coords))
+        for start in range(0, n_eval_points, chunk_size)
+    ]
+    return np.concatenate(chunks).reshape(shape)
+
+
 def create_surface_grid(cleaned_surfaces: List[Tuple[int, NDArray[np.float64]]], smooth: float = 1e-5) -> List[NDArray[np.float64]]:
     """
     Generate interpolated surface grids from cleaned geological surface points.
@@ -210,14 +241,14 @@ def create_surface_grid(cleaned_surfaces: List[Tuple[int, NDArray[np.float64]]],
                                              np.linspace(gy_min, gy_max, n_gy))
 
                 rbf = Rbf(x_cleaned, y_cleaned, z_cleaned, function='multiquadric', epsilon=2, smooth=smooth)
-                z_interp_real = rbf(grid_x, grid_y)
+                z_interp_real = _evaluate_rbf_chunked(rbf, len(x_cleaned), grid_x, grid_y)
                 grid_x_real, grid_y_real = grid_x, grid_y
         else:
                 grid_y, grid_z = np.meshgrid(np.linspace(gy_min, gy_max, n_gx),
                                              np.linspace(gz_min, gz_max, n_gy))
 
                 rbf = Rbf(y_cleaned, z_cleaned, x_cleaned, function='multiquadric', epsilon=2, smooth=smooth)
-                x_interp_real = rbf(grid_y, grid_z)
+                x_interp_real = _evaluate_rbf_chunked(rbf, len(y_cleaned), grid_y, grid_z)
                 grid_y_real, grid_z_real = grid_y, grid_z
 
         # Final stacking
