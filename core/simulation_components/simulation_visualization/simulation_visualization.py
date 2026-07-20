@@ -13,7 +13,7 @@ consistent look across the codebase's 3D plots, rather than this package's
 own ad-hoc defaults.
 """
 import logging
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,8 +24,10 @@ from scipy.interpolate import griddata
 from core.meshing_components.mesh_format.vtk.VTK_format import VTKInputs
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+    CustomSfepyBuilder,
     HydrothermalProblemBuilder,
     RockUnitProperties,
+    enumerate_rock_units,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,12 @@ logger = logging.getLogger(__name__)
 # stand out distinctly rather than risk blending in with a lithology's own
 # color (see plot_builder_materials).
 _FAULT_ZONE_COLOR = "#111111"
+
+# CustomSfepyBuilder has no RockUnitProperties-based fault_zone_properties.name
+# to pull a real name from (its fault-zone cells are only a group-id
+# selection -- see CustomSfepyBuilder.fault_group_id) -- plot_builder_materials
+# uses this fixed label for that material instead, when applicable.
+_CUSTOM_BUILDER_FAULT_ZONE_NAME = "fault_zone"
 
 # Human-readable label (with units, where known) for a solved variable's
 # raw name -- falls back to the raw name itself for anything not listed
@@ -536,24 +544,36 @@ def plot_variable_time_series(
 # ----------------------------------------------------------------------
 
 def plot_builder_materials(
-    builder: HydrothermalProblemBuilder,
+    builder: Union[HydrothermalProblemBuilder, CustomSfepyBuilder],
     style: str = "surface",
     show_edges: bool = True,
     show_plotter: bool = True,
 ) -> pv.Plotter:
     """
     Plot builder.mesh_results in 3D, one solid color per distinct material
-    name from builder.compute_cell_materials() (lithologies, plus the fault
-    zone if builder.fault_zone_properties is set), with a legend -- lets a
+    (lithologies, plus the fault zone if active), with a legend -- lets a
     mistaken material assignment (e.g. a fault zone landing in the wrong
     place, or fault_activity not restricting it as expected) be caught by
     eye before running a solve that can take a while, rather than only after.
 
+    Works for both HydrothermalProblemBuilder and CustomSfepyBuilder
+    results. HydrothermalProblemBuilder has a structured rock_properties/
+    fault_zone_properties (RockUnitProperties) for every material, so each
+    legend entry there gets a one-line summary (porosity/permeability/
+    thermal conductivity/heat capacity, the actual values this solve
+    uses). CustomSfepyBuilder has no such object -- a custom file writes
+    its `materials` block directly in raw SfePy syntax, so there's nothing
+    to summarize -- its legend entries are the bare material name instead.
+    Either way requires builder.geomodel_result (raises a clear error for
+    a CustomSfepyBuilder built with geomodel_result=None): that's also
+    where lithology names, colors, and grouping come from, for both
+    builder types.
+
     Reuses core.meshing_components.mesh_format.vtk.VTK_format.VTKInputs to
     build the combined PyVista grid, rather than re-implementing the meshio
     -> PyVista conversion -- that class already iterates mesh_results.elements
-    in the same block/cell order compute_cell_materials() does, so the two
-    arrays line up without needing a separate ordering assumption.
+    in the same block/cell order the per-cell materials array does, so the
+    two line up without needing a separate ordering assumption.
 
     Legend matches structural_modeling_visualization.plot_structural_model_3D's
     legend for the *same* structural model (builder.geomodel_result is that
@@ -567,12 +587,8 @@ def plot_builder_materials(
       uses for it ("#808080").
     - Legend entries are grouped under a bold-ish header row per
       structural_groups entry (its real group name, e.g. "Strat_Series1"),
-      each followed by "• element_name" bullets in that element's color,
-      each in turn followed by a one-line summary of that material's
-      RockUnitProperties (porosity/permeability/thermal conductivity/heat
-      capacity, the actual values this solve uses) -- not a flat list of
-      bare material names, and not something you'd otherwise see without
-      cross-referencing the builder's rock_properties dict by hand.
+      each followed by "• element_name" bullets in that element's color --
+      not a flat list of bare material names.
     - Top-to-bottom order matches plot_structural_model_3D's: a "Fault
       Zone" section first (if active), then structural_groups in their
       stored order (youngest group at the top, oldest at the bottom -- the
@@ -587,12 +603,41 @@ def plot_builder_materials(
     zoomable view. Set False for anything above roughly 50k cells, or for
     a clean, publication/gallery-style render.
     """
-    materials = builder.compute_cell_materials()
+    is_custom = isinstance(builder, CustomSfepyBuilder)
+
+    if is_custom:
+        if builder.geomodel_result is None:
+            raise ValueError(
+                "plot_builder_materials needs builder.geomodel_result to resolve "
+                "lithology names and colors -- construct the CustomSfepyBuilder "
+                "with geomodel_result set."
+            )
+        # Same per-cell partition HydrothermalProblemBuilder.compute_cell_materials()
+        # builds (mat_id_to_lithology + fault_zone_cell_mask, in mesh_results.elements
+        # block order), just resolving names via the standalone enumerate_rock_units
+        # instead of a rock_properties dict -- CustomSfepyBuilder has none.
+        lith_names = dict(enumerate_rock_units(builder.geomodel_result))
+        names = []
+        offset = 0
+        for mat_id, lith_id in builder.mat_id_to_lithology.items():
+            block = builder.mesh_results.elements[mat_id]
+            n = len(block.data)
+            block_names = np.full(n, lith_names[lith_id], dtype=object)
+            if builder.fault_zone_cell_mask is not None:
+                block_mask = builder.fault_zone_cell_mask[offset:offset + n]
+                block_names[block_mask] = _CUSTOM_BUILDER_FAULT_ZONE_NAME
+            names.append(block_names)
+            offset += n
+        materials = np.concatenate(names) if names else np.array([], dtype=object)
+        fault_name = _CUSTOM_BUILDER_FAULT_ZONE_NAME if builder.fault_group_id is not None else None
+    else:
+        materials = builder.compute_cell_materials()
+        fault_name = builder.fault_zone_properties.name if builder.fault_zone_properties is not None else None
+
     present = set(np.unique(materials).tolist())
     grid = VTKInputs(builder.mesh_results.nodes, builder.mesh_results.elements).create_mesh()
 
     frame = builder.geomodel_result.structural_frame
-    fault_name = builder.fault_zone_properties.name if builder.fault_zone_properties is not None else None
 
     color_by_name: Dict[str, str] = {"basement": "#808080"}
     for group in frame.structural_groups:
@@ -601,13 +646,17 @@ def plot_builder_materials(
     if fault_name is not None:
         color_by_name[fault_name] = _FAULT_ZONE_COLOR
 
-    properties_by_name: Dict[str, RockUnitProperties] = dict(builder.rock_properties)
-    if fault_name is not None:
-        properties_by_name[fault_name] = builder.fault_zone_properties
+    if not is_custom:
+        properties_by_name: Dict[str, RockUnitProperties] = dict(builder.rock_properties)
+        if fault_name is not None:
+            properties_by_name[fault_name] = builder.fault_zone_properties
 
     def legend_entry(name: str) -> Tuple[str, str, str]:
-        """(material_name, legend_label, color) for one material -- label includes its rock properties."""
-        label = f"• {name}  ({_format_rock_properties(properties_by_name[name])})"
+        """(material_name, legend_label, color) for one material -- label includes rock properties when available."""
+        if is_custom:
+            label = f"• {name}"
+        else:
+            label = f"• {name}  ({_format_rock_properties(properties_by_name[name])})"
         return name, label, color_by_name[name]
 
     # (header, [(material_name, legend_label, color), ...])
