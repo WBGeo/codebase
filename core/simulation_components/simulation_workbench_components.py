@@ -218,6 +218,19 @@ def build_hydrothermal_problem(
     identifier='wbgeo::simulation_build_custom_sfepy_problem',
     return_name='sfepy_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping, check_mesh_has_no_engineering_objects],
+    # Explicit override: the framework appears to auto-infer is_object_type=True
+    # (a "loading component", presented collapsed into a single node -- see
+    # docs/developers/components.md's is_object_type row) purely from the
+    # presence of the input_file: BasicallyABufferedFile parameter, even
+    # though this component also has real connectable inputs
+    # (mesh_results/geomodel_result), unlike the docs' own pure-file-input
+    # import example. Confirmed live: registered with objectType=true,
+    # typeMagic=2, vs Build Hydrothermal Problem's objectType=false,
+    # typeMagic=0 -- that collapsed presentation is why the file upload
+    # widget didn't render correctly and why Plot Materials appeared
+    # directly on this node instead of on a separate result box. Forcing
+    # False here matches Build Hydrothermal Problem's normal presentation.
+    is_object_type=False,
 )
 def build_custom_sfepy_problem(
     input_file: BasicallyABufferedFile,

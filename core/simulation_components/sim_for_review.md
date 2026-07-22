@@ -814,3 +814,42 @@ Two incidental test-infrastructure issues surfaced and are worth knowing about:
   issue as section 3.5) — not fixed, worked around by avoiding a second
   independent real-meshing call per test file rather than chasing the GMSH
   internals.
+
+## 4.6 `Build Custom SfePy Problem`'s `mesh_results` port not shown by default (unresolved, DSL-side)
+
+Live in the Docker Workbench: `Build Custom SfePy Problem`'s `mesh_results`
+port (required, no default, same `MeshResults` type `Build Hydrothermal
+Problem`'s equivalent port uses) is **not rendered by default** the way every
+other component's required ports are — it only appears once you start
+dragging a connection toward it. The connection itself works fine once
+you've hover-triggered it; this is a display-only quirk.
+
+Root cause, as far as this pass could trace it: `Build Custom SfePy Problem`
+registers with `typeMagic: 2` (confirmed via the live `ComponentDefinition`
+JSON `py_runner` sends the backend), vs `0` for every other Simulation
+component including `Build Hydrothermal Problem`. Unlike `is_object_type`
+(section 4.1's `SfepyProblem` note — also auto-inferred here, but overridable
+via an explicit `is_object_type=False`, which fixed a related collapsed-node
+issue), `typeMagic` is **not** one of `ComponentDecoratorOptParams`' accepted
+keys (`input_checks`, `color`, `border_color`, `group`, `tags`, `return_name`,
+`is_object_type`, `description`, `requires_package`, `requires_capabilities`)
+— it appears to be computed purely from the function signature, with no
+override available from `@wbgeo_component` at all.
+
+Grepping the whole codebase for `BasicallyABufferedFile`: `Build Custom SfePy
+Problem` (`input_file: BasicallyABufferedFile` alongside `mesh_results`/
+`geomodel_result`) is the **only** component anywhere in `core/` that combines
+a file-upload input with other required typed connector inputs. Every other
+file-taking component is either a pure export (file as the *return* type:
+`export_simulation_results`, `export_mesh_results`) or a pure loader with no
+other connector-typed inputs at all (`core/loading_components/geo_input_data.py`'s
+three `is_object_type=True` components, e.g. `structural_input_data`). So this
+exact shape has no working precedent in this codebase to compare against —
+plausibly why the frontend's default-port-rendering logic doesn't handle it
+the same way.
+
+Not fixed this pass, since it needs either DSL/frontend-side changes (outside
+`core/`, so outside what this pass could touch) or a restructuring into two
+components (a pure `is_object_type=True` file-upload loader feeding a
+separate builder with no file port, matching the precedent above) — deferred
+as a UX rough edge, not a functional blocker, per discussion with Jan.
