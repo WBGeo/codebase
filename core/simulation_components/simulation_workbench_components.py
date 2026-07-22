@@ -26,7 +26,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run
     export_simulation_results as _export_simulation_results,
 )
 from core.simulation_components.simulation_visualization.simulation_visualization import (
-    plot_variable_at_a_time, plot_cross_section_2D,
+    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials,
 )
 
 # -----------------------------------------------------------------------------
@@ -330,19 +330,52 @@ def export_simulation_results(simulation_result: SimulationResults, format: str 
 # (structural_workbench_components.py / meshing_visualization.py)
 # -----------------------------------------------------------------------------
 
+@wbgeo_component(identifier='wbgeo::inspect_hydrothermal_problem_plot_materials',
+                 title='Plot Materials',
+                 description='Plots the mesh colored one solid color per material '
+                             '(lithologies, plus the fault zone if active), with a '
+                             'legend of the properties each material actually uses -- '
+                             'a pre-flight check to catch a wrong material/fault-zone '
+                             'assignment before running the (possibly slow) solve.')
+@wbgeo_inspector()
+def inspect_hydrothermal_problem_plot_materials(
+    hydrothermal_problem: HydrothermalProblemBuilder, _inspector: InspectorHelper):
+    plot_builder_materials(hydrothermal_problem)
+
+
+@wbgeo_component(identifier='wbgeo::inspect_custom_sfepy_problem_plot_materials',
+                 title='Plot Materials',
+                 description='Plots the mesh colored one solid color per material '
+                             '(lithologies, plus the fault zone if active) -- a '
+                             'pre-flight check to catch a wrong material/fault-zone '
+                             'assignment before running the (possibly slow) solve. '
+                             'Requires the builder to have been built with a '
+                             'geomodel_result (used to resolve lithology names/colors).')
+@wbgeo_inspector()
+def inspect_custom_sfepy_problem_plot_materials(
+    sfepy_problem: CustomSfepyBuilder, _inspector: InspectorHelper):
+    plot_builder_materials(sfepy_problem)
+
+
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_variable_at_a_time',
                  title='Plot Variable (Final Time)',
-                 description='Plots temperature at the final solved time step.')
+                 description='Plots "T" at the final solved time step if present, else '
+                             'whatever variable the result actually has -- a custom SfePy '
+                             'problem is not restricted to hydrothermal physics.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_variable_at_a_time(
     simulation_result: SimulationResults, _inspector: InspectorHelper):
-    final_time = max(simulation_result.nodes_by_time.keys())
-    plot_variable_at_a_time(simulation_result, "T", time=final_time, cmap="coolwarm", show_edges=True)
+    # var_name/time left at their defaults ("T" if present else whatever
+    # field exists, at the final time step) -- see
+    # simulation_visualization.plot_variable_at_a_time/_default_var_name.
+    plot_variable_at_a_time(simulation_result, cmap="coolwarm", show_edges=True)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_cross_section_2D',
                  title='Plot Cross Section 2D',
-                 description='Plots a temperature cross-section, comparing the initial and final time steps.')
+                 description='Plots a cross-section of "T" if present, else whatever '
+                             'variable the result actually has, comparing the initial and '
+                             'final time steps.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_cross_section_2D(
     simulation_result: SimulationResults, _inspector: InspectorHelper):
@@ -353,4 +386,6 @@ def inspect_simulation_result_plot_cross_section_2D(
     # regardless of the model's actual extent.
     first_time = min(simulation_result.nodes_by_time.keys())
     origin = tuple(simulation_result.nodes_by_time[first_time].mean(axis=0))
-    plot_cross_section_2D(simulation_result, "T", origin=origin, cmap="coolwarm")
+    # var_name left at its default ("T" if present else whatever field
+    # exists) -- see simulation_visualization._default_var_name.
+    plot_cross_section_2D(simulation_result, origin=origin, cmap="coolwarm")

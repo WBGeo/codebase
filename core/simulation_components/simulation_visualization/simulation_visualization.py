@@ -128,14 +128,32 @@ def build_grid_from_class(sim: SimulationResults, time: float) -> pv.Unstructure
     return mesh
 
 
+def _default_var_name(sim: SimulationResults, time: float) -> str:
+    """
+    Pick a variable to plot when none was given: "T" if present (this
+    pipeline's own hydrothermal convention), otherwise whatever field the
+    sim actually has at `time` -- a CustomSfepyBuilder result can solve
+    arbitrary physics and isn't guaranteed to produce a "T" field at all.
+    """
+    node_data = sim.node_data_by_time.get(time, {})
+    cell_data = sim.cell_data_by_time.get(time, {})
+    if "T" in node_data or "T" in cell_data:
+        return "T"
+    for name in node_data:
+        return name
+    for name in cell_data:
+        return name
+    raise ValueError(f"sim has no data fields at time {time} to plot.")
+
+
 # ----------------------------------------------------------------------
 # Single-snapshot plots
 # ----------------------------------------------------------------------
 
 def plot_variable_at_a_time(
     sim: SimulationResults,
-    var_name: str,
-    time: float,
+    var_name: Optional[str] = None,
+    time: Optional[float] = None,
     cmap: str = "viridis",
     show_edges: bool = False,
     edge_color: str = "grey",
@@ -157,7 +175,19 @@ def plot_variable_at_a_time(
     data defined on a 2D surface just as well as the more common
     isosurface-of-a-3D-volume use case) -- a 3D analogue of the contour
     lines plot_cross_section_2D already draws in its 2D matplotlib slices.
+
+    time defaults to the final saved time step; var_name defaults to "T"
+    if present, else whatever field the sim actually has (see
+    _default_var_name) -- a CustomSfepyBuilder result need not solve
+    hydrothermal physics at all.
     """
+    if not sim.nodes_by_time:
+        raise ValueError("sim has no time steps.")
+    if time is None:
+        time = max(sim.nodes_by_time.keys())
+    if var_name is None:
+        var_name = _default_var_name(sim, time)
+
     grid = build_grid_from_class(sim, time)
 
     if var_name not in grid.point_data and var_name not in grid.cell_data:
@@ -319,7 +349,7 @@ def _interpolate_to_grid(u, v, values, u_min, u_max, v_min, v_max, resolution):
 
 def plot_cross_section_2D(
     sim: SimulationResults,
-    var_name: str,
+    var_name: Optional[str] = None,
     time_a: Optional[float] = None,
     time_b: Optional[float] = None,
     origin: Tuple[float, float, float] = (0, 0, 0),
@@ -332,8 +362,11 @@ def plot_cross_section_2D(
     Slice var_name at two time steps on the same plane and plot them side by
     side with matplotlib -- filled contours plus contour lines, sharing one
     color scale so the two panels are directly, visually comparable (unlike
-    two separate 3D PyVista plots/camera views). Defaults to the first and
-    last saved time steps.
+    two separate 3D PyVista plots/camera views). time_a/time_b default to
+    the first and last saved time steps; var_name defaults to "T" if
+    present, else whatever field the sim actually has (see
+    _default_var_name) -- a CustomSfepyBuilder result need not solve
+    hydrothermal physics at all.
 
     Only meaningful for point data (T, p) -- the slice is interpolated onto
     a shared regular 2D grid via scipy.griddata, working for any mesh_type
@@ -352,6 +385,8 @@ def plot_cross_section_2D(
         time_a = times[0]
     if time_b is None:
         time_b = times[-1]
+    if var_name is None:
+        var_name = _default_var_name(sim, time_a)
 
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
     u_a, v_a, val_a = _slice_on_plane(sim, var_name, time_a, origin, normal, u_axis, v_axis)
