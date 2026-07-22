@@ -12,6 +12,7 @@ core.meshing_components.meshing_visualization.plot_mesh_3d) for a
 consistent look across the codebase's 3D plots, rather than this package's
 own ad-hoc defaults.
 """
+import inspect
 import logging
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -28,6 +29,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
     HydrothermalProblemBuilder,
     RockUnitProperties,
     enumerate_rock_units,
+    is_custom_sfepy_builder,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,6 +93,31 @@ def _apply_camera_convention(plotter: pv.Plotter) -> None:
     plotter.camera.view_angle = 30.0
     plotter.camera.azimuth = 25.0
     plotter.camera.elevation = -15.0
+
+
+#: Whether the installed pyvista's DataSetFilters.extract_surface() accepts
+#: an `algorithm` kwarg -- checked via introspection, not a hardcoded
+#: version cutoff, since the actual break is "does this pyvista have the
+#: parameter". Newer pyvista (this dev environment's local venv, 0.48.4)
+#: added `algorithm`, with a new default ("dataset_surface") that produces
+#: an empty mesh (0 points) for this pipeline's SfePy-exported grids --
+#: algorithm=None restores the old vtkGeometryFilter-based behavior
+#: (matching the deprecated extract_geometry()). This pipeline's own
+#: pinned requirements.txt version, pyvista==0.44.1 (what's actually
+#: installed in the Docker Workbench), predates the `algorithm` parameter
+#: entirely and has no such default-changed regression -- confirmed live,
+#: pyvista==0.48.4's TypeError "unexpected keyword argument 'algorithm'"
+#: for the same call. The local venv's newer pyvista is why this wasn't
+#: caught by local tests.
+_EXTRACT_SURFACE_SUPPORTS_ALGORITHM = "algorithm" in inspect.signature(pv.DataSet.extract_surface).parameters
+
+
+def _extract_surface_compat(grid: pv.DataSet) -> pv.PolyData:
+    """grid.extract_surface(), restoring the pre-`algorithm`-kwarg legacy behavior where needed (see
+    _EXTRACT_SURFACE_SUPPORTS_ALGORITHM)."""
+    if _EXTRACT_SURFACE_SUPPORTS_ALGORITHM:
+        return grid.extract_surface(algorithm=None)
+    return grid.extract_surface()
 
 
 # ----------------------------------------------------------------------
@@ -193,10 +220,7 @@ def plot_variable_at_a_time(
     if var_name not in grid.point_data and var_name not in grid.cell_data:
         raise ValueError(f"Variable '{var_name}' not found at time {time}.")
 
-    # algorithm=None (not the default "dataset_surface") -- the default
-    # produces an empty mesh (0 points) for this pipeline's SfePy-exported
-    # grids.
-    surf = grid.extract_surface(algorithm=None)
+    surf = _extract_surface_compat(grid)
     surf.points *= scale
 
     plotter = pv.Plotter()
@@ -271,7 +295,7 @@ def plot_variable_difference(
     grid = grid_b.copy()
     grid.point_data[diff_name] = diff
 
-    surf = grid.extract_surface(algorithm=None)
+    surf = _extract_surface_compat(grid)
     surf.points = surf.points * np.asarray(scale)
 
     max_abs = float(np.max(np.abs(diff)))
@@ -353,7 +377,7 @@ def plot_cross_section_2D(
     time_a: Optional[float] = None,
     time_b: Optional[float] = None,
     origin: Tuple[float, float, float] = (0, 0, 0),
-    normal: Tuple[float, float, float] = (1, 0, 0),
+    normal: Tuple[float, float, float] = (0, 1, 0),
     cmap: str = "coolwarm",
     n_contours: int = 15,
     resolution: int = 200,
@@ -367,6 +391,12 @@ def plot_cross_section_2D(
     present, else whatever field the sim actually has (see
     _default_var_name) -- a CustomSfepyBuilder result need not solve
     hydrothermal physics at all.
+
+    normal defaults to (0, 1, 0) -- a slice perpendicular to Y, spanning
+    X and Z -- matching how this pipeline's own example models are laid
+    out (model2/model5's own plot_cross_section_2D calls use this same
+    normal) so the default view shows a cross section along X rather than
+    along Y.
 
     Only meaningful for point data (T, p) -- the slice is interpolated onto
     a shared regular 2D grid via scipy.griddata, working for any mesh_type
@@ -638,7 +668,7 @@ def plot_builder_materials(
     zoomable view. Set False for anything above roughly 50k cells, or for
     a clean, publication/gallery-style render.
     """
-    is_custom = isinstance(builder, CustomSfepyBuilder)
+    is_custom = is_custom_sfepy_builder(builder)
 
     if is_custom:
         if builder.geomodel_result is None:

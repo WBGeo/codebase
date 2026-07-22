@@ -21,14 +21,18 @@ Segregating matches the actual physics anyway: temperature depends on the
 flow field, but pressure never depends on temperature in this model.
 
 Wired up as Workbench components in simulation_workbench_components.py
-(build_hydrothermal_problem, run_hydrothermal_simulation,
-export_simulation_results), including a SmartInput sidebar for per-rock-unit,
-fluid, and fault-zone property editing (matching
-structural_workbench_components.py's interpolation-options pattern).
+(build_hydrothermal_problem, run_simulation, export_simulation_results),
+including a SmartInput sidebar for per-rock-unit, fluid, and fault-zone
+property editing (matching structural_workbench_components.py's
+interpolation-options pattern). build_hydrothermal_problem wraps its
+HydrothermalProblemBuilder in a shared SfepyProblem envelope (also
+defined in this file) so it and build_custom_sfepy_problem's
+CustomSfepyBuilder output register as the same Workbench type -- run_simulation
+is one component accepting either, rather than two separate Run components.
 """
 import logging
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pyvista as pv
@@ -1141,3 +1145,64 @@ class CustomSfepyBuilder:
                     "fault), otherwise the file may be missing coverage.",
                     n_referenced, n_lithologies,
                 )
+
+
+def is_custom_sfepy_builder(problem: Union[HydrothermalProblemBuilder, CustomSfepyBuilder]) -> bool:
+    """
+    True for a CustomSfepyBuilder, False for a HydrothermalProblemBuilder.
+
+    Deliberately not `isinstance(problem, CustomSfepyBuilder)`: in the real
+    Workbench runtime, @wbgeo_type's real decorator (a no-op locally and
+    under pytest, where no backend instance is registered) wraps the
+    decorated class in a subscripted generic for its own bookkeeping, and
+    typing explicitly forbids isinstance/issubclass against those
+    ("Subscripted generics cannot be used with class and instance checks") --
+    confirmed live in the Docker Workbench, not reproducible locally, which
+    is why the existing test suite never caught it. Comparing
+    type(problem).__name__ instead never touches the (possibly wrapped)
+    CustomSfepyBuilder symbol for a class/isinstance check at all -- it
+    only reads .__name__ off the real class actually used to construct
+    `problem`, which is unaffected by how that class's *name* happens to
+    be bound at module level elsewhere. Also robust to a bare
+    CustomSfepyBuilder.__new__(CustomSfepyBuilder) with __init__ never run
+    (used by test_run_simulation_sfepy_dispatches_custom_sfepy_builder),
+    unlike a hasattr(problem, "input_file_contents") check.
+    """
+    return type(problem).__name__ == "CustomSfepyBuilder"
+
+
+@wbgeo_type(name='SfePy Problem', color='#e07a5f', identifier='SfepyProblem')
+@dataclass
+class SfepyProblem:
+    """
+    Single Workbench-visible envelope around either problem-definition
+    type (HydrothermalProblemBuilder or CustomSfepyBuilder), so both
+    Build components' outputs register as the exact same type and a
+    single Run Simulation component's input port can accept either.
+
+    Necessary because this DSL matches ports by one single registered
+    type, not by structural/union compatibility: a
+    Union[HydrothermalProblemBuilder, CustomSfepyBuilder]-typed port was
+    tried and confirmed live in the Docker Workbench to just silently
+    register with type "HydrothermalProblemBuilder" (the Union's first
+    member) -- no actual union semantics, and it would have rejected a
+    CustomSfepyBuilder connection. Making both Build components return
+    this identical SfepyProblem type sidesteps that limitation entirely,
+    at the Workbench boundary only -- internally, HydrothermalProblemBuilder/
+    CustomSfepyBuilder are untouched, still built/validated exactly as
+    before; this is purely an outer wrapper.
+
+    Exactly one of hydrothermal/custom is set, enforced in __post_init__.
+    """
+    hydrothermal: Optional[HydrothermalProblemBuilder] = None
+    custom: Optional[CustomSfepyBuilder] = None
+
+    def __post_init__(self):
+        if (self.hydrothermal is None) == (self.custom is None):
+            raise ValueError(
+                "SfepyProblem needs exactly one of hydrothermal or custom set, not both or neither."
+            )
+
+    def inner(self) -> Union[HydrothermalProblemBuilder, CustomSfepyBuilder]:
+        """The actual problem definition this envelope wraps, whichever kind it is."""
+        return self.hydrothermal if self.hydrothermal is not None else self.custom

@@ -30,6 +30,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
     HydrothermalProblemBuilder,
     CustomSfepyBuilder,
     MESH_TYPE_CODES,
+    is_custom_sfepy_builder,
 )
 from core.simulation_components.simulation_visualization.simulation_visualization import build_grid_from_class
 from py_api_wbgeo.nodesapi import BasicallyABufferedFile
@@ -440,7 +441,7 @@ def run_simulation_sfepy(
     need two separate "run" components with diverging behavior/result
     shapes to keep in sync.
     """
-    if isinstance(problem, CustomSfepyBuilder):
+    if is_custom_sfepy_builder(problem):
         return _run_custom_sfepy_problem(problem, keep_files_dir)
     return _run_hydrothermal_problem(problem, keep_files_dir)
 

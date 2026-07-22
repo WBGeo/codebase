@@ -10,14 +10,15 @@ import pytest
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    RockUnitProperties, FluidProperties, CustomSfepyBuilder, map_mat_id_to_lithology,
+    RockUnitProperties, FluidProperties, HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem,
+    map_mat_id_to_lithology,
 )
 import core.simulation_components.simulation_workbench_components as swc
 from core.simulation_components.simulation_workbench_components import (
     HydrothermalOptions, HydrothermalOptions_Root,
     build_hydrothermal_problem, hydrothermal_problem_smart_options,
-    hydrothermal_problem_smart_options_to_data, run_hydrothermal_simulation,
-    build_custom_sfepy_problem, run_custom_sfepy_simulation,
+    hydrothermal_problem_smart_options_to_data, run_simulation,
+    build_custom_sfepy_problem,
     export_simulation_results, _DEFAULT_FAULT_ZONE_PROPERTIES,
 )
 
@@ -32,9 +33,11 @@ def test_build_hydrothermal_problem_without_options_uses_builder_defaults(
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
     )
-    assert set(problem.rock_properties.keys()) == {"basement", "rock1", "rock2"}
-    assert problem.fluid == FluidProperties()
-    assert problem.fault_zone_properties is None
+    assert isinstance(problem, SfepyProblem)
+    builder = problem.inner()
+    assert set(builder.rock_properties.keys()) == {"basement", "rock1", "rock2"}
+    assert builder.fluid == FluidProperties()
+    assert builder.fault_zone_properties is None
 
 
 def test_build_hydrothermal_problem_applies_options(model1_implicit_mesh, model1_structural_result):
@@ -44,7 +47,7 @@ def test_build_hydrothermal_problem_applies_options(model1_implicit_mesh, model1
     ))
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, options=options,
-    )
+    ).inner()
     assert problem.fluid.mu == pytest.approx(5e-4)
     assert problem.rock_properties["rock1"].porosity == pytest.approx(0.33)
     # basement/rock2 not given in options -> still filled with defaults
@@ -60,7 +63,7 @@ def test_enable_fault_zone_false_ignores_options_fault_zone_properties(
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         options=options, enable_fault_zone=False,
-    )
+    ).inner()
     assert problem.fault_zone_properties is None
 
 
@@ -70,7 +73,7 @@ def test_enable_fault_zone_true_without_options_uses_shared_default(
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         enable_fault_zone=True,
-    )
+    ).inner()
     assert problem.fault_zone_properties == _DEFAULT_FAULT_ZONE_PROPERTIES
 
 
@@ -80,7 +83,7 @@ def test_enable_fault_zone_true_with_options_uses_options_value(model1_implicit_
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         options=options, enable_fault_zone=True,
-    )
+    ).inner()
     assert problem.fault_zone_properties == custom
 
 
@@ -129,8 +132,9 @@ def test_build_custom_sfepy_problem_reads_and_decodes_file(model1_implicit_mesh,
     problem = build_custom_sfepy_problem(
         input_file=uploaded, mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
     )
-    assert isinstance(problem, CustomSfepyBuilder)
-    assert problem.input_file_contents == text
+    assert isinstance(problem, SfepyProblem)
+    assert isinstance(problem.custom, CustomSfepyBuilder)
+    assert problem.custom.input_file_contents == text
 
 
 def test_build_custom_sfepy_problem_rejects_mesh_with_no_lithology_mapping(
@@ -156,34 +160,40 @@ def test_build_custom_sfepy_problem_rejects_non_utf8_file(model1_implicit_mesh, 
 # Thin wrappers -- call-through, without a real solve
 # -----------------------------------------------------------------------------
 
-def test_run_hydrothermal_simulation_calls_through(monkeypatch):
+def test_run_simulation_unwraps_hydrothermal_problem(monkeypatch):
     sentinel_result = SimulationResults()
     received = {}
 
-    def fake_run(builder):
-        received["builder"] = builder
+    def fake_run(inner):
+        received["inner"] = inner
         return sentinel_result
 
     monkeypatch.setattr(swc, "_run_simulation_sfepy", fake_run)
-    fake_builder = object()
-    result = run_hydrothermal_simulation(fake_builder)
+    fake_builder = HydrothermalProblemBuilder.__new__(HydrothermalProblemBuilder)
+    problem = SfepyProblem.__new__(SfepyProblem)
+    problem.hydrothermal, problem.custom = fake_builder, None
+
+    result = run_simulation(problem)
     assert result is sentinel_result
-    assert received["builder"] is fake_builder
+    assert received["inner"] is fake_builder
 
 
-def test_run_custom_sfepy_simulation_calls_through(monkeypatch):
+def test_run_simulation_unwraps_custom_sfepy_problem(monkeypatch):
     sentinel_result = SimulationResults()
     received = {}
 
-    def fake_run(problem):
-        received["problem"] = problem
+    def fake_run(inner):
+        received["inner"] = inner
         return sentinel_result
 
     monkeypatch.setattr(swc, "_run_simulation_sfepy", fake_run)
-    fake_problem = object()
-    result = run_custom_sfepy_simulation(fake_problem)
+    fake_builder = CustomSfepyBuilder.__new__(CustomSfepyBuilder)
+    problem = SfepyProblem.__new__(SfepyProblem)
+    problem.hydrothermal, problem.custom = None, fake_builder
+
+    result = run_simulation(problem)
     assert result is sentinel_result
-    assert received["problem"] is fake_problem
+    assert received["inner"] is fake_builder
 
 
 def test_export_simulation_results_calls_through(monkeypatch):
@@ -217,7 +227,7 @@ def test_inspect_plot_variable_at_a_time_uses_final_time(model1_implicit_mesh, m
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
     )
-    sim = run_hydrothermal_simulation(problem)
+    sim = run_simulation(problem)
     swc.inspect_simulation_result_plot_variable_at_a_time(simulation_result=sim, _inspector=None)
 
 
@@ -227,5 +237,5 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(model1_impli
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
     )
-    sim = run_hydrothermal_simulation(problem)
+    sim = run_simulation(problem)
     swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None)

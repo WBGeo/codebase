@@ -642,24 +642,42 @@ of its own:
 - **Build Hydrothermal Problem** (`build_hydrothermal_problem`) — takes
   `mesh_results`, `geomodel_result`, the SmartInput `options` (4.3), and plain
   scalar settings (`include_flow`, `enable_fault_zone`, `fault_zone_n_voxels`,
-  `t0`/`t1`/`num_steps`, boundary values, solver settings), returns a
-  `HydrothermalProblemBuilder`.
+  `t0`/`t1`/`num_steps`, boundary values, solver settings), builds a
+  `HydrothermalProblemBuilder` and returns it wrapped in `SfepyProblem`
+  (`SfepyProblem(hydrothermal=...)`).
 - **Build Custom SfePy Problem** (`build_custom_sfepy_problem`, new) — takes an
   uploaded `input_file`, `mesh_results`, optional `geomodel_result`, and optional
   `fault_zone_n_voxels`; decodes and validates the file (UTF-8, mesh/region
-  bookkeeping, section 2.1), returns a `CustomSfepyBuilder`. Not restricted to
-  hydrothermal physics.
-- **Run Hydrothermal Simulation** (`run_hydrothermal_simulation`) and **Run Custom
-  SfePy Simulation** (`run_custom_sfepy_simulation`, new) — both thin wrappers over
-  the same `run_simulation_sfepy` dispatcher (section 1.2); kept as two Workbench
-  components (matching each one's builder) rather than one polymorphic component,
-  for the same reason `build_*` is split in two: distinct input shapes
-  (`hydrothermal_problem: HydrothermalProblemBuilder` vs. `sfepy_problem:
-  CustomSfepyBuilder`) need distinct typed connector sockets in the DSL.
+  bookkeeping, section 2.1), builds a `CustomSfepyBuilder` and returns it wrapped
+  in `SfepyProblem` (`SfepyProblem(custom=...)`). Not restricted to hydrothermal
+  physics.
+- **`SfepyProblem`** (`sfepy_hydrothermal_builder.py`) — a thin `@wbgeo_type`
+  envelope, `Optional[HydrothermalProblemBuilder]` + `Optional[CustomSfepyBuilder]`
+  fields with exactly one set (enforced in `__post_init__`), plus an `.inner()`
+  accessor. Exists purely so both Build components' outputs register as the
+  identical Workbench type: this DSL matches a connector port by its one
+  registered type, not by structural/union compatibility. A
+  `Union[HydrothermalProblemBuilder, CustomSfepyBuilder]`-typed port was tried
+  first and confirmed live (Docker) to silently register with only the Union's
+  first member as its type — no actual union semantics, and it would have
+  rejected a connection from the other builder's output. `SfepyProblem` sidesteps
+  that at the Workbench boundary only; internally `HydrothermalProblemBuilder`/
+  `CustomSfepyBuilder` are unchanged, still built/validated exactly as before.
+- **Run Simulation** (`run_simulation`) — one component, `problem: SfepyProblem
+  -> SimulationResults`, calling `problem.inner()` then the same
+  `run_simulation_sfepy` dispatcher (section 1.2) either builder already used.
+  Originally shipped as two separate components (`run_hydrothermal_simulation`/
+  `run_custom_sfepy_simulation`) for the same "distinct typed connector socket"
+  reason `build_*` is still split in two — unified once `SfepyProblem` made a
+  single shared input type possible.
 - **Export Simulation Results** (`export_simulation_results`) — thin wrapper over
   the run-file function of the same name.
-- Two inspectors: **Plot Variable (Final Time)** and **Plot Cross Section 2D**,
-  attached to `SimulationResults`, matching the existing
+- **Plot Materials** (`inspect_sfepy_problem_plot_materials`), attached to
+  `SfepyProblem` — pre-flight material/fault-zone check via
+  `plot_builder_materials(problem.inner())`, before running the (possibly slow)
+  solve. One inspector for both builder kinds, same reasoning as `run_simulation`.
+- Two more inspectors: **Plot Variable (Final Time)** and **Plot Cross Section
+  2D**, attached to `SimulationResults`, matching the existing
   `StructuralModelResults`/`MeshResults` inspector pattern.
 
 ## 4.2 `HydrothermalProblemBuilder`/`CustomSfepyBuilder` as `@wbgeo_type`s
