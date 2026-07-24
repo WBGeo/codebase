@@ -258,7 +258,7 @@ plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(1, 0, 0
 # pressure -> Darcy velocity -> transient heat pipeline.
 
 custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
-                      "custom_hydrothermal_reproduction.py")
+                      "custom_hydrothermal_reproduction_implicit.py")
 with open(custom_input_path) as f:
     custom_input_file_contents = f.read()
 

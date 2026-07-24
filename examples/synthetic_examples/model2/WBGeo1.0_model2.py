@@ -338,7 +338,7 @@ plot_cross_section_2D(
 # why no companion fault-zone-mask file is needed for this case.
 
 custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
-                      "custom_hydrothermal_reproduction_faulted.py")
+                      "custom_hydrothermal_reproduction_faulted_unstructured.py")
 with open(custom_input_path) as f:
     custom_input_file_contents = f.read()
 

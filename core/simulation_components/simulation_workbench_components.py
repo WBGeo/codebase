@@ -7,13 +7,15 @@ Thin-wrapper file only: per the project's "one workbench file per step" rule
 The actual logic lives in sfepy_hydrothermal_builder.py / sfepy_hydrothermal_run.py
 and is called here unmodified.
 """
+import os
+import pathlib
 import typing
 from typing import Dict, Optional
 
 import pydantic
 from py_api_wbgeo import smartcontrols
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, InspectorHelper, \
-    BasicallyABufferedFile
+    AnnotatedScriptType, BasicallyABufferedFile
 from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartInputFormData
 
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
@@ -29,6 +31,22 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials,
 )
+
+# RemoteFile-controlled path (frontend handles it specially via the
+# identifier; in the backend it's a plain string) -- same pattern as
+# core.loading_components.geo_input_data's CSVFileDataType/etc., and the
+# proven-working way to let a user pick a file in this Workbench. Used
+# instead of BasicallyABufferedFile (a direct upload widget) for
+# build_custom_sfepy_problem's input_file: confirmed live that
+# BasicallyABufferedFile's upload widget isn't supported as a component
+# *input* in this frontend build ("Unsupported input type
+# file_import_export") -- it's the only place in this codebase
+# BasicallyABufferedFile was ever used as an input (every other usage is
+# an export/download, where it does work), unlike RemoteFile, which
+# every existing file-input component in this codebase already relies on.
+CustomSfepyFileDataType = typing.Annotated[
+    str, AnnotatedScriptType(name='path', color='aqua', identifier='CustomSfepyFileDataType',
+                             controlled='RemoteFile|endswith=.py')]
 
 # -----------------------------------------------------------------------------
 # Smart options: per-rock-unit / fluid / fault-zone property editing
@@ -218,28 +236,29 @@ def build_hydrothermal_problem(
     identifier='wbgeo::simulation_build_custom_sfepy_problem',
     return_name='sfepy_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping, check_mesh_has_no_engineering_objects],
-    # Explicit override: the framework appears to auto-infer is_object_type=True
-    # (a "loading component", presented collapsed into a single node -- see
-    # docs/developers/components.md's is_object_type row) purely from the
-    # presence of the input_file: BasicallyABufferedFile parameter, even
-    # though this component also has real connectable inputs
-    # (mesh_results/geomodel_result), unlike the docs' own pure-file-input
-    # import example. Confirmed live: registered with objectType=true,
-    # typeMagic=2, vs Build Hydrothermal Problem's objectType=false,
-    # typeMagic=0 -- that collapsed presentation is why the file upload
-    # widget didn't render correctly and why Plot Materials appeared
-    # directly on this node instead of on a separate result box. Forcing
-    # False here matches Build Hydrothermal Problem's normal presentation.
+    # Explicit override, kept defensively even after switching input_file
+    # away from BasicallyABufferedFile (see below): the framework appeared
+    # to auto-infer is_object_type=True (a "loading component", presented
+    # collapsed into a single node -- see docs/developers/components.md's
+    # is_object_type row) purely from the presence of a
+    # BasicallyABufferedFile parameter, confirmed live via
+    # objectType=true/typeMagic=2 vs Build Hydrothermal Problem's
+    # objectType=false/typeMagic=0. Forcing False matches Build
+    # Hydrothermal Problem's normal (non-collapsed) presentation.
     is_object_type=False,
 )
 def build_custom_sfepy_problem(
-    input_file: BasicallyABufferedFile,
+    input_file: CustomSfepyFileDataType,
     mesh_results: MeshResults,
     geomodel_result: Optional[StructuralModelResults] = None,
     fault_zone_n_voxels: Optional[int] = None,
 ) -> SfepyProblem:
     """
-    :param input_file: A complete SfePy input file (.py) with its own staging/sequencing logic.
+    :param input_file: Path (relative to the codebase root, e.g.
+        'examples/own_data/my_problem.py') to a complete SfePy input file (.py) with its own
+        staging/sequencing logic. Picked via the RemoteFile browser widget -- place the file
+        under own_data/ (bind-mounted for local development; see docker-compose.yml) so it's
+        visible to pick from.
     :param mesh_results: The mesh to solve on (implicit, structured, or unstructured). Meshes
         with wells/sources are rejected -- not supported yet.
     :param geomodel_result: Optional structural model, used for an additional soft sanity
@@ -253,12 +272,12 @@ def build_custom_sfepy_problem(
         leaves only the mesh's real lithology groups available, exactly like today.
     :return: The custom problem definition, wrapped in the shared SfepyProblem envelope so it
         can connect into the same Run Simulation component as Build Hydrothermal Problem's
-        output. Not restricted to hydrothermal problems -- the file can define any SfePy
+        output. Not restricted to hydrothermal physics -- the file can define any SfePy
         physics; only the mesh/region bookkeeping is validated, not the equations themselves.
 
     Raises:
-        ValueError: mesh_results has no known mesh_type, no lithology mapping, or contains
-            a well/source block; the uploaded file isn't valid UTF-8 text; the file
+        ValueError: input_file doesn't exist or isn't valid UTF-8 text; mesh_results has no
+            known mesh_type, no lithology mapping, or contains a well/source block; the file
             references a 'cells of group N' that doesn't exist on mesh_results; or
             fault_zone_n_voxels is set with no geomodel_result.
     """
@@ -269,16 +288,19 @@ def build_custom_sfepy_problem(
     check_mesh_has_lithology_mapping(mesh_results)
     check_mesh_has_no_engineering_objects(mesh_results)
 
-    # Read exactly once here, not as a separate input_checks pre-check:
-    # BasicallyABufferedFile is stream-like (Union[io.IOBase, GeoTempFile]),
-    # and there's no guarantee a pre-check and this function body would be
-    # handed the same already-consumed stream -- CustomSfepyBuilder does
-    # all content-based validation against the decoded string instead.
-    raw = input_file.read()
+    # input_file is a RemoteFile-controlled path, not an uploaded byte
+    # stream (see CustomSfepyFileDataType) -- resolved the same way
+    # core.loading_components.geo_input_data resolves its own
+    # RemoteFile-controlled paths, relative to the codebase root.
+    datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
+    full_path = os.path.join(datadir, input_file)
     try:
-        content = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError as e:
+        raise ValueError(f"Custom SfePy input file not found: {full_path}") from e
     except UnicodeDecodeError as e:
-        raise ValueError("Uploaded custom SfePy input file is not valid UTF-8 text.") from e
+        raise ValueError("Custom SfePy input file is not valid UTF-8 text.") from e
 
     return SfepyProblem(custom=CustomSfepyBuilder(
         input_file_contents=content, mesh_results=mesh_results, geomodel_result=geomodel_result,
