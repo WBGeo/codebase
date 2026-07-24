@@ -13,9 +13,9 @@ problem, including the active 3D fault damage zone.
 
 WHY THIS FILE EXISTS
 ---------------------
-Companion to model1's custom_hydrothermal_reproduction.py (no fault,
-implicit structured mesh, include_flow=True). This one is the fault-zone /
-unstructured-mesh / pure-conduction case: run through the real
+Companion to model1's custom_hydrothermal_reproduction_implicit.py (no
+fault, implicit structured mesh, include_flow=True). This one is the
+fault-zone / unstructured-mesh / pure-conduction case: run through the real
 CustomSfepyBuilder / run_simulation_sfepy pipeline against model2 (a real
 fault, active damage zone, unstructured mesh, the example script's real
 rock/fault-zone properties), its result matched HydrothermalProblemBuilder's
@@ -98,7 +98,7 @@ Then:
     from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import CustomSfepyBuilder
     from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
     builder = CustomSfepyBuilder(
-        input_file_contents=open("custom_hydrothermal_reproduction_faulted.py").read(),
+        input_file_contents=open("custom_hydrothermal_reproduction_faulted_unstructured.py").read(),
         mesh_results=mesh_results, geomodel_result=structural_result, fault_zone_n_voxels=1,
     )
     result = run_simulation_sfepy(builder)

@@ -87,7 +87,7 @@ Then:
     from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import CustomSfepyBuilder
     from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
     builder = CustomSfepyBuilder(
-        input_file_contents=open("custom_hydrothermal_reproduction.py").read(),
+        input_file_contents=open("custom_hydrothermal_reproduction_implicit.py").read(),
         mesh_results=mesh_results, geomodel_result=structural_result,
     )
     result = run_simulation_sfepy(builder)
