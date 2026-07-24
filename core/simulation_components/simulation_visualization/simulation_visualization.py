@@ -124,13 +124,15 @@ def _extract_surface_compat(grid: pv.DataSet) -> pv.PolyData:
 # Grid construction
 # ----------------------------------------------------------------------
 
-def build_grid_from_class(sim: SimulationResults, time: float) -> pv.UnstructuredGrid:
+def _build_grid_geometry(sim: SimulationResults, time: float) -> pv.UnstructuredGrid:
     """
-    Build a PyVista grid for one saved time step of a SimulationResults --
-    an UnstructuredGrid if `sim` has real cell connectivity for `time`, else a
-    bare PolyData point cloud (nodes only). Attaches every variable in
-    `sim.node_data_by_time[time]` as point data. Shared by every plotting
-    function in this module rather than each reimplementing the conversion.
+    Build a PyVista grid for one saved time step's connectivity only (nodes/
+    cells/celltypes, no data attached) -- split out from build_grid_from_class
+    so a fixed mesh's geometry (identical across every saved timestep -- this
+    pipeline never remeshes/deforms mid-solve) can be built once and reused
+    across timesteps via _attach_time_data, instead of every plot rebuilding
+    the full VTK grid (by far the expensive part of build_grid_from_class,
+    not attaching data arrays) once per timestep it needs.
 
     Raises:
         ValueError: `time` isn't a key in `sim.nodes_by_time`.
@@ -143,15 +145,60 @@ def build_grid_from_class(sim: SimulationResults, time: float) -> pv.Unstructure
     celltypes = sim.celltypes_by_time.get(time, None)
 
     if cells is None or len(cells) == 0:
-        mesh = pv.PolyData(nodes)
-    else:
-        mesh = pv.UnstructuredGrid(cells, celltypes, nodes)
+        return pv.PolyData(nodes)
+    return pv.UnstructuredGrid(cells, celltypes, nodes)
 
+
+def _attach_time_data(mesh: pv.DataSet, sim: SimulationResults, time: float) -> None:
+    """Attach `time`'s node/cell data onto an existing mesh in place, replacing whatever was there before."""
+    mesh.point_data.clear()
+    mesh.cell_data.clear()
     for name, arr in sim.node_data_by_time.get(time, {}).items():
         mesh.point_data[name] = arr
     for name, arr in sim.cell_data_by_time.get(time, {}).items():
         mesh.cell_data[name] = arr
 
+
+def _same_geometry(sim: SimulationResults, time_a: float, time_b: float) -> bool:
+    """
+    Whether time_a/time_b share identical mesh geometry (nodes/cells/
+    celltypes) -- true for every solve in this pipeline (a fixed FEM mesh, no
+    remeshing/deformation between saved steps), but checked explicitly rather
+    than assumed, so a two-timestep plot never silently reuses mismatched
+    geometry if that ever stops being true.
+    """
+    nodes_a, nodes_b = sim.nodes_by_time.get(time_a), sim.nodes_by_time.get(time_b)
+    if nodes_a is None or nodes_b is None or nodes_a.shape != nodes_b.shape or not np.array_equal(nodes_a, nodes_b):
+        return False
+
+    cells_a, cells_b = sim.cells_by_time.get(time_a), sim.cells_by_time.get(time_b)
+    if (cells_a is None) != (cells_b is None):
+        return False
+    if cells_a is not None and (len(cells_a) != len(cells_b) or not np.array_equal(cells_a, cells_b)):
+        return False
+
+    celltypes_a, celltypes_b = sim.celltypes_by_time.get(time_a), sim.celltypes_by_time.get(time_b)
+    if (celltypes_a is None) != (celltypes_b is None):
+        return False
+    if celltypes_a is not None and not np.array_equal(celltypes_a, celltypes_b):
+        return False
+
+    return True
+
+
+def build_grid_from_class(sim: SimulationResults, time: float) -> pv.UnstructuredGrid:
+    """
+    Build a PyVista grid for one saved time step of a SimulationResults --
+    an UnstructuredGrid if `sim` has real cell connectivity for `time`, else a
+    bare PolyData point cloud (nodes only). Attaches every variable in
+    `sim.node_data_by_time[time]` as point data. Shared by every plotting
+    function in this module rather than each reimplementing the conversion.
+
+    Raises:
+        ValueError: `time` isn't a key in `sim.nodes_by_time`.
+    """
+    mesh = _build_grid_geometry(sim, time)
+    _attach_time_data(mesh, sim, time)
     return mesh
 
 
@@ -283,16 +330,24 @@ def plot_variable_difference(
     if time_b is None:
         time_b = times[-1]
 
-    grid_a = build_grid_from_class(sim, time_a)
-    grid_b = build_grid_from_class(sim, time_b)
+    # Built once and reused for both timesteps when they share geometry
+    # (the common case -- see _same_geometry) instead of building two full
+    # VTK grids just to read off one variable's values at each.
+    grid = _build_grid_geometry(sim, time_a)
+    _attach_time_data(grid, sim, time_a)
+    if var_name not in grid.point_data:
+        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_a}.")
+    val_a = np.asarray(grid.point_data[var_name]).copy()
 
-    if var_name not in grid_a.point_data or var_name not in grid_b.point_data:
-        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_a} and/or {time_b}.")
+    if not _same_geometry(sim, time_a, time_b):
+        grid = _build_grid_geometry(sim, time_b)
+    _attach_time_data(grid, sim, time_b)
+    if var_name not in grid.point_data:
+        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_b}.")
+    val_b = grid.point_data[var_name]
 
-    diff = grid_b.point_data[var_name] - grid_a.point_data[var_name]
+    diff = val_b - val_a
     diff_name = f"delta_{var_name}"
-
-    grid = grid_b.copy()
     grid.point_data[diff_name] = diff
 
     surf = _extract_surface_compat(grid)
@@ -339,20 +394,24 @@ def _in_plane_axes(normal: Sequence[float]) -> Tuple[np.ndarray, np.ndarray, Tup
     return u, v, ("u", "v")
 
 
-def _slice_on_plane(
-    sim: SimulationResults,
+def _slice_on_plane_from_grid(
+    mesh: pv.DataSet,
     var_name: str,
-    time: float,
     origin: Tuple[float, float, float],
     normal: Tuple[float, float, float],
     u_axis: np.ndarray,
     v_axis: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Slice sim at `time` on the given plane and project onto (u, v) in-plane coordinates."""
-    grid = build_grid_from_class(sim, time)
-    if var_name not in grid.point_data:
-        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time}.")
-    sliced = grid.slice(origin=origin, normal=normal)
+    """
+    Slice an already-built (geometry + data attached) grid on the given plane
+    and project onto (u, v) in-plane coordinates -- split from build_grid_from_class
+    so callers needing the same mesh at two timesteps (plot_cross_section_2D,
+    plot_cross_section_difference_2D) can build the (expensive) VTK grid once
+    and just swap data between slices, rather than rebuilding it per timestep.
+    """
+    if var_name not in mesh.point_data:
+        raise ValueError(f"Variable '{var_name}' not found (as point data).")
+    sliced = mesh.slice(origin=origin, normal=normal)
     if sliced.n_points == 0:
         raise RuntimeError("Slice produced no points -- check origin/normal against the model's extent.")
     pts = sliced.points
@@ -419,8 +478,18 @@ def plot_cross_section_2D(
         var_name = _default_var_name(sim, time_a)
 
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
-    u_a, v_a, val_a = _slice_on_plane(sim, var_name, time_a, origin, normal, u_axis, v_axis)
-    u_b, v_b, val_b = _slice_on_plane(sim, var_name, time_b, origin, normal, u_axis, v_axis)
+
+    # Built once and reused for both timesteps when they share geometry
+    # (the common case -- see _same_geometry) instead of building two full
+    # VTK grids just to slice each at the same plane.
+    mesh = _build_grid_geometry(sim, time_a)
+    _attach_time_data(mesh, sim, time_a)
+    u_a, v_a, val_a = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
+
+    if not _same_geometry(sim, time_a, time_b):
+        mesh = _build_grid_geometry(sim, time_b)
+    _attach_time_data(mesh, sim, time_b)
+    u_b, v_b, val_b = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
 
     u_min, u_max = min(u_a.min(), u_b.min()), max(u_a.max(), u_b.max())
     v_min, v_max = min(v_a.min(), v_b.min()), max(v_a.max(), v_b.max())
@@ -477,8 +546,18 @@ def plot_cross_section_difference_2D(
         time_b = times[-1]
 
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
-    u_a, v_a, val_a = _slice_on_plane(sim, var_name, time_a, origin, normal, u_axis, v_axis)
-    u_b, v_b, val_b = _slice_on_plane(sim, var_name, time_b, origin, normal, u_axis, v_axis)
+
+    # Built once and reused for both timesteps when they share geometry
+    # (the common case -- see _same_geometry) instead of building two full
+    # VTK grids just to slice each at the same plane.
+    mesh = _build_grid_geometry(sim, time_a)
+    _attach_time_data(mesh, sim, time_a)
+    u_a, v_a, val_a = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
+
+    if not _same_geometry(sim, time_a, time_b):
+        mesh = _build_grid_geometry(sim, time_b)
+    _attach_time_data(mesh, sim, time_b)
+    u_b, v_b, val_b = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
 
     u_min, u_max = min(u_a.min(), u_b.min()), max(u_a.max(), u_b.max())
     v_min, v_max = min(v_a.min(), v_b.min()), max(v_a.max(), v_b.max())
@@ -546,6 +625,31 @@ def plot_variable_along_line(
     plt.show()
 
 
+def _sample_point_on_mesh(
+    mesh: pv.DataSet,
+    var_name: str,
+    point: Tuple[float, float, float],
+) -> Optional[float]:
+    """
+    Sample var_name at a single point on an already-built (geometry + data
+    attached) mesh. Returns None (with a warning logged) if `point` falls
+    outside the mesh's bounds. Split from print_variable_at_point so
+    plot_variable_time_series's loop over every saved timestep can reuse one
+    mesh's geometry (see _build_grid_geometry/_same_geometry) instead of
+    rebuilding the full VTK grid once per timestep.
+    """
+    if var_name not in mesh.point_data and var_name not in mesh.cell_data:
+        raise ValueError(f"Variable '{var_name}' not found.")
+
+    pt = pv.PolyData(np.array([point]))
+    sampled = pt.sample(mesh)
+    if sampled.n_points == 0 or not np.any(sampled["vtkValidPointMask"]):
+        logger.warning("Point %s is outside mesh bounds %s", point, mesh.bounds)
+        return None
+
+    return float(sampled[var_name][0])
+
+
 def print_variable_at_point(
     sim: SimulationResults,
     var_name: str,
@@ -558,17 +662,9 @@ def print_variable_at_point(
     warning logged) if `point` falls outside the mesh's bounds.
     """
     grid = build_grid_from_class(sim, time)
-    if var_name not in grid.point_data and var_name not in grid.cell_data:
-        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
-
-    pt = pv.PolyData(np.array([point]))
-    sampled = pt.sample(grid)
-    if sampled.n_points == 0 or not np.any(sampled["vtkValidPointMask"]):
-        logger.warning("Point %s is outside mesh bounds %s", point, grid.bounds)
-        return None
-
-    value = float(sampled[var_name][0])
-    logger.info("%s at point %s at time %s: %s", var_name, point, time, value)
+    value = _sample_point_on_mesh(grid, var_name, point)
+    if value is not None:
+        logger.info("%s at point %s at time %s: %s", var_name, point, time, value)
     return value
 
 
@@ -588,10 +684,21 @@ def plot_variable_time_series(
     if not times:
         raise ValueError("sim has no time steps.")
 
-    values = np.array([
-        value if (value := print_variable_at_point(sim, var_name, t, point)) is not None else np.nan
-        for t in times
-    ])
+    # Geometry is built once (for times[0]) and reused across every
+    # subsequent timestep when it's unchanged (the common case -- see
+    # _same_geometry), instead of rebuilding the full VTK grid once per
+    # saved step just to sample one point.
+    mesh = _build_grid_geometry(sim, times[0])
+    values = []
+    for t in times:
+        if not _same_geometry(sim, times[0], t):
+            mesh = _build_grid_geometry(sim, t)
+        _attach_time_data(mesh, sim, t)
+        value = _sample_point_on_mesh(mesh, var_name, point)
+        if value is not None:
+            logger.info("%s at point %s at time %s: %s", var_name, point, t, value)
+        values.append(value if value is not None else np.nan)
+    values = np.array(values)
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(times, values, "-o", color="tab:red")

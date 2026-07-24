@@ -1,5 +1,8 @@
-import io
 import json
+import os
+import pathlib
+import shutil
+import tempfile
 
 import matplotlib
 matplotlib.use("Agg")  # headless -- these tests only check the inspector's
@@ -121,16 +124,47 @@ def test_smart_options_to_data_roundtrip():
 
 
 # -----------------------------------------------------------------------------
-# build_custom_sfepy_problem -- reads/decodes the uploaded file
+# build_custom_sfepy_problem -- reads/decodes input_file, a RemoteFile-
+# controlled path (relative to the codebase root), not an uploaded byte
+# stream -- see CustomSfepyFileDataType's own docstring for why. The file
+# needs to live on the same drive as the repo root: os.path.relpath() can't
+# express a path across two different Windows drives, and pytest's own
+# tmp_path fixture lives under the system temp dir, which isn't guaranteed
+# to share a drive with the repo (it doesn't on this project's dev machine,
+# where the repo root is on D: but the system temp dir stays on C:) -- see
+# repo_tmp_path below.
 # -----------------------------------------------------------------------------
 
-def test_build_custom_sfepy_problem_reads_and_decodes_file(model1_implicit_mesh, model1_structural_result):
+def _repo_root() -> pathlib.Path:
+    return pathlib.Path(swc.__file__).parent.parent.parent.resolve()
+
+
+@pytest.fixture
+def repo_tmp_path():
+    """
+    Like pytest's own tmp_path, but guaranteed to be on the same drive as
+    the repo root -- needed so os.path.relpath(file_path, _repo_root())
+    below can actually produce a relative path (see the module-level note
+    above this fixture for why tmp_path itself isn't safe to use here).
+    """
+    d = tempfile.mkdtemp(dir=_repo_root())
+    try:
+        yield pathlib.Path(d)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_build_custom_sfepy_problem_reads_and_decodes_file(
+    repo_tmp_path, model1_implicit_mesh, model1_structural_result
+):
     valid = map_mat_id_to_lithology(model1_implicit_mesh)
     text = "\n".join(f"'Omega{m}': 'cells of group {m}'," for m in valid)
-    uploaded = io.BytesIO(text.encode("utf-8"))
+    file_path = repo_tmp_path / "custom.py"
+    file_path.write_text(text, encoding="utf-8")
 
     problem = build_custom_sfepy_problem(
-        input_file=uploaded, mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        input_file=os.path.relpath(file_path, _repo_root()),
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
     )
     assert isinstance(problem, SfepyProblem)
     assert isinstance(problem.custom, CustomSfepyBuilder)
@@ -138,21 +172,35 @@ def test_build_custom_sfepy_problem_reads_and_decodes_file(model1_implicit_mesh,
 
 
 def test_build_custom_sfepy_problem_rejects_mesh_with_no_lithology_mapping(
-    model1_implicit_mesh, model1_structural_result
+    repo_tmp_path, model1_implicit_mesh, model1_structural_result
 ):
     bad_mesh = model1_implicit_mesh.model_copy(update={"cell_data": None})
-    uploaded = io.BytesIO(b"'Omega0': 'cells of group 0',")
+    file_path = repo_tmp_path / "custom.py"
+    file_path.write_text("'Omega0': 'cells of group 0',", encoding="utf-8")
     with pytest.raises(ValueError, match="no lithology mapping"):
         build_custom_sfepy_problem(
-            input_file=uploaded, mesh_results=bad_mesh, geomodel_result=model1_structural_result,
+            input_file=os.path.relpath(file_path, _repo_root()),
+            mesh_results=bad_mesh, geomodel_result=model1_structural_result,
         )
 
 
-def test_build_custom_sfepy_problem_rejects_non_utf8_file(model1_implicit_mesh, model1_structural_result):
-    uploaded = io.BytesIO(b"\xff\xfe\x00\x01not valid utf-8")
+def test_build_custom_sfepy_problem_rejects_non_utf8_file(
+    repo_tmp_path, model1_implicit_mesh, model1_structural_result
+):
+    file_path = repo_tmp_path / "custom.py"
+    file_path.write_bytes(b"\xff\xfe\x00\x01not valid utf-8")
     with pytest.raises(ValueError, match="not valid UTF-8"):
         build_custom_sfepy_problem(
-            input_file=uploaded, mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+            input_file=os.path.relpath(file_path, _repo_root()),
+            mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        )
+
+
+def test_build_custom_sfepy_problem_rejects_missing_file(model1_implicit_mesh, model1_structural_result):
+    with pytest.raises(ValueError, match="not found"):
+        build_custom_sfepy_problem(
+            input_file="examples/own_data/does_not_exist.py",
+            mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         )
 
 
@@ -214,8 +262,14 @@ def test_export_simulation_results_calls_through(monkeypatch):
 
 # -----------------------------------------------------------------------------
 # Inspector components -- only the pre-plot logic (final_time/origin
-# computation), not the actual rendering, matching this codebase's existing
-# convention of not unit-testing plot output. The mesh-centroid origin
+# computation) and correct forwarding to the underlying plot_* function, not
+# the actual rendering, matching this codebase's existing convention of not
+# unit-testing plot output (see test_simulation_visualization.py). The real
+# plot_variable_at_a_time/plot_cross_section_2D are monkeypatched out rather
+# than actually called: plot_variable_at_a_time has no off_screen/show_plotter
+# support (unlike plot_builder_materials), so calling it for real here would
+# pop up a real interactive PyVista window needing a manual close, with no
+# guarantee of safe headless behavior in CI either. The mesh-centroid origin
 # fallback is a regression test: plot_cross_section_2D's own default
 # origin=(0,0,0) sits on the domain boundary and misses cell-centered mesh
 # nodes entirely.
@@ -223,19 +277,52 @@ def test_export_simulation_results_calls_through(monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_inspect_plot_variable_at_a_time_uses_final_time(model1_implicit_mesh, model1_structural_result):
+def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_implicit_mesh, model1_structural_result):
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
     )
     sim = run_simulation(problem)
+
+    received = {}
+
+    def fake_plot(simulation_result, **kwargs):
+        received["simulation_result"] = simulation_result
+        received.update(kwargs)
+
+    monkeypatch.setattr(swc, "plot_variable_at_a_time", fake_plot)
     swc.inspect_simulation_result_plot_variable_at_a_time(simulation_result=sim, _inspector=None)
+
+    assert received["simulation_result"] is sim
+    assert received["cmap"] == "coolwarm"
+    assert received["show_edges"] is True
+    # time/var_name intentionally left unset here -- plot_variable_at_a_time's
+    # own defaults (final saved time step, "T" if present) apply, matching
+    # this inspector's documented behavior.
+    assert "time" not in received
+    assert "var_name" not in received
 
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(model1_implicit_mesh, model1_structural_result):
+def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
+    monkeypatch, model1_implicit_mesh, model1_structural_result
+):
     problem = build_hydrothermal_problem(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
     )
     sim = run_simulation(problem)
+    first_time = min(sim.nodes_by_time.keys())
+    expected_origin = tuple(sim.nodes_by_time[first_time].mean(axis=0))
+
+    received = {}
+
+    def fake_plot(simulation_result, **kwargs):
+        received["simulation_result"] = simulation_result
+        received.update(kwargs)
+
+    monkeypatch.setattr(swc, "plot_cross_section_2D", fake_plot)
     swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None)
+
+    assert received["simulation_result"] is sim
+    assert received["origin"] == pytest.approx(expected_origin)
+    assert received["cmap"] == "coolwarm"
