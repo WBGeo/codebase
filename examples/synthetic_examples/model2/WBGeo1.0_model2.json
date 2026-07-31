@@ -148,6 +148,9 @@
           "connected_comp": 697,
           "connected_port": "Wells"
         },
+        "8": {
+          "fixed_value": "20"
+        },
         "10": {
           "fixed_value": "40"
         },
@@ -156,9 +159,6 @@
         },
         "12": {
           "fixed_value": "80"
-        },
-        "14": {
-          "fixed_value": "[30, 2450, 30, 980, 30, 950]"
         }
       }
     }
