@@ -41,11 +41,18 @@ logger = logging.getLogger(__name__)
 #: SfePy's own nonlinear-solver convergence codes (see conv_test() in
 #: sfepy/solvers/nls.py's docstring): 0 = converged (tolerances met),
 #: 1 = max iterations reached without converging, 2 = linesearch gave up.
-#: Only 0 counts as success here.
+#: Only 0 counts as success here. SfePy's PETSc-backed solver (nls.petsc,
+#: wrapping PETSc's own SNES) reports a different code on failure --
+#: -1, not 1 or 2 (see the same nls.py: `condition = 0 if converged else
+#: -1`) -- so a custom SfePy file configured to use nls.petsc instead of
+#: the default nls.newton needs its own entry here for a useful message;
+#: any other negative/unrecognized code still correctly counts as a
+#: failure below (condition != 0), just without a specific explanation.
 _SFEPY_CONVERGED_CONDITION = 0
 _SFEPY_COND_MEANINGS = {
     1: "max iterations reached without converging",
     2: "linesearch gave up",
+    -1: "solver reported non-convergence",
 }
 
 
@@ -65,6 +72,15 @@ def _check_convergence(stdout: str, input_file: str) -> None:
     This only catches genuine non-convergence (SfePy itself reporting it
     exhausted i_max or gave up) -- a crashed/errored run is already caught
     separately by _run_sfepy_input_file's returncode check above this.
+
+    The full stdout is already logged unconditionally by the caller
+    (logger.info, regardless of outcome) -- but log output isn't
+    necessarily what a caller actually sees as "the error" (e.g. inside
+    the Workbench/py_runner, where the raised exception is what surfaces
+    to the user, not the container's logs). So the raised exception below
+    includes the full stdout too, not just the matched "cond: ..." lines,
+    letting a user directly inspect the solver's per-iteration output to
+    judge solution quality without having to go find the logs separately.
     """
     failures = []
     for match in re.finditer(r"cond:\s*(-?\d+),\s*iter:\s*(\d+).*", stdout):
@@ -82,6 +98,8 @@ def _check_convergence(stdout: str, input_file: str) -> None:
               "linear_solver_eps_r, or checking t1/num_steps are appropriate for "
               "this model's diffusion timescale (see "
               "HydrothermalProblemBuilder._default_diffusion_timescale)."
+            + "\n\nFull sfepy-run output:\n"
+            + stdout
         )
 
 
@@ -251,7 +269,8 @@ def _run_sfepy_input_file(
 
 
 def _run_hydrothermal_problem(
-    builder: HydrothermalProblemBuilder, keep_files_dir: Optional[str] = None
+    builder: HydrothermalProblemBuilder, keep_files_dir: Optional[str] = None,
+    output_dir: Optional[str] = None,
 ) -> SimulationResults:
     """
     Run the full two-stage solve (pressure, then temperature+advection) for
@@ -283,10 +302,12 @@ def _run_hydrothermal_problem(
     No files are left behind by default: SfePy's own output directories
     are always fresh temporary ones, and load_vtk_results() deletes them
     automatically once each stage's result is loaded in memory (see
-    _run_sfepy_input_file() / load_vtk_results()). To get a persisted file out of a
-    SimulationResults object, use export_simulation_results() below --
-    analogous to Download Mesh / export_mesh_results() for MeshResults, as
-    its own separate Workbench component taking SimulationResults as input.
+    _run_sfepy_input_file() / load_vtk_results()) -- unless output_dir
+    below is given. To get a persisted file out of a SimulationResults
+    object regardless (e.g. from the Workbench, which has no on-disk-path
+    affordance), use export_simulation_results() below -- analogous to
+    Download Mesh / export_mesh_results() for MeshResults, as its own
+    separate Workbench component taking SimulationResults as input.
 
     Uses builder.mesh_type (set at construction, validated against how
     builder.mesh_results was actually produced) -- not re-specified here,
@@ -305,6 +326,18 @@ def _run_hydrothermal_problem(
     given, these are NOT deleted afterward. If omitted (the default),
     temporary files are used and cleaned up, keeping the whole call
     file-free from the caller's perspective.
+
+    output_dir: optional directory to persist SfePy's own raw VTK output
+    into, for post-processing outside this pipeline (e.g. opening directly
+    in ParaView) -- if given, NOT deleted afterward (see
+    _run_sfepy_input_file's output_dir / load_vtk_results' is_temp
+    handling). Pressure and heat are separate SfePy runs, each producing
+    its own raw VTK files (pressure.*.vtk / heat.*.vtk) that never get
+    merged on disk -- only in the SimulationResults this function returns
+    -- so each stage gets its own subdirectory here to keep them from
+    being walked together by load_vtk_results(). If omitted (the default,
+    unchanged behavior), each stage uses a fresh temp directory that's
+    deleted once loaded into memory.
     """
     def _path(name):
         """Resolve a generated-file name to keep_files_dir if given, else a fresh temp path."""
@@ -320,6 +353,8 @@ def _run_hydrothermal_problem(
     # _run_sfepy_input_file()/export_mesh_results_to_exodus() need the short
     # MeshType code ("imp"/"str"/"unstr"), not builder.mesh_type's readable name.
     mesh_type_code = MESH_TYPE_CODES[builder.mesh_type]
+    pressure_output_dir = os.path.join(output_dir, "pressure") if output_dir is not None else None
+    heat_output_dir = os.path.join(output_dir, "heat") if output_dir is not None else None
 
     try:
         pressure_sim = None
@@ -328,7 +363,7 @@ def _run_hydrothermal_problem(
             # Stage 1: pressure
             builder.build_pressure_input_file(pressure_file)
             p_out = _run_sfepy_input_file(
-                pressure_file, builder.mesh_results, mesh_type_code, output_dir=None,
+                pressure_file, builder.mesh_results, mesh_type_code, output_dir=pressure_output_dir,
                 fault_zone_cell_mask=builder.fault_zone_cell_mask, fault_group_id=builder.fault_group_id,
             )
             pressure_sim = load_vtk_results(p_out)
@@ -349,7 +384,7 @@ def _run_hydrothermal_problem(
         # Stage 2: temperature (pure conduction if not builder.include_flow)
         builder.build_heat_input_file(heat_file, velocity_npz)
         t_out = _run_sfepy_input_file(
-            heat_file, builder.mesh_results, mesh_type_code, output_dir=None,
+            heat_file, builder.mesh_results, mesh_type_code, output_dir=heat_output_dir,
             fault_zone_cell_mask=builder.fault_zone_cell_mask, fault_group_id=builder.fault_group_id,
         )
         heat_sim = load_vtk_results(t_out)
@@ -379,7 +414,8 @@ def _run_hydrothermal_problem(
 
 
 def _run_custom_sfepy_problem(
-    problem: CustomSfepyBuilder, keep_files_dir: Optional[str] = None
+    problem: CustomSfepyBuilder, keep_files_dir: Optional[str] = None,
+    output_dir: Optional[str] = None,
 ) -> SimulationResults:
     """
     Run a CustomSfepyBuilder's file once and return the result -- no
@@ -397,6 +433,11 @@ def _run_custom_sfepy_problem(
     _run_hydrothermal_problem writes its generated input files at run
     time: the content is what survives @wbgeo_type serialization, a temp
     path would not.
+
+    output_dir: optional directory to persist SfePy's own raw VTK output
+    into -- see _run_hydrothermal_problem's output_dir docstring. Only one
+    sfepy-run invocation here (unlike the two-stage hydrothermal case), so
+    no subdirectory split is needed -- output_dir is used as-is.
     """
     def _path(name):
         """Resolve a generated-file name to keep_files_dir if given, else a fresh temp path."""
@@ -412,7 +453,7 @@ def _run_custom_sfepy_problem(
         with open(input_file, "w") as f:
             f.write(problem.input_file_contents)
         out = _run_sfepy_input_file(
-            input_file, problem.mesh_results, mesh_type_code, output_dir=None,
+            input_file, problem.mesh_results, mesh_type_code, output_dir=output_dir,
             fault_zone_cell_mask=problem.fault_zone_cell_mask, fault_group_id=problem.fault_group_id,
         )
         sim = load_vtk_results(out)
@@ -428,7 +469,8 @@ def _run_custom_sfepy_problem(
 
 
 def run_simulation_sfepy(
-    problem: Union[HydrothermalProblemBuilder, CustomSfepyBuilder], keep_files_dir: Optional[str] = None
+    problem: Union[HydrothermalProblemBuilder, CustomSfepyBuilder], keep_files_dir: Optional[str] = None,
+    output_dir: Optional[str] = None,
 ) -> SimulationResults:
     """
     Run either kind of SfePy problem and return a SimulationResults in the
@@ -440,10 +482,19 @@ def run_simulation_sfepy(
     for both, dispatching on type, so callers (and the Workbench) don't
     need two separate "run" components with diverging behavior/result
     shapes to keep in sync.
+
+    output_dir: optional directory to persist SfePy's own raw VTK output
+    into instead of the default temp-and-delete behavior -- see
+    _run_hydrothermal_problem's output_dir docstring for the two-stage
+    subdirectory layout used when problem is a HydrothermalProblemBuilder.
+    For script/library callers only: the Workbench has no on-disk-path
+    affordance, so its "Run Simulation" component always leaves this at
+    the default (None) -- use the "Export Simulation Results" component
+    (export_simulation_results()) to get a file out of a Workbench run.
     """
     if is_custom_sfepy_builder(problem):
-        return _run_custom_sfepy_problem(problem, keep_files_dir)
-    return _run_hydrothermal_problem(problem, keep_files_dir)
+        return _run_custom_sfepy_problem(problem, keep_files_dir, output_dir)
+    return _run_hydrothermal_problem(problem, keep_files_dir, output_dir)
 
 
 def export_simulation_results(sim: SimulationResults, format: str = "vtk") -> BasicallyABufferedFile:

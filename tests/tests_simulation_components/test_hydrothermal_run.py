@@ -52,6 +52,29 @@ def test_check_convergence_ignores_unrelated_output():
     _check_convergence(stdout, "dummy_input.py")  # must not raise
 
 
+def test_check_convergence_raises_for_petsc_non_convergence():
+    """SfePy's PETSc-backed solver (nls.petsc) reports -1 on failure, not
+    1 or 2 -- must still be caught, with a specific (not "unknown
+    condition") message."""
+    stdout = "cond: -1, iter: 4, err0: 10.0, err: 9.5\n"
+    with pytest.raises(RuntimeError, match="non-convergence"):
+        _check_convergence(stdout, "dummy_input.py")
+
+
+def test_check_convergence_error_includes_full_stdout():
+    """The raised exception must include the full stdout, not just the
+    matched cond: line -- log output isn't necessarily visible to a caller
+    (e.g. inside the Workbench), so the exception itself needs to carry
+    enough for the user to judge the solver's actual behavior."""
+    stdout = (
+        "nls: iter: 0, residual: 100.0\n"
+        "nls: iter: 1, residual: 50.0\n"
+        "cond: 1, iter: 5, err0: 100.0, err: 50.0\n"
+    )
+    with pytest.raises(RuntimeError, match=r"(?s)residual: 100\.0.*residual: 50\.0"):
+        _check_convergence(stdout, "dummy_input.py")
+
+
 # -----------------------------------------------------------------------------
 # export_simulation_results -- synthetic SimulationResults, no real solve needed
 # -----------------------------------------------------------------------------
@@ -102,12 +125,12 @@ def test_run_simulation_sfepy_dispatches_hydrothermal_problem_builder(monkeypatc
     sentinel_result = SimulationResults()
     received = {}
 
-    def fake_run_hydrothermal(builder, keep_files_dir=None):
+    def fake_run_hydrothermal(builder, keep_files_dir=None, output_dir=None):
         received["builder"] = builder
         received["keep_files_dir"] = keep_files_dir
         return sentinel_result
 
-    def fake_run_custom(problem, keep_files_dir=None):
+    def fake_run_custom(problem, keep_files_dir=None, output_dir=None):
         raise AssertionError("should not be called for a HydrothermalProblemBuilder")
 
     monkeypatch.setattr(sfepy_run, "_run_hydrothermal_problem", fake_run_hydrothermal)
@@ -124,10 +147,10 @@ def test_run_simulation_sfepy_dispatches_custom_sfepy_builder(monkeypatch):
     sentinel_result = SimulationResults()
     received = {}
 
-    def fake_run_hydrothermal(builder, keep_files_dir=None):
+    def fake_run_hydrothermal(builder, keep_files_dir=None, output_dir=None):
         raise AssertionError("should not be called for a CustomSfepyBuilder")
 
-    def fake_run_custom(problem, keep_files_dir=None):
+    def fake_run_custom(problem, keep_files_dir=None, output_dir=None):
         received["problem"] = problem
         return sentinel_result
 
@@ -203,6 +226,35 @@ def test_run_simulation_sfepy_end_to_end_implicit_mesh(model1_implicit_mesh, mod
     assert T.max() <= 60.0 + 1e-6
     p = result.node_data_by_time[final_time]["p"]
     assert p.min() >= 0.0 - 1e-6  # p_top=0.0 (default)
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_run_simulation_sfepy_output_dir_persists_both_stages(
+    model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    """
+    output_dir, when given, must survive the call (unlike the default
+    temp-and-delete behavior) and keep pressure/heat's raw VTK output in
+    separate subdirectories -- otherwise load_vtk_results() would walk
+    both stages' files together for either stage (see
+    _run_hydrothermal_problem's output_dir docstring).
+    """
+    builder = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        include_flow=True,
+        t1=5e9,
+        num_steps=1,
+    )
+    out_dir = tmp_path / "sfepy_out"
+    result = run_simulation_sfepy(builder, output_dir=str(out_dir))
+
+    assert result.nodes_by_time  # solve still succeeded
+    pressure_vtks = list((out_dir / "pressure").glob("*.vtk"))
+    heat_vtks = list((out_dir / "heat").glob("*.vtk"))
+    assert pressure_vtks, "pressure stage's raw VTK output was not persisted"
+    assert heat_vtks, "heat stage's raw VTK output was not persisted"
 
 
 @pytest.mark.integration
