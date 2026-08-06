@@ -398,3 +398,20 @@ def inspect_simulation_result_plot_cross_section_2D(
     # var_name left at its default ("T" if present else whatever field
     # exists) -- see simulation_visualization._default_var_name.
     plot_cross_section_2D(simulation_result, origin=origin, cmap="coolwarm")
+
+
+@wbgeo_component(identifier='wbgeo::inspect_simulation_result_stdout',
+                 title='View Solver Output',
+                 description='Prints the raw sfepy-run solver output for this result, per stage '
+                             '("pressure"/"heat" for a Hydrothermal problem, "custom" for a Custom '
+                             'SfePy problem) -- lets solver convergence/quality be checked on a '
+                             'normal, successful run too, not only via the error raised when a '
+                             'solve fails to converge.')
+@wbgeo_inspector()
+def inspect_simulation_result_stdout(simulation_result: SimulationResults, _inspector: InspectorHelper):
+    if not simulation_result.sfepy_stdout:
+        print("No solver output recorded for this result.")
+        return
+    for stage, stdout in simulation_result.sfepy_stdout.items():
+        print(f"=== {stage} ===")
+        print(stdout)

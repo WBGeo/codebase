@@ -19,9 +19,15 @@ class SfepyOutputType:
     Where a completed SfePy run's raw VTK output lives, and whether
     load_vtk_results() should delete it after loading -- the shape
     _run_sfepy_input_file() returns and load_vtk_results() consumes.
+
+    stdout: the raw sfepy-run output for this run, so callers of
+    _run_sfepy_input_file (not just load_vtk_results, which only cares
+    about the VTK files) can carry it forward -- see
+    run_simulation_sfepy()'s SimulationResults.sfepy_stdout.
     """
     output_dir: str
     is_temp: bool = False
+    stdout: str = ""
 
 
 ####################

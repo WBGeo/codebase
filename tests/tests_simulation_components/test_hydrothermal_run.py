@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from core.object_components import SimulationResults
+from core.simulation_components.output_format.vtk.unified_format_vtk import SfepyOutputType
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties,
 )
@@ -30,9 +31,13 @@ def test_check_convergence_raises_for_non_converged_run():
         _check_convergence(stdout, "dummy_input.py")
 
 
-def test_check_convergence_raises_for_linesearch_failure():
+def test_check_convergence_raises_for_nonzero_condition_code():
+    """Any non-zero condition code counts as not converged -- no
+    solver-specific reason is attached (a fixed code->reason mapping isn't
+    reliable across the arbitrary SfePy solver backends a CustomSfepyBuilder
+    file can configure), but the raw code itself is still shown."""
     stdout = "cond: 2, iter: 5, err0: 1.0, err: 0.5\n"
-    with pytest.raises(RuntimeError, match="linesearch gave up"):
+    with pytest.raises(RuntimeError, match="cond: 2"):
         _check_convergence(stdout, "dummy_input.py")
 
 
@@ -52,12 +57,11 @@ def test_check_convergence_ignores_unrelated_output():
     _check_convergence(stdout, "dummy_input.py")  # must not raise
 
 
-def test_check_convergence_raises_for_petsc_non_convergence():
+def test_check_convergence_raises_for_negative_condition_code():
     """SfePy's PETSc-backed solver (nls.petsc) reports -1 on failure, not
-    1 or 2 -- must still be caught, with a specific (not "unknown
-    condition") message."""
+    1 or 2 -- must still be caught like any other non-zero code."""
     stdout = "cond: -1, iter: 4, err0: 10.0, err: 9.5\n"
-    with pytest.raises(RuntimeError, match="non-convergence"):
+    with pytest.raises(RuntimeError, match="cond: -1"):
         _check_convergence(stdout, "dummy_input.py")
 
 
@@ -174,7 +178,7 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
                                    fault_zone_cell_mask=None, fault_group_id=None):
         received["fault_zone_cell_mask"] = fault_zone_cell_mask
         received["fault_group_id"] = fault_group_id
-        return {"output_dir": "unused", "is_temp": True}
+        return SfepyOutputType(output_dir="unused", is_temp=True, stdout="fake stdout")
 
     sentinel_sim = SimulationResults()
     sentinel_sim.nodes_by_time[0.0] = np.zeros((1, 3))
@@ -194,6 +198,7 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
     assert result is sentinel_sim
     assert received["fault_group_id"] == 42
     assert np.array_equal(received["fault_zone_cell_mask"], fake_mask)
+    assert result.sfepy_stdout == {"custom": "fake stdout"}
 
 
 # -----------------------------------------------------------------------------
@@ -226,6 +231,10 @@ def test_run_simulation_sfepy_end_to_end_implicit_mesh(model1_implicit_mesh, mod
     assert T.max() <= 60.0 + 1e-6
     p = result.node_data_by_time[final_time]["p"]
     assert p.min() >= 0.0 - 1e-6  # p_top=0.0 (default)
+    # Solver stdout must be captured for both stages, not just on failure --
+    # lets solver quality be inspected on a normal, successful run too.
+    assert set(result.sfepy_stdout.keys()) == {"pressure", "heat"}
+    assert all(result.sfepy_stdout.values())
 
 
 @pytest.mark.integration
@@ -356,6 +365,8 @@ def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, mo
     # test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_properties:
     # the initial condition already IS the exact steady-state solution.
     assert float(T.mean()) == pytest.approx(35.0, abs=1e-6)
+    assert set(result.sfepy_stdout.keys()) == {"custom"}
+    assert result.sfepy_stdout["custom"]
 
 
 @pytest.mark.integration

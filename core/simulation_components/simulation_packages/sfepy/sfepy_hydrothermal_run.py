@@ -39,21 +39,18 @@ logger = logging.getLogger(__name__)
 
 
 #: SfePy's own nonlinear-solver convergence codes (see conv_test() in
-#: sfepy/solvers/nls.py's docstring): 0 = converged (tolerances met),
-#: 1 = max iterations reached without converging, 2 = linesearch gave up.
-#: Only 0 counts as success here. SfePy's PETSc-backed solver (nls.petsc,
-#: wrapping PETSc's own SNES) reports a different code on failure --
-#: -1, not 1 or 2 (see the same nls.py: `condition = 0 if converged else
-#: -1`) -- so a custom SfePy file configured to use nls.petsc instead of
-#: the default nls.newton needs its own entry here for a useful message;
-#: any other negative/unrecognized code still correctly counts as a
-#: failure below (condition != 0), just without a specific explanation.
+#: sfepy/solvers/nls.py's docstring): 0 = converged (tolerances met), any
+#: other value = not converged. Every backend agrees on 0 meaning
+#: converged (nls.newton's 1/2 vs. nls.petsc's -1 on failure -- see the
+#: same nls.py: `condition = 0 if converged else -1`), but not on what a
+#: given non-zero code specifically means. CustomSfepyBuilder lets a user
+#: configure any SfePy nonlinear solver, so guessing a specific reason per
+#: code (e.g. "linesearch gave up" for 2) risks attaching a wrong,
+#: solver-specific explanation to a code some other, unanticipated solver
+#: backend reuses for something else -- so only pass/fail plus the raw
+#: code is reported here; the full stdout below carries whatever
+#: solver-specific detail actually exists.
 _SFEPY_CONVERGED_CONDITION = 0
-_SFEPY_COND_MEANINGS = {
-    1: "max iterations reached without converging",
-    2: "linesearch gave up",
-    -1: "solver reported non-convergence",
-}
 
 
 def _check_convergence(stdout: str, input_file: str) -> None:
@@ -82,17 +79,17 @@ def _check_convergence(stdout: str, input_file: str) -> None:
     letting a user directly inspect the solver's per-iteration output to
     judge solution quality without having to go find the logs separately.
     """
-    failures = []
-    for match in re.finditer(r"cond:\s*(-?\d+),\s*iter:\s*(\d+).*", stdout):
-        condition = int(match.group(1))
-        if condition != _SFEPY_CONVERGED_CONDITION:
-            reason = _SFEPY_COND_MEANINGS.get(condition, f"unknown condition {condition}")
-            failures.append(f"{match.group(0).strip()} ({reason})")
+    failures = [
+        match.group(0).strip()
+        for match in re.finditer(r"cond:\s*(-?\d+),\s*iter:\s*(\d+).*", stdout)
+        if int(match.group(1)) != _SFEPY_CONVERGED_CONDITION
+    ]
 
     if failures:
         raise RuntimeError(
             f"sfepy-run on {input_file!r} exited successfully but did not converge "
-            f"({len(failures)} of its nonlinear solve(s) failed to reach tolerance):\n"
+            f"({len(failures)} of its nonlinear solve(s) reported a non-zero "
+            f"condition code, i.e. did not converge):\n"
             + "\n".join(failures)
             + "\nConsider raising linear_solver_i_max, tightening/loosening "
               "linear_solver_eps_r, or checking t1/num_steps are appropriate for "
@@ -113,8 +110,11 @@ def _run_sfepy_input_file(
 ) -> SfepyOutputType:
     """
     Run a generated SfePy input file against mesh_results and return
-    a SfepyOutputType(output_dir, is_temp) (the shape load_vtk_results()
-    already expects, so it's a drop-in replacement at the call site).
+    a SfepyOutputType(output_dir, is_temp, stdout) -- output_dir/is_temp are
+    the shape load_vtk_results() already expects (a drop-in replacement at
+    the call site); stdout is carried separately by callers that want it
+    (see run_simulation_sfepy()'s SimulationResults.sfepy_stdout), since
+    load_vtk_results() itself only cares about the VTK files on disk.
 
     fault_zone_cell_mask/fault_group_id (both from
     HydrothermalProblemBuilder, both None if no fault zone is active):
@@ -265,7 +265,7 @@ def _run_sfepy_input_file(
             except OSError:
                 pass
 
-    return SfepyOutputType(output_dir=output_dir, is_temp=is_temp)
+    return SfepyOutputType(output_dir=output_dir, is_temp=is_temp, stdout=result.stdout)
 
 
 def _run_hydrothermal_problem(
@@ -308,6 +308,11 @@ def _run_hydrothermal_problem(
     affordance), use export_simulation_results() below -- analogous to
     Download Mesh / export_mesh_results() for MeshResults, as its own
     separate Workbench component taking SimulationResults as input.
+
+    The returned SimulationResults.sfepy_stdout carries each stage's raw
+    solver output ("pressure"/"heat"), regardless of whether the solve
+    converged -- so solver quality can be inspected on a normal, successful
+    run too, not only via the exception raised on non-convergence.
 
     Uses builder.mesh_type (set at construction, validated against how
     builder.mesh_results was actually produced) -- not re-specified here,
@@ -401,6 +406,9 @@ def _run_hydrothermal_problem(
             merged.cell_data_by_time[t] = dict(heat_sim.cell_data_by_time.get(t, {}))
             if builder.include_flow and time in pressure_sim.node_data_by_time:
                 merged.node_data_by_time[t]["p"] = pressure_sim.node_data_by_time[time]["p"]
+        merged.sfepy_stdout = {"heat": t_out.stdout}
+        if builder.include_flow:
+            merged.sfepy_stdout["pressure"] = p_out.stdout
         return merged
     finally:
         if keep_files_dir is None:
@@ -427,6 +435,10 @@ def _run_custom_sfepy_problem(
     passed through to _run_sfepy_input_file the same way
     _run_hydrothermal_problem already does -- the mat_id relabeling itself
     is entirely generic, not HydrothermalProblemBuilder-specific.
+
+    The returned SimulationResults.sfepy_stdout carries the raw solver
+    output under the "custom" key, same purpose as
+    _run_hydrothermal_problem's "pressure"/"heat" keys.
 
     problem.input_file_contents is written to a fresh temp file here (not
     at CustomSfepyBuilder construction time) for the same reason
@@ -459,6 +471,7 @@ def _run_custom_sfepy_problem(
         sim = load_vtk_results(out)
         if not sim.nodes_by_time:
             raise RuntimeError("Custom SfePy input file produced no SfePy output (0 VTK files).")
+        sim.sfepy_stdout = {"custom": out.stdout}
         return sim
     finally:
         if keep_files_dir is None:

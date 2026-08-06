@@ -428,12 +428,21 @@ class SimulationResults:
 
     cell_data_by_time : Dict[float, Dict[str, NpNDArrayFp64]]
         Cell-based data arrays for each timestep.
+
+    sfepy_stdout : Optional[Dict[str, str]]
+        Raw solver stdout, keyed by stage name (e.g. "pressure"/"heat" for a
+        HydrothermalProblemBuilder run, "custom" for a CustomSfepyBuilder
+        run) -- set by run_simulation_sfepy() so solver convergence/quality
+        can be inspected even after a successful run, not only when a solve
+        fails. None if this result wasn't produced by run_simulation_sfepy()
+        (e.g. constructed directly in a test).
     """
     nodes_by_time: Dict[float, NpNDArrayFp64] = field(default_factory=dict)
     cells_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
     celltypes_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
     node_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
     cell_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
+    sfepy_stdout: Optional[Dict[str, str]] = None
 
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],

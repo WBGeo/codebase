@@ -326,3 +326,22 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
     assert received["simulation_result"] is sim
     assert received["origin"] == pytest.approx(expected_origin)
     assert received["cmap"] == "coolwarm"
+
+
+def test_inspect_simulation_result_stdout_prints_each_stage(capsys):
+    sim = SimulationResults()
+    sim.sfepy_stdout = {"pressure": "pressure solver log", "heat": "heat solver log"}
+
+    swc.inspect_simulation_result_stdout(simulation_result=sim, _inspector=None)
+
+    captured = capsys.readouterr().out
+    assert "pressure" in captured and "pressure solver log" in captured
+    assert "heat" in captured and "heat solver log" in captured
+
+
+def test_inspect_simulation_result_stdout_handles_missing_stdout(capsys):
+    sim = SimulationResults()  # sfepy_stdout left at its default (None)
+
+    swc.inspect_simulation_result_stdout(simulation_result=sim, _inspector=None)
+
+    assert "No solver output" in capsys.readouterr().out
