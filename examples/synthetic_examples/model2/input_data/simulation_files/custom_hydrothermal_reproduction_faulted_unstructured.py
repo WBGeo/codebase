@@ -11,17 +11,19 @@ once and runs both builders against the identical objects, so this isn't a
 same-technique demo at different settings -- it solves the literal same
 problem, including the active 3D fault damage zone.
 
-WHY THIS FILE EXISTS
----------------------
+WHAT THIS FILE DEMONSTRATES
+-----------------------------
 Companion to model1's custom_hydrothermal_reproduction_implicit.py (no
 fault, implicit structured mesh, include_flow=True). This one is the
-fault-zone / unstructured-mesh / pure-conduction case: run through the real
-CustomSfepyBuilder / run_simulation_sfepy pipeline against model2 (a real
-fault, active damage zone, unstructured mesh, the example script's real
-rock/fault-zone properties), its result matched HydrothermalProblemBuilder's
-own result to the last floating-point digit (max |T diff|, matched
-node-by-node by coordinate: 0.0; T mean 36.6890450445 both sides; fault
-zone: 64,688 active cells).
+fault-zone / unstructured-mesh / pure-conduction case: it shows that a
+hand-written CustomSfepyBuilder file can exactly reproduce
+HydrothermalProblemBuilder's own result on a mesh with an active fault
+damage zone. Run through the real CustomSfepyBuilder / run_simulation_sfepy
+pipeline against model2 (a real fault, active damage zone, unstructured
+mesh, the example script's real rock/fault-zone properties), its result
+matches HydrothermalProblemBuilder's own result to the last floating-point
+digit (max |T diff|, matched node-by-node by coordinate: 0.0; T mean
+36.6890450445 both sides; fault zone: 64,688 active cells).
 
 Since include_flow=False here, this is much simpler than a two-stage file:
 there's no pressure solve, no Darcy velocity, no "STAGE 1"/"STAGE 2" split

@@ -338,7 +338,7 @@ plot_cross_section_2D(
 # why no companion fault-zone-mask file is needed for this case.
 
 custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
-                      "custom_hydrothermal_reproduction_faulted_unstructured.py")
+                      "custom_hydrothermal_fromscratch_faulted_unstructured.py")
 with open(custom_input_path) as f:
     custom_input_file_contents = f.read()
 
@@ -359,3 +359,14 @@ custom_data_by_time = run_simulation_sfepy(custom_builder)
 custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
 print("HydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
 print("CustomSfepyBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())
+
+#%%
+
+# Visualize simulation results
+plot_variable_at_a_time(custom_data_by_time, "T", time=0, cmap="coolwarm", show_edges=False)
+plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=False)
+
+# normal=(0, 1, 0): the fault plane is Y-invariant, so this actually cuts across it.
+plot_cross_section_2D(
+    custom_data_by_time, "T", origin=(1250, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+)

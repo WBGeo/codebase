@@ -10,19 +10,20 @@ builds its structural_model_result/mesh_implicit_structured once and runs
 both builders against the identical objects, so this isn't a same-technique
 demo at different settings -- it solves the literal same problem.
 
-WHY THIS FILE EXISTS
----------------------
-It's a worked, verified answer to "could an experienced user reproduce
-HydrothermalProblemBuilder's exact behavior with CustomSfepyBuilder?" --
-yes. Run through the real CustomSfepyBuilder / run_simulation_sfepy
-pipeline against model1 (with the example script's real rock/fluid
-properties, not generic defaults), its result matched
+WHAT THIS FILE DEMONSTRATES
+-----------------------------
+CustomSfepyBuilder accepts a complete, hand-written SfePy input file
+instead of an auto-generated one -- useful for physics or solver
+configurations HydrothermalProblemBuilder doesn't support. This file shows
+that a hand-written file can exactly reproduce HydrothermalProblemBuilder's
+own result for the same problem: run through the real CustomSfepyBuilder /
+run_simulation_sfepy pipeline against model1 (with the example script's
+real rock/fluid properties, not generic defaults), its result matches
 HydrothermalProblemBuilder's own result to the last floating-point digit
 (max |T diff|, matched node-by-node by coordinate: 0.0; T mean
-35.1645449112 both sides). Deliberately imports nothing from the WBGeo
-codebase -- only sfepy/numpy/pyvista -- to prove this is genuinely
-achievable independently, not by secretly calling our own helper
-functions.
+35.1645449112 both sides). It deliberately imports nothing from the WBGeo
+codebase -- only sfepy/numpy/pyvista -- to keep the demonstration fully
+self-contained.
 
 HOW IT WORKS
 ------------
