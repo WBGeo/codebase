@@ -327,18 +327,37 @@ plot_cross_section_2D(
 # CustomSfepyBuilder validates it against the mesh at construction time,
 # then runs through the exact same run_simulation_sfepy() dispatcher.
 #
-# The file loaded below is a worked, verified example: it solves the
-# literal same problem as the HydrothermalProblemBuilder call above --
-# same mesh (real fault, active damage zone), same rock_properties/
-# fault_zone_properties, same include_flow=False/num_steps -- and
-# reproduces its result bit-for-bit. Since include_flow=False here (pure
-# conduction), this file is much simpler than model1's two-stage example:
-# it's a single, complete SfePy conf with no pressure/velocity stage at
-# all -- see the file's own docstring for the full explanation, including
-# why no companion fault-zone-mask file is needed for this case.
+# Two worked examples are provided for this mesh (real fault, active damage
+# zone, unstructured); pick one by (un)commenting custom_input_path below.
+#
+#   - custom_hydrothermal_fromscratch_faulted_unstructured.py (active by
+#     default) implements the same two-stage pressure -> Darcy velocity ->
+#     heat problem as HydrothermalProblemBuilder(include_flow=True), but
+#     written from first principles: regions, materials and boundary
+#     conditions are derived using only public helper functions and
+#     coordinate-based SfePy selectors, without relying on
+#     HydrothermalProblemBuilder's own generated pressure-stage file. It
+#     reproduces HydrothermalProblemBuilder's result closely (agreeing to
+#     within numerical solver tolerance, not bit-for-bit, since the two are
+#     independently authored) -- demonstrating that the same two-stage
+#     physics can be set up in a custom file without prior knowledge of how
+#     HydrothermalProblemBuilder constructs its pressure stage internally.
+#
+#   - custom_hydrothermal_reproduction_faulted_unstructured.py instead
+#     reproduces the HydrothermalProblemBuilder call above bit-for-bit:
+#     same mesh, same rock_properties/fault_zone_properties, same
+#     include_flow=False/num_steps. Since include_flow=False there (pure
+#     conduction), it is a single, complete SfePy conf with no pressure/
+#     velocity stage at all -- see the file's own docstring for the full
+#     explanation, including why no companion fault-zone-mask file is
+#     needed for that case.
+#
+# See each file's own docstring for the full technical explanation.
 
 custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
                       "custom_hydrothermal_fromscratch_faulted_unstructured.py")
+# custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
+#                       "custom_hydrothermal_reproduction_faulted_unstructured.py")
 with open(custom_input_path) as f:
     custom_input_file_contents = f.read()
 
@@ -355,14 +374,8 @@ custom_data_by_time = run_simulation_sfepy(custom_builder)
 
 #%%
 
-# Confirms the custom-builder result matches HydrothermalProblemBuilder's above.
-custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
-print("HydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
-print("CustomSfepyBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())
-
-#%%
-
 # Visualize simulation results
+custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
 plot_variable_at_a_time(custom_data_by_time, "T", time=0, cmap="coolwarm", show_edges=False)
 plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=False)
 
