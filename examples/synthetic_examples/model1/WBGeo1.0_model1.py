@@ -208,11 +208,11 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # Process simulation with SfePy on the implicit structured mesh.
 
 rock_properties = {
-    "basement": RockUnitProperties(name="basement", porosity=0.01, permeability=1e-18, k_solid=3.0, rho_c_solid=2.15e6),
-    "rock1": RockUnitProperties(name="rock1", porosity=0.20, permeability=1e-13, k_solid=2.8, rho_c_solid=2.0e6),
-    "rock2": RockUnitProperties(name="rock2", porosity=0.08, permeability=1e-18, k_solid=1.5, rho_c_solid=2.3e6),
+    "basement": RockUnitProperties(name="basement", porosity=0.10, permeability=1e-13, k_solid=50, rho_c_solid=3000 * 1300),
+    "rock1": RockUnitProperties(name="rock1", porosity=0.30, permeability=1e-11, k_solid=10, rho_c_solid=1000 * 800),
+    "rock2": RockUnitProperties(name="rock2", porosity=0.20, permeability=1e-12, k_solid=20, rho_c_solid=2000 * 1700),
 }
-fluid = FluidProperties(mu=4.7e-4, k_fluid=0.65, rho_c_fluid=4.15e6)
+fluid = FluidProperties(mu=1.0e-3, k_fluid=15, rho_c_fluid=2000 * 1200)
 
 builder = HydrothermalProblemBuilder(
     mesh_results=mesh_implicit_structured,
@@ -220,7 +220,7 @@ builder = HydrothermalProblemBuilder(
     rock_properties=rock_properties,
     fluid=fluid,
     include_flow=True,
-    t1=5e9,
+    t1=5e11,
     num_steps=3,
 )
 
@@ -240,7 +240,7 @@ final_time = max(data_by_time.nodes_by_time.keys())
 plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
 plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
 plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
-plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(1, 0, 0), cmap="coolwarm")
+plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
 
 #%%
 
@@ -249,16 +249,31 @@ plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(1, 0, 0
 # CustomSfepyBuilder validates it against the mesh at construction time,
 # then runs through the exact same run_simulation_sfepy() dispatcher.
 #
-# The file loaded below is a worked, verified example: it solves the
-# literal same problem as the HydrothermalProblemBuilder call above --
-# same mesh, same rock_properties/fluid, same BCs, t1, num_steps -- and
-# reproduces its result bit-for-bit. See the file's own docstring for the
-# full explanation of how a single self-contained file (no WBGeo imports
-# at all) can express HydrothermalProblemBuilder's two-stage
-# pressure -> Darcy velocity -> transient heat pipeline.
+# Two worked examples are provided for this mesh (no fault, implicit
+# structured); pick one by (un)commenting custom_input_path below.
+#
+#   - custom_hydrothermal_fromscratch_implicit.py (active by default)
+#     implements the same two-stage pressure -> Darcy velocity -> heat
+#     problem as HydrothermalProblemBuilder(include_flow=True), but written
+#     from first principles: regions, materials and boundary conditions are
+#     derived using only public helper functions and coordinate-based SfePy
+#     selectors, without relying on HydrothermalProblemBuilder's own
+#     generated pressure-stage file. On this mesh (an axis-aligned
+#     Cartesian grid, no fault) it reproduces HydrothermalProblemBuilder's
+#     result exactly, not just closely -- see the file's own docstring for
+#     why that's different from model2's fromscratch file, which only
+#     agrees to within solver tolerance on its unstructured, faulted mesh.
+#
+#   - custom_hydrothermal_reproduction_implicit.py instead reproduces the
+#     HydrothermalProblemBuilder call above bit-for-bit by embedding its
+#     own build_pressure_input_file/build_heat_input_file output directly.
+#
+# See each file's own docstring for the full technical explanation.
 
 custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
-                      "custom_hydrothermal_reproduction_implicit.py")
+                      "custom_hydrothermal_fromscratch_implicit.py")
+# custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
+#                       "custom_hydrothermal_reproduction_implicit.py")
 with open(custom_input_path) as f:
     custom_input_file_contents = f.read()
 

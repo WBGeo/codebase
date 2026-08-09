@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from typing import Optional, Union
@@ -70,11 +71,12 @@ def _check_convergence(stdout: str, input_file: str) -> None:
     exhausted i_max or gave up) -- a crashed/errored run is already caught
     separately by _run_sfepy_input_file's returncode check above this.
 
-    The full stdout is already logged unconditionally by the caller
-    (logger.info, regardless of outcome) -- but log output isn't
-    necessarily what a caller actually sees as "the error" (e.g. inside
-    the Workbench/py_runner, where the raised exception is what surfaces
-    to the user, not the container's logs). So the raised exception below
+    The full stdout is already logged unconditionally by the caller, line
+    by line as SfePy runs (logger.info, regardless of eventual outcome)
+    -- but log output isn't necessarily what a caller actually sees as
+    "the error" (e.g. inside the Workbench/py_runner, where the raised
+    exception is what surfaces to the user, not the container's logs).
+    So the raised exception below
     includes the full stdout too, not just the matched "cond: ..." lines,
     letting a user directly inspect the solver's per-iteration output to
     judge solution quality without having to go find the logs separately.
@@ -139,23 +141,41 @@ def _run_sfepy_input_file(
 
     Builds a local `env` dict for the subprocess rather than mutating the
     real process-global `os.environ`, so nothing needs to be restored on
-    the parent side afterward. Checks the subprocess's return code and
-    captures stdout/stderr (`capture_output=True`), raising with the
-    captured output on failure -- a crashed/errored SfePy run otherwise
-    exits non-zero with no indication of why. Also checks solver
-    *convergence*, not just the return code (see _check_convergence()) --
-    a returncode of 0 only means SfePy didn't crash, not that the
-    nonlinear solve actually reached tolerance within `i_max` iterations.
+    the parent side afterward. Streams the subprocess's combined
+    stdout/stderr to `logger.info` line by line as it runs (via
+    `sys.executable -u`, which forces the subprocess's own Python to be
+    unbuffered -- without it, output piped to a non-tty is typically
+    block-buffered internally and would arrive in one lump near the end
+    anyway, defeating the point of streaming), instead of capturing
+    everything and logging it as a single blob after the process exits.
+    This gives a live progress signal while a run is in flight (useful to
+    tell an active solve apart from a hung one, e.g. from an OOM) and, as
+    a side effect, means the full transcript is already logged by the
+    time any failure -- crash or non-convergence -- is detected below, so
+    a failed run doesn't lose the record a successful one gets. Raises
+    with the captured output on a non-zero exit -- a crashed/errored
+    SfePy run otherwise exits non-zero with no indication of why. Also
+    checks solver *convergence*, not just the return code (see
+    _check_convergence()) -- a returncode of 0 only means SfePy didn't
+    crash, not that the nonlinear solve actually reached tolerance within
+    `i_max` iterations.
 
-    On Windows, `sfepy-run` is resolved to its absolute path via
-    `shutil.which()` rather than passed as the bare command name: after
-    GMSH's `initialize()`/`finalize()` has run anywhere earlier in the
-    same process (i.e. after any `mesh_type="unstructured"` mesh
-    generation), Win32 `CreateProcess`'s own executable search stops
-    finding bare command names, raising `FileNotFoundError: [WinError 2]`,
-    even though `PATH` itself is untouched and `shutil.which()` still
-    resolves it correctly. Passing the resolved absolute path sidesteps
-    `CreateProcess`'s search entirely.
+    `sfepy-run` is resolved to its absolute path via `shutil.which()`
+    rather than passed as the bare command name, and that resolved path
+    is passed as an argument to `sys.executable` (the actual child
+    process) rather than launched directly. `shutil.which()` is what
+    `sys.executable -u`-based streaming above actually needs: it must
+    hand a real file path to run as a script, independent of the
+    subprocess's own cwd/PATH. This also happens to sidestep a Windows-
+    only bug the resolution originally existed for: after GMSH's
+    `initialize()`/`finalize()` has run anywhere earlier in the same
+    process (i.e. after any `mesh_type="unstructured"` mesh generation),
+    Win32 `CreateProcess`'s own executable search stops finding bare
+    command names, raising `FileNotFoundError: [WinError 2]`, even though
+    `PATH` itself is untouched and `shutil.which()` still resolves it
+    correctly -- moot now that `sys.executable` (always absolute) is the
+    process actually launched, but resolving `sfepy-run` to an absolute
+    path remains correct regardless.
     """
     is_temp = output_dir is None
     if is_temp:
@@ -225,15 +245,11 @@ def _run_sfepy_input_file(
         env["SFEpy_OUTPUT_DIR"] = output_dir
         env["TEMP_MESH_FILE"] = tmp_mesh_path
 
-        # Resolved to an absolute path rather than passed as the bare name
-        # "sfepy-run" -- on Windows, after GMSH's initialize()/finalize() has
-        # run anywhere earlier in this process (i.e. after any
-        # mesh_type="unstructured" mesh generation), Win32 CreateProcess's own
-        # executable search stops finding bare command names, raising
-        # FileNotFoundError: [WinError 2], even though PATH itself is
-        # untouched and shutil.which() still resolves it correctly. Passing
-        # the resolved absolute path sidesteps CreateProcess's search
-        # entirely, which avoids the problem.
+        # Resolved to an absolute path since it's passed as an argument to
+        # sys.executable below (a real file path, not a bare command name
+        # sys.executable would need to search PATH for) -- see this
+        # function's docstring for why sys.executable runs it rather than
+        # launching sfepy-run directly.
         sfepy_run_exe = shutil.which("sfepy-run")
         if sfepy_run_exe is None:
             raise RuntimeError(
@@ -242,21 +258,29 @@ def _run_sfepy_input_file(
             )
 
         logger.info("Running SfePy on %s...", input_file)
-        result = subprocess.run(
-            [sfepy_run_exe, input_file],
+        process = subprocess.Popen(
+            [sys.executable, "-u", sfepy_run_exe, input_file],
             env=env,
             cwd=os.getcwd(),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
         )
-        if result.stdout:
-            logger.info(result.stdout)
-        if result.returncode != 0:
+        assert process.stdout is not None
+        stdout_lines = []
+        for line in process.stdout:
+            logger.info(line.rstrip())
+            stdout_lines.append(line)
+        process.wait()
+        stdout = "".join(stdout_lines)
+
+        if process.returncode != 0:
             raise RuntimeError(
-                f"sfepy-run failed (exit code {result.returncode}) on {input_file!r}:\n"
-                f"{result.stderr or result.stdout or '(no output captured)'}"
+                f"sfepy-run failed (exit code {process.returncode}) on {input_file!r}:\n"
+                f"{stdout or '(no output captured)'}"
             )
-        _check_convergence(result.stdout, input_file)
+        _check_convergence(stdout, input_file)
         logger.info("SfePy finished.")
     finally:
         for p in (tmp_exo_path, tmp_mesh_path):
@@ -265,7 +289,7 @@ def _run_sfepy_input_file(
             except OSError:
                 pass
 
-    return SfepyOutputType(output_dir=output_dir, is_temp=is_temp, stdout=result.stdout)
+    return SfepyOutputType(output_dir=output_dir, is_temp=is_temp, stdout=stdout)
 
 
 def _run_hydrothermal_problem(

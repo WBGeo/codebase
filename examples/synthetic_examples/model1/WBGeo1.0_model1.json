@@ -112,34 +112,49 @@
       }
     },
     "592": {
-      "identifier": "wbgeo::sfepy_input_data",
+      "identifier": "wbgeo::simulation_build_hydrothermal_problem",
       "x": 910,
       "y": 200,
-      "ports": {}
+      "ports": {
+        "0": {
+          "connected_comp": 562,
+          "connected_port": "Mesh"
+        },
+        "1": {
+          "connected_comp": 542,
+          "connected_port": "structural_model"
+        },
+        "2": {
+          "smartinput_value": "{\"root.fluid.mu\": 0.001, \"root.fluid.k_fluid\": 15, \"root.fluid.rho_c_fluid\": 2400000, \"root.rock_properties.basement.name\": \"basement\", \"root.rock_properties.basement.porosity\": 0.1, \"root.rock_properties.basement.permeability\": 1e-13, \"root.rock_properties.basement.k_solid\": 50, \"root.rock_properties.basement.rho_c_solid\": 3900000, \"root.rock_properties.rock1.name\": \"rock1\", \"root.rock_properties.rock1.porosity\": 0.3, \"root.rock_properties.rock1.permeability\": 1e-11, \"root.rock_properties.rock1.k_solid\": 10, \"root.rock_properties.rock1.rho_c_solid\": 800000, \"root.rock_properties.rock2.name\": \"rock2\", \"root.rock_properties.rock2.porosity\": 0.2, \"root.rock_properties.rock2.permeability\": 1e-12, \"root.rock_properties.rock2.k_solid\": 20, \"root.rock_properties.rock2.rho_c_solid\": 3400000}",
+          "smartinput_form": "true"
+        },
+        "7": {
+          "fixed_value": "500000000000.0"
+        },
+        "8": {
+          "fixed_value": "3"
+        }
+      }
     },
     "598": {
-      "identifier": "wbgeo::simulate_with_sfepy",
+      "identifier": "wbgeo::simulation_run",
       "x": 1160,
       "y": 50,
       "ports": {
         "0": {
           "connected_comp": 592,
-          "connected_port": "sfepy_input"
-        },
-        "1": {
-          "connected_comp": 549,
-          "connected_port": "Mesh"
+          "connected_port": "hydrothermal_problem"
         }
       }
     },
     "604": {
-      "identifier": "wbgeo::load_VTK_results",
+      "identifier": "wbgeo::export_simulation_results",
       "x": 1440,
       "y": 60,
       "ports": {
         "0": {
           "connected_comp": 598,
-          "connected_port": "Simulation"
+          "connected_port": "simulation_result"
         }
       }
     }
