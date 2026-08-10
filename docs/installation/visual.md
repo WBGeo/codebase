@@ -92,3 +92,22 @@ the [Reset](http://localhost:8080/gui/Reset) page and then restart the py_runner
 container.
 The [Runners](http://localhost:8080/gui/Runners) page might help with dead
 runners.
+
+### Configuration Options
+
+The docker image provides a set of configuration options.
+Some of these options are only available to the docker container,
+while others are set by default and are only available to the runner CLI script.
+
+By default, the setup works without any modifications,
+
+| Environment Variable | CLI Argument  | Description                                 |
+|----------------------|---------------|---------------------------------------------|
+| `MINIO_HOST`         | `--s3`        | S3 Storage Host                             |
+| `S3_ACCESS_KEY`      | `-s3-access`  | Access Key (for S3)                         |
+| `S3_SECRET_KEY`      | `--s3-secret` | Secret Key (for S3)                         |
+| `BACKEND_HOST`       | `--backend`   | Gem Backend Host                            |
+| `PREPARE_TEMPLATES`  | `--templates` | Wheather to  (default false)                |
+|                      | `-p`          | Python path of the runner                   |
+|                      | `-i`          | Path to import for component loading        |
+| `LIQUIDEARTH_TOKEN`  |               | Default token used for the LiquidEarth API. |
