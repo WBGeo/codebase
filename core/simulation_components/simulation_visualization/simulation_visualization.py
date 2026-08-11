@@ -98,26 +98,28 @@ def _apply_camera_convention(plotter: pv.Plotter) -> None:
 #: Whether the installed pyvista's DataSetFilters.extract_surface() accepts
 #: an `algorithm` kwarg -- checked via introspection, not a hardcoded
 #: version cutoff, since the actual break is "does this pyvista have the
-#: parameter". Newer pyvista (this dev environment's local venv, 0.48.4)
-#: added `algorithm`, with a new default ("dataset_surface") that produces
-#: an empty mesh (0 points) for this pipeline's SfePy-exported grids --
-#: algorithm=None restores the old vtkGeometryFilter-based behavior
-#: (matching the deprecated extract_geometry()). This pipeline's own
+#: parameter". extract_surface()'s own default algorithm
+#: ("dataset_surface", a vtkDataSetSurfaceFilter) produces an empty mesh (0
+#: points) for this pipeline's SfePy-exported grids -- confirmed live on
+#: *both* the local dev venv's pyvista (0.48.4) *and* this pipeline's own
 #: pinned requirements.txt version, pyvista==0.44.1 (what's actually
-#: installed in the Docker Workbench), predates the `algorithm` parameter
-#: entirely and has no such default-changed regression -- confirmed live,
-#: pyvista==0.48.4's TypeError "unexpected keyword argument 'algorithm'"
-#: for the same call. The local venv's newer pyvista is why this wasn't
-#: caught by local tests.
+#: installed in the Docker Workbench, where this was originally caught).
+#: algorithm=None requests the correct vtkGeometryFilter-based behavior on
+#: pyvista new enough to have the kwarg; pyvista==0.44.1 predates the
+#: kwarg entirely, so _extract_surface_compat falls back to
+#: grid.extract_geometry() there instead -- a plain vtkGeometryFilter
+#: wrapper with the same output, not yet deprecated in 0.44.1 (it is in
+#: 0.48.4, in favor of algorithm=None, which is why this fallback isn't
+#: just used unconditionally).
 _EXTRACT_SURFACE_SUPPORTS_ALGORITHM = "algorithm" in inspect.signature(pv.DataSet.extract_surface).parameters
 
 
 def _extract_surface_compat(grid: pv.DataSet) -> pv.PolyData:
-    """grid.extract_surface(), restoring the pre-`algorithm`-kwarg legacy behavior where needed (see
-    _EXTRACT_SURFACE_SUPPORTS_ALGORITHM)."""
+    """grid.extract_surface() via vtkGeometryFilter, not extract_surface()'s own
+    empty-mesh-prone default -- see _EXTRACT_SURFACE_SUPPORTS_ALGORITHM."""
     if _EXTRACT_SURFACE_SUPPORTS_ALGORITHM:
         return grid.extract_surface(algorithm=None)
-    return grid.extract_surface()
+    return grid.extract_geometry()
 
 
 # ----------------------------------------------------------------------
