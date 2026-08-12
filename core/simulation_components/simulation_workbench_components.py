@@ -377,7 +377,18 @@ def inspect_simulation_result_plot_variable_at_a_time(
     # var_name/time left at their defaults ("T" if present else whatever
     # field exists, at the final time step) -- see
     # simulation_visualization.plot_variable_at_a_time/_default_var_name.
-    plot_variable_at_a_time(simulation_result, cmap="coolwarm", show_edges=True)
+    #
+    # show_edges=False (rather than the codebase default's usual True) and
+    # a capped off_screen/window_size/no-antialiasing render: this is the
+    # only 3D plot in the Workbench whose surface is colored by a
+    # continuous scalar field with a colorbar rather than flat per-block
+    # colors -- confirmed to be disproportionately expensive under the
+    # Workbench container's software (no GPU/display) rendering, unlike
+    # every flat-colored 3D plot here (Plot Mesh in 3D, Plot Materials).
+    plot_variable_at_a_time(
+        simulation_result, cmap="coolwarm", show_edges=False,
+        off_screen=True, window_size=(800, 600), anti_aliasing=False,
+    )
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_cross_section_2D',

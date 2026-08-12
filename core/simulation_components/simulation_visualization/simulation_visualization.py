@@ -151,14 +151,28 @@ def _build_grid_geometry(sim: SimulationResults, time: float) -> pv.Unstructured
     return pv.UnstructuredGrid(cells, celltypes, nodes)
 
 
-def _attach_time_data(mesh: pv.DataSet, sim: SimulationResults, time: float) -> None:
-    """Attach `time`'s node/cell data onto an existing mesh in place, replacing whatever was there before."""
+def _attach_time_data(
+    mesh: pv.DataSet, sim: SimulationResults, time: float, var_names: Optional[Sequence[str]] = None,
+) -> None:
+    """Attach `time`'s node/cell data onto an existing mesh in place, replacing whatever was there before.
+
+    var_names: if given, only these variables are attached instead of every
+    variable at this time step -- lets a caller that only plots one or two
+    variables (e.g. plot_variable_at_a_time) skip allocating/copying the
+    rest onto the mesh. None (default) attaches everything, as before --
+    needed by callers like _export_simulation_results_to_vtk that genuinely
+    need the full result.
+    """
     mesh.point_data.clear()
     mesh.cell_data.clear()
-    for name, arr in sim.node_data_by_time.get(time, {}).items():
-        mesh.point_data[name] = arr
-    for name, arr in sim.cell_data_by_time.get(time, {}).items():
-        mesh.cell_data[name] = arr
+    node_data = sim.node_data_by_time.get(time, {})
+    cell_data = sim.cell_data_by_time.get(time, {})
+    names = var_names if var_names is not None else set(node_data) | set(cell_data)
+    for name in names:
+        if name in node_data:
+            mesh.point_data[name] = node_data[name]
+        if name in cell_data:
+            mesh.cell_data[name] = cell_data[name]
 
 
 def _same_geometry(sim: SimulationResults, time_a: float, time_b: float) -> bool:
@@ -188,19 +202,24 @@ def _same_geometry(sim: SimulationResults, time_a: float, time_b: float) -> bool
     return True
 
 
-def build_grid_from_class(sim: SimulationResults, time: float) -> pv.UnstructuredGrid:
+def build_grid_from_class(
+    sim: SimulationResults, time: float, var_names: Optional[Sequence[str]] = None,
+) -> pv.UnstructuredGrid:
     """
     Build a PyVista grid for one saved time step of a SimulationResults --
     an UnstructuredGrid if `sim` has real cell connectivity for `time`, else a
     bare PolyData point cloud (nodes only). Attaches every variable in
-    `sim.node_data_by_time[time]` as point data. Shared by every plotting
-    function in this module rather than each reimplementing the conversion.
+    `sim.node_data_by_time[time]` as point data, unless `var_names` narrows
+    that down (see _attach_time_data) -- most plotting functions only ever
+    plot one variable and don't need the rest attached. Shared by every
+    plotting function in this module rather than each reimplementing the
+    conversion.
 
     Raises:
         ValueError: `time` isn't a key in `sim.nodes_by_time`.
     """
     mesh = _build_grid_geometry(sim, time)
-    _attach_time_data(mesh, sim, time)
+    _attach_time_data(mesh, sim, time, var_names)
     return mesh
 
 
@@ -238,6 +257,9 @@ def plot_variable_at_a_time(
     n_contours: int = 10,
     contour_color: str = "black",
     scale: Tuple[float, float, float] = (1, 1, 1),
+    off_screen: bool = False,
+    window_size: Optional[Tuple[int, int]] = None,
+    anti_aliasing: bool = True,
 ) -> None:
     """
     show_edges draws the mesh's own cell edges on top of the colored
@@ -256,6 +278,18 @@ def plot_variable_at_a_time(
     if present, else whatever field the sim actually has (see
     _default_var_name) -- a CustomSfepyBuilder result need not solve
     hydrothermal physics at all.
+
+    off_screen/window_size/anti_aliasing tune the render's own resource
+    footprint rather than what's shown -- this is the only 3D plot in the
+    codebase whose surface is colored by a continuous scalar field with a
+    colorbar (every other 3D plot here uses flat, solid per-block/material
+    colors), and that combination is disproportionately expensive under
+    software/CPU rendering (no GPU, no real display -- e.g. a headless
+    Workbench container) rather than hardware-accelerated OpenGL. Defaults
+    match this function's previous, unparameterized behavior (on-screen,
+    PyVista's own default window size, antialiasing on) for existing
+    interactive/script callers; the Workbench inspector passes tighter
+    values instead (see inspect_simulation_result_plot_variable_at_a_time).
     """
     if not sim.nodes_by_time:
         raise ValueError("sim has no time steps.")
@@ -264,7 +298,7 @@ def plot_variable_at_a_time(
     if var_name is None:
         var_name = _default_var_name(sim, time)
 
-    grid = build_grid_from_class(sim, time)
+    grid = build_grid_from_class(sim, time, var_names=[var_name])
 
     if var_name not in grid.point_data and var_name not in grid.cell_data:
         raise ValueError(f"Variable '{var_name}' not found at time {time}.")
@@ -272,7 +306,9 @@ def plot_variable_at_a_time(
     surf = _extract_surface_compat(grid)
     surf.points *= scale
 
-    plotter = pv.Plotter()
+    plotter = pv.Plotter(off_screen=off_screen, window_size=window_size)
+    if not anti_aliasing:
+        plotter.disable_anti_aliasing()
     plotter.add_mesh(
         surf, scalars=var_name, cmap=cmap,
         show_edges=show_edges, edge_color=edge_color, line_width=edge_line_width,
@@ -336,14 +372,14 @@ def plot_variable_difference(
     # (the common case -- see _same_geometry) instead of building two full
     # VTK grids just to read off one variable's values at each.
     grid = _build_grid_geometry(sim, time_a)
-    _attach_time_data(grid, sim, time_a)
+    _attach_time_data(grid, sim, time_a, var_names=[var_name])
     if var_name not in grid.point_data:
         raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_a}.")
     val_a = np.asarray(grid.point_data[var_name]).copy()
 
     if not _same_geometry(sim, time_a, time_b):
         grid = _build_grid_geometry(sim, time_b)
-    _attach_time_data(grid, sim, time_b)
+    _attach_time_data(grid, sim, time_b, var_names=[var_name])
     if var_name not in grid.point_data:
         raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_b}.")
     val_b = grid.point_data[var_name]
@@ -485,12 +521,12 @@ def plot_cross_section_2D(
     # (the common case -- see _same_geometry) instead of building two full
     # VTK grids just to slice each at the same plane.
     mesh = _build_grid_geometry(sim, time_a)
-    _attach_time_data(mesh, sim, time_a)
+    _attach_time_data(mesh, sim, time_a, var_names=[var_name])
     u_a, v_a, val_a = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
 
     if not _same_geometry(sim, time_a, time_b):
         mesh = _build_grid_geometry(sim, time_b)
-    _attach_time_data(mesh, sim, time_b)
+    _attach_time_data(mesh, sim, time_b, var_names=[var_name])
     u_b, v_b, val_b = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
 
     u_min, u_max = min(u_a.min(), u_b.min()), max(u_a.max(), u_b.max())
@@ -553,12 +589,12 @@ def plot_cross_section_difference_2D(
     # (the common case -- see _same_geometry) instead of building two full
     # VTK grids just to slice each at the same plane.
     mesh = _build_grid_geometry(sim, time_a)
-    _attach_time_data(mesh, sim, time_a)
+    _attach_time_data(mesh, sim, time_a, var_names=[var_name])
     u_a, v_a, val_a = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
 
     if not _same_geometry(sim, time_a, time_b):
         mesh = _build_grid_geometry(sim, time_b)
-    _attach_time_data(mesh, sim, time_b)
+    _attach_time_data(mesh, sim, time_b, var_names=[var_name])
     u_b, v_b, val_b = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
 
     u_min, u_max = min(u_a.min(), u_b.min()), max(u_a.max(), u_b.max())
@@ -605,7 +641,7 @@ def plot_variable_along_line(
     and plot it against distance along the line (via PyVista's own
     pv.Line(...).sample(grid), which linearly interpolates from the mesh).
     """
-    grid = build_grid_from_class(sim, time)
+    grid = build_grid_from_class(sim, time, var_names=[var_name])
     if var_name not in grid.point_data and var_name not in grid.cell_data:
         raise ValueError(f"Variable '{var_name}' not found at time {time}.")
 
@@ -663,7 +699,7 @@ def print_variable_at_point(
     sampling) and log it. Returns the sampled value, or None (with a
     warning logged) if `point` falls outside the mesh's bounds.
     """
-    grid = build_grid_from_class(sim, time)
+    grid = build_grid_from_class(sim, time, var_names=[var_name])
     value = _sample_point_on_mesh(grid, var_name, point)
     if value is not None:
         logger.info("%s at point %s at time %s: %s", var_name, point, time, value)
@@ -695,7 +731,7 @@ def plot_variable_time_series(
     for t in times:
         if not _same_geometry(sim, times[0], t):
             mesh = _build_grid_geometry(sim, t)
-        _attach_time_data(mesh, sim, t)
+        _attach_time_data(mesh, sim, t, var_names=[var_name])
         value = _sample_point_on_mesh(mesh, var_name, point)
         if value is not None:
             logger.info("%s at point %s at time %s: %s", var_name, point, t, value)

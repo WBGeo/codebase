@@ -294,7 +294,15 @@ def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_imp
 
     assert received["simulation_result"] is sim
     assert received["cmap"] == "coolwarm"
-    assert received["show_edges"] is True
+    # show_edges=False and a capped off-screen/no-antialiasing render:
+    # this is the only 3D plot in the Workbench colored by a continuous
+    # scalar field with a colorbar (vs. every other 3D plot's flat
+    # per-block colors) -- confirmed disproportionately expensive under
+    # the Workbench container's software rendering, unlike those.
+    assert received["show_edges"] is False
+    assert received["off_screen"] is True
+    assert received["window_size"] == (800, 600)
+    assert received["anti_aliasing"] is False
     # time/var_name intentionally left unset here -- plot_variable_at_a_time's
     # own defaults (final saved time step, "T" if present) apply, matching
     # this inspector's documented behavior.
