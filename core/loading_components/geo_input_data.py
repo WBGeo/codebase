@@ -103,13 +103,18 @@ class StructuralInputSmartInputOptions(pydantic.BaseModel):
 
 @wbgeo_component(identifier='wbgeo:__internal__structural_input_smart_options',
                  title='structural_input_smart_options')
-def structural_input_smart_options(surface_points_file: SurfaceCSVFileDataType,
+def structural_input_smart_options(surface_points_file: typing.Optional[SurfaceCSVFileDataType],
                                    group_names: GroupNames
                                    ) -> CtrlGroup:
   datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
-  surface_points = pd.read_csv(os.path.join(datadir, surface_points_file))
-
-  formations = sorted(surface_points["formation"].unique())
+  # surface_points_file defaults to None (an empty canvas has no file picked
+  # yet) -- the mapping form just comes back empty until one is connected,
+  # rather than crashing on os.path.join(datadir, None).
+  try:
+    surface_points = pd.read_csv(os.path.join(datadir, surface_points_file))
+    formations = sorted(surface_points["formation"].unique())
+  except Exception:
+    formations = []
 
   group_options = ['<Exclude>'] + group_names
   dv = {
@@ -164,10 +169,10 @@ SmartStructuralInputSmartInputOptions = typing.Annotated[
                  )
 def structural_input_data(
     name: str = 'Model 1',
-    surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
-    orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
-    group_names: GroupNames = ['Strat_Series1'],
-    mapping_object: SmartStructuralInputSmartInputOptions = {"Strat_Series1": ('rock2', 'rock1')}
+    surface_points_file: typing.Optional[SurfaceCSVFileDataType] = None,
+    orientations_file: typing.Optional[OrientationsCSVFileDataType] = None,
+    group_names: GroupNames = [],
+    mapping_object: SmartStructuralInputSmartInputOptions = {}
 ) -> InputData_StructuralElements:
   """
   Loads input data for a structural geological model from CSV and JSON files.
@@ -195,6 +200,9 @@ def structural_input_data(
   InputData_StructuralElements
       Ready to connect to the Compute Structural Model component.
   """
+  if surface_points_file is None:
+    raise ValueError("A surface points CSV file is required.")
+
   datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
 
   surface_points = pd.read_csv(os.path.join(datadir, surface_points_file))
@@ -234,10 +242,16 @@ def inspect_structural_input_data_plot_3D(input_data: InputData_StructuralElemen
 
 @wbgeo_component(identifier='wbgeo:__internal__faults_input_data_smart_options',
                  title='faults_input_data_smart_options')
-def faults_input_data_smart_options(fault_surface_points_file: SurfaceCSVFileDataType) -> CtrlGroup:
+def faults_input_data_smart_options(fault_surface_points_file: typing.Optional[SurfaceCSVFileDataType]) -> CtrlGroup:
   datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
-  surface_points = pd.read_csv(os.path.join(datadir, fault_surface_points_file))
-  formations = sorted(surface_points["formation"].unique())
+  # fault_surface_points_file defaults to None (an empty canvas has no file
+  # picked yet) -- the selection form just comes back empty until one is
+  # connected, rather than crashing on os.path.join(datadir, None).
+  try:
+    surface_points = pd.read_csv(os.path.join(datadir, fault_surface_points_file))
+    formations = sorted(surface_points["formation"].unique())
+  except Exception:
+    formations = []
   group_options = ['<Exclude>', '<Faults>']
   dv = {'<Exclude>': formations, '<Faults>': []}
   return CtrlGroup(id='root', inner=[
@@ -280,9 +294,9 @@ SmartFaultInputSmartInputOptions = typing.Annotated[
                  )
 def faults_input_data(
     name: str = 'Faults Model 2',
-    fault_surface_points_file: SurfaceCSVFileDataType = 'examples/synthetic_examples/model1/input_data/geological_data/model1_surface_points_df.csv',
-    fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = 'examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv',
-    fault_names: SmartFaultInputSmartInputOptions = ['fault',]) -> InputData_FaultElements:
+    fault_surface_points_file: typing.Optional[SurfaceCSVFileDataType] = None,
+    fault_orientations_file: typing.Optional[OrientationsCSVFileDataType] = None,
+    fault_names: SmartFaultInputSmartInputOptions = []) -> InputData_FaultElements:
   """
   Loads input data for fault elements from CSV files.
 
@@ -312,6 +326,9 @@ def faults_input_data(
 
   if not fault_names:
     raise ValueError("At least one fault name must be provided.")
+
+  if fault_surface_points_file is None:
+    raise ValueError("A fault surface points CSV file is required.")
 
   surface_points = pd.read_csv(os.path.join(datadir, fault_surface_points_file))
 
