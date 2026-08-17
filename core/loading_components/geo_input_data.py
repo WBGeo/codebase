@@ -169,7 +169,7 @@ SmartStructuralInputSmartInputOptions = typing.Annotated[
                  )
 def structural_input_data(
     name: str = 'Model 1',
-    surface_points_file: typing.Optional[SurfaceCSVFileDataType] = None,
+    surface_points_file: SurfaceCSVFileDataType = None,
     orientations_file: typing.Optional[OrientationsCSVFileDataType] = None,
     group_names: GroupNames = [],
     mapping_object: SmartStructuralInputSmartInputOptions = {}
