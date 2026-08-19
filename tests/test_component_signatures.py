@@ -42,6 +42,18 @@ class TestComponentSignatures(unittest.TestCase):
         codebase_folder = core.parent.resolve()
         cls.py_files = [".".join(py_file.relative_to(codebase_folder).parts)[:-3] for py_file in
                         components_folder.rglob("*.py") if py_file.stem != "__init__"]
+        # py_api_wbgeo.smartcontrols decorates its own types (e.g. CtrlGroup)
+        # with @wbgeo_type at import time -- if anything (e.g. a test file
+        # importing a *_workbench_components.py module during collection)
+        # imports it before this mock instance is set, CtrlGroup stays a
+        # plain undecorated class for the rest of the process (module
+        # imports are cached), and every SmartInput helper component
+        # returning CtrlGroup then fails this test's return-type check for a
+        # reason that has nothing to do with that component itself. Evicting
+        # and reimporting it here (same save/evict/restore treatment as
+        # cls.py_files below) makes this test's outcome independent of
+        # collection/import order.
+        cls.py_files.append("py_api_wbgeo.smartcontrols")
         # Save original module objects before evicting them, so teardown can restore
         # them and any already-imported function references remain valid.
         cls._saved_modules = {

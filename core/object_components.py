@@ -1,6 +1,7 @@
 import collections
 import os
 from dataclasses import field
+from enum import StrEnum
 
 import meshio
 import pydantic
@@ -143,6 +144,29 @@ class FaultModelResults:
     # TODO: ALEX: This is the simplest version I could think of - does this work for you
     fault_frame: FaultFrame  # this is a deepcopy of the structural frame object
 
+class MeshType(StrEnum):
+    """
+    Which meshing component produced a MeshResults -- the three mesh
+    generation approaches available (create_implicit_structured_mesh,
+    create_structured_mesh_data, create_unstructured_mesh_data). Set
+    automatically by each of those on the MeshResults they return, so
+    downstream consumers (e.g. HydrothermalProblemBuilder) can read a
+    mesh's own provenance instead of requiring it to be passed separately
+    and kept in sync by hand.
+    """
+    IMPLICIT = "implicit"
+    STRUCTURED = "structured"
+    UNSTRUCTURED = "unstructured"
+
+MeshTypeType = typing.Annotated[
+    MeshType,
+    AnnotatedScriptType(
+        name="MeshType",
+        identifier="MeshTypeType",
+        controlled="Select|implicit|structured|unstructured"
+    ),
+]
+
 @wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
 
 class MeshResults(BaseModel):
@@ -162,6 +186,12 @@ class MeshResults(BaseModel):
 
     point_sets : dict[str, np.ndarray], optional
         Per-node data arrays (same length as nodes)
+
+    mesh_type : MeshType, optional
+        Which meshing component produced this mesh -- set automatically by
+        create_implicit_structured_mesh/create_structured_mesh_data/
+        create_unstructured_mesh_data. None for manually-constructed
+        MeshResults (e.g. in tests) that don't need that provenance.
     """
 
     nodes: NpNDArrayFp64
@@ -169,6 +199,7 @@ class MeshResults(BaseModel):
 
     point_sets: Optional[Dict[str, NpNDArrayInt64]] = None
     cell_data: Optional[Dict[str, List[NpNDArrayInt64]]] = None
+    mesh_type: Optional[MeshTypeType] = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -397,12 +428,21 @@ class SimulationResults:
 
     cell_data_by_time : Dict[float, Dict[str, NpNDArrayFp64]]
         Cell-based data arrays for each timestep.
+
+    sfepy_stdout : Optional[Dict[str, str]]
+        Raw solver stdout, keyed by stage name (e.g. "pressure"/"heat" for a
+        HydrothermalProblemBuilder run, "custom" for a CustomSfepyBuilder
+        run) -- set by run_simulation_sfepy() so solver convergence/quality
+        can be inspected even after a successful run, not only when a solve
+        fails. None if this result wasn't produced by run_simulation_sfepy()
+        (e.g. constructed directly in a test).
     """
     nodes_by_time: Dict[float, NpNDArrayFp64] = field(default_factory=dict)
     cells_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
     celltypes_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
     node_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
     cell_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
+    sfepy_stdout: Optional[Dict[str, str]] = None
 
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],

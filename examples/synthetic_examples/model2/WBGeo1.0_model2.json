@@ -91,29 +91,6 @@
         }
       }
     },
-    "671": {
-      "identifier": "wbgeo::create_structured_mesh_data",
-      "x": 1100,
-      "y": 50,
-      "ports": {
-        "0": {
-          "connected_comp": 663,
-          "connected_port": "structural_model"
-        },
-        "1": {
-          "fixed_value": "[25,21,16,5,6]"
-        },
-        "2": {
-          "fixed_value": "0.1"
-        },
-        "3": {
-          "fixed_value": "None"
-        },
-        "4": {
-          "fixed_value": "1"
-        }
-      }
-    },
     "684": {
       "identifier": "wbgeo::create_structured_implicit_mesh_meshio",
       "x": 1102,
@@ -122,16 +99,6 @@
         "0": {
           "connected_comp": 663,
           "connected_port": "structural_model"
-        }
-      }
-    },
-    "697": {
-      "identifier": "wbgeo::meshing_load_well_from_csv",
-      "x": 707,
-      "y": 533,
-      "ports": {
-        "0": {
-          "fixed_value": "examples/synthetic_examples/model2/input_data/engineering_objects/model_2_wells.csv"
         }
       }
     },
@@ -144,9 +111,8 @@
           "connected_comp": 663,
           "connected_port": "structural_model"
         },
-        "1": {
-          "connected_comp": 697,
-          "connected_port": "Wells"
+        "8": {
+          "fixed_value": "20"
         },
         "10": {
           "fixed_value": "40"
@@ -156,9 +122,59 @@
         },
         "12": {
           "fixed_value": "80"
+        }
+      }
+    },
+    "715": {
+      "identifier": "wbgeo::simulation_build_hydrothermal_problem",
+      "x": 1350,
+      "y": 50,
+      "ports": {
+        "0": {
+          "connected_comp": 704,
+          "connected_port": "Mesh"
         },
-        "14": {
-          "fixed_value": "[30, 2450, 30, 980, 30, 950]"
+        "1": {
+          "connected_comp": 663,
+          "connected_port": "structural_model"
+        },
+        "2": {
+          "smartinput_value": "{\"root.fluid.mu\": 0.001, \"root.fluid.k_fluid\": 0.6, \"root.fluid.rho_c_fluid\": 4186000.0, \"root.rock_properties.basement.name\": \"basement\", \"root.rock_properties.basement.porosity\": 0.05, \"root.rock_properties.basement.permeability\": 1e-15, \"root.rock_properties.basement.k_solid\": 3.0, \"root.rock_properties.basement.rho_c_solid\": 2200000.0, \"root.rock_properties.rock1.name\": \"rock1\", \"root.rock_properties.rock1.porosity\": 0.15, \"root.rock_properties.rock1.permeability\": 1e-14, \"root.rock_properties.rock1.k_solid\": 2.5, \"root.rock_properties.rock1.rho_c_solid\": 2200000.0, \"root.rock_properties.rock2.name\": \"rock2\", \"root.rock_properties.rock2.porosity\": 0.15, \"root.rock_properties.rock2.permeability\": 1e-14, \"root.rock_properties.rock2.k_solid\": 2.5, \"root.rock_properties.rock2.rho_c_solid\": 2200000.0, \"root.rock_properties.rock3.name\": \"rock3\", \"root.rock_properties.rock3.porosity\": 0.15, \"root.rock_properties.rock3.permeability\": 1e-14, \"root.rock_properties.rock3.k_solid\": 2.0, \"root.rock_properties.rock3.rho_c_solid\": 2100000.0, \"root.rock_properties.rock4.name\": \"rock4\", \"root.rock_properties.rock4.porosity\": 0.15, \"root.rock_properties.rock4.permeability\": 1e-14, \"root.rock_properties.rock4.k_solid\": 2.0, \"root.rock_properties.rock4.rho_c_solid\": 2100000.0, \"root.fault_zone_properties.name\": \"fault_zone\", \"root.fault_zone_properties.porosity\": 0.02, \"root.fault_zone_properties.permeability\": 1e-19, \"root.fault_zone_properties.k_solid\": 0.5, \"root.fault_zone_properties.rho_c_solid\": 2300000.0}",
+          "smartinput_form": "true"
+        },
+        "3": {
+          "fixed_value": "False"
+        },
+        "4": {
+          "fixed_value": "True"
+        },
+        "5": {
+          "fixed_value": "1"
+        },
+        "8": {
+          "fixed_value": "2"
+        }
+      }
+    },
+    "725": {
+      "identifier": "wbgeo::simulation_run",
+      "x": 1620,
+      "y": 50,
+      "ports": {
+        "0": {
+          "connected_comp": 715,
+          "connected_port": "hydrothermal_problem"
+        }
+      }
+    },
+    "735": {
+      "identifier": "wbgeo::export_simulation_results",
+      "x": 1890,
+      "y": 50,
+      "ports": {
+        "0": {
+          "connected_comp": 725,
+          "connected_port": "simulation_result"
         }
       }
     }

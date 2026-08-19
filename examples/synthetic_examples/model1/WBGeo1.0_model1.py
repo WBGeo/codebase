@@ -25,11 +25,11 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
 
-from core.simulation_components.simulation_packages.sfepy.simulation_run import run_sfepy
-from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
-from core.simulation_components.visualisation.results_visualisation import (
-    plot_variable_at_a_time, plot_cross_section, plot_variable_along_line,
-    print_variable_at_point, plot_variable_time_series)
+from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
+from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+from core.simulation_components.simulation_visualization.simulation_visualization import (
+    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
@@ -189,7 +189,7 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 #     mesh_size=75,
 #     curve_mesh_size=5,
 #     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
-#     mapping_litho='manual', # it can be 'manual', 'auto' or 'none' (default: auto)
+#     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
 #     merge_file = cwd + "/examples/synthetic_examples/model1/input_data/block_groups.csv",  # if mapping_litho='manual'
 #     refinement=refinement,
 # )
@@ -205,44 +205,91 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 
 #%%
 
-# Process simulation with SfePy on the implicit structured mesh
+# Process simulation with SfePy on the implicit structured mesh.
 
-mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_result)
-Sim_out = run_sfepy(cwd + '/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_implicit, mesh_type='imp',  output_dir='results')
+rock_properties = {
+    "basement": RockUnitProperties(name="basement", porosity=0.10, permeability=1e-13, k_solid=50, rho_c_solid=3000 * 1300),
+    "rock1": RockUnitProperties(name="rock1", porosity=0.30, permeability=1e-11, k_solid=10, rho_c_solid=1000 * 800),
+    "rock2": RockUnitProperties(name="rock2", porosity=0.20, permeability=1e-12, k_solid=20, rho_c_solid=2000 * 1700),
+}
+fluid = FluidProperties(mu=1.0e-3, k_fluid=15, rho_c_fluid=2000 * 1200)
+
+builder = HydrothermalProblemBuilder(
+    mesh_results=mesh_implicit_structured,
+    geomodel_result=structural_model_result,
+    rock_properties=rock_properties,
+    fluid=fluid,
+    include_flow=True,
+    t1=5e11,
+    num_steps=3,
+)
+
 #%%
 
-# Optional: Run simulation with unstructured or explicit structured mesh instead
-# mesh_unst = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     mesh_size=50,
-#     curve_mesh_size=5,
-# )
-# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_unst, mesh_type= 'unstr', output_dir='results')
-#
-# mesh_str = create_structured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     refinement_data=(40,40,40),
-#     mesh_division=(40,40),
-#     z_threshold=0.1,
-#     tolerance=1
-# )
-# Sim_out=run_sfepy(cwd +'/examples/synthetic_examples/model1/input_data/simulation_input_file/Hydro_thermal.py', mesh_str, mesh_type= 'str', output_dir='results')
+# Pre-flight check: confirms rock_properties landed on the right cells.
+plot_builder_materials(builder)
+
+#%%
+
+data_by_time = run_simulation_sfepy(builder)
 
 #%%
 
 # Visualize simulation results
-data_by_time=load_vtk_results(Sim_out)
-for t in data_by_time.nodes_by_time:
-    print(f"\n⏱ Time {t}")
-    print("  Node data keys:", list(data_by_time.node_data_by_time[t].keys()))
-    print("  Cell data keys:", list(data_by_time.cell_data_by_time[t].keys()))
-plot_variable_at_a_time(data_by_time,"p", 0, cmap="coolwarm", scale=(1,1,1))
-plot_cross_section(data_by_time,"T", 0, origin=(540,20,100), normal=(1,0,0))
-plot_variable_along_line(data_by_time,"p", 0, p0=(500,20,50), p1=(500,20,1000))
-print_variable_at_point(data_by_time,"p", 0, point=(500.0,20.0,500.0))
-plot_variable_time_series(data_by_time,"p", point=(500.0,20.0,500.0))
+final_time = max(data_by_time.nodes_by_time.keys())
+plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
+plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
 
-# NOTE; It is possible to visualise vtk/exodus results obtained out of workbench.
-# It is required to give the address of directory where results are stored, e.g.:
-# data_by_time=load_vtk_results('../../model_results/') # for vtk results
-# data_by_time=load_exo_results('../../model_results/') # for exodus results
+#%%
+
+# CustomSfepyBuilder example: bring a complete, hand-written SfePy input
+# file instead of letting HydrothermalProblemBuilder auto-generate one.
+# CustomSfepyBuilder validates it against the mesh at construction time,
+# then runs through the exact same run_simulation_sfepy() dispatcher.
+#
+# Two worked examples are provided for this mesh (no fault, implicit
+# structured); pick one by (un)commenting custom_input_path below.
+#
+#   - custom_hydrothermal_fromscratch_implicit.py (active by default)
+#     implements the same two-stage pressure -> Darcy velocity -> heat
+#     problem as HydrothermalProblemBuilder(include_flow=True), but written
+#     from first principles: regions, materials and boundary conditions are
+#     derived using only public helper functions and coordinate-based SfePy
+#     selectors, without relying on HydrothermalProblemBuilder's own
+#     generated pressure-stage file. On this mesh (an axis-aligned
+#     Cartesian grid, no fault) it reproduces HydrothermalProblemBuilder's
+#     result exactly, not just closely -- see the file's own docstring for
+#     why that's different from model2's fromscratch file, which only
+#     agrees to within solver tolerance on its unstructured, faulted mesh.
+#
+#   - custom_hydrothermal_reproduction_implicit.py instead reproduces the
+#     HydrothermalProblemBuilder call above bit-for-bit by embedding its
+#     own build_pressure_input_file/build_heat_input_file output directly.
+#
+# See each file's own docstring for the full technical explanation.
+
+custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
+                      "custom_hydrothermal_fromscratch_implicit.py")
+# custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
+#                       "custom_hydrothermal_reproduction_implicit.py")
+with open(custom_input_path) as f:
+    custom_input_file_contents = f.read()
+
+custom_builder = CustomSfepyBuilder(
+    input_file_contents=custom_input_file_contents,
+    mesh_results=mesh_implicit_structured,
+    geomodel_result=structural_model_result,
+)
+
+#%%
+
+custom_data_by_time = run_simulation_sfepy(custom_builder)
+
+#%%
+
+# Confirms the custom-builder result matches HydrothermalProblemBuilder's above.
+custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
+print("HydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
+print("CustomSfepyBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())

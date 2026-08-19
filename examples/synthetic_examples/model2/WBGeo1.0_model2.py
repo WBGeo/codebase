@@ -27,6 +27,11 @@ from core.meshing_components.mesh_format.mesh_export import (
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
+from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
+from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+from core.simulation_components.simulation_visualization.simulation_visualization import (
+    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
 
 #%%
 
@@ -251,7 +256,7 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 #     EXTRUSION_FACTOR = 80,
 #     z_threshold = 10,
 #     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
-#     mapping_litho='manual', # it can be 'manual', 'auto' or 'none' (default: auto)
+#     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
 #     merge_file = cwd + "/examples/synthetic_examples/model2/input_data/block_groups.csv",  # if mapping_litho='manual'
 #     refinement=refinement,
 # )
@@ -264,3 +269,117 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
+
+#%%
+
+# Process simulation with SfePy on the unstructured mesh.
+
+rock_properties = {
+    "basement": RockUnitProperties(name="basement", porosity=0.05, permeability=1e-15, k_solid=3.0, rho_c_solid=2.2e6),
+    "rock1": RockUnitProperties(name="rock1", porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6),
+    "rock2": RockUnitProperties(name="rock2", porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6),
+    "rock3": RockUnitProperties(name="rock3", porosity=0.15, permeability=1e-14, k_solid=2.0, rho_c_solid=2.1e6),
+    "rock4": RockUnitProperties(name="rock4", porosity=0.15, permeability=1e-14, k_solid=2.0, rho_c_solid=2.1e6),
+}
+fluid = FluidProperties()
+
+# Sealing fault (low k/porosity/permeability vs. host rock); flip higher for a conduit instead.
+fault_zone_properties = RockUnitProperties(
+    name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2.3e6
+)
+
+builder = HydrothermalProblemBuilder(
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    rock_properties=rock_properties,
+    fluid=fluid,
+    include_flow=False,
+    fault_zone_properties=fault_zone_properties,
+    fault_zone_n_voxels=1,
+    num_steps=2,
+)
+
+#%%
+
+# Pre-flight check: confirms the fault zone and rock_properties landed on the right cells.
+plot_builder_materials(builder)
+
+#%%
+
+data_by_time = run_simulation_sfepy(builder)
+
+#%%
+
+# Visualize simulation results
+final_time = max(data_by_time.nodes_by_time.keys())
+plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=False)
+plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=False)
+
+# normal=(0, 1, 0): the fault plane is Y-invariant, so this actually cuts across it.
+plot_cross_section_2D(
+    data_by_time, "T", origin=(1250, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+)
+
+#%%
+
+# CustomSfepyBuilder example: bring a complete, hand-written SfePy input
+# file instead of letting HydrothermalProblemBuilder auto-generate one.
+# CustomSfepyBuilder validates it against the mesh at construction time,
+# then runs through the exact same run_simulation_sfepy() dispatcher.
+#
+# Two worked examples are provided for this mesh (real fault, active damage
+# zone, unstructured); pick one by (un)commenting custom_input_path below.
+#
+#   - custom_hydrothermal_fromscratch_faulted_unstructured.py (active by
+#     default) implements the same two-stage pressure -> Darcy velocity ->
+#     heat problem as HydrothermalProblemBuilder(include_flow=True), but
+#     written from first principles: regions, materials and boundary
+#     conditions are derived using only public helper functions and
+#     coordinate-based SfePy selectors, without relying on
+#     HydrothermalProblemBuilder's own generated pressure-stage file. It
+#     reproduces HydrothermalProblemBuilder's result closely (agreeing to
+#     within numerical solver tolerance, not bit-for-bit, since the two are
+#     independently authored) -- demonstrating that the same two-stage
+#     physics can be set up in a custom file without prior knowledge of how
+#     HydrothermalProblemBuilder constructs its pressure stage internally.
+#
+#   - custom_hydrothermal_reproduction_faulted_unstructured.py instead
+#     reproduces the HydrothermalProblemBuilder call above bit-for-bit:
+#     same mesh, same rock_properties/fault_zone_properties, same
+#     include_flow=False/num_steps. Since include_flow=False there (pure
+#     conduction), it is a single, complete SfePy conf with no pressure/
+#     velocity stage at all -- see the file's own docstring for the full
+#     explanation, including why no companion fault-zone-mask file is
+#     needed for that case.
+#
+# See each file's own docstring for the full technical explanation.
+
+custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
+                      "custom_hydrothermal_fromscratch_faulted_unstructured.py")
+# custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
+#                       "custom_hydrothermal_reproduction_faulted_unstructured.py")
+with open(custom_input_path) as f:
+    custom_input_file_contents = f.read()
+
+custom_builder = CustomSfepyBuilder(
+    input_file_contents=custom_input_file_contents,
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    fault_zone_n_voxels=1,
+)
+
+#%%
+
+custom_data_by_time = run_simulation_sfepy(custom_builder)
+
+#%%
+
+# Visualize simulation results
+custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
+plot_variable_at_a_time(custom_data_by_time, "T", time=0, cmap="coolwarm", show_edges=False)
+plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=False)
+
+# normal=(0, 1, 0): the fault plane is Y-invariant, so this actually cuts across it.
+plot_cross_section_2D(
+    custom_data_by_time, "T", origin=(1250, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+)

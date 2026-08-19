@@ -4,12 +4,30 @@ import shutil
 import pyvista as pv
 import numpy as np
 import re
-from core.simulation_components.simulation_packages.sfepy.simulation_run import SfepyOutputType
-from py_api_wbgeo.nodesapi import wbgeo_component
+from dataclasses import dataclass
+from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type
 from core.object_components import SimulationResults
 from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
+
+
+@wbgeo_type(name='SfepyOutputType', color='pink', identifier='SfepyOutputType')
+@dataclass
+class SfepyOutputType:
+    """
+    Where a completed SfePy run's raw VTK output lives, and whether
+    load_vtk_results() should delete it after loading -- the shape
+    _run_sfepy_input_file() returns and load_vtk_results() consumes.
+
+    stdout: the raw sfepy-run output for this run, so callers of
+    _run_sfepy_input_file (not just load_vtk_results, which only cares
+    about the VTK files) can carry it forward -- see
+    run_simulation_sfepy()'s SimulationResults.sfepy_stdout.
+    """
+    output_dir: str
+    is_temp: bool = False
+    stdout: str = ""
 
 
 ####################
@@ -36,6 +54,31 @@ def extract_time(filename: str) -> Optional[Union[float, int]]:
         return int(parts[0])
 
 
+def _geometry_matches(last_geometry, nodes, cells, celltypes) -> bool:
+    """
+    Whether (nodes, cells, celltypes) are array-equal to the previously
+    stored (nodes, cells, celltypes) -- checked explicitly (not assumed)
+    so load_vtk_results only reuses the same array objects across
+    timesteps when they truly are identical.
+    """
+    last_nodes, last_cells, last_celltypes = last_geometry
+
+    if last_nodes.shape != nodes.shape or not np.array_equal(last_nodes, nodes):
+        return False
+
+    if (last_cells is None) != (cells is None):
+        return False
+    if cells is not None and (last_cells.shape != cells.shape or not np.array_equal(last_cells, cells)):
+        return False
+
+    if (last_celltypes is None) != (celltypes is None):
+        return False
+    if celltypes is not None and not np.array_equal(last_celltypes, celltypes):
+        return False
+
+    return True
+
+
 ####################
 # LOAD VTK RESULTS
 ###################
@@ -50,13 +93,13 @@ def extract_time(filename: str) -> Optional[Union[float, int]]:
 )
 def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResults:
 
-    # NORMALIZE INPUT (DICT OR DIRECT PATH)
+    # NORMALIZE INPUT (SfepyOutputType OR DIRECT PATH)
     if isinstance(sim_input, str):
         output_dir = sim_input
         is_temp = False
     else:
-        output_dir = sim_input["output_dir"]
-        is_temp = sim_input.get("is_temp", False)
+        output_dir = sim_input.output_dir
+        is_temp = sim_input.is_temp
 
     vtk_files = []
     for root, _, files in os.walk(output_dir):
@@ -69,6 +112,18 @@ def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResult
 
     results = SimulationResults()
 
+    # This pipeline solves one fixed FEM mesh throughout a run -- SfePy's
+    # own per-step VTK files redundantly repeat the same geometry every
+    # time (only field VALUES actually change). last_geometry tracks the
+    # most recently stored (nodes, cells, celltypes) so an unchanged step
+    # can reuse the same array objects instead of allocating a fresh
+    # duplicate copy of the whole mesh per timestep -- for a real run with
+    # many saved steps, that's an Nx reduction in this object's memory
+    # footprint. Checked via _geometry_matches, not assumed, so a
+    # hypothetical future remeshing/deforming solve still gets its own
+    # distinct geometry stored correctly per step.
+    last_geometry = None
+
     for file_path in vtk_files:
         mesh = pv.read(file_path)
         vtk_file = os.path.basename(file_path)
@@ -79,27 +134,32 @@ def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResult
 
         time = float(time)
 
-        # NODE DATA
-        results.nodes_by_time[time] = mesh.points.copy()
-
-        # CELL HANDLING
+        # CELL HANDLING (raw, undecided yet whether this step needs its own copy)
         if hasattr(mesh, "cells") and mesh.cells is not None:
-            try:
-                cells = mesh.cells.copy()
-            except Exception:
-                cells = np.array(mesh.cells)
+            raw_cells = mesh.cells
         elif hasattr(mesh, "faces") and mesh.faces is not None:
-            try:
-                cells = mesh.faces.copy()
-            except Exception:
-                cells = np.array(mesh.faces)
+            raw_cells = mesh.faces
         else:
-            cells = None
+            raw_cells = None
+        raw_celltypes = getattr(mesh, "celltypes", None)
 
+        if last_geometry is not None and _geometry_matches(last_geometry, mesh.points, raw_cells, raw_celltypes):
+            nodes, cells, celltypes = last_geometry
+        else:
+            nodes = mesh.points.copy()
+            if raw_cells is not None:
+                try:
+                    cells = raw_cells.copy()
+                except Exception:
+                    cells = np.array(raw_cells)
+            else:
+                cells = None
+            celltypes = raw_celltypes
+            last_geometry = (nodes, cells, celltypes)
+
+        results.nodes_by_time[time] = nodes
         results.cells_by_time[time] = cells
-
-        # CELL TYPES
-        results.celltypes_by_time[time] = getattr(mesh, "celltypes", None)
+        results.celltypes_by_time[time] = celltypes
 
         # POINT DATA
         results.node_data_by_time[time] = {
