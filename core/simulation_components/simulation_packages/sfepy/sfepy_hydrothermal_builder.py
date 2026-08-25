@@ -146,6 +146,7 @@ def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
     so it's also enforced there.
     """
     cell_data = mesh_results.cell_data or {}
+
     if "block_id" not in cell_data:
         raise ValueError(
             "mesh_results has no lithology mapping (cell_data['block_id']) -- "
@@ -159,21 +160,21 @@ def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
 
 def check_mesh_has_no_engineering_objects(mesh_results: MeshResults) -> None:
     """
-    Pre-check: mesh_results must not contain any well (dim==1, "line" block)
-    or source (dim==0, "vertex" block). CustomSfepyBuilder doesn't support
-    these yet -- today's mesh-export pre-filter (_run_sfepy_input_file, for
-    mesh_type_code == "unstr") already silently drops them before ever
-    reaching SfePy, which is a silent trap; this makes that unsupported
-    combination a loud rejection instead. Used both as a Workbench
-    input_checks pre-check (build_custom_sfepy_problem) and internally in
-    CustomSfepyBuilder.__post_init__ -- pre-checks can be skipped by a
-    caller (see docs/developers/components.md), so it's also enforced there.
+    Reject the mesh if it contains line or vertex cells.
     """
-    bad = [b for b in mesh_results.elements if b.dim < 2]
+
+    bad = []
+
+    for b in mesh_results.elements:
+
+        if b.type in ("line", "vertex"):
+            bad.append(b)
+
     if bad:
+        bad_types = sorted(set(b.type for b in bad))
         raise ValueError(
-            f"mesh_results has {len(bad)} well/source block(s) (dim < 2) -- "
-            f"CustomSfepyBuilder doesn't support these yet."
+            f"Unsupported cell type(s) detected: {bad_types}. "
+            "CustomSfepyBuilder does not support line or vertex cells."
         )
 
 
