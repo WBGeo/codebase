@@ -20,7 +20,9 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
-
+from core.meshing_components.explicit.unstructured.refinement_mesh import (
+    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
+    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
 #%%
 
 cwd = os.getcwd()
@@ -145,23 +147,23 @@ mesh_str = create_structured_mesh_data(
 mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Explicit unstructured mesh
-mesh_explicit_unstr = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
-    tolerance=500,
-    mesh_size=60,
-    smooth=30,
-    curve_mesh_size=5,
-    extent=[401377.0, 409314.0, 5859433.0, 5865390.0, -3678.0, -4453.0],
-    mapping_litho='none', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
+#mesh_explicit_unstr = create_unstructured_mesh_data(
+#    geomodel_result=structural_model_result,
+#    tolerance=500,
+#    mesh_size=60,
+#    smooth=30,
+#    curve_mesh_size=5,
+#    extent=[401377.0, 409314.0, 5859433.0, 5865390.0, -3678.0, -4453.0],
+#    mapping_litho='none', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
 
-)
+#)
 
 #%%
 
 # Plot the meshing results
-plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
-plot_mesh_3d(mesh_explicit_unstr, structural_model_result, show_plotter=True)
-plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
+#plot_mesh_3d(mesh_implicit, structural_model_result, show_plotter=True)
+#plot_mesh_3d(mesh_explicit_unstr, structural_model_result, show_plotter=True)
+#plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
 
 #%%
 
@@ -170,6 +172,47 @@ plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
 # In addition, some export formats support only specific mesh types.
 # See the meshing manual/documentation for details.
-buf = export_mesh_results_to_exodus(mesh_explicit_unstr, type='unstr')
-with open("filename_Gross_Schoenebeck.exo", "wb") as f:
-    f.write(buf.getvalue())
+#buf = export_mesh_results_to_exodus(mesh_explicit_unstr, type='unstr')
+#with open("filename_Gross_Schoenebeck.exo", "wb") as f:
+#    f.write(buf.getvalue())
+
+# # Load engineering objects
+wells = load_wells_from_csv(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/wells.csv")
+csv_files=(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/seismic.csv",
+           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/multi.csv")
+triangulations= load_triangulations_planes_from_csv(csv_files)
+
+# --- Optional: adaptive mesh refinement around objects ---
+# Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
+#
+refinement = Refinement()
+refinement.wells = LinearWellRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.triangulation = TriangulationRefinement(hmin=20.0, hmax=90.0, d1=30.0, d2=100.0)
+# refinement.triangulation = TriangulationRefinement(hmin=8.0, hmax=90.0, d1=50.0, d2=100.0, enabled=True)
+#
+# Available types per object:
+#   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
+#                                       LinearSourceRefinement, FunctionSourceRefinement
+#   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
+#                                       (hmin/hmax = element sizes, d1/d2 = transition distances)
+
+
+# # Explicit unstructured mesh with objects
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+     geomodel_result=structural_model_result,
+     wells=wells,
+     triangulations=triangulations,
+     mesh_size=75,
+     curve_mesh_size=5,
+     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
+     #mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
+     #merge_file = cwd + "/examples/synthetic_examples/model1/input_data/block_groups.csv",  # if mapping_litho='manual'
+     refinement=refinement,
+)
+
+# save the mesh
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+with open("filename_example_gr_mesh.exo", "wb") as f:
+     f.write(buf.getvalue())
+
+
