@@ -2517,6 +2517,7 @@ def create_unstructured_mesh_data(
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     merge_file: Optional[str] = None,
     refinement: Optional[Refinement] = None,
+    rotation_angle: Optional[float] = None,
 ) -> MeshResults:
     """
     Generates an unstructured geological mesh using a geomodel and additional structures
@@ -2563,6 +2564,7 @@ def create_unstructured_mesh_data(
             Used only when mapping_litho="manual".
         refinement (Refinement, optional): Adaptive mesh refinement settings. Supports local refinement around wells, sources, faults, ellipses,
             and triangulated surfaces through GMSH background mesh fields.
+        Rotation_angle (float, optional): Angle in degree to rotate the mesh around the z-axis. If None, no rotation is applied.
 
     Returns:
         MeshResults: An instance of the MeshResults class.
@@ -2716,7 +2718,18 @@ def create_unstructured_mesh_data(
             tri_surface_tags, grid_litho, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,
             boundary_tags=boundary_tags, gmsh_flag=gmsh_flag, mapping_litho=mapping_litho, merge_file=merge_file,
         )
+        # Rotate nodes if rotation_angle is provided
+        if rotation_angle is not None:
+            angle = np.deg2rad(rotation_angle)
 
+            x = nodes[:, 0].copy()
+            y = nodes[:, 1].copy()
+
+            tmp_x = x * np.cos(angle) - y * np.sin(angle)
+            tmp_y = x * np.sin(angle) + y * np.cos(angle)
+
+            nodes[:, 0] = tmp_x
+            nodes[:, 1] = tmp_y
     finally:
         gmsh.finalize()
 
