@@ -57,7 +57,7 @@ def export_mesh_results(mesh: MeshResults, format: MeshFormatType_A = MeshFormat
     # for implicit/structured meshes (they only ever have 1 element block,
     # fewer than the unstructured path's minimum) and silently produces
     # weaker side-sets even after the dim-based fix.
-    return export_mesh_results_to_exodus(mesh, type=exodus_type_for(mesh))
+    return export_mesh_results_to_exodus(mesh)
   elif format == MeshFormatType.Feflow:
     return export_mesh_results_to_feflow(mesh)
   elif format == MeshFormatType.Gmsh:
