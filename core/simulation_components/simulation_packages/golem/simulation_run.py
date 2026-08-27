@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 import re
 
-def validate_golem_input(content: str, mesh_test: MeshResults):
+def validate_golem_input(content: str, mesh_test: MeshResults, mesh_type: str):
 
     required_blocks = [
         "Mesh",
@@ -99,8 +99,8 @@ def validate_golem_input(content: str, mesh_test: MeshResults):
 
     # Number of blocks in MeshResults
     n_mesh_blocks = len(mesh_test.elements)
-
-    n_mesh_blocks = len(mesh_test.elements) - 6
+    if mesh_type == "unstr":
+        n_mesh_blocks = len(mesh_test.elements) - 6
 
     if n_material_blocks != n_mesh_blocks:
 
@@ -243,7 +243,8 @@ def run_golem_with_image(
 
     validate_golem_input(
         model_content,
-        mesh_test
+        mesh_test,
+        mesh_type
     )
     with open(original_input, "r") as f:
         model_content = f.read()
