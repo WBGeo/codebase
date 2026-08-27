@@ -1473,8 +1473,8 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     # Mesh refinement
     ##################
     tri_cfg = (
-        refinement.triangulation
-        if refinement and refinement.triangulation
+        refinement.triangulations
+        if refinement and refinement.triangulations
         else None
     )
 

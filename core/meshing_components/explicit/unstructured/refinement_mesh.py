@@ -57,11 +57,10 @@ class TriangulationRefinement(BaseModel):
     """
     Mesh refinement around triangulated surfaces.
     """
-    hmin: float = 3.0
-    hmax: float = 30.0
-    d1: float = 50.0
-    d2: float = 100.0
-    enabled: bool = True
+    SizeMin: float
+    SizeMax: float
+    DistMin: float
+    DistMax: float
 
 
 # ------------------------
@@ -72,11 +71,10 @@ class EllipseRefinement(BaseModel):
     """
     Mesh refinement around elliptical regions.
     """
-    hmin: float = 3.0
-    hmax: float = 30.0
-    d1: float = 30.0
-    d2: float = 80.0
-    enabled: bool = True
+    SizeMin: float
+    SizeMax: float
+    DistMin: float
+    DistMax: float
 
 
 # ------------------------
@@ -87,11 +85,10 @@ class FaultRefinement(BaseModel):
     """
     Mesh refinement around fault surfaces.
     """
-    hmin: float = 3.0
-    hmax: float = 30.0
-    d1: float = 20.0
-    d2: float = 60.0
-    enabled: bool = True
+    SizeMin: float
+    SizeMax: float
+    DistMin: float
+    DistMax: float
 
 
 # ------------------------
@@ -111,6 +108,6 @@ class Refinement(BaseModel):
         Union[LinearSourceRefinement, FunctionSourceRefinement]
     ] = None
 
-    triangulation: Optional[TriangulationRefinement] = None
+    triangulations: Optional[TriangulationRefinement] = None
     ellipses: Optional[EllipseRefinement] = None
     faults: Optional[FaultRefinement] = None

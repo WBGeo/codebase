@@ -165,7 +165,7 @@ def build_source_refinement(source_points, refinement, field_gen) -> Optional[in
         raise TypeError(type(s))
 
 
-def build_triangulation_mesh_callback(triangulations, hmin=3.0, hmax=30.0, d1=50.0, d2=100.0) -> MeshSizeCallback:
+def build_triangulation_mesh_callback(triangulations, SizeMin=3.0, SizeMax=30.0, DistMin=50.0, DistMax=100.0) -> MeshSizeCallback:
     """
     Creates a mesh size callback based on triangulation points.
     A KD-tree is used to compute the distance from any mesh node
@@ -195,18 +195,18 @@ def build_triangulation_mesh_callback(triangulations, hmin=3.0, hmax=30.0, d1=50
     def mesh_size_callback(dim, tag, x, y, z, lc):
         dist, _ = tree.query([x, y, z])
 
-        if dist < d1:
-            return hmin
-        elif dist < d2:
-            t = (dist - d1) / (d2 - d1)
-            return hmin * (1 - t) + hmax * t
+        if dist < DistMin:
+            return SizeMin
+        elif dist < DistMax:
+            t = (dist - DistMin) / (DistMax - DistMin)
+            return SizeMin * (1 - t) + SizeMax * t
         else:
             return lc
 
     return mesh_size_callback
 
 
-def build_ellipse_mesh_callback(ellipses, hmin=3.0, hmax=30.0, d1=30.0, d2=80.0) -> Optional[MeshSizeCallback]:
+def build_ellipse_mesh_callback(ellipses, SizeMin=3.0, SizeMax=30.0, DistMin=30.0, DistMax=80.0) -> Optional[MeshSizeCallback]:
     """
     Creates a mesh size callback around elliptical regions.
     Mesh size is controlled by distance from ellipse centers,
@@ -235,18 +235,18 @@ def build_ellipse_mesh_callback(ellipses, hmin=3.0, hmax=30.0, d1=30.0, d2=80.0)
 
         dist = max(0.0, dist_center - scales[idx])
 
-        if dist < d1:
-            return hmin
-        elif dist < d2:
-            t = (dist - d1) / (d2 - d1)
-            return hmin * (1.0 - t) + hmax * t
+        if dist < DistMin:
+            return SizeMin
+        elif dist < DistMax:
+            t = (dist - DistMin) / (DistMax - DistMin)
+            return SizeMin * (1.0 - t) + SizeMax * t
         else:
             return lc
 
     return mesh_size_callback
 
 
-def build_fault_mesh_callback_from_fragments(fault_fragments, hmin=3.0, hmax=30.0, d1=20.0, d2=60.0) -> Optional[MeshSizeCallback]:
+def build_fault_mesh_callback_from_fragments(fault_fragments, SizeMin=3.0, SizeMax=30.0, DistMin=20.0, DistMax=60.0) -> Optional[MeshSizeCallback]:
     """
     Creates a fault-based mesh refinement callback using OCC geometry.
     Surface points are sampled from fault fragments and interpolated
@@ -312,11 +312,11 @@ def build_fault_mesh_callback_from_fragments(fault_fragments, hmin=3.0, hmax=30.
     def mesh_size_callback(dim, tag, x, y, z, lc):
         dist, _ = tree.query([x, y, z])
 
-        if dist < d1:
-            return hmin
-        elif dist < d2:
-            t = (dist - d1) / (d2 - d1)
-            return hmin * (1.0 - t) + hmax * t
+        if dist < DistMin:
+            return SizeMin
+        elif dist < DistMax:
+            t = (dist - DistMin) / (DistMax - DistMin)
+            return SizeMin * (1.0 - t) + SizeMax * t
         else:
             return lc
 
@@ -340,14 +340,13 @@ def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfa
         fault_fragments is not None
         and len(fault_fragments) > 0
         and fault_cfg is not None
-        and fault_cfg.enabled
     ):
         fault_cb = build_fault_mesh_callback_from_fragments(
             fault_fragments,
-            hmin=fault_cfg.hmin,
-            hmax=fault_cfg.hmax,
-            d1=fault_cfg.d1,
-            d2=fault_cfg.d2,
+            SizeMin=fault_cfg.SizeMin,
+            SizeMax=fault_cfg.SizeMax,
+            DistMin=fault_cfg.DistMin,
+            DistMax=fault_cfg.DistMax,
         )
 
     # triangulation callback
@@ -355,14 +354,13 @@ def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfa
         triangulations is not None
         and len(triangulations) > 0
         and tri_cfg is not None
-        and tri_cfg.enabled
     ):
         tri_cb = build_triangulation_mesh_callback(
             triangulations,
-            hmin=tri_cfg.hmin,
-            hmax=tri_cfg.hmax,
-            d1=tri_cfg.d1,
-            d2=tri_cfg.d2,
+            SizeMin=tri_cfg.SizeMin,
+            SizeMax=tri_cfg.SizeMax,
+            DistMin=tri_cfg.DistMin,
+            DistMax=tri_cfg.DistMax,
         )
 
     # ellipse callback
@@ -370,14 +368,13 @@ def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfa
         ellipses is not None
         and len(ellipses) > 0
         and ell_cfg is not None
-        and ell_cfg.enabled
     ):
         ell_cb = build_ellipse_mesh_callback(
             ellipses,
-            hmin=ell_cfg.hmin,
-            hmax=ell_cfg.hmax,
-            d1=ell_cfg.d1,
-            d2=ell_cfg.d2,
+            SizeMin=ell_cfg.SizeMin,
+            SizeMax=ell_cfg.SizeMax,
+            DistMin=ell_cfg.DistMin,
+            DistMax=ell_cfg.DistMax,
         )
 
     if tri_cb is None and ell_cb is None and fault_cb is None:
