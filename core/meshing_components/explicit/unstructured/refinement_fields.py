@@ -165,16 +165,17 @@ def build_source_refinement(source_points, refinement, field_gen) -> Optional[in
         raise TypeError(type(s))
 
 
-def build_triangulation_mesh_callback(triangulations, SizeMin=3.0, SizeMax=30.0, DistMin=50.0, DistMax=100.0) -> MeshSizeCallback:
-    """
-    Creates a mesh size callback based on triangulation points.
-    A KD-tree is used to compute the distance from any mesh node
-    to the nearest triangulation point and adjust mesh size
-    according to distance thresholds.
-    """
-    triangulations_arr = np.asarray(triangulations)
+def build_triangulation_mesh_callback(
+    triangulations,
+    SizeMin=3.0,
+    SizeMax=30.0,
+    DistMin=50.0,
+    DistMax=100.0,
+) -> MeshSizeCallback:
 
-    # collect points
+    triangulations_arr = np.asarray(triangulations, dtype=float)
+
+    # Collect XYZ coordinates
     if triangulations_arr.shape[1] == 3:
         all_points = triangulations_arr
     else:
@@ -188,30 +189,48 @@ def build_triangulation_mesh_callback(triangulations, SizeMin=3.0, SizeMax=30.0,
             [np.asarray(v, dtype=float) for v in tri_groups.values()]
         )
 
-    # KDTree
+    # KD-tree containing ALL triangulation vertices
     tree = cKDTree(all_points)
 
-    # callback
     def mesh_size_callback(dim, tag, x, y, z, lc):
-        dist, _ = tree.query([x, y, z])
+        point = np.array([x, y, z])
 
-        if dist < DistMin:
+        dist, _ = tree.query(point)
+
+        # Exactly at / very close to triangulation point
+        if dist <= DistMin:
             return SizeMin
-        elif dist < DistMax:
+
+        # Transition region
+        if dist < DistMax:
             t = (dist - DistMin) / (DistMax - DistMin)
-            return SizeMin * (1 - t) + SizeMax * t
-        else:
-            return lc
+
+            return SizeMin + t * (SizeMax - SizeMin)
+
+        # Outside refinement region
+        return SizeMax
 
     return mesh_size_callback
 
 
-def build_ellipse_mesh_callback(ellipses, SizeMin=3.0, SizeMax=30.0, DistMin=30.0, DistMax=80.0) -> Optional[MeshSizeCallback]:
+def build_ellipse_mesh_callback(
+    ellipses,
+    SizeMin=3.0,
+    SizeMax=30.0,
+    DistMin=50.0,
+    DistMax=100.0,
+) -> Optional[MeshSizeCallback]:
     """
     Creates a mesh size callback around elliptical regions.
-    Mesh size is controlled by distance from ellipse centers,
-    enabling refinement near features and coarsening away.
+
+    Mesh size is controlled by the distance from the ellipse boundary:
+      - <= DistMin from the ellipse: SizeMin
+      - DistMin .. DistMax: linear transition
+      - > DistMax: SizeMax
+
+    Each ellipse is approximated using its center and its largest radius.
     """
+
     if not ellipses:
         return None
 
@@ -228,128 +247,399 @@ def build_ellipse_mesh_callback(ellipses, SizeMin=3.0, SizeMax=30.0, DistMin=30.
     centers = np.asarray(centers, dtype=float)
     scales = np.asarray(scales, dtype=float)
 
+    # KD-tree containing all ellipse centers
     tree = cKDTree(centers)
 
     def mesh_size_callback(dim, tag, x, y, z, lc):
-        dist_center, idx = tree.query([x, y, z])
+        point = np.array([x, y, z], dtype=float)
 
+        # Find nearest ellipse center
+        dist_center, idx = tree.query(point)
+
+        # Approximate distance from the ellipse boundary
         dist = max(0.0, dist_center - scales[idx])
 
-        if dist < DistMin:
+        # Exactly at / very close to ellipse
+        if dist <= DistMin:
             return SizeMin
-        elif dist < DistMax:
+
+        # Transition region
+        if dist < DistMax:
             t = (dist - DistMin) / (DistMax - DistMin)
-            return SizeMin * (1.0 - t) + SizeMax * t
-        else:
-            return lc
+            return SizeMin + t * (SizeMax - SizeMin)
+
+        # Outside refinement region
+        return SizeMax
 
     return mesh_size_callback
 
 
-def build_fault_mesh_callback_from_fragments(fault_fragments, SizeMin=3.0, SizeMax=30.0, DistMin=20.0, DistMax=60.0) -> Optional[MeshSizeCallback]:
+def build_fault_mesh_callback_from_fragments(
+    fault_fragments,
+    SizeMin=3.0,
+    SizeMax=30.0,
+    DistMin=20.0,
+    DistMax=60.0,
+) -> Optional[MeshSizeCallback]:
     """
     Creates a fault-based mesh refinement callback using OCC geometry.
-    Surface points are sampled from fault fragments and interpolated
-    using RBF interpolation. A KD-tree is then used to refine the mesh
-    near fault surfaces without relying on an existing mesh.
+
+    Fault surface points are sampled from the OCC fault fragments and
+    stored in a KD-tree. Mesh size is controlled by the distance to the
+    nearest sampled fault point:
+
+        dist <= DistMin:
+            SizeMin
+
+        DistMin < dist < DistMax:
+            Linear transition from SizeMin to SizeMax
+
+        dist >= DistMax:
+            SizeMax
     """
+
     if not fault_fragments:
         return None
 
     fault_points = []
+
+    try:
+        from scipy.interpolate import RBFInterpolator
+    except ImportError:
+        logger.warning(
+            "scipy.interpolate.RBFInterpolator is not available; "
+            "skipping fault mesh refinement."
+        )
+        return None
 
     for dim, tag in fault_fragments:
         if dim != 2:
             continue
 
         try:
-            from scipy.interpolate import RBFInterpolator
+            # ---------------------------------------------------------
+            # Surface bounding box
+            # ---------------------------------------------------------
+            xmin, ymin, zmin, xmax, ymax, zmax = (
+                gmsh.model.getBoundingBox(2, tag)
+            )
 
-            xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(2, tag)
-
+            # ---------------------------------------------------------
+            # Parametric bounds of the OCC surface
+            # ---------------------------------------------------------
             bounds = gmsh.model.getParametrizationBounds(2, tag)
+
             umin, umax = bounds[0]
             vmin, vmax = bounds[1]
 
+            # ---------------------------------------------------------
+            # Sample points directly from the OCC surface
+            # ---------------------------------------------------------
             surface_pts = []
 
             for u in np.linspace(umin, umax, 20):
                 for v in np.linspace(vmin, vmax, 20):
-                    surface_pts.append(
-                        gmsh.model.getValue(2, tag, [u, v])
-                    )
+                    try:
+                        point = gmsh.model.getValue(2, tag, [u, v])
+                        surface_pts.append(point)
+                    except Exception:
+                        continue
 
-            surface_pts = np.asarray(surface_pts)
+            surface_pts = np.asarray(surface_pts, dtype=float)
 
+            if surface_pts.shape[0] < 3:
+                logger.warning(
+                    "Not enough sample points for fault surface %s",
+                    tag,
+                )
+                continue
+
+            # ---------------------------------------------------------
+            # Interpolate Z = f(X, Y)
+            # ---------------------------------------------------------
             rbf = RBFInterpolator(
                 surface_pts[:, :2],
                 surface_pts[:, 2],
                 kernel="thin_plate_spline",
             )
 
+            # ---------------------------------------------------------
+            # Generate regular XY samples over the fault bounding box
+            # ---------------------------------------------------------
             xs = np.linspace(xmin, xmax, 40)
             ys = np.linspace(ymin, ymax, 40)
 
             XX, YY = np.meshgrid(xs, ys)
-            XY = np.column_stack([XX.ravel(), YY.ravel()])
+
+            XY = np.column_stack(
+                [XX.ravel(), YY.ravel()]
+            )
+
+            # ---------------------------------------------------------
+            # Interpolated Z values
+            # ---------------------------------------------------------
             ZZ = rbf(XY)
 
+            sampled_fault_points = np.column_stack(
+                [XY, ZZ]
+            )
+
             fault_points.extend(
-                np.column_stack([XY, ZZ]).tolist()
+                sampled_fault_points.tolist()
             )
 
         except Exception as e:
-            logger.warning("Skipping fault surface %s: %s", tag, e)
+            logger.warning(
+                "Skipping fault surface %s: %s",
+                tag,
+                e,
+            )
             continue
 
-    fault_points = np.asarray(fault_points, dtype=float)
-
-    if fault_points.shape[0] == 0:
+    # -------------------------------------------------------------
+    # Validate sampled fault points
+    # -------------------------------------------------------------
+    if not fault_points:
         return None
 
+    fault_points = np.asarray(
+        fault_points,
+        dtype=float,
+    )
+
+    if fault_points.ndim != 2 or fault_points.shape[1] != 3:
+        return None
+
+    # -------------------------------------------------------------
+    # KD-tree containing ALL fault surface sample points
+    # -------------------------------------------------------------
     tree = cKDTree(fault_points)
 
+    # -------------------------------------------------------------
+    # Mesh-size callback
+    # -------------------------------------------------------------
     def mesh_size_callback(dim, tag, x, y, z, lc):
-        dist, _ = tree.query([x, y, z])
+        point = np.array(
+            [x, y, z],
+            dtype=float,
+        )
 
-        if dist < DistMin:
+        # Distance to nearest sampled fault point
+        dist, _ = tree.query(point)
+
+        # Exactly at / very close to fault
+        if dist <= DistMin:
             return SizeMin
-        elif dist < DistMax:
-            t = (dist - DistMin) / (DistMax - DistMin)
-            return SizeMin * (1.0 - t) + SizeMax * t
-        else:
-            return lc
+
+        # Transition region
+        if dist < DistMax:
+            t = (
+                (dist - DistMin)
+                / (DistMax - DistMin)
+            )
+
+            return (
+                SizeMin
+                + t * (SizeMax - SizeMin)
+            )
+
+        # Outside refinement region
+        return SizeMax
 
     return mesh_size_callback
 
+def build_extra_plane_mesh_callback(
+    extra_planes,
+    SizeMin=3.0,
+    SizeMax=30.0,
+    DistMin=20.0,
+    DistMax=60.0,
+) -> Optional[MeshSizeCallback]:
+    """
+    Creates a mesh-size callback around extra planar regions.
 
-def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfaces=None, fault_fragments=None,
-    tri_cfg=None, ell_cfg=None, fault_cfg=None) -> Optional[MeshSizeCallback]:
+    Each quadrilateral is split into two triangles. The mesh size is
+    controlled by the minimum distance from the query point to any
+    triangle:
+
+        distance <= DistMin:
+            SizeMin
+
+        DistMin < distance < DistMax:
+            Linear transition from SizeMin to SizeMax
+
+        distance >= DistMax:
+            SizeMax
     """
-    Combines triangulation, ellipse, and fault-based mesh refinements.
-    Multiple refinement callbacks can be activated simultaneously.
-    The minimum mesh size returned by any active refinement strategy
-    is used as the final mesh size.
+
+    if not extra_planes:
+        return None
+
+    triangles = []
+
+    for plane in extra_planes:
+        if len(plane) != 12:
+            logger.warning(
+                "Skipping extra plane: expected 12 coordinates, got %d",
+                len(plane),
+            )
+            continue
+
+        p = np.asarray(plane, dtype=float).reshape(4, 3)
+        p1, p2, p3, p4 = p
+
+        # Split quadrilateral into two triangles
+        triangles.append((p1, p2, p3))
+        triangles.append((p1, p3, p4))
+
+    if not triangles:
+        return None
+
+    def point_triangle_distance(point, a, b, c):
+        """
+        Exact closest Euclidean distance from a point to a triangle.
+        """
+
+        ab = b - a
+        ac = c - a
+        ap = point - a
+
+        d1 = np.dot(ab, ap)
+        d2 = np.dot(ac, ap)
+
+        # Closest to vertex A
+        if d1 <= 0.0 and d2 <= 0.0:
+            return np.linalg.norm(point - a)
+
+        bp = point - b
+
+        d3 = np.dot(ab, bp)
+        d4 = np.dot(ac, bp)
+
+        # Closest to vertex B
+        if d3 >= 0.0 and d4 <= d3:
+            return np.linalg.norm(point - b)
+
+        vc = d1 * d4 - d3 * d2
+
+        # Closest to edge AB
+        if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+            v = d1 / (d1 - d3)
+            projection = a + v * ab
+
+            return np.linalg.norm(point - projection)
+
+        cp = point - c
+
+        d5 = np.dot(ab, cp)
+        d6 = np.dot(ac, cp)
+
+        # Closest to vertex C
+        if d6 >= 0.0 and d5 <= d6:
+            return np.linalg.norm(point - c)
+
+        vb = d5 * d2 - d1 * d6
+
+        # Closest to edge AC
+        if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+            w = d2 / (d2 - d6)
+            projection = a + w * ac
+
+            return np.linalg.norm(point - projection)
+
+        va = d3 * d6 - d5 * d4
+
+        # Closest to edge BC
+        if (
+            va <= 0.0
+            and (d4 - d3) >= 0.0
+            and (d5 - d6) >= 0.0
+        ):
+            w = (d4 - d3) / (
+                (d4 - d3) + (d5 - d6)
+            )
+
+            projection = b + w * (c - b)
+
+            return np.linalg.norm(point - projection)
+
+        # Closest point is inside triangle
+        denom = 1.0 / (va + vb + vc)
+
+        v = vb * denom
+        w = vc * denom
+
+        projection = a + ab * v + ac * w
+
+        return np.linalg.norm(point - projection)
+
+    def mesh_size_callback(dim, tag, x, y, z, lc):
+        point = np.array(
+            [x, y, z],
+            dtype=float,
+        )
+
+        # Distance to the nearest extra-plane triangle
+        distance = min(
+            point_triangle_distance(point, a, b, c)
+            for a, b, c in triangles
+        )
+
+        # Exactly at / very close to extra plane
+        if distance <= DistMin:
+            return SizeMin
+
+        # Transition region
+        if distance < DistMax:
+            t = (
+                (distance - DistMin)
+                / (DistMax - DistMin)
+            )
+
+            return (
+                SizeMin
+                + t * (SizeMax - SizeMin)
+            )
+
+        # Outside refinement region
+        return SizeMax
+
+    return mesh_size_callback
+
+def build_combined_mesh_callback(
+    triangulations=None,
+    ellipses=None,
+    fault_surfaces=None,
+    fault_fragments=None,
+    extra_planes=None,
+    tri_cfg=None,
+    ell_cfg=None,
+    fault_cfg=None,
+    extra_plane_cfg=None,
+) -> Optional[MeshSizeCallback]:
     """
+    Combines triangulation, ellipse, fault, and extra-plane
+    mesh refinement callbacks.
+
+    All refinement strategies use the same configuration:
+
+        SizeMin -> minimum mesh size
+        SizeMax -> maximum mesh size
+        DistMin   -> distance for minimum mesh size
+        DistMax   -> distance where mesh reaches maximum size
+
+    The smallest mesh size requested by any active refinement
+    strategy is returned.
+    """
+
     tri_cb = None
     ell_cb = None
     fault_cb = None
+    extra_plane_cb = None
 
-    # fault callback (USE FRAGMENTS)
-    if (
-        fault_fragments is not None
-        and len(fault_fragments) > 0
-        and fault_cfg is not None
-    ):
-        fault_cb = build_fault_mesh_callback_from_fragments(
-            fault_fragments,
-            SizeMin=fault_cfg.SizeMin,
-            SizeMax=fault_cfg.SizeMax,
-            DistMin=fault_cfg.DistMin,
-            DistMax=fault_cfg.DistMax,
-        )
-
-    # triangulation callback
+    # ---------------------------------------------------------
+    # Triangulation
+    # ---------------------------------------------------------
     if (
         triangulations is not None
         and len(triangulations) > 0
@@ -363,7 +653,9 @@ def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfa
             DistMax=tri_cfg.DistMax,
         )
 
-    # ellipse callback
+    # ---------------------------------------------------------
+    # Ellipse
+    # ---------------------------------------------------------
     if (
         ellipses is not None
         and len(ellipses) > 0
@@ -377,20 +669,63 @@ def build_combined_mesh_callback(triangulations=None, ellipses=None, fault_surfa
             DistMax=ell_cfg.DistMax,
         )
 
-    if tri_cb is None and ell_cb is None and fault_cb is None:
+    # ---------------------------------------------------------
+    # Fault
+    # ---------------------------------------------------------
+    if (
+        fault_fragments is not None
+        and len(fault_fragments) > 0
+        and fault_cfg is not None
+    ):
+        fault_cb = build_fault_mesh_callback_from_fragments(
+            fault_fragments,
+            SizeMin=fault_cfg.SizeMin,
+            SizeMax=fault_cfg.SizeMax,
+            DistMin=fault_cfg.DistMin,
+            DistMax=fault_cfg.DistMax,
+        )
+
+    # ---------------------------------------------------------
+    # Extra plane
+    # ---------------------------------------------------------
+    if (
+        extra_planes is not None
+        and len(extra_planes) > 0
+        and extra_plane_cfg is not None
+    ):
+        extra_plane_cb = build_extra_plane_mesh_callback(
+            extra_planes,
+            SizeMin=extra_plane_cfg.SizeMin,
+            SizeMax=extra_plane_cfg.SizeMax,
+            DistMin=extra_plane_cfg.DistMin,
+            DistMax=extra_plane_cfg.DistMax,
+        )
+
+    # ---------------------------------------------------------
+    # No refinement enabled
+    # ---------------------------------------------------------
+    callbacks = [
+        tri_cb,
+        ell_cb,
+        fault_cb,
+        extra_plane_cb,
+    ]
+
+    if all(cb is None for cb in callbacks):
         return None
 
+    # ---------------------------------------------------------
+    # Combined callback
+    # ---------------------------------------------------------
     def mesh_size_callback(dim, tag, x, y, z, lc):
+
         values = [lc]
 
-        if tri_cb is not None:
-            values.append(tri_cb(dim, tag, x, y, z, lc))
-
-        if ell_cb is not None:
-            values.append(ell_cb(dim, tag, x, y, z, lc))
-
-        if fault_cb is not None:
-            values.append(fault_cb(dim, tag, x, y, z, lc))
+        for callback in callbacks:
+            if callback is not None:
+                values.append(
+                    callback(dim, tag, x, y, z, lc)
+                )
 
         return min(values)
 

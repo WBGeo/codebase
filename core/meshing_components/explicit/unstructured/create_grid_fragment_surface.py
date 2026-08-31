@@ -1472,6 +1472,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     ##################
     # Mesh refinement
     ##################
+
     tri_cfg = (
         refinement.triangulations
         if refinement and refinement.triangulations
@@ -1490,32 +1491,51 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         else None
     )
 
-    # callbavk
-    if counter==0:
-        fault_surf=None
+    extra_plane_cfg = (
+        refinement.extraplanes
+        if refinement and refinement.extraplanes
+        else None
+    )
+
+    # ---------------------------------------------------------
+    # Extra planes
+    # ---------------------------------------------------------
+    extra_planes_data = extra_planes
+
+    # ---------------------------------------------------------
+    # Callback
+    # ---------------------------------------------------------
+    if counter == 0:
+        fault_surf = None
 
     cb = build_combined_mesh_callback(
         triangulations=triangulations,
         ellipses=ellipses,
         fault_surfaces=surfaces,
         fault_fragments=fault_surf,
+        extra_planes=extra_planes_data,
         tri_cfg=tri_cfg,
         ell_cfg=ell_cfg,
-        fault_cfg=fault_cfg
+        fault_cfg=fault_cfg,
+        extra_plane_cfg=extra_plane_cfg,
     )
 
     if cb is not None:
         gmsh.model.mesh.setSizeCallback(cb)
 
+
+    ###############################
     # Wells + Sources + triangulation
+    ###############################
+
     if not source_points:
-        source=None
+        source = None
 
     if not wells:
-        well_lines=None
+        well_lines = None
 
     if len(triangulations) == 0:
-        triangulations=None
+        triangulations = None
 
     zip_info = list(zip(zip_inputs, ovv))
 
@@ -1524,7 +1544,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         well_lines=well_lines,
         source_points=source,
         triangulations=triangulations,
-        refinement=refinement
+        refinement=refinement,
     )
 
     apply_background_fields(active_fields)

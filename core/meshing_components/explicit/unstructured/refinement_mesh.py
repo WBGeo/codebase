@@ -57,10 +57,10 @@ class TriangulationRefinement(BaseModel):
     """
     Mesh refinement around triangulated surfaces.
     """
-    SizeMin: float
-    SizeMax: float
-    DistMin: float
-    DistMax: float
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float = 60.0
 
 
 # ------------------------
@@ -71,10 +71,10 @@ class EllipseRefinement(BaseModel):
     """
     Mesh refinement around elliptical regions.
     """
-    SizeMin: float
-    SizeMax: float
-    DistMin: float
-    DistMax: float
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float = 60.0
 
 
 # ------------------------
@@ -85,11 +85,24 @@ class FaultRefinement(BaseModel):
     """
     Mesh refinement around fault surfaces.
     """
-    SizeMin: float
-    SizeMax: float
-    DistMin: float
-    DistMax: float
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float = 60.0
 
+
+@wbgeo_type(name="Extra Plane Refinement",
+    identifier="ExtraPlaneRefinement",
+)
+class ExtraPlaneRefinement(BaseModel):
+    """
+    Mesh refinement around extra planes using
+    distance-based linear scaling.
+    """
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float =60.0
 
 # ------------------------
 # MAIN CONTAINER
@@ -110,4 +123,5 @@ class Refinement(BaseModel):
 
     triangulations: Optional[TriangulationRefinement] = None
     ellipses: Optional[EllipseRefinement] = None
+    extraplanes: Optional[ExtraPlaneRefinement] = None
     faults: Optional[FaultRefinement] = None

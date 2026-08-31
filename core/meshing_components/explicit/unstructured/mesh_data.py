@@ -2484,7 +2484,31 @@ def build_point_sets(boundary_groups: Dict[str, List[int]], n_nodes: int) -> Dic
 
     return point_sets
 
+def meshit_coordinate_transform(nodes, angle_deg):
+    pts = np.asarray(nodes, dtype=np.float64).copy()
 
+    # origin of the new system = center of model
+    xc = 0.5 * (pts[:, 0].min() + pts[:, 0].max())
+    yc = 0.5 * (pts[:, 1].min() + pts[:, 1].max())
+
+    # coordinates relative to new origin
+    X = pts[:, 0] - xc
+    Y = pts[:, 1] - yc
+
+    theta = np.deg2rad(angle_deg)
+    c = np.cos(theta)
+    s = np.sin(theta)
+
+    local = pts.copy()
+
+    # coordinates measured along x' and y'
+    local[:, 0] = X * c - Y * s
+    local[:, 1] = X * s + Y * c
+
+    # z unchanged
+    local[:, 2] = pts[:, 2]
+
+    return local
 
 
 # Register this function as a component
@@ -2518,6 +2542,7 @@ def create_unstructured_mesh_data(
     merge_file: Optional[str] = None,
     refinement: Optional[Refinement] = None,
     rotation_angle: Optional[float] = None,
+
 ) -> MeshResults:
     """
     Generates an unstructured geological mesh using a geomodel and additional structures
@@ -2718,37 +2743,33 @@ def create_unstructured_mesh_data(
             tri_surface_tags, grid_litho, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,
             boundary_tags=boundary_tags, gmsh_flag=gmsh_flag, mapping_litho=mapping_litho, merge_file=merge_file,
         )
-        # Rotate nodes if rotation_angle is provided
+        # 1. Original WBGeo/Gmsh coordinates
+        x_min, y_min, z_min = nodes.min(axis=0)
+        x_max, y_max, z_max = nodes.max(axis=0)
+        nodes_global = nodes.copy()
+        extent_mesh = np.array([x_min, x_max, y_min, y_max, z_min, z_max])
+
+        # 2. Identify physical boundaries using original geometry
+        boundary_groups = classify_boundary_nodes(nodes_global, extent_mesh)
+        point_sets = build_point_sets(boundary_groups, len(nodes_global))
+
+        # 3. Transform ALL node coordinates to the new coordinate system
+
         if rotation_angle is not None:
-            angle = np.deg2rad(rotation_angle)
+            nodes_local = meshit_coordinate_transform(
+            nodes_global,
+            angle_deg=rotation_angle
+        )
 
-            x = nodes[:, 0].copy()
-            y = nodes[:, 1].copy()
-
-            tmp_x = x * np.cos(angle) - y * np.sin(angle)
-            tmp_y = x * np.sin(angle) + y * np.cos(angle)
-
-            nodes[:, 0] = tmp_x
-            nodes[:, 1] = tmp_y
     finally:
         gmsh.finalize()
 
 
-    ############
-    # BC nodes
-    ############
-    x_min, y_min, z_min = nodes.min(axis=0)
-    x_max, y_max, z_max = nodes.max(axis=0)
-
-    extent_mesh = np.array([x_min, x_max, y_min, y_max, z_min, z_max])
-
-    boundary_groups_n = classify_boundary_nodes(nodes, extent_mesh)
-    point_sets = build_point_sets(boundary_groups_n, len(nodes))
 
 
     return MeshResults(
         elements=cells,
-        nodes=nodes,
+        nodes=nodes_local if 'nodes_local' in locals() else nodes,
         point_sets=point_sets,
         cell_data=cell_data,
         mesh_type=MeshType.UNSTRUCTURED,
