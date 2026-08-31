@@ -15,7 +15,11 @@ from core.meshing_components.mesh_format.exodus.Exo_format import MeshType
 logger = logging.getLogger(__name__)
 
 
-def validate_golem_input(content: str, mesh_test: MeshResults, mesh_type: MeshType):
+def validate_golem_input(
+    content: str,
+    mesh_test: MeshResults,
+    mesh_type: MeshType
+):
 
     required_blocks = [
         "Mesh",
@@ -30,11 +34,18 @@ def validate_golem_input(content: str, mesh_test: MeshResults, mesh_type: MeshTy
     missing = []
 
     for block in required_blocks:
+
         pattern = rf"^\[{block}\]"
-        if not re.search(pattern, content, re.MULTILINE):
+
+        if not re.search(
+            pattern,
+            content,
+            re.MULTILINE
+        ):
             missing.append(block)
 
     if missing:
+
         raise ValueError(
             "Missing required blocks: "
             + ", ".join(missing)
@@ -56,6 +67,7 @@ def validate_golem_input(content: str, mesh_test: MeshResults, mesh_type: MeshTy
     )
 
     if not mesh_pattern.search(content):
+
         raise ValueError(
             "Mesh block must contain "
             "type = FileMeshGenerator "
@@ -73,6 +85,7 @@ def validate_golem_input(content: str, mesh_test: MeshResults, mesh_type: MeshTy
     )
 
     if not materials_match:
+
         raise ValueError(
             "Materials block not found"
         )
@@ -80,24 +93,286 @@ def validate_golem_input(content: str, mesh_test: MeshResults, mesh_type: MeshTy
     materials_content = materials_match.group(1)
 
     # Count material blocks
+
     material_blocks = re.findall(
         r"\n\s*\[block_\d+\]",
         materials_content
     )
 
-    n_material_blocks = len(material_blocks)
+    n_material_blocks = len(
+        material_blocks
+    )
 
     # Number of blocks in MeshResults
+
     if mesh_type == MeshType.UNSTRUCTURED:
-        n_mesh_blocks = len(mesh_test.elements) - 6
+
+        n_mesh_blocks = (
+            len(mesh_test.elements) - 6
+        )
+
     else:
-        n_mesh_blocks = len(mesh_test.elements)
+
+        n_mesh_blocks = len(
+            mesh_test.elements
+        )
 
     if n_material_blocks != n_mesh_blocks:
+
         raise ValueError(
-            f"Number of material blocks ({n_material_blocks}) "
-            f"does not match number of mesh blocks ({n_mesh_blocks})"
+            f"Number of material blocks "
+            f"({n_material_blocks}) "
+            f"does not match number of mesh blocks "
+            f"({n_mesh_blocks})"
         )
+
+    # --------------------------------------------------
+    # Helper:
+    # return only DIRECT child blocks of a parent block
+    # --------------------------------------------------
+
+    def get_direct_child_blocks(
+        text: str,
+        parent_block: str
+    ):
+
+        lines = text.splitlines()
+
+        inside_parent = False
+        depth = 0
+        children = []
+
+        parent_start = f"[{parent_block}]"
+
+        for line in lines:
+
+            stripped = line.strip()
+
+            # Find parent block
+            if not inside_parent:
+
+                if stripped == parent_start:
+                    inside_parent = True
+                    depth = 0
+
+                continue
+
+            # ------------------------------------------
+            # Normal MOOSE closing syntax:
+            #
+            # []
+            # ------------------------------------------
+
+            if stripped == "[]":
+
+                if depth == 0:
+                    # Closing parent block
+                    break
+
+                depth -= 1
+                continue
+
+            # ------------------------------------------
+            # Old MOOSE closing syntax:
+            #
+            # [../]
+            # ------------------------------------------
+
+            if stripped == "[../]":
+
+                if depth > 0:
+                    depth -= 1
+
+                continue
+
+            # ------------------------------------------
+            # Opening subsection:
+            #
+            # [temperature]
+            #
+            # or
+            #
+            # [./temperature]
+            # ------------------------------------------
+
+            match = re.match(
+                r"^\[(?:\./)?([A-Za-z_][A-Za-z0-9_]*)\]$",
+                stripped
+            )
+
+            if match:
+
+                block_name = match.group(1)
+
+                # Only direct children of parent
+                if depth == 0:
+                    children.append(
+                        block_name
+                    )
+
+                depth += 1
+
+        return children
+
+    # --------------------------------------------------
+    # Helper:
+    # extract full contents of a parent block,
+    # including nested blocks
+    # --------------------------------------------------
+
+    def extract_parent_block(
+        text: str,
+        parent_block: str
+    ):
+
+        lines = text.splitlines()
+
+        inside_parent = False
+        depth = 0
+        collected = []
+
+        parent_start = f"[{parent_block}]"
+
+        for line in lines:
+
+            stripped = line.strip()
+
+            # Find parent
+            if not inside_parent:
+
+                if stripped == parent_start:
+                    inside_parent = True
+
+                continue
+
+            # ------------------------------------------
+            # Normal close []
+            # ------------------------------------------
+
+            if stripped == "[]":
+
+                if depth == 0:
+                    break
+
+                depth -= 1
+                collected.append(line)
+                continue
+
+            # ------------------------------------------
+            # Old-style close [../]
+            # ------------------------------------------
+
+            if stripped == "[../]":
+
+                if depth > 0:
+                    depth -= 1
+
+                collected.append(line)
+                continue
+
+            # ------------------------------------------
+            # Opening subsection
+            # ------------------------------------------
+
+            match = re.match(
+                r"^\[(?:\./)?([A-Za-z_][A-Za-z0-9_]*)\]$",
+                stripped
+            )
+
+            if match:
+                depth += 1
+
+            collected.append(line)
+
+        return "\n".join(
+            collected
+        )
+
+    # --------------------------------------------------
+    # Check every variable has at least one kernel
+    # --------------------------------------------------
+
+    variable_names = get_direct_child_blocks(
+        content,
+        "Variables"
+    )
+
+    if not variable_names:
+
+        raise ValueError(
+            "No variables found inside "
+            "the [Variables] block"
+        )
+
+    # --------------------------------------------------
+    # Read entire Kernels block
+    # --------------------------------------------------
+
+    kernels_content = extract_parent_block(
+        content,
+        "Kernels"
+    )
+
+    if not kernels_content.strip():
+
+        raise ValueError(
+            "Kernels block is empty"
+        )
+
+    # --------------------------------------------------
+    # Find all:
+    #
+    # variable = temperature
+    #
+    # variable = 'temperature'
+    #
+    # variable = "temperature"
+    # --------------------------------------------------
+
+    kernel_variables = re.findall(
+        r"""
+        ^\s*
+        variable
+        \s*=\s*
+        ['"]?
+        ([A-Za-z_][A-Za-z0-9_]*)
+        ['"]?
+        \s*$
+        """,
+        kernels_content,
+        re.MULTILINE | re.VERBOSE
+    )
+
+    kernel_variables = set(
+        kernel_variables
+    )
+
+    # --------------------------------------------------
+    # Find variables without any kernel
+    # --------------------------------------------------
+
+    variables_without_kernel = [
+
+        variable
+
+        for variable in variable_names
+
+        if variable not in kernel_variables
+    ]
+
+    if variables_without_kernel:
+
+        raise ValueError(
+            "The following variables do not have "
+            "at least one kernel: "
+            + ", ".join(
+                variables_without_kernel
+            )
+        )
+
+    # --------------------------------------------------
+    # Validation successful
+    # --------------------------------------------------
 
     print(
         f"Validation successful: "
@@ -105,6 +380,19 @@ def validate_golem_input(content: str, mesh_test: MeshResults, mesh_type: MeshTy
         f"{n_material_blocks} material blocks."
     )
 
+    print(
+        f"Variables found: "
+        f"{', '.join(variable_names)}"
+    )
+
+    print(
+        f"Variables used in Kernels: "
+        f"{', '.join(sorted(kernel_variables))}"
+    )
+
+    print(
+        "All variables have at least one kernel."
+    )
 
 def run_golem_with_image(
     image_name,
