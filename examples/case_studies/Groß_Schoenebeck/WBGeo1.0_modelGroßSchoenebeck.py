@@ -32,8 +32,8 @@ cwd = os.getcwd()
 #%%
 
 # Load input data
-surface_points = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_surface_points_downsampled.csv")
-orientations = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_orientations_downsampled.csv")
+surface_points = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_surface_points_downsampled_full.csv")
+orientations = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_orientations_downsampled_full.csv")
 
 surface_points_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_faults_surface_points_downsampled.csv")
 orientations_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_faults_orientations_downsampled.csv")
@@ -187,14 +187,13 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 #
 refinement = Refinement()
 refinement.wells = LinearWellRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-refinement.triangulation = TriangulationRefinement(hmin=20.0, hmax=90.0, d1=30.0, d2=100.0)
-# refinement.triangulation = TriangulationRefinement(hmin=8.0, hmax=90.0, d1=50.0, d2=100.0, enabled=True)
+refinement.triangulation = TriangulationRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
 #
 # Available types per object:
 #   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
 #                                       LinearSourceRefinement, FunctionSourceRefinement
 #   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
-#                                       (hmin/hmax = element sizes, d1/d2 = transition distances)
+#                                       (SizeMin/SizeMax = element sizes, DistMin/DistMax = transition distances)
 
 
 # # Explicit unstructured mesh with objects
