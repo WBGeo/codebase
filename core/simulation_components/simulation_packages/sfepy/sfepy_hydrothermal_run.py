@@ -20,6 +20,7 @@ import sys
 import tempfile
 import zipfile
 from typing import Optional, Union
+from meshio import CellBlock
 
 import meshio
 import numpy as np
@@ -205,12 +206,33 @@ def _run_sfepy_input_file(
         # mesh_results.point_sets directly in
         # HydrothermalProblemBuilder._region_lines(), never from Exodus
         # side sets, so switching export type here doesn't affect them.
-        volume_elements = [block for block in mesh_results.elements if block.dim == 3]
+        volume_elements = [
+            block for block in mesh_results.elements
+            if block.dim == 3
+        ]
+
+
+        volume_elements = [
+            block for block in mesh_results.elements
+            if block.dim == 3
+        ]
+
         if len(volume_elements) != len(mesh_results.elements):
-            mesh_results = mesh_results.model_copy(update={"elements": volume_elements})
-        export_type_code = "volume_only"
-    else:
-        export_type_code = mesh_type_code
+            empty_boundary_blocks = [
+                CellBlock(
+                    cell_type="triangle",
+                    data=np.empty((0, 3), dtype=int),
+                )
+                for _ in range(6)
+            ]
+
+            mesh_results = mesh_results.model_copy(
+                update={
+                    "elements": volume_elements + empty_boundary_blocks
+                }
+            )
+
+    export_type_code = mesh_type_code
 
     exo_buffer = export_mesh_results_to_exodus(mesh_results, type=export_type_code)
 
@@ -222,7 +244,13 @@ def _run_sfepy_input_file(
     try:
         with open(tmp_exo_path, "wb") as f:
             f.write(exo_buffer.getbuffer())
+        from meshio.exodus import _exodus
 
+        # meshio compatibility fix:
+        # Keep Exodus/MOOSE element type as TETRA4,
+        # but make meshio interpret it internally as "tetra".
+        _exodus.exodus_to_meshio_type["TETRA4"] = "tetra"
+        _exodus.exodus_to_meshio_type["TET4"] = "tetra"
         mesh = meshio.read(tmp_exo_path, file_format="exodus")
         mat_ids = []
         offset = 0

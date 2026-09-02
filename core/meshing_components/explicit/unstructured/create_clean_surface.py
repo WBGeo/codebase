@@ -13,6 +13,307 @@ from core.object_components import StructuralModelResults
 from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
 from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
 
+def plot_split_surfaces_separately(
+    cleaned_surfaces,
+    ref_surfaces,
+    point_size=5,
+):
+    """
+    Plot all split pieces belonging to the same original geological
+    surface together in ONE PyVista window, plus the reference fault(s).
+
+    Example:
+
+        Window 1:
+            2_surface_0
+            2_surface_1
+            Reference 11
+
+        Window 2:
+            3_surface_0
+            3_surface_1
+            Reference 11
+
+    Call this AFTER extrusion if cleaned_surfaces has already been
+    updated with the extruded points.
+    """
+
+    grouped_surfaces = {}
+
+    # ==========================================================
+    # 1. Group split pieces by original surface
+    # ==========================================================
+    for file, points in cleaned_surfaces:
+
+        if isinstance(file, str) and "_surface_" in file:
+
+            # Example:
+            # 2_surface_0 -> 2
+            # 2_surface_1 -> 2
+            original_file = file.split("_surface_")[0]
+
+            if original_file not in grouped_surfaces:
+                grouped_surfaces[original_file] = []
+
+            grouped_surfaces[original_file].append(
+                (file, points)
+            )
+
+    # ==========================================================
+    # 2. One window for each original geological surface
+    # ==========================================================
+    for original_file, pieces in grouped_surfaces.items():
+
+        plotter = pv.Plotter()
+
+        print(
+            f"\nOriginal surface {original_file}: "
+            f"{len(pieces)} separated pieces"
+        )
+
+        # ======================================================
+        # Plot all separated pieces
+        # ======================================================
+        for piece_name, piece_points in pieces:
+
+            piece_points = np.asarray(piece_points)
+
+            if piece_points.size == 0:
+                continue
+
+            cloud = pv.PolyData(piece_points)
+
+            plotter.add_mesh(
+                cloud,
+                point_size=point_size,
+                render_points_as_spheres=True,
+                opacity=0.8,
+                label=str(piece_name),
+            )
+
+            print(
+                f"    {piece_name}: "
+                f"{len(piece_points)} points"
+            )
+
+        # ======================================================
+        # Plot reference fault(s)
+        # ======================================================
+        for ref_file, ref_points in ref_surfaces:
+
+            ref_points = np.asarray(ref_points)
+
+            if ref_points.size == 0:
+                continue
+
+            ref_cloud = pv.PolyData(ref_points)
+
+            plotter.add_mesh(
+                ref_cloud,
+                color="orange",
+                point_size=point_size + 1,
+                render_points_as_spheres=True,
+                opacity=0.7,
+                label=f"Reference {ref_file}",
+            )
+
+        # ======================================================
+        # Plot settings
+        # ======================================================
+        plotter.add_text(
+            f"Original Surface {original_file}: "
+            f"{len(pieces)} pieces + reference",
+            font_size=14,
+        )
+
+        plotter.add_legend()
+        plotter.show()
+
+def plot_one_extended_surface_with_reference(
+    file,
+    points,
+    ref_file,
+    ref_points,
+    extruded_points,
+    intersection_points=None,
+    point_size=5,
+):
+    """
+    Plot ONE cleaned geological surface together with:
+      - its reference/fault surface
+      - the newly generated extrusion points
+      - optional intersection points
+    """
+
+    plotter = pv.Plotter()
+
+    # Original / cleaned geological surface
+    surface_cloud = pv.PolyData(points)
+
+    plotter.add_mesh(
+        surface_cloud,
+        color="lightblue",
+        point_size=point_size,
+        render_points_as_spheres=True,
+        opacity=0.7,
+        label=f"Surface {file}",
+    )
+
+    # Reference fault
+    ref_cloud = pv.PolyData(ref_points)
+
+    plotter.add_mesh(
+        ref_cloud,
+        color="orange",
+        point_size=point_size,
+        render_points_as_spheres=True,
+        opacity=0.8,
+        label=f"Reference {ref_file}",
+    )
+
+    # Extruded points
+    if extruded_points is not None and extruded_points.size > 0:
+
+        if extruded_points.ndim == 3:
+            extruded_plot = extruded_points.reshape(-1, 3)
+        else:
+            extruded_plot = extruded_points
+
+        extruded_cloud = pv.PolyData(extruded_plot)
+
+        plotter.add_mesh(
+            extruded_cloud,
+            color="red",
+            point_size=point_size + 2,
+            render_points_as_spheres=True,
+            label="Extruded points",
+        )
+
+    # Intersection points
+    if intersection_points is not None:
+
+        intersection_array = np.asarray(intersection_points)
+
+        if intersection_array.size > 0:
+
+            if intersection_array.ndim == 3:
+                intersection_array = intersection_array.reshape(-1, 3)
+
+            intersection_cloud = pv.PolyData(
+                intersection_array
+            )
+
+            plotter.add_mesh(
+                intersection_cloud,
+                color="black",
+                point_size=point_size + 2,
+                render_points_as_spheres=True,
+                label="Intersection points",
+            )
+
+    plotter.add_text(
+        f"Surface {file} + Reference {ref_file}",
+        font_size=12,
+    )
+
+    plotter.add_legend()
+
+    plotter.show()
+
+def plot_split_surface_groups_with_reference(
+    cleaned_surfaces,
+    ref_surfaces,
+    point_size=5,
+):
+    """
+    Plot all split/clustered pieces belonging to the same original
+    geological surface in ONE PyVista window, together with the fault.
+
+    Example:
+        1_surface_0
+        1_surface_1
+
+    are plotted together as "Original Surface 1".
+    """
+
+    grouped_surfaces = {}
+
+    # ---------------------------------------------------------
+    # Group clustered surfaces by their original surface ID
+    # ---------------------------------------------------------
+    for file, points in cleaned_surfaces:
+
+        # We only want surfaces produced by HDBSCAN splitting
+        if isinstance(file, str) and "_surface_" in file:
+
+            original_file = file.split("_surface_")[0]
+
+            if original_file not in grouped_surfaces:
+                grouped_surfaces[original_file] = []
+
+            grouped_surfaces[original_file].append(
+                (file, points)
+            )
+
+    # ---------------------------------------------------------
+    # Plot one window for every original geological surface
+    # ---------------------------------------------------------
+    for original_file, pieces in grouped_surfaces.items():
+
+        plotter = pv.Plotter()
+
+        print(
+            f"\nPlotting original surface {original_file}: "
+            f"{len(pieces)} separated pieces"
+        )
+
+        # ---------------------------------------------
+        # Plot every separated / extruded piece
+        # ---------------------------------------------
+        for cluster_file, cluster_points in pieces:
+
+            cloud = pv.PolyData(cluster_points)
+
+            plotter.add_mesh(
+                cloud,
+                point_size=point_size,
+                render_points_as_spheres=True,
+                opacity=0.75,
+                label=str(cluster_file),
+            )
+
+            print(
+                f"    {cluster_file}: "
+                f"{len(cluster_points)} points"
+            )
+
+        # ---------------------------------------------
+        # Plot reference fault(s)
+        # ---------------------------------------------
+        for ref_file, ref_points in ref_surfaces:
+
+            ref_cloud = pv.PolyData(ref_points)
+
+            plotter.add_mesh(
+                ref_cloud,
+                color="orange",
+                point_size=point_size,
+                render_points_as_spheres=True,
+                opacity=0.7,
+                label=f"Reference {ref_file}",
+            )
+
+        plotter.add_text(
+            f"Original Surface {original_file} "
+            f"({len(pieces)} pieces after cleaning + extrusion)",
+            font_size=12,
+        )
+
+        plotter.add_legend()
+
+        plotter.show()
+
+
 
 def get_normals(near_points: NDArray[np.floating], points: NDArray[np.floating], normal_vec: Tuple[int, NDArray[np.floating]],
         ) -> NDArray[np.floating]:
@@ -404,8 +705,8 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
     cleaned_surfaces: List[Tuple[str | int, NDArray[np.float64]]] = []
     cleaned_normals: List[Tuple[str | int, NDArray[np.float64]]] = []
-
-
+    # Surface IDs that must NOT be extruded later
+    skip_extrusion_files: set[Union[int, str]] = set()
     if ref_surfaces:
 
         for ref_file, ref_points in ref_surfaces:
@@ -425,6 +726,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
             if file not in ref_surface_indices:  # Skip if it's already a reference surface
                 logger.debug("Processing %s against reference surfaces", file)
+                # Plot current surface + current reference surface
 
                 # check if  plane has no offset with respect to fault ignore splitting the plane
                 # Extract z-values from the list of points
@@ -444,6 +746,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
                     cleaned_normals.append(
                         (file, normal_surfaces[file][1])
                     )
+                    skip_extrusion_files.add(file)
 
                     continue
 
@@ -528,16 +831,29 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
                             else:
                                 filtered.append(filtered_in)
 
-                    if len(filtered) > 0:
-                        filtered_array = np.vstack(filtered)
-                        filtered_array = np.unique(filtered_array, axis=0)
+                    points: NDArray[np.float64] = np.asarray(points)
 
-                    # Ensure both arrays are numpy arrays
-                    points: NDArray[np.float64]  = np.array(points)
-                    filtered_array: NDArray[np.float64]  = np.array(filtered_array)
+                    if len(filtered) == 0:
+                        logger.debug(
+                            "No overlapping points found for surface %s; keeping original surface.",
+                            file,
+                        )
 
-                    ## Create a mask to keep only points NOT in filtered_array
+                        cleaned_surfaces.append((file, points))
+
+                        cleaned_normals.append(
+                            (file, normal_surfaces[file][1])
+                        )
+                        skip_extrusion_files.add(file)
+
+                        continue
+
+                    filtered_array: NDArray[np.float64] = np.vstack(filtered)
+                    filtered_array = np.unique(filtered_array, axis=0)
+
+                    # Keep only points NOT contained in filtered_array
                     mask: NDArray[np.bool_] = ~np.any(np.all(points[:, None, :] == filtered_array, axis=2), axis=1)
+
 
                     # Apply the mask to get the filtered points
                     filtered_points: NDArray[np.float64] = points[mask]
@@ -578,10 +894,22 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
         for i, (file, points) in enumerate(cleaned_surfaces):
 
-            # Skip surfaces that are reference surfaces
-            if i not in ref_surface_indices.values():
-                all_extruded_points_for_current_surface: List[NDArray[np.floating]] = []
+            # Skip:
+            # 1. reference/fault surfaces
+            # 2. surfaces for which filtered == 0
+            # Fault/reference
+                if file in ref_surface_indices.values():
+                    #print(f"SKIP {file}: reference surface")
+                    continue
 
+                # Surface marked as unchanged
+                if file in skip_extrusion_files:
+                    #print(f"SKIP {file}: no filtering was performed")
+                    continue
+
+
+
+                all_extruded_points_for_current_surface: List[NDArray[np.floating]] = []
                 # Loop through each reference surface to find intersections
                 for ref_file, ref_points in ref_surfaces:
 
@@ -664,7 +992,16 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
                     extruded_intersection_points: NDArray[np.floating] = correct_extrusion_direction(
                         nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR
                     )
-
+                    # check if all surfaces cut the fault after extension
+                    #plot_one_extended_surface_with_reference(
+                    #    file=file,
+                    #    points=points,
+                    #    ref_file=ref_file,
+                    #    ref_points=ref_points,
+                    #    extruded_points=extruded_intersection_points,
+                    #    intersection_points=nearest_ref_points,
+                    #    point_size=5,
+                    #)
                     # Add extruded points for this reference surface to the list
                     all_extruded_points_for_current_surface.append(extruded_intersection_points)
 
@@ -675,17 +1012,21 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
                     updated_points: NDArray[np.floating] = np.vstack([points, extruded_combined.reshape(-1, 3)])
                     # Update the surface with the new set of points
                     cleaned_surfaces[i] = (file, updated_points)
-
         # Optionally, visualize all surfaces including extruded points
-        #plot_surfaces_with_extrusions(
+        #_surfaces_with_extrusions(
 
         #    cleaned_surfaces=cleaned_surfaces,
         #    intersection_points=intersection_points,
 
         #    extruded_points=all_extruded_points_for_current_surface,  # or your full list of extruded points
 
-        #    point_size=5
-        #    )
+        #    point_size=5)
+
+        #plot_split_surfaces_separately(
+        #    cleaned_surfaces=cleaned_surfaces,
+        #     ref_surfaces=ref_surfaces,
+        #    point_size=5,
+        #)
 
     else:
 

@@ -6,6 +6,8 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     FunctionWellRefinement,
     LinearSourceRefinement,
     FunctionSourceRefinement,
+    LinearShaftRefinement,
+    FunctionShaftRefinement,
 )
 import gmsh
 import numpy as np
@@ -163,6 +165,190 @@ def build_source_refinement(source_points, refinement, field_gen) -> Optional[in
 
     else:
         raise TypeError(type(s))
+
+def build_shaft_refinement(
+    mine_shafts,
+    refinement,
+    field_gen,
+) -> Optional[int]:
+    """
+    Refines according to perpendicular distance from the nearest
+    infinite shaft axis.
+    """
+    if not refinement or refinement.shafts is None:
+        return None
+
+    if not mine_shafts:
+        return None
+
+    shaft_cfg = refinement.shafts
+
+    def make_axis_distance_expression(shaft):
+        cx, cy, cz = map(float, shaft["center"])
+        ax, ay, az = map(float, shaft["axis"])
+
+        axis_norm_squared = ax * ax + ay * ay + az * az
+
+        if axis_norm_squared < 1.0e-20:
+            return None
+
+        # Components of (point - center) cross axis.
+        cross_x = (
+            f"((y-({cy}))*({az})"
+            f"-(z-({cz}))*({ay}))"
+        )
+        cross_y = (
+            f"((z-({cz}))*({ax})"
+            f"-(x-({cx}))*({az}))"
+        )
+        cross_z = (
+            f"((x-({cx}))*({ay})"
+            f"-(y-({cy}))*({ax}))"
+        )
+
+        return (
+            f"(sqrt("
+            f"({cross_x})^2"
+            f"+({cross_y})^2"
+            f"+({cross_z})^2"
+            f")/sqrt({axis_norm_squared}))"
+        )
+
+    # ---------------------------------------------------------
+    # Function refinement
+    # ---------------------------------------------------------
+    if isinstance(shaft_cfg, FunctionShaftRefinement):
+        shaft_size_fields = []
+
+        for shaft_index, shaft in enumerate(mine_shafts):
+            distance_expression = make_axis_distance_expression(shaft)
+
+            if distance_expression is None:
+                logger.warning(
+                    "Skipping degenerate shaft %d during refinement.",
+                    shaft_index,
+                )
+                continue
+
+            # Embed the distance expression directly. Do not create
+            # a separate MathEval distance field referenced as F#.
+            expression = shaft_cfg.expression.replace(
+                "DIST",
+                distance_expression,
+            )
+
+            fid = field_gen.next()
+            gmsh.model.mesh.field.add("MathEval", fid)
+            gmsh.model.mesh.field.setString(
+                fid,
+                "F",
+                expression,
+            )
+
+            logger.info(
+                "Shaft %d function field %d: %s",
+                shaft_index,
+                fid,
+                expression,
+            )
+
+            shaft_size_fields.append(fid)
+
+        if not shaft_size_fields:
+            return None
+
+        if len(shaft_size_fields) == 1:
+            return shaft_size_fields[0]
+
+        # The closest shaft normally requests the smallest mesh size.
+        fid_min = field_gen.next()
+        gmsh.model.mesh.field.add("Min", fid_min)
+        gmsh.model.mesh.field.setNumbers(
+            fid_min,
+            "FieldsList",
+            shaft_size_fields,
+        )
+
+        return fid_min
+
+    # ---------------------------------------------------------
+    # Linear refinement
+    # ---------------------------------------------------------
+    if isinstance(shaft_cfg, LinearShaftRefinement):
+        distance_fields = []
+
+        for shaft_index, shaft in enumerate(mine_shafts):
+            distance_expression = make_axis_distance_expression(shaft)
+
+            if distance_expression is None:
+                logger.warning(
+                    "Skipping degenerate shaft %d during refinement.",
+                    shaft_index,
+                )
+                continue
+
+            fid_distance = field_gen.next()
+            gmsh.model.mesh.field.add(
+                "MathEval",
+                fid_distance,
+            )
+            gmsh.model.mesh.field.setString(
+                fid_distance,
+                "F",
+                distance_expression,
+            )
+
+            distance_fields.append(fid_distance)
+
+        if not distance_fields:
+            return None
+
+        if len(distance_fields) == 1:
+            fid_nearest_distance = distance_fields[0]
+        else:
+            fid_nearest_distance = field_gen.next()
+            gmsh.model.mesh.field.add(
+                "Min",
+                fid_nearest_distance,
+            )
+            gmsh.model.mesh.field.setNumbers(
+                fid_nearest_distance,
+                "FieldsList",
+                distance_fields,
+            )
+
+        fid = field_gen.next()
+        gmsh.model.mesh.field.add("Threshold", fid)
+
+        gmsh.model.mesh.field.setNumber(
+            fid,
+            "InField",
+            fid_nearest_distance,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid,
+            "SizeMin",
+            shaft_cfg.SizeMin,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid,
+            "SizeMax",
+            shaft_cfg.SizeMax,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid,
+            "DistMin",
+            shaft_cfg.DistMin,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid,
+            "DistMax",
+            shaft_cfg.DistMax,
+        )
+
+        return fid
+
+    raise TypeError(type(shaft_cfg))
 
 
 def build_triangulation_mesh_callback(
@@ -732,16 +918,14 @@ def build_combined_mesh_callback(
     return mesh_size_callback
 
 
-def build_refinement_fields(zip_info, well_lines, source_points, triangulations=None, refinement=None) -> List[int]:
-    """
-    Builds all active Gmsh background refinement fields.
-    Generates refinement fields for:
-    - Wells
-    - Sources
-
-    Returns a list of active field IDs to be used as background
-    mesh controls.
-    """
+def build_refinement_fields(
+    zip_info,
+    well_lines,
+    source_points,
+    mine_shafts=None,
+    triangulations=None,
+    refinement=None,
+) -> List[int]:
     field_gen = FieldIDGenerator()
     active_fields = []
 
@@ -758,11 +942,20 @@ def build_refinement_fields(zip_info, well_lines, source_points, triangulations=
         field_gen,
     )
 
+    shaft_field = build_shaft_refinement(
+        mine_shafts,
+        refinement,
+        field_gen,
+    )
+
     if well_field is not None:
         active_fields.append(well_field)
 
     if source_field is not None:
         active_fields.append(source_field)
+
+    if shaft_field is not None:
+        active_fields.append(shaft_field)
 
     return active_fields
 

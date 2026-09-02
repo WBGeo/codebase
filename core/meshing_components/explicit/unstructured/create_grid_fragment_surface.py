@@ -1398,7 +1398,11 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     )
 
     gmsh.model.occ.synchronize()
-
+# ============================================================
+# SAVE GMSH GEOMETRY AFTER FRAGMENTATION, BEFORE MESHING
+# ============================================================
+    #gmsh.write("Kleinzeche_after_fragment.geo_unrolled")
+    #print("Saved: Kleinzeche_after_fragment.geo_unrolled")
     ####################################
     # INPUT FOR ZOP (PARENT ---> CHILD)
     ####################################
@@ -1534,6 +1538,9 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     if not wells:
         well_lines = None
 
+    if not mine_shafts:
+        mine_shafts = None
+
     if len(triangulations) == 0:
         triangulations = None
 
@@ -1543,10 +1550,10 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         zip_info=zip_info,
         well_lines=well_lines,
         source_points=source,
+        mine_shafts=mine_shafts,
         triangulations=triangulations,
         refinement=refinement,
     )
-
     apply_background_fields(active_fields)
 
     ##############################################################
