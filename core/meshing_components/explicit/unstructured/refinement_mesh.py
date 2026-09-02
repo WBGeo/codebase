@@ -1,7 +1,8 @@
 from typing import Union, Optional
 from pydantic import BaseModel
 from py_api_wbgeo.nodesapi import wbgeo_type
-
+from typing import List, Optional, Tuple, Union
+from pydantic import BaseModel
 
 # ------------------------
 # Wells
@@ -136,6 +137,43 @@ class ExtraPlaneRefinement(BaseModel):
     DistMin: float = 20.0
     DistMax: float =60.0
 
+Coordinate3D = Tuple[float, float, float]
+
+
+@wbgeo_type(
+    name="General Refinement",
+    identifier="GeneralRefinement",
+)
+class GeneralRefinement(BaseModel):
+    """
+    General point- or line-based refinement.
+
+    One coordinate:
+        coordinates=[(x, y, z)]
+
+        DIST is the Euclidean distance from that point.
+
+    Two coordinates:
+        coordinates=[
+            (x1, y1, z1),
+            (x2, y2, z2),
+        ]
+
+        DIST is the distance from the finite line segment connecting
+        the two coordinates.
+
+    Linear refinement:
+        Set SizeMin and DistMax.
+
+    Function refinement:
+        Set expression and use DIST inside the expression.
+    """
+    coordinates: List[Coordinate3D]
+
+    SizeMin: Optional[float] = None
+    DistMax: Optional[float] = None
+    expression: Optional[str] = None
+
 # ------------------------
 # MAIN CONTAINER
 # ------------------------
@@ -151,6 +189,14 @@ class Refinement(BaseModel):
 
     shafts: Optional[
         Union[LinearShaftRefinement, FunctionShaftRefinement]
+    ] = None
+
+    # One or more general point/line refinements
+    general: Optional[
+        Union[
+            GeneralRefinement,
+            List[GeneralRefinement],
+        ]
     ] = None
 
     triangulations: Optional[TriangulationRefinement] = None

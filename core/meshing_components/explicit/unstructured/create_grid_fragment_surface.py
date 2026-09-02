@@ -1507,7 +1507,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     extra_planes_data = extra_planes
 
     # ---------------------------------------------------------
-    # Callback
+    # Mesh-size callback
     # ---------------------------------------------------------
     if counter == 0:
         fault_surf = None
@@ -1528,9 +1528,15 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         gmsh.model.mesh.setSizeCallback(cb)
 
 
-    ###############################
-    # Wells + Sources + triangulation
-    ###############################
+    # ---------------------------------------------------------
+    # Field-based refinement
+    #
+    # Includes:
+    # - wells
+    # - sources
+    # - mine shafts
+    # - general point/line refinements
+    # ---------------------------------------------------------
 
     if not source_points:
         source = None
@@ -1541,7 +1547,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     if not mine_shafts:
         mine_shafts = None
 
-    if len(triangulations) == 0:
+    if triangulations is not None and len(triangulations) == 0:
         triangulations = None
 
     zip_info = list(zip(zip_inputs, ovv))
@@ -1553,7 +1559,11 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         mine_shafts=mine_shafts,
         triangulations=triangulations,
         refinement=refinement,
+
+        # Used as SizeMax by linear general refinement.
+        mesh_size=mesh_size,
     )
+
     apply_background_fields(active_fields)
 
     ##############################################################

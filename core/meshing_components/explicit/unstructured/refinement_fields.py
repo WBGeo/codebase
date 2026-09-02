@@ -8,6 +8,7 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     FunctionSourceRefinement,
     LinearShaftRefinement,
     FunctionShaftRefinement,
+    GeneralRefinement,
 )
 import gmsh
 import numpy as np
@@ -792,6 +793,221 @@ def build_extra_plane_mesh_callback(
 
     return mesh_size_callback
 
+def build_general_refinement(
+    refinement,
+    field_gen,
+    mesh_size: float,
+) -> List[int]:
+    """
+    Builds general point- or line-based refinement fields.
+
+    Linear configuration:
+        SizeMin and DistMax must be provided.
+
+        SizeMin is applied at DIST = 0 and increases linearly to
+        mesh_size at DIST = DistMax.
+
+    Function configuration:
+        expression must be provided and should contain DIST.
+
+    Returns:
+        List of completed mesh-size field IDs.
+    """
+    if not refinement or refinement.general is None:
+        return []
+
+    configurations = refinement.general
+
+    if isinstance(configurations, GeneralRefinement):
+        configurations = [configurations]
+
+    completed_fields = []
+
+    for config_index, config in enumerate(configurations):
+        coordinates = config.coordinates
+
+        if len(coordinates) not in (1, 2):
+            raise ValueError(
+                "GeneralRefinement.coordinates must contain exactly "
+                "one coordinate or two coordinates. "
+                f"Configuration {config_index} contains "
+                f"{len(coordinates)} coordinates."
+            )
+
+        # Exactly one refinement method must be selected.
+        uses_expression = (
+            config.expression is not None
+            and config.expression.strip() != ""
+        )
+
+        uses_linear = (
+            config.SizeMin is not None
+            or config.DistMax is not None
+        )
+
+        if uses_expression and uses_linear:
+            raise ValueError(
+                "GeneralRefinement must use either 'expression' or "
+                "'SizeMin' with 'DistMax', not both."
+            )
+
+        if not uses_expression:
+            if config.SizeMin is None or config.DistMax is None:
+                raise ValueError(
+                    "GeneralRefinement requires either an expression "
+                    "or both SizeMin and DistMax."
+                )
+
+            if config.SizeMin <= 0:
+                raise ValueError(
+                    "GeneralRefinement.SizeMin must be greater than zero."
+                )
+
+            if config.DistMax <= 0:
+                raise ValueError(
+                    "GeneralRefinement.DistMax must be greater than zero."
+                )
+
+        # -----------------------------------------------------
+        # Create point or line geometry
+        # -----------------------------------------------------
+        if len(coordinates) == 1:
+            x, y, z = map(float, coordinates[0])
+
+            point_tag = gmsh.model.occ.addPoint(x, y, z)
+            gmsh.model.occ.synchronize()
+
+            fid_distance = field_gen.next()
+            gmsh.model.mesh.field.add(
+                "Distance",
+                fid_distance,
+            )
+            gmsh.model.mesh.field.setNumbers(
+                fid_distance,
+                "NodesList",
+                [point_tag],
+            )
+
+        else:
+            x1, y1, z1 = map(float, coordinates[0])
+            x2, y2, z2 = map(float, coordinates[1])
+
+            segment_length = np.linalg.norm(
+                [
+                    x2 - x1,
+                    y2 - y1,
+                    z2 - z1,
+                ]
+            )
+
+            if segment_length < 1.0e-10:
+                raise ValueError(
+                    "The two GeneralRefinement coordinates must "
+                    "define a nonzero line segment."
+                )
+
+            start_tag = gmsh.model.occ.addPoint(
+                x1,
+                y1,
+                z1,
+            )
+            end_tag = gmsh.model.occ.addPoint(
+                x2,
+                y2,
+                z2,
+            )
+            line_tag = gmsh.model.occ.addLine(
+                start_tag,
+                end_tag,
+            )
+
+            gmsh.model.occ.synchronize()
+
+            fid_distance = field_gen.next()
+            gmsh.model.mesh.field.add(
+                "Distance",
+                fid_distance,
+            )
+            gmsh.model.mesh.field.setNumbers(
+                fid_distance,
+                "CurvesList",
+                [line_tag],
+            )
+            gmsh.model.mesh.field.setNumber(
+                fid_distance,
+                "Sampling",
+                100,
+            )
+
+        # -----------------------------------------------------
+        # Function refinement
+        # -----------------------------------------------------
+        if uses_expression:
+            fid_result = field_gen.next()
+            gmsh.model.mesh.field.add(
+                "MathEval",
+                fid_result,
+            )
+
+            expression = config.expression.replace(
+                "DIST",
+                f"F{fid_distance}",
+            )
+
+            gmsh.model.mesh.field.setString(
+                fid_result,
+                "F",
+                expression,
+            )
+
+            logger.info(
+                "General refinement %d expression: %s",
+                config_index,
+                expression,
+            )
+
+            completed_fields.append(fid_result)
+            continue
+
+        # -----------------------------------------------------
+        # Linear refinement
+        # -----------------------------------------------------
+        fid_result = field_gen.next()
+        gmsh.model.mesh.field.add(
+            "Threshold",
+            fid_result,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid_result,
+            "InField",
+            fid_distance,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid_result,
+            "SizeMin",
+            config.SizeMin,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid_result,
+            "SizeMax",
+            mesh_size,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid_result,
+            "DistMin",
+            0.0,
+        )
+        gmsh.model.mesh.field.setNumber(
+            fid_result,
+            "DistMax",
+            config.DistMax,
+        )
+
+        completed_fields.append(fid_result)
+
+    return completed_fields
+
+
 def build_combined_mesh_callback(
     triangulations=None,
     ellipses=None,
@@ -925,6 +1141,7 @@ def build_refinement_fields(
     mine_shafts=None,
     triangulations=None,
     refinement=None,
+    mesh_size: float = 20.0,
 ) -> List[int]:
     field_gen = FieldIDGenerator()
     active_fields = []
@@ -948,6 +1165,12 @@ def build_refinement_fields(
         field_gen,
     )
 
+    general_fields = build_general_refinement(
+        refinement=refinement,
+        field_gen=field_gen,
+        mesh_size=mesh_size,
+    )
+
     if well_field is not None:
         active_fields.append(well_field)
 
@@ -956,6 +1179,8 @@ def build_refinement_fields(
 
     if shaft_field is not None:
         active_fields.append(shaft_field)
+
+    active_fields.extend(general_fields)
 
     return active_fields
 

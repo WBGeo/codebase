@@ -31,8 +31,8 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
-    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
-    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
+    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,ExtraPlaneRefinement,
+    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement, LinearShaftRefinement, FunctionShaftRefinement, GeneralRefinement)
 #%%
 
 cwd = os.getcwd()
@@ -131,9 +131,9 @@ mesh_explicit_structured = create_structured_mesh_data(
 #%%
 
 # Plot the meshing results
-plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
-plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
-plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=True)
+#plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
+# plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
+#plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=True)
 
 #%%
 
@@ -143,8 +143,8 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
 # In addition, some export formats support only specific mesh types.
 # See the meshing manual/documentation for details.
-# buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
-# with open("filename_example_mesh.exo", "wb") as f:
+# buf = export_mesh_results_to_vtk(mesh_explicit_unstructured)
+# with open("filename_example_mesh.vtk", "wb") as f:
 #    f.write(buf.getvalue())
 
 #%%
@@ -152,52 +152,94 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # Optional: Example of how to include objects (only works for unstructured mesh)
 
 # # Load engineering objects
-# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
-# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
-# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
-# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
-# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
-# csv_files=(cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
-#           cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
-# triangulations= load_triangulations_planes_from_csv(csv_files)
+wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
+shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
+sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
+planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
+ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
+csv_files=(cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
+           cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
+triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
-# refinement = Refinement()
-# refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
-# refinement.triangulation = TriangulationRefinement(hmin=8.0, hmax=90.0, d1=50.0, d2=100.0, enabled=True)
+refinement = Refinement()
+refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.shafts = LinearShaftRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+refinement.triangulations = TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0)
+refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
+refinement.extraplanes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
+refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
+    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
+
+# Available refinement types per object:
 #
-# Available types per object:
-#   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
-#                                       LinearSourceRefinement, FunctionSourceRefinement
-#   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
-#                                       (hmin/hmax = element sizes, d1/d2 = transition distances)
+#   wells / sources / shafts:             LinearWellRefinement, FunctionWellRefinement
+#                                         LinearSourceRefinement, FunctionSourceRefinement
+#                                         LinearShaftRefinement, FunctionShaftRefinement
+#
+#       Linear refinement:                SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#       Function refinement:              expression = a function using the DIST variable
+#
+#   faults / ellipses / triangulations:   FaultRefinement, EllipseRefinement, TriangulationRefinement
+#   extra planes:                         ExtraPlaneRefinement
+#
+#                                         SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#   general point / line refinement:      GeneralRefinement
+#
+#                                         One coordinate = point refinement
+#                                         Two coordinates = line-segment refinement
+#
+#       Linear refinement:                SizeMin = minimum element size at the point or line
+#                                         DistMax = distance over which the element size
+#                                         increases linearly from SizeMin to mesh_size
+#
+#       Function refinement:              expression = a function using the DIST variable
+
+
+
+# The same configuration can be created in one Refinement instance like below:
+#refinement = Refinement(
+#    wells=LinearWellRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+#    shafts=LinearShaftRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+#    sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))",),
+#    triangulations=TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0,),
+#    ellipses=EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0,),
+#    extraplanes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
+#    general=[
+#        GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),], SizeMin=4.0, DistMax=300.0,),
+#        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
 
 
 # # Explicit unstructured mesh with objects
-# mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     extent=(0,1000,0,1000,0,950),
-#     wells=wells,
-#     sources=sources,
-#     shafts=shafts,
-#     triangulations=triangulations,
-#     extra_planes=planes,
-#     ellipses=ellipses,
-#     mesh_size=75,
-#     curve_mesh_size=5,
-#     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
-#     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
-#     merge_file = cwd + "/examples/synthetic_examples/model1/input_data/block_groups.csv",  # if mapping_litho='manual'
-#     refinement=refinement,
-# )
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+     geomodel_result=structural_model_result,
+     extent=(0,1000,0,1000,0,950),
+     wells=wells,
+     sources=sources,
+     shafts=shafts,
+     triangulations=triangulations,
+     extra_planes=planes,
+     ellipses=ellipses,
+     mesh_size=75,
+     curve_mesh_size=5,
+     gmsh_flag= True,
+         # to save original gmsh configuration (defaut is False)
+     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
+     merge_file = cwd + "/examples/synthetic_examples/model1/input_data/block_groups.csv",  # if mapping_litho='manual'
+     refinement=refinement,
+)
 
 # save the mesh
-# buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
-# with open("filename_example_mesh.exo", "wb") as f:
-#     f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+with open("filename_model1___mesh.exo", "wb") as f:
+     f.write(buf.getvalue())
 
 #
 # # Plot the resulting mesh
@@ -223,7 +265,6 @@ builder = HydrothermalProblemBuilder(
     t1=5e11,
     num_steps=3,
 )
-
 #%%
 
 # Pre-flight check: confirms rock_properties landed on the right cells.
@@ -279,7 +320,7 @@ with open(custom_input_path) as f:
 
 custom_builder = CustomSfepyBuilder(
     input_file_contents=custom_input_file_contents,
-    mesh_results=mesh_implicit_structured,
+    mesh_results=mesh_explicit_unstructured,
     geomodel_result=structural_model_result,
 )
 
