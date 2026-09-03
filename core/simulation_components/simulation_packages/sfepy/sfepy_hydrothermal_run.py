@@ -110,6 +110,7 @@ def _run_sfepy_input_file(
     output_dir: Optional[str] = None,
     fault_zone_cell_mask: Optional[np.ndarray] = None,
     fault_group_id: Optional[int] = None,
+    stream_output: bool = False,
 ) -> SfepyOutputType:
     """
     Run a generated SfePy input file against mesh_results and return
@@ -286,6 +287,8 @@ def _run_sfepy_input_file(
             )
 
         logger.info("Running SfePy on %s...", input_file)
+        if stream_output:
+            print(f"SfePy: starting {os.path.basename(input_file)}", flush=True)
         process = subprocess.Popen(
             [sys.executable, "-u", sfepy_run_exe, input_file],
             env=env,
@@ -299,6 +302,11 @@ def _run_sfepy_input_file(
         stdout_lines = []
         for line in process.stdout:
             logger.info(line.rstrip())
+            if stream_output:
+                # Do not rely on the application's logging level: an INFO
+                # logger is commonly hidden in WBGeo scripts.  The child is
+                # launched unbuffered and each line is flushed immediately.
+                print(line, end="", flush=True)
             stdout_lines.append(line)
         process.wait()
         stdout = "".join(stdout_lines)
@@ -310,6 +318,8 @@ def _run_sfepy_input_file(
             )
         _check_convergence(stdout, input_file)
         logger.info("SfePy finished.")
+        if stream_output:
+            print(f"SfePy: finished {os.path.basename(input_file)}", flush=True)
     finally:
         for p in (tmp_exo_path, tmp_mesh_path):
             try:
@@ -422,6 +432,7 @@ def _run_hydrothermal_problem(
             p_out = _run_sfepy_input_file(
                 pressure_file, builder.mesh_results, mesh_type_code, output_dir=pressure_output_dir,
                 fault_zone_cell_mask=builder.fault_zone_cell_mask, fault_group_id=builder.fault_group_id,
+                stream_output=builder.print_linear_residuals,
             )
             pressure_sim = load_vtk_results(p_out)
             if not pressure_sim.nodes_by_time:
@@ -443,21 +454,39 @@ def _run_hydrothermal_problem(
         t_out = _run_sfepy_input_file(
             heat_file, builder.mesh_results, mesh_type_code, output_dir=heat_output_dir,
             fault_zone_cell_mask=builder.fault_zone_cell_mask, fault_group_id=builder.fault_group_id,
+            stream_output=builder.print_linear_residuals,
         )
         heat_sim = load_vtk_results(t_out)
         if not heat_sim.nodes_by_time:
             raise RuntimeError("Heat stage produced no SfePy output (0 VTK files).")
 
+        # SfePy's legacy VTK writer commonly stores the output sequence as
+        # 0, 1, ..., num_steps instead of preserving physical time.  Map the
+        # complete saved sequence back to the exact times used by GOLEM so
+        # downstream plots and comparisons address identical time points.
+        stored_heat_times = sorted(heat_sim.nodes_by_time)
+        expected_count = builder.num_steps + 1
+        if len(stored_heat_times) == expected_count:
+            physical_heat_times = np.linspace(
+                builder.t0, builder.t1, expected_count,
+            ).tolist()
+        else:
+            # Retain reader-provided times for unusual custom output
+            # schedules instead of guessing an incorrect mapping.
+            physical_heat_times = stored_heat_times
+
         # Merge: same mesh/time for both stages, just different fields.
         merged = SimulationResults()
-        for t in heat_sim.nodes_by_time:
-            merged.nodes_by_time[t] = heat_sim.nodes_by_time[t]
-            merged.cells_by_time[t] = heat_sim.cells_by_time[t]
-            merged.celltypes_by_time[t] = heat_sim.celltypes_by_time[t]
-            merged.node_data_by_time[t] = dict(heat_sim.node_data_by_time[t])
-            merged.cell_data_by_time[t] = dict(heat_sim.cell_data_by_time.get(t, {}))
+        for stored_t, physical_t in zip(stored_heat_times, physical_heat_times):
+            merged.nodes_by_time[physical_t] = heat_sim.nodes_by_time[stored_t]
+            merged.cells_by_time[physical_t] = heat_sim.cells_by_time[stored_t]
+            merged.celltypes_by_time[physical_t] = heat_sim.celltypes_by_time[stored_t]
+            merged.node_data_by_time[physical_t] = dict(heat_sim.node_data_by_time[stored_t])
+            merged.cell_data_by_time[physical_t] = dict(
+                heat_sim.cell_data_by_time.get(stored_t, {})
+            )
             if builder.include_flow and time in pressure_sim.node_data_by_time:
-                merged.node_data_by_time[t]["p"] = pressure_sim.node_data_by_time[time]["p"]
+                merged.node_data_by_time[physical_t]["p"] = pressure_sim.node_data_by_time[time]["p"]
         merged.sfepy_stdout = {"heat": t_out.stdout}
         if builder.include_flow:
             merged.sfepy_stdout["pressure"] = p_out.stdout
@@ -519,6 +548,7 @@ def _run_custom_sfepy_problem(
         out = _run_sfepy_input_file(
             input_file, problem.mesh_results, mesh_type_code, output_dir=output_dir,
             fault_zone_cell_mask=problem.fault_zone_cell_mask, fault_group_id=problem.fault_group_id,
+            stream_output=problem.print_linear_residuals,
         )
         sim = load_vtk_results(out)
         if not sim.nodes_by_time:

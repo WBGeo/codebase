@@ -36,7 +36,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pyvista as pv
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from pydantic.dataclasses import dataclass
 from scipy.ndimage import binary_dilation
 from scipy.spatial import cKDTree
@@ -48,19 +48,107 @@ logger = logging.getLogger(__name__)
 
 
 class FluidProperties(BaseModel):
-    """Single global fluid shared across all rock units (single-phase assumption)."""
-    mu: float = 1.0e-3            # dynamic viscosity, Pa*s (water at ~20 C)
-    k_fluid: float = 0.6          # thermal conductivity, W/(m*K)
-    rho_c_fluid: float = 4.186e6  # volumetric heat capacity, J/(m^3*K)
+    """Canonical fluid properties shared by the SfePy and GOLEM builders."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    mu: float = Field(
+        1.0e-3, validation_alias=AliasChoices("mu", "viscosity")
+    )
+    k_fluid: float = Field(
+        0.6,
+        validation_alias=AliasChoices("k_fluid", "thermal_conductivity"),
+    )
+    density: float = 1000.0                   # kg/m^3
+    heat_capacity: Optional[float] = None     # J/(kg*K)
+    rho_c_fluid: Optional[float] = None       # J/(m^3*K)
+    fluid_modulus: float = 2.2e9              # Pa
+
+    @model_validator(mode="after")
+    def calculate_volumetric_heat_capacity(self) -> "FluidProperties":
+        if self.mu <= 0 or self.k_fluid <= 0 or self.density <= 0:
+            raise ValueError(
+                "fluid viscosity, thermal conductivity and density must be > 0"
+            )
+        if self.heat_capacity is None and self.rho_c_fluid is None:
+            self.rho_c_fluid = 4.186e6
+            self.heat_capacity = self.rho_c_fluid / self.density
+        elif self.heat_capacity is None:
+            self.heat_capacity = float(self.rho_c_fluid) / self.density
+        elif self.rho_c_fluid is None:
+            self.rho_c_fluid = self.density * self.heat_capacity
+        elif not np.isclose(
+            self.rho_c_fluid,
+            self.density * self.heat_capacity,
+            rtol=1.0e-10,
+            atol=0.0,
+        ):
+            raise ValueError(
+                "rho_c_fluid must equal density * heat_capacity"
+            )
+        if self.heat_capacity <= 0:
+            raise ValueError("fluid heat_capacity must be > 0")
+        return self
+
+    @property
+    def viscosity(self) -> float:
+        return self.mu
+
+    @property
+    def thermal_conductivity(self) -> float:
+        return self.k_fluid
 
 
 class RockUnitProperties(BaseModel):
-    """Per-rock-unit physical properties for the simplified Darcy + heat model."""
+    """Canonical rock properties shared by the SfePy and GOLEM builders."""
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     porosity: float = 0.15
     permeability: float = 1e-14   # isotropic scalar permeability, m^2
-    k_solid: float = 2.5          # thermal conductivity, W/(m*K)
-    rho_c_solid: float = 2.2e6    # volumetric heat capacity, J/(m^3*K)
+    k_solid: float = Field(
+        2.5,
+        validation_alias=AliasChoices("k_solid", "thermal_conductivity"),
+    )
+    density: float = 2600.0                   # kg/m^3
+    heat_capacity: Optional[float] = None     # J/(kg*K)
+    rho_c_solid: Optional[float] = None       # J/(m^3*K)
+    fluid_modulus: float = 2.2e9              # Pa, used by GOLEM
+
+    @model_validator(mode="after")
+    def calculate_volumetric_heat_capacity(self) -> "RockUnitProperties":
+        if not 0.0 <= self.porosity <= 1.0:
+            raise ValueError(f"porosity for {self.name!r} must be in [0, 1]")
+        if self.permeability <= 0 or self.k_solid <= 0 or self.density <= 0:
+            raise ValueError(
+                f"permeability, thermal conductivity and density for "
+                f"{self.name!r} must be > 0"
+            )
+        if self.heat_capacity is None and self.rho_c_solid is None:
+            self.rho_c_solid = 2.2e6
+            self.heat_capacity = self.rho_c_solid / self.density
+        elif self.heat_capacity is None:
+            self.heat_capacity = float(self.rho_c_solid) / self.density
+        elif self.rho_c_solid is None:
+            self.rho_c_solid = self.density * self.heat_capacity
+        elif not np.isclose(
+            self.rho_c_solid,
+            self.density * self.heat_capacity,
+            rtol=1.0e-10,
+            atol=0.0,
+        ):
+            raise ValueError(
+                f"rho_c_solid for {self.name!r} must equal density * "
+                "heat_capacity"
+            )
+        if self.heat_capacity <= 0 or self.fluid_modulus <= 0:
+            raise ValueError(
+                f"heat_capacity and fluid_modulus for {self.name!r} must be > 0"
+            )
+        return self
+
+    @property
+    def thermal_conductivity(self) -> float:
+        return self.k_solid
 
     def effective_conductivity(self, fluid: FluidProperties) -> float:
         """Porosity-weighted thermal conductivity of the saturated rock (solid + pore fluid)."""
@@ -98,7 +186,7 @@ class RockUnitProperties(BaseModel):
 #:                  the printed residual) for new rock/fluid parameter sets
 #:                  or a manually-supplied `t1` that deviates a lot from the
 #:                  diffusion timescale.
-LINEAR_SOLVERS = ("direct", "iterative")
+LINEAR_SOLVERS = ("direct", "iterative", "petsc")
 
 
 #: MeshResults.mesh_type's readable values, mapped to the short codes
@@ -518,9 +606,11 @@ class HydrothermalProblemBuilder:
     p_bottom: float = 100e4
     t_top: float = 10.0
     t_bottom: float = 60.0
-    linear_solver: str = "iterative"
+    # Internal default chosen to match the available GOLEM PETSc strategy.
+    linear_solver: str = "petsc"
     linear_solver_i_max: int = 500
     linear_solver_eps_r: float = 1e-8
+    print_linear_residuals: bool = False
 
     def __post_init__(self):
         """
@@ -539,6 +629,8 @@ class HydrothermalProblemBuilder:
         self.mesh_type = self.mesh_results.mesh_type
 
         self.fluid = self.fluid or FluidProperties()
+        if self.fluid.rho_c_fluid <= 0.0:
+            raise ValueError("fluid.rho_c_fluid must be > 0")
 
         self.rock_units: List[Tuple[int, str]] = self._enumerate_rock_units()
         self.rock_properties: Dict[str, RockUnitProperties] = self._fill_defaults(self.rock_properties or {})
@@ -691,6 +783,33 @@ class HydrothermalProblemBuilder:
         if self.linear_solver == "direct":
             return "", "    'ls': ('ls.scipy_direct', {}),"
 
+        if self.linear_solver == "petsc":
+            monitor = (
+                "        'ksp_monitor': '',\n"
+                if self.print_linear_residuals else ""
+            )
+            return "", f"""    'ls': ('ls.petsc', {{
+        'method': 'fgmres',
+        'precond': 'asm',
+        'sub_precond': 'ilu',
+        # A larger overlap and ILU fill are important for the nonsymmetric
+        # advection-diffusion operator.  The former level-1/overlap-1 ASM
+        # stalls on the model1 mesh even though the pressure solve converges.
+        'pc_asm_overlap': 2,
+        'sub_pc_factor_levels': 3,
+        'ksp_gmres_restart': 100,
+        # With left ASM/ILU preconditioning PETSc monitors a preconditioned
+        # norm.  Late transient steps can have a tiny true residual but a
+        # much larger initial preconditioned norm, causing the default DTOL
+        # test to abort at iteration zero.  Keep MAX_IT/RTOL as the actual
+        # convergence safeguards and prevent that false early divergence.
+        'ksp_divtol': 1.0e12,
+        'i_max': {self.linear_solver_i_max!r},
+        'eps_a': 1.0e-12,
+        'eps_r': {self.linear_solver_eps_r!r},
+        'verbose': {2 if self.print_linear_residuals else 0},
+{monitor}    }}),"""
+
         precond_fn_def = '''
 def setup_precond(mtx, context):
     import scipy.sparse as sp
@@ -699,16 +818,31 @@ def setup_precond(mtx, context):
     d[d == 0] = 1.0
     Dinv = sp.diags(1.0 / d)
     scaled = (Dinv @ mtx).tocsc()
-    ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2)
+    try:
+        ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2,
+                         permc_spec='COLAMD')
+    except RuntimeError:
+        # Retry zero-pivot ILU with a preconditioner-only diagonal shift.
+        shift = 1e-12 * max(float(abs(scaled.diagonal()).max()), 1.0)
+        shifted = scaled + shift * sp.eye(scaled.shape[0], format='csc')
+        try:
+            ilu = spla.spilu(shifted, drop_tol=1e-4, fill_factor=10,
+                             permc_spec='COLAMD', diag_pivot_thresh=0.0)
+        except RuntimeError:
+            print('warning: ILU is singular; using Jacobi', flush=True)
+            return spla.LinearOperator(
+                mtx.shape, matvec=lambda b: Dinv @ b, dtype=mtx.dtype,
+            )
     def solve(b):
         return ilu.solve(Dinv @ b)
-    return spla.LinearOperator(mtx.shape, solve)
+    return spla.LinearOperator(mtx.shape, matvec=solve, dtype=mtx.dtype)
 '''
         ls_block = f"""    'ls': ('ls.scipy_iterative', {{
-        'method': 'bicgstab',
+        'method': 'lgmres',
         'i_max': {self.linear_solver_i_max!r},
         'eps_r': {self.linear_solver_eps_r!r},
         'setup_precond': setup_precond,
+        'verbose': {3 if self.print_linear_residuals else 0},
     }}),"""
         return precond_fn_def, ls_block
 
@@ -724,9 +858,9 @@ def setup_precond(mtx, context):
 solvers = {{
 {ls_block}
     'newton': ('nls.newton', {{
-        'i_max': 5,
+        'i_max': 1,
         'eps_a': 1e-6,
-        'is_linear': False,
+        'is_linear': True,
         # report_status defaults to False in SfePy -- without it, the only
         # printed line per solve is the per-iteration residual (no
         # definitive "did this actually converge" signal). With it,
@@ -841,8 +975,8 @@ equations = {{
 
     def compute_darcy_velocity(self, pressure_sim: SimulationResults, time: float) -> Dict[int, np.ndarray]:
         """
-        Reconstruct the solved pressure field as a PyVista grid and compute
-        the per-cell Darcy velocity v = -(permeability/mu) * grad(p), split
+        Compute the element-centred Darcy velocity
+        v = -(permeability/mu) * grad(p), split
         by mesh block (mat_id) so each region gets its own array. If a fault
         zone is active, cells within it are pulled out of their host
         block's array into a separate `self.fault_group_id`-keyed array --
@@ -856,19 +990,34 @@ equations = {{
         SfePy's mesh conversion and back out through the VTK it writes (the
         same assumption run_sfepy's own mat_id tagging already depends on).
         """
-        nodes = pressure_sim.nodes_by_time[time]
-        cells = pressure_sim.cells_by_time[time]
-        celltypes = pressure_sim.celltypes_by_time[time]
-        grid = pv.UnstructuredGrid(cells, celltypes, nodes)
-        grid.point_data["p"] = pressure_sim.node_data_by_time[time]["p"]
-        # p is point (nodal) data; compute_derivative's output follows its
-        # input's location (point in -> point out), and preference='cell'
-        # does NOT change that -- so convert to cell data first (averaging
-        # nodal values per cell) to get a genuinely per-cell gradient/
-        # velocity out.
-        grid = grid.point_data_to_cell_data()
-        grid = grid.compute_derivative(scalars="p")
-        grad_p = np.asarray(grid.cell_data["gradient"])
+        nodes = np.asarray(pressure_sim.nodes_by_time[time], dtype=float)
+        pressure = np.asarray(
+            pressure_sim.node_data_by_time[time]["p"], dtype=float
+        ).reshape(-1)
+
+        def element_gradient(connectivity: np.ndarray) -> np.ndarray:
+            """Gradient of the nodal FE field at each element centre.
+
+            A vectorized local linear reconstruction is exact for affine
+            pressure fields (and for P1 tetrahedra).  Unlike converting p to
+            VTK cell data and differentiating that discontinuous field, it
+            does not manufacture jumps/noise at lithology interfaces.
+            """
+            conn = np.asarray(connectivity, dtype=np.int64)
+            xyz = nodes[conn]
+            p_el = pressure[conn]
+            dx = xyz - xyz.mean(axis=1, keepdims=True)
+            dp = p_el - p_el.mean(axis=1, keepdims=True)
+            normal = np.einsum("nki,nkj->nij", dx, dx)
+            rhs = np.einsum("nki,nk->ni", dx, dp)
+            try:
+                return np.linalg.solve(normal, rhs)
+            except np.linalg.LinAlgError:
+                # Only degenerate elements reach this path.
+                return np.stack([
+                    np.linalg.lstsq(a, b, rcond=None)[0]
+                    for a, b in zip(dx, dp)
+                ])
 
         fault_perm_over_mu = (
             self.fault_zone_properties.permeability / self.fluid.mu
@@ -881,14 +1030,15 @@ equations = {{
         for mat_id, lith_id in self.mat_id_to_lithology.items():
             block = self.mesh_results.elements[mat_id]
             n = len(block.data)
+            grad_p = element_gradient(block.data)
             props = self.rock_properties[self._lithology_name(lith_id)]
             perm_over_mu = props.permeability / self.fluid.mu
-            block_velocity = -perm_over_mu * grad_p[offset:offset + n]
+            block_velocity = -perm_over_mu * grad_p
 
             if self.fault_zone_cell_mask is not None:
                 block_fault_mask = self.fault_zone_cell_mask[offset:offset + n]
                 velocities[mat_id] = block_velocity[~block_fault_mask]
-                fault_chunks.append(-fault_perm_over_mu * grad_p[offset:offset + n][block_fault_mask])
+                fault_chunks.append(-fault_perm_over_mu * grad_p[block_fault_mask])
             else:
                 velocities[mat_id] = block_velocity
             offset += n
@@ -913,6 +1063,11 @@ equations = {{
         heat_terms = []
         velocity_fn_defs = []
         velocity_fn_names = []
+
+        # Divide the complete GOLEM energy balance by the constant global
+        # fluid volumetric heat capacity. This preserves the exact solution
+        # while reducing coefficients/residuals by about 1e6 for PETSc.
+        equation_scale = 1.0 / self.fluid.rho_c_fluid
 
         # (region_name, group_id_for_material/velocity_names, k_eff, rho_c_eff)
         # -- one per real lithology (mat_id_to_lithology's keys, not every
@@ -939,8 +1094,11 @@ equations = {{
             ))
 
         for region_name, gid, k_eff, rho_c_eff in groups:
+            scaled_k_eff = equation_scale * k_eff
+            scaled_rho_c_eff = equation_scale * rho_c_eff
             material_lines.append(
-                f"    'm{gid}': ({{'k_eff': {k_eff!r}, 'rho_c_eff': {rho_c_eff!r}}},),"
+                f"    'm{gid}': ({{'k_eff': {scaled_k_eff!r}, "
+                f"'rho_c_eff': {scaled_rho_c_eff!r}}},),"
             )
             heat_eq_terms = [
                 f"dw_volume_dot.i.{region_name}(m{gid}.rho_c_eff, s, dT/dt)",
@@ -949,7 +1107,17 @@ equations = {{
 
             if self.include_flow:
                 material_lines.append(f"    'darcy{gid}': 'get_darcy_velocity_{gid}',")
-                heat_eq_terms.append(f"  + dw_advect_div_free.i.{region_name}(darcy{gid}.v, s, T)")
+                # GOLEM uses the conservative weak form.  For the present
+                # constant-density, source-free Darcy problem div(q)=0, so
+                # its continuum-equivalent form is q.grad(T).  SfePy is
+                # segregated and receives a cellwise reconstructed q; using
+                # that discontinuous q in the conservative term introduces
+                # spurious interface div(q) sources and temperature
+                # overshoots.  The divergence-free form is therefore the
+                # consistent discrete counterpart for this hand-off.
+                heat_eq_terms.append(
+                    f"  + dw_advect_div_free.i.{region_name}(darcy{gid}.v, s, T)"
+                )
 
                 fn_name = f"get_darcy_velocity_{gid}"
                 velocity_fn_names.append(fn_name)
@@ -957,7 +1125,9 @@ equations = {{
                     f"def {fn_name}(ts, coors, mode=None, problem=None, **kwargs):\n"
                     f"    if mode != 'qp':\n"
                     f"        return\n"
-                    f"    v_per_cell = _velocity_data['v{gid}']  # (n_cells, 3), precomputed from stage 1\n"
+                    f"    # After dividing all terms by rho_f*c_f, the\n"
+                    f"    # After normalization the advection coefficient is Darcy flux q.\n"
+                    f"    v_per_cell = _velocity_data['v{gid}']\n"
                     f"    n_qp = coors.shape[0] // v_per_cell.shape[0]\n"
                     f"    v = np.repeat(v_per_cell, n_qp, axis=0)\n"
                     f"    v = v.reshape(v.shape[0], v.shape[1], 1)\n"
@@ -998,8 +1168,10 @@ fields = {{
 
 t0 = {self.t0!r}
 t1 = {self.t1!r}
-num_steps = {self.num_steps!r}
-dt = (t1 - t0) / num_steps
+# GOLEM num_steps counts time increments. SfePy n_step counts stored time
+# points including t0, so add one to obtain the same dt and final time.
+num_steps = {self.num_steps!r} + 1
+dt = (t1 - t0) / (num_steps - 1)
 
 variables = {{
     'T': ('unknown field', 'temperature', 0, 1),
@@ -1011,17 +1183,11 @@ variables = {{
 {chr(10).join(velocity_fn_defs)}
 {precond_fn_def}
 def ic_temp(coor, ic=None):
-    # Exact linear interpolation between the enforced T_top/T_bottom EBCs
-    # over the mesh's own actual z-extent (NOT a fixed geothermal-gradient
-    # rate over the nominal domain height) -- mesh nodes are cell-centered,
-    # inset from the nominal domain edges by half a cell on each side, so
-    # using a fixed rate over the nominal height leaves a resolution-
-    # dependent mismatch at the boundary that then diffuses through the
-    # domain over time -- pure conduction (include_flow=False) should be
-    # exactly static since this IC already is the steady-state solution.
-    z_min, z_max = float(np.min(coor[:, 2])), float(np.max(coor[:, 2]))
+    # Use the structural-model extent, exactly like GOLEM's ParsedFunction.
+    z_min, z_max = {float(self.geomodel_result.structural_frame.grid.extent[4])!r}, {float(self.geomodel_result.structural_frame.grid.extent[5])!r}
     T_top, T_bottom = {self.t_top!r}, {self.t_bottom!r}
-    return T_top + (T_bottom - T_top) * (z_max - coor[:, 2]) / (z_max - z_min)
+    gradient = (T_top - T_bottom) / (z_max - z_min)
+    return gradient * (coor[:, 2] - z_min) + T_bottom
 
 functions = {{
     'ic_temp': (ic_temp,),
@@ -1042,7 +1208,9 @@ ebcs = {{
 }}
 
 integrals = {{
-    'i': 1,
+    # Two-point quadrature integrates Q1 hexahedral advection/diffusion
+    # consistently with GOLEM's default finite-element quadrature.
+    'i': 2,
 }}
 
 equations = {{
@@ -1109,6 +1277,7 @@ class CustomSfepyBuilder:
     mesh_results: MeshResults
     geomodel_result: Optional[StructuralModelResults] = None
     fault_zone_n_voxels: Optional[int] = None
+    print_linear_residuals: bool = False
 
     def __post_init__(self):
         check_mesh_has_known_type(self.mesh_results)
