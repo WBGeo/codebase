@@ -114,6 +114,7 @@ Then:
     custom_builder = CustomSfepyBuilder(
         input_file_contents=open("custom_hydrothermal_fromscratch_implicit.py").read(),
         mesh_results=mesh_implicit_structured, geomodel_result=structural_model_result,
+        print_linear_residuals=True,
     )
     result = run_simulation_sfepy(custom_builder)
 """
@@ -121,11 +122,23 @@ import os
 import tempfile
 
 import numpy as np
+import meshio
 import pyvista as pv
 
 filename_mesh = os.environ.get("TEMP_MESH_FILE", "filename.mesh")
 _output_dir = os.environ.get("SFEpy_OUTPUT_DIR", "output")
 os.makedirs(_output_dir, exist_ok=True)
+
+# Mesh-dependent boundary coordinates. Implicit structured WBGeo nodes are
+# cell-centred (for model1, z=10...990), whereas explicit meshes reach the
+# geometric limits (z=0...1000). Determine the actual nodal planes instead
+# of hard-coding either convention.
+_boundary_mesh = meshio.read(filename_mesh)
+_mesh_z_min = float(np.min(_boundary_mesh.points[:, 2]))
+_mesh_z_max = float(np.max(_boundary_mesh.points[:, 2]))
+_z_tolerance = max(_mesh_z_max - _mesh_z_min, 1.0) * 1.0e-8
+_bottom_selector = f"vertices in (z < {_mesh_z_min + _z_tolerance!r})"
+_top_selector = f"vertices in (z > {_mesh_z_max - _z_tolerance!r})"
 
 # =======================================================================
 # STAGE 1 (module-level side effect, runs before sfepy-run ever sees this
@@ -136,6 +149,44 @@ os.makedirs(_output_dir, exist_ok=True)
 # coordinate-based selectors, not a captured vertex-id list.
 # =======================================================================
 _stage1_conf_text = '"""\nStage-1 conf: steady-state Darcy pressure. Authored independently of\nHydrothermalProblemBuilder.build_pressure_input_file -- coordinate-based\nboundary regions, own material/variable naming.\n"""\nimport os\nimport tempfile\n\nfilename_mesh = os.environ.get(\'TEMP_MESH_FILE\', \'filename.mesh\')\n\nregions = {\n    \'Omega\': \'all\',\n    \'Omega0\': \'cells of group 0\',\n    \'Omega1\': \'cells of group 1\',\n    \'Omega2\': \'cells of group 2\',\n    \'Gamma_Bottom\': (\'vertices in (z < 10.001)\', \'facet\'),\n    \'Gamma_Top\': (\'vertices in (z > 989.999)\', \'facet\'),\n}\n\nfields = {\n    \'pressure\': (\'real\', 1, \'Omega\', 1),\n}\n\nt0 = 0.0\nt1 = 500000000000.0\nnum_steps = 1\ndt = (t1 - t0) / num_steps\n\nvariables = {\n    \'p\': (\'unknown field\', \'pressure\', 1),\n    \'q\': (\'test field\', \'pressure\', \'p\'),\n}\n\ndef setup_precond(mtx, context):\n    import scipy.sparse as sp\n    import scipy.sparse.linalg as spla\n    diag = mtx.diagonal().copy()\n    diag[diag == 0] = 1.0\n    dinv = sp.diags(1.0 / diag)\n    scaled = (dinv @ mtx).tocsc()\n    ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2)\n    def solve(b):\n        return ilu.solve(dinv @ b)\n    return spla.LinearOperator(mtx.shape, solve)\n\nmaterials = {\n    \'m0\': ({\'k_over_mu\': [[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]]},),\n    \'m1\': ({\'k_over_mu\': [[9.999999999999999e-09, 0.0, 0.0], [0.0, 9.999999999999999e-09, 0.0], [0.0, 0.0, 9.999999999999999e-09]]},),\n    \'m2\': ({\'k_over_mu\': [[1e-09, 0.0, 0.0], [0.0, 1e-09, 0.0], [0.0, 0.0, 1e-09]]},),\n}\n\nebcs = {\n    \'p_bottom\': (\'Gamma_Bottom\', {\'p.0\': 1000000.0}),\n    \'p_top\': (\'Gamma_Top\', {\'p.0\': 0.0}),\n}\n\nintegrals = {\n    \'i\': 1,\n}\n\nequations = {\n    \'flow\': """dw_diffusion.i.Omega0(m0.k_over_mu, q, p)\n  + dw_diffusion.i.Omega1(m1.k_over_mu, q, p)\n  + dw_diffusion.i.Omega2(m2.k_over_mu, q, p)\n  = 0""",\n}\n\nsolvers = {\n    \'ls\': (\'ls.scipy_iterative\', {\n        \'method\': \'bicgstab\',\n        \'i_max\': 500,\n        \'eps_r\': 1e-8,\n        \'setup_precond\': setup_precond,\n    }),\n    \'newton\': (\'nls.newton\', {\n        \'i_max\': 5,\n        \'eps_a\': 1e-6,\n        \'is_linear\': False,\n        \'report_status\': True,\n    }),\n    \'ts\': (\'ts.simple\', {\n        \'t0\': t0,\n        \'t1\': t1,\n        \'n_step\': num_steps,\n        \'verbose\': 1,\n    }),\n}\n\n_stage1_output_dir = tempfile.mkdtemp(prefix="stage1_pressure_")\n\noptions = {\n    \'nls\': \'newton\',\n    \'ls\': \'ls\',\n    \'ts\': \'ts\',\n    \'save_times\': \'all\',\n    \'output_dir\': _stage1_output_dir,\n}\n'
+# Select the actual lowest/highest mesh-node planes for every mesh type.
+_stage1_conf_text = _stage1_conf_text.replace(
+    "('vertices in (z < 10.001)', 'facet')",
+    f"({_bottom_selector!r}, 'vertex')",
+).replace(
+    "('vertices in (z > 989.999)', 'facet')",
+    f"({_top_selector!r}, 'vertex')",
+)
+# Use exactly the same pressure solver as HydrothermalProblemBuilder.
+_stage1_conf_text = _stage1_conf_text.replace(
+    """'ls': ('ls.scipy_iterative', {
+        'method': 'bicgstab',
+        'i_max': 500,
+        'eps_r': 1e-8,
+        'setup_precond': setup_precond,
+    })""",
+    """'ls': ('ls.petsc', {
+        'method': 'fgmres',
+        'precond': 'asm',
+        'sub_precond': 'ilu',
+        'pc_asm_overlap': 2,
+        'sub_pc_factor_levels': 3,
+        'ksp_gmres_restart': 100,
+        'ksp_divtol': 1e12,
+        'ksp_monitor': '',
+        'i_max': 500,
+        'eps_a': 1e-12,
+        'eps_r': 1e-8,
+        'verbose': 2,
+    })""",
+).replace(
+    """'i_max': 5,
+        'eps_a': 1e-6,
+        'is_linear': False,""",
+    """'i_max': 1,
+        'eps_a': 1e-6,
+        'is_linear': True,""",
+)
 _stage1_conf_path = tempfile.mktemp(suffix="_stage1_pressure.py")
 with open(_stage1_conf_path, "w") as _f:
     _f.write(_stage1_conf_text)
@@ -152,15 +203,30 @@ _stage1_vtk_dir = tempfile.mkdtemp()
 _stage1_vtk_path = os.path.join(_stage1_vtk_dir, "pressure.0.vtk")
 _stage1_problem.save_state(_stage1_vtk_path, state=_stage1_state)
 
-# Darcy velocity from the solved pressure field: v = -(k/mu) * grad(p),
-# same technique HydrothermalProblemBuilder.compute_darcy_velocity uses
-# (documented in sim_for_review.md) -- point_data_to_cell_data() must run
-# BEFORE compute_derivative(), since the latter's output location follows
-# its input's, not its own preference= kwarg.
+# Darcy velocity from the solved nodal FE pressure field. Use an
+# element-centred reconstruction instead of differentiating discontinuous
+# VTK cell averages, which creates artificial interface velocity spikes.
 _grid = pv.read(_stage1_vtk_path)
-_grid = _grid.point_data_to_cell_data()
-_grid = _grid.compute_derivative(scalars="p")
-_grad_p = np.asarray(_grid.cell_data["gradient"])
+_nodes = np.asarray(_grid.points, dtype=float)
+_pressure = np.asarray(_grid.point_data["p"], dtype=float).reshape(-1)
+_legacy_cells = np.asarray(_grid.cells, dtype=np.int64)
+_cell_types = np.asarray(_grid.celltypes)
+if np.all(_cell_types == int(pv.CellType.TETRA)):
+    _connectivity = _legacy_cells.reshape(-1, 5)[:, 1:]
+elif np.all(_cell_types == int(pv.CellType.HEXAHEDRON)):
+    _connectivity = _legacy_cells.reshape(-1, 9)[:, 1:]
+else:
+    raise ValueError(
+        "Expected a homogeneous tetrahedral or hexahedral volume mesh; "
+        f"found VTK cell types {np.unique(_cell_types).tolist()}."
+    )
+_xyz = _nodes[_connectivity]
+_p_el = _pressure[_connectivity]
+_dx = _xyz - _xyz.mean(axis=1, keepdims=True)
+_dp = _p_el - _p_el.mean(axis=1, keepdims=True)
+_normal = np.einsum("nki,nkj->nij", _dx, _dx)
+_rhs = np.einsum("nki,nk->ni", _dx, _dp)
+_grad_p = np.linalg.solve(_normal, _rhs)
 
 # Per-group velocity split -- (group_id, k_over_mu) pairs computed from the
 # same rock/fluid properties as stage 2's materials below. Assumes
@@ -170,12 +236,9 @@ _grad_p = np.asarray(_grid.cell_data["gradient"])
 _group_ids_and_k_over_mu = [(0, 1e-10), (1, 9.999999999999999e-09), (2, 1e-09)]
 _gid_to_region_name = {0: 'Omega0', 1: 'Omega1', 2: 'Omega2'}
 _stage1_velocity = {}
-_offset = 0
 for _gid, _k_over_mu in _group_ids_and_k_over_mu:
     _region_cells = _stage1_problem.domain.regions[_gid_to_region_name[_gid]].get_cells()
-    _n = len(_region_cells)
-    _stage1_velocity[_gid] = -_k_over_mu * _grad_p[_offset:_offset + _n]
-    _offset += _n
+    _stage1_velocity[_gid] = -_k_over_mu * _grad_p[_region_cells]
 
 # =======================================================================
 # STAGE 2 (the "official" conf sfepy-run resolves): transient heat with
@@ -186,8 +249,8 @@ regions = {
     'Omega0': 'cells of group 0',
     'Omega1': 'cells of group 1',
     'Omega2': 'cells of group 2',
-    'Gamma_Bottom': ('vertices in (z < 10.001)', 'facet'),
-    'Gamma_Top': ('vertices in (z > 989.999)', 'facet'),
+    'Gamma_Bottom': (_bottom_selector, 'vertex'),
+    'Gamma_Top': (_top_selector, 'vertex'),
 }
 
 fields = {
@@ -198,6 +261,7 @@ t0 = 0.0
 t1 = 500000000000.0
 num_steps = 3
 dt = (t1 - t0) / num_steps
+n_time_points = num_steps + 1
 
 variables = {
     'T': ('unknown field', 'temperature', 0, 1),
@@ -242,7 +306,8 @@ def setup_precond(mtx, context):
     return spla.LinearOperator(mtx.shape, solve)
 
 def ic_temp(coor, ic=None):
-    z_min, z_max = float(np.min(coor[:, 2])), float(np.max(coor[:, 2]))
+    # Fixed structural-model extent, identical to the automatic builder.
+    z_min, z_max = 0.0, 1000.0
     T_top, T_bottom = 10.0, 60.0
     return T_top + (T_bottom - T_top) * (z_max - coor[:, 2]) / (z_max - z_min)
 
@@ -254,11 +319,13 @@ functions = {
 }
 
 materials = {
-    'therm0': ({'k_eff': 46.5, 'rho_c_eff': 3750000.0},),
+    # GOLEM energy equation divided throughout by rho_f*c_f = 2.4e6.
+    # This improves conditioning without changing its mathematical solution.
+    'therm0': ({'k_eff': 1.9375e-05, 'rho_c_eff': 1.5625},),
     'darcy0': 'velocity_fn_0',
-    'therm1': ({'k_eff': 11.5, 'rho_c_eff': 1280000.0},),
+    'therm1': ({'k_eff': 4.791666666666667e-06, 'rho_c_eff': 0.5333333333333333},),
     'darcy1': 'velocity_fn_1',
-    'therm2': ({'k_eff': 19.0, 'rho_c_eff': 3200000.0},),
+    'therm2': ({'k_eff': 7.916666666666667e-06, 'rho_c_eff': 1.3333333333333333},),
     'darcy2': 'velocity_fn_2',
 }
 
@@ -272,7 +339,8 @@ ebcs = {
 }
 
 integrals = {
-    'i': 1,
+    # Required for the quadratic transient mass integrand on P1 elements.
+    'i': 2,
 }
 
 equations = {
@@ -289,22 +357,30 @@ equations = {
 }
 
 solvers = {
-    'ls': ('ls.scipy_iterative', {
-        'method': 'bicgstab',
+    'ls': ('ls.petsc', {
+        'method': 'fgmres',
+        'precond': 'asm',
+        'sub_precond': 'ilu',
+        'pc_asm_overlap': 2,
+        'sub_pc_factor_levels': 3,
+        'ksp_gmres_restart': 100,
+        'ksp_divtol': 1e12,
+        'ksp_monitor': '',
         'i_max': 500,
         'eps_r': 1e-8,
-        'setup_precond': setup_precond,
+        'eps_a': 1e-12,
+        'verbose': 2,
     }),
     'newton': ('nls.newton', {
-        'i_max': 5,
+        'i_max': 1,
         'eps_a': 1e-6,
-        'is_linear': False,
+        'is_linear': True,
         'report_status': True,
     }),
     'ts': ('ts.simple', {
         't0': t0,
         't1': t1,
-        'n_step': num_steps,
+        'n_step': n_time_points,
         'verbose': 1,
     }),
 }
