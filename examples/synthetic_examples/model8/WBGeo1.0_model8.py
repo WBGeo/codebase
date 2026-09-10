@@ -25,12 +25,29 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
-from core.meshing_components.explicit.unstructured.refinement_mesh import (
-    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
-    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
+
 #%%
 
 cwd = os.getcwd()
+
+
+# ==============================================================================
+# MODEL 8 - SCRIPT MAP
+# ==============================================================================
+# SECTION 1: Structural geological model
+# SECTION 2: Mesh generation and mesh utilities
+#
+# Each section starts and ends with a large banner so the different sections are
+# visually separated while keeping the existing Model 8 workflow unchanged.
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+# Build the two-fault model, three stratigraphic groups with two unconformities, fault activity, and the structural model result.
+# ------------------------------------------------------------------------------
 
 # WORKFLOW Synthetic Model 8: 2 faults, 2 unconformities, 3 stratigraphic groups
 
@@ -178,6 +195,21 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
+# Build and visualize the supported mesh representation for Model 8 and document current meshing limitations.
+# ------------------------------------------------------------------------------
+
 # Compute 3D meshes based on the structural model result using different meshing approaches.
 # Meshing parameters not yet verified for this model.
 
@@ -185,16 +217,8 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Explicit unstructured mesh
-#mesh_explicit_unstructured = create_unstructured_mesh_data(
-#    geomodel_result=structural_model_result,
-#    tolerance=50,
-#    mesh_size=20,
-#    curve_mesh_size=5,
-#    DISTANCE_THRESHOLD = 40,
-#    PROJECTION_THRESHOLD = 60,
-#    EXTRUSION_FACTOR = 80,
-#    z_threshold = 10,
-# )
+# # NOTE: Currently, the unstructured mesh does not support models
+# with faults where different layers on both sides of the fault lie on nearly same surface.
 
 # Explicit structured mesh
 # NOTE: currently structured mesh does not support models with faults
@@ -207,6 +231,7 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 
 #%%
 
+
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
@@ -217,57 +242,8 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 #    f.write(buf.getvalue())
 
 
-# Optional: Example of how to include objects (only works for unstructured mesh)
-
-# # Load engineering objects
-# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_wells.csv")
-# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_shafts.csv")
-# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_sources.csv")
-# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_planes.csv")
-# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model8/input_data/engineering_objects/model_8_ellipses.csv")
-# csv_files=(cwd + "/examples/synthetic_examples/Model8/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
-#           cwd + "/examples/synthetic_examples/Model8/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
-# triangulations= load_triangulations_planes_from_csv(csv_files)
-
-# --- Optional: adaptive mesh refinement around objects ---
-# Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
-#
-# refinement = Refinement()
-# refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
-# refinement.triangulation = TriangulationRefinement(hmin=8.0, hmax=90.0, d1=50.0, d2=100.0, enabled=True)
-#
-# Available types per object:
-#   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
-#                                       LinearSourceRefinement, FunctionSourceRefinement
-#   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
-#                                       (hmin/hmax = element sizes, d1/d2 = transition distances)
-
-# # Explicit unstructured mesh with objects
-# mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     wells=wells,
-#     sources=sources,
-#     shafts=shafts,
-#     extra_planes=planes,
-#     tolerance=50,
-#     mesh_size=70,
-#     curve_mesh_size=8,
-#     DISTANCE_THRESHOLD=40,
-#     PROJECTION_THRESHOLD=60,
-#     EXTRUSION_FACTOR=80,
-#     z_threshold=10,
-#     gmsh_flag= True,  # to save original gmsh configuration (defaut is False)
-#     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
-#     merge_file = cwd + "/examples/synthetic_examples/model8/input_data/block_groups.csv", # Only if mapping_litho='manual'
-#     refinement=refinement,
-# )
-# save the mesh
-# buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
-# with open("filename_example_mesh.exo", "wb") as f:
-#    f.write(buf.getvalue())
-#
-# # Plot the resulting mesh
-# plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
 
 
+# ------------------------------------------------------------------------------
+# END SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================

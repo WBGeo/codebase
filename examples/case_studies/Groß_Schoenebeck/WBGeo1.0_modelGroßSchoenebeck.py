@@ -27,12 +27,32 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
 
 cwd = os.getcwd()
 
+
+# ==============================================================================
+# GROSS SCHOENEBECK CASE STUDY - SCRIPT MAP
+# ==============================================================================
+# SECTION 1: Structural geological model
+# SECTION 2: Mesh generation and mesh utilities
+
+#
+# Each section starts and ends with a large banner so the workflow is easier to
+# navigate while keeping the existing Groß Schönebeck model logic unchanged.
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+# Load the Groß Schönebeck geological data, build the seven stratigraphic series, configure interpolation, and compute the structural model result.
+# ------------------------------------------------------------------------------
+
 # WORKFLOW Groß Schoenebeck Case Study: 7-layer structural model
 
 #%%
 
 # Load input data
-surface_points = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_surface_points_downsampled_full.csv")
+surface_points = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_surface_pointsdownsampled_full.csv")
 orientations = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_orientations_downsampled_full.csv")
 
 surface_points_faults = pd.read_csv(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/geological_data/schoenebeck_faults_surface_points_downsampled.csv")
@@ -132,6 +152,21 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
+# Build the explicit structured and implicit structured meshes, retain the optional unstructured-mesh example.
+# ------------------------------------------------------------------------------
+
 # Compute 3D meshes based on the structural model result using different meshing approaches.
 
 # Explicit structured mesh
@@ -167,6 +202,13 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 
 #%%
 
+#%%
+
+
+
+#%%
+
+
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
@@ -175,6 +217,8 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 #buf = export_mesh_results_to_exodus(mesh_explicit_unstr, type='unstr')
 #with open("filename_Gross_Schoenebeck.exo", "wb") as f:
 #    f.write(buf.getvalue())
+
+
 
 # # Load engineering objects
 wells = load_wells_from_csv(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/wells.csv")
@@ -187,13 +231,35 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 #
 refinement = Refinement()
 refinement.wells = LinearWellRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-refinement.triangulation = TriangulationRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.triangulations = TriangulationRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
 #
-# Available types per object:
-#   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
-#                                       LinearSourceRefinement, FunctionSourceRefinement
-#   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
-#                                       (SizeMin/SizeMax = element sizes, DistMin/DistMax = transition distances)
+# Available refinement types per object:
+#
+#   wells / sources / shafts:             LinearWellRefinement, FunctionWellRefinement
+#                                         LinearSourceRefinement, FunctionSourceRefinement
+#                                         LinearShaftRefinement, FunctionShaftRefinement
+#
+#       Linear refinement:                SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#       Function refinement:              expression = a function using the DIST variable
+#
+#   faults / ellipses / triangulations:   FaultRefinement, EllipseRefinement, TriangulationRefinement
+#   extra planes:                         ExtraPlaneRefinement
+#
+#                                         SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#   general point / line refinement:      GeneralRefinement
+#
+#                                         One coordinate = point refinement
+#                                         Two coordinates = line-segment refinement
+#
+#       Linear refinement:                SizeMin = minimum element size at the point or line
+#                                         DistMax = distance over which the element size
+#                                         increases linearly from SizeMin to mesh_size
+#
+#       Function refinement:              expression = a function using the DIST variable
 
 
 # # Explicit unstructured mesh with objects
@@ -214,4 +280,11 @@ buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr'
 with open("filename_example_gr_mesh.exo", "wb") as f:
      f.write(buf.getvalue())
 
+
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
 

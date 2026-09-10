@@ -5,6 +5,7 @@
 # Importing necessary libraries
 import pandas as pd
 import os
+from core.simulation_components.simulation_packages.golem.simulation_run import run_golem_with_image
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
@@ -24,19 +25,37 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
-
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    HydrothermalProblemBuilder, RockUnitProperties, FluidProperties)
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
 from core.simulation_components.simulation_visualization.simulation_visualization import (
-    plot_variable_at_a_time, plot_cross_section_2D,
-    plot_cross_section_difference_2D, plot_builder_materials)
+    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
+from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
+from core.simulation_components.output_format.exodus.unified_format_exodus import load_exodus_results
+
+
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
-    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
-    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
+    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,ExtraPlaneRefinement,
+    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement, LinearShaftRefinement, FunctionShaftRefinement, GeneralRefinement)
 #%%
 
 cwd = os.getcwd()
+
+
+# ==============================================================================
+# MODEL 5 - SCRIPT MAP
+# ==============================================================================
+# SECTION 1: Structural geological model
+# SECTION 2: Mesh generation and mesh utilities
+#
+# Each section starts and ends with a large banner so the different sections are
+# visually separated while keeping the existing Model 5 workflow unchanged.
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+# Build the unconformable stratigraphy, structural frame, and structural model result.
+# ------------------------------------------------------------------------------
 
 # WORKFLOW Synthetic Model 5: no faults, 1 unconformity, 2 stratigraphic groups
 
@@ -128,11 +147,28 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
+# Build and visualize the implicit structured, explicit unstructured, and explicit structured meshes.
+# ------------------------------------------------------------------------------
+
 # Compute 3D meshes based on the structural model result using different meshing approaches.
 
 # Implicit structured mesh
 mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
-
+buf = export_mesh_results_to_exodus(mesh_implicit_structured, type='imp')
+with open("filename_example_imp__mesh.exo", "wb") as f:
+    f.write(buf.getvalue())
 # Explicit unstructured mesh
 mesh_explicit_unstructured = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
@@ -159,8 +195,8 @@ mesh_explicit_structured = create_structured_mesh_data(
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=True)
-
 #%%
+
 
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
@@ -181,23 +217,61 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_sources.csv")
 # planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_planes.csv")
 # ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_ellipses.csv")
-# csv_files=(cwd + "/examples/synthetic_examples/Model5/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
-#           cwd + "/examples/synthetic_examples/Model5/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
-# triangulations= load_triangulations_planes_from_csv(csv_files)
+
 
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
 # refinement = Refinement()
 # refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+# refinement.shafts = LinearShaftRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
 # refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
-# refinement.triangulation = TriangulationRefinement(hmin=8.0, hmax=90.0, d1=50.0, d2=100.0, enabled=True)
+# refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
+# refinement.extraplanes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
+# refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
+#    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
+
+# Available refinement types per object:
 #
-# Available types per object:
-#   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
-#                                       LinearSourceRefinement, FunctionSourceRefinement
-#   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
-#                                       (hmin/hmax = element sizes, d1/d2 = transition distances)
+#   wells / sources / shafts:             LinearWellRefinement, FunctionWellRefinement
+#                                         LinearSourceRefinement, FunctionSourceRefinement
+#                                         LinearShaftRefinement, FunctionShaftRefinement
+#
+#       Linear refinement:                SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#       Function refinement:              expression = a function using the DIST variable
+#
+#   faults / ellipses / triangulations:   FaultRefinement, EllipseRefinement, TriangulationRefinement
+#   extra planes:                         ExtraPlaneRefinement
+#
+#                                         SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#   general point / line refinement:      GeneralRefinement
+#
+#                                         One coordinate = point refinement
+#                                         Two coordinates = line-segment refinement
+#
+#       Linear refinement:                SizeMin = minimum element size at the point or line
+#                                         DistMax = distance over which the element size
+#                                         increases linearly from SizeMin to mesh_size
+#
+#       Function refinement:              expression = a function using the DIST variable
+
+
+
+# The same configuration can be created in one Refinement instance like below:
+#refinement = Refinement(
+#    wells=LinearWellRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+#    shafts=LinearShaftRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+#    sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))",),
+#    ellipses=EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0,),
+#    extraplanes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
+#    general=[
+#        GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),], SizeMin=4.0, DistMax=300.0,),
+#        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
+
 
 # # Explicit unstructured mesh with objects
 # mesh_unstructured_with_objects = create_unstructured_mesh_data(
@@ -214,7 +288,7 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 #     EXTRUSION_FACTOR=120,
 #     z_threshold=10,
 #     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
-#     mapping_litho='automatic_centers', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
+#     mapping_litho='automatic_centers', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: auto)
 #     refinement=refinement,
 # )
 #
@@ -228,45 +302,6 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
 
 #%%
-
-# Process simulation with SfePy on the implicit structured mesh.
-
-# Moderate (~7x) conductivity contrast across the unconformity: rock1/rock2 (below) vs. rock3/rock4 (above).
-rock_properties = {
-    "basement": RockUnitProperties(name="basement", porosity=0.05, permeability=1e-15, k_solid=4.0, rho_c_solid=2.2e6),
-    "rock1": RockUnitProperties(name="rock1", porosity=0.10, permeability=1e-14, k_solid=3.5, rho_c_solid=2.3e6),
-    "rock2": RockUnitProperties(name="rock2", porosity=0.20, permeability=5e-13, k_solid=3.0, rho_c_solid=2.1e6),
-    "rock3": RockUnitProperties(name="rock3", porosity=0.15, permeability=1e-14, k_solid=0.6, rho_c_solid=2.0e6),
-    "rock4": RockUnitProperties(name="rock4", porosity=0.10, permeability=1e-15, k_solid=0.4, rho_c_solid=2.3e6),
-}
-fluid = FluidProperties(mu=4.7e-4, k_fluid=0.65, rho_c_fluid=4.15e6)
-
-# Pure conduction: flow makes no measurable difference at these settings.
-builder = HydrothermalProblemBuilder(
-    mesh_results=mesh_implicit_structured,
-    geomodel_result=structural_model_result,
-    rock_properties=rock_properties,
-    fluid=fluid,
-    include_flow=False,
-    num_steps=3,
-)
-
-#%%
-
-# Pre-flight check: confirms rock_properties landed on the right cells.
-plot_builder_materials(builder)
-
-#%%
-
-data_by_time = run_simulation_sfepy(builder)
-
-#%%
-
-# Visualize simulation results (final_time = the fully evolved state, see run_simulation_sfepy docstring).
-final_time = max(data_by_time.nodes_by_time.keys())
-plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
-plot_cross_section_2D(data_by_time, "T", origin=(1000, 500, 500), normal=(0, 1, 0))
-plot_cross_section_difference_2D(data_by_time, "T", origin=(1000, 500, 500), normal=(0, 1, 0))
-
-# %%
+# ------------------------------------------------------------------------------
+# END SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================

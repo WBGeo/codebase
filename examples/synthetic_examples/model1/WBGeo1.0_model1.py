@@ -28,13 +28,14 @@ from core.meshing_components.mesh_format.mesh_export import (
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
-from core.simulation_components.simulation_packages.golem.golem_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     GolemHydrothermalProblemBuilder,
     GolemFaultProperties,
     CustomGolemBuilder,
+    GolemSimpleReservoirProblemBuilder,
 )
 
-from core.simulation_components.simulation_packages.golem.golem_hydrothermal_run import run_simulation_golem
+from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
@@ -43,6 +44,31 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
 #%%
 
 cwd = os.getcwd()
+
+
+# ==============================================================================
+# MODEL 1 - SCRIPT MAP
+# ==============================================================================
+# SECTION 1: Structural geological model
+# SECTION 2: Mesh generation and mesh utilities
+# SECTION 3: SfePy generated hydrothermal simulation
+# SECTION 4: SfePy custom hydrothermal simulation
+# SECTION 5: GOLEM generated hydrothermal simulation
+# SECTION 6: GOLEM custom hydrothermal simulation
+# SECTION 7: GOLEM generated simple-reservoir simulation
+# SECTION 8: GOLEM custom simple-reservoir simulation
+#
+# Each section starts and ends with a large banner so the different sections are
+# visually separated while keeping the existing Model 1 code in one file.
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+# Build the stratigraphy, structural frame, and structural result.
+# ------------------------------------------------------------------------------
 
 # WORKFLOW Synthetic Model 1: no faults, no unconformities, 2 stratigraphic groups
 
@@ -118,6 +144,20 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
+# Build the implicit structured, explicit unstructured, and explicit structured meshes.
+# ------------------------------------------------------------------------------
+
 # Compute 3D meshes based on the structural model result using different meshing approaches.
 
 # Implicit structured mesh
@@ -126,7 +166,7 @@ mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=struc
 # Explicit unstructured mesh
 mesh_explicit_unstructured = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
-    mesh_size=25,
+    mesh_size=30,
     curve_mesh_size=5
 )
 
@@ -151,9 +191,9 @@ mesh_explicit_structured = create_structured_mesh_data(
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
 # In addition, some export formats support only specific mesh types.
 # See the meshing manual/documentation for details.
-buf = export_mesh_results_to_exodus(mesh_explicit_structured, type='str')
-with open("filename_example_mesh.exo", "wb") as f:
-    f.write(buf.getvalue())
+#buf = export_mesh_results_to_exodus(mesh_explicit_structured, type='str')
+#with open("filename_example_mesh.exo", "wb") as f:
+#    f.write(buf.getvalue())
 
 #%%
 
@@ -245,18 +285,32 @@ with open("filename_example_mesh.exo", "wb") as f:
 #)
 
 # save the mesh
-buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
-with open("filename_model1___mesh.exo", "wb") as f:
-     f.write(buf.getvalue())
+#buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
+#with open("filename_model1___mesh.exo", "wb") as f:
+#     f.write(buf.getvalue())
 
-buf = export_mesh_results_to_exodus(mesh_implicit_structured, type='imp')
-with open("filename_model1__im_mesh.exo", "wb") as f:
-     f.write(buf.getvalue())
+#buf = export_mesh_results_to_exodus(mesh_implicit_structured, type='imp')
+#with open("filename_model1__im_mesh.exo", "wb") as f:
+#     f.write(buf.getvalue())
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
 
 #%%
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 3: SFEPY - GENERATED HYDROTHERMAL MODEL
+# ==============================================================================
+# Run HydrothermalProblemBuilder on the Model 1 mesh.
+# ------------------------------------------------------------------------------
 
 # Process simulation with SfePy on the implicit structured mesh.
 
@@ -281,16 +335,16 @@ fluid = FluidProperties(
     heat_capacity=1200,
 )
 
-builder = HydrothermalProblemBuilder(
-    mesh_results=mesh_explicit_structured,
-    geomodel_result=structural_model_result,
-    print_linear_residuals=True,
-    rock_properties=rock_properties,
-    fluid=fluid,
-    include_flow=True,
-    t1=5e11,
-    num_steps=3,
-)
+#builder = HydrothermalProblemBuilder(
+#    mesh_results=mesh_explicit_unstructured,
+#    geomodel_result=structural_model_result,
+#    print_linear_residuals=True,
+#    rock_properties=rock_properties,
+#    fluid=fluid,
+#    include_flow=True,
+#    t1=5e11,
+#    num_steps=3,
+#)
 #%%
 
 # Pre-flight check: confirms rock_properties landed on the right cells.
@@ -298,18 +352,32 @@ builder = HydrothermalProblemBuilder(
 
 #%%
 
-data_by_time = run_simulation_sfepy(builder)
+#data_by_time = run_simulation_sfepy(builder)
 
 #%%
 
 # Visualize simulation results
-final_time = max(data_by_time.nodes_by_time.keys())
-plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
-plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+#final_time = max(data_by_time.nodes_by_time.keys())
+#plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
+#plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
+#plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
+#plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
 
 #%%
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 3: SFEPY - GENERATED HYDROTHERMAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 4: SFEPY - CUSTOM HYDROTHERMAL INPUT
+# ==============================================================================
+# Run a hand-written SfePy input file for the same Model 1 hydrothermal workflow.
+# ------------------------------------------------------------------------------
 
 # CustomSfepyBuilder example: bring a complete, hand-written SfePy input
 # file instead of letting HydrothermalProblemBuilder auto-generate one.
@@ -366,9 +434,26 @@ plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0
 #plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=True)
 #plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
 
+
+
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 4: SFEPY - CUSTOM HYDROTHERMAL INPUT
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 5: GOLEM - GENERATED HYDROTHERMAL MODEL
+# ==============================================================================
+# Run GolemHydrothermalProblemBuilder on the Model 1 mesh.
+# ------------------------------------------------------------------------------
+
 # Run the hydrothermal model using GOLEM with the same material objects.
-problem = GolemHydrothermalProblemBuilder(
-    mesh_results=mesh_implicit_structured,
+problem_golem = GolemHydrothermalProblemBuilder(
+    mesh_results=mesh_explicit_unstructured,
     geomodel_result=structural_model_result,
     fluid=fluid,
     print_linear_residuals=True,
@@ -386,53 +471,63 @@ problem = GolemHydrothermalProblemBuilder(
     num_steps=3,
 )
 
-# ---------------------------------------------------------
-# Run GOLEM using Docker
-# ---------------------------------------------------------
-problem.build_input_file("/tmp/wbgeo_golem.i")
+# copy the input file to a diectory
+problem_golem.build_input_file("/tmp/wbgeo_golem_model1.i")
 
-image = "moose-dev:fixed"
+# Run the constructed problem in GOLEM's Docker image. The runner creates the
+# temporary input file automatically, so no separate build_input_file() call
+# is required here.
+problem_golem_results = run_simulation_golem(
+    problem=problem_golem,
+    image_name="moose-dev:fixed",
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
 
-project_dir = "/Users/marziehbaes/Documents/projects"
-docker_dir = "/projects"
+    output_dir=(
+        cwd
+        + "/examples/synthetic_examples/model1/"
+          "golem_auto_output"
+    ),
 
-output_dir = (
-    "/Users/marziehbaes/Documents/Aug_code/codebase/"
-    "examples/synthetic_examples/model1/golem_output"
-)
-
-sim_golem = run_simulation_golem(
-    problem=problem,
-    image_name=image,
-    project_dir=project_dir,
-    docker_dir=docker_dir,
-    output_dir=output_dir,
     nproc=4,
 )
 
-
-# ---------------------------------------------------------
 # Results
-# ---------------------------------------------------------
 
-print("GOLEM simulation completed")
-final_time = max(sim_golem.nodes_by_time.keys())
-initial_time = min(sim_golem.nodes_by_time.keys())
+#print("GOLEM simulation completed")
+final_time = max(problem_golem_results.nodes_by_time.keys())
+initial_time = min(problem_golem_results.nodes_by_time.keys())
 
-print("Loaded times:", sorted(sim_golem.nodes_by_time.keys()))
-print("GOLEM point variables:", list(sim_golem.node_data_by_time[final_time].keys()))
-print("GOLEM cell variables:", list(sim_golem.cell_data_by_time[final_time].keys()))
+print("Loaded times:", sorted(problem_golem_results.nodes_by_time.keys()))
+print("GOLEM point variables:", list(problem_golem_results.node_data_by_time[final_time].keys()))
+print("GOLEM cell variables:", list(problem_golem_results.cell_data_by_time[final_time].keys()))
 
 # Visualize GOLEM's native result names.
-plot_variable_at_a_time(sim_golem, "temperature", time=initial_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(sim_golem, "temperature", time=final_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(sim_golem, "pore_pressure", time=final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(problem_golem_results, "temperature", time=initial_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(problem_golem_results, "temperature", time=final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(problem_golem_results, "pore_pressure", time=final_time, cmap="coolwarm", show_edges=True)
 plot_cross_section_2D(
-    sim_golem, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+    problem_golem_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
 )
 
 
-# Running golem from a costum file
+
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 5: GOLEM - GENERATED HYDROTHERMAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 6: GOLEM - CUSTOM HYDROTHERMAL INPUT
+# ==============================================================================
+# Run the custom GOLEM hydrothermal input for Model 1.
+# ------------------------------------------------------------------------------
+
+# Running hydrothermal problem using golem from a costum file
 custom_input_path = (
     cwd
     + "/examples/synthetic_examples/model1/input_data/simulation_files/"
@@ -463,10 +558,290 @@ custom_golem_results = run_simulation_golem(
 
     nproc=4,
 )
+
+custom_initial_time = min(custom_golem_results.nodes_by_time.keys())
+custom_final_time = max(custom_golem_results.nodes_by_time.keys())
+
 # Visualize GOLEM's native result names.
-plot_variable_at_a_time(custom_golem_results, "temperature", time=initial_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(custom_golem_results, "temperature", time=final_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(custom_golem_results, "pore_pressure", time=final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(custom_golem_results, "temperature", time=custom_initial_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(custom_golem_results, "temperature", time=custom_final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(custom_golem_results, "pore_pressure", time=custom_final_time, cmap="coolwarm", show_edges=True)
 plot_cross_section_2D(
     custom_golem_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
 )
+
+
+
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 6: GOLEM - CUSTOM HYDROTHERMAL INPUT
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 7: GOLEM - GENERATED SIMPLE-RESERVOIR MODEL
+# ==============================================================================
+# Automatically create the reservoir geometry, mesh, GOLEM input, and simulation.
+# ------------------------------------------------------------------------------
+
+# Simple reservoir problem solving with builder using Golem
+
+reservoir_problem = GolemSimpleReservoirProblemBuilder(
+    geomodel_result=structural_model_result,
+
+    # --------------------------------------------------------------
+    # Unstructured mesh inputs
+    # --------------------------------------------------------------
+    mesh_size=30.0,
+    curve_mesh_size=5.0,
+    mapping_litho="automatic_centers",
+    gmsh_flag=False,
+    # z_threshold=None,
+    # merge_file=None,
+    #
+    # Any other create_unstructured_mesh_data() input can be passed as:
+    # unstructured_mesh_options={"your_argument": your_value},
+
+    # --------------------------------------------------------------
+    # Refinement inputs
+    # Defaults reproduce the original simple-reservoir refinement.
+    # --------------------------------------------------------------
+    well_refine_size_min=5.0,
+    well_refine_size_max=30.0,
+    well_refine_dist_min=10.0,
+    well_refine_dist_max=60.0,
+
+    fracture_refine_size_min=5.0,
+    fracture_refine_size_max=30.0,
+    fracture_refine_dist_min=10.0,
+    fracture_refine_dist_max=60.0,
+
+    # Scale refinement lengths when the structural model extent changes.
+    scale_refinement_with_model=True,
+
+    # --------------------------------------------------------------
+    # One common material for ALL 3D reservoir blocks
+    # --------------------------------------------------------------
+    rock_porosity=0.1,
+    rock_permeability=1.0e-15,
+    rock_density=2.6e3,
+    rock_thermal_conductivity=3.0,
+    rock_heat_capacity=950.0,
+
+    # Fracture
+    fracture_porosity=1.0,
+    fracture_aperture=1.0e-4,
+
+    # Well
+    well_porosity=1.0,
+    well_permeability=3.12e-4,
+    well_scaling_factor=0.05,
+
+    # Fluid
+    fluid_density=1.0e3,
+    fluid_viscosity=1.0e-3,
+    fluid_heat_capacity=4.2e3,
+    fluid_thermal_conductivity=0.65,
+    fluid_modulus=2.5e9,
+
+    # --------------------------------------------------------------
+    # Initial / boundary / source inputs from simple_reservoir.i
+    # --------------------------------------------------------------
+    initial_pressure=1.0e7,
+    initial_temperature=150.0,
+    boundary_pressure=1.0e7,
+    boundary_temperature=150.0,
+    injection_temperature=70.0,
+
+    # None means: use the automatically scaled reference positions.
+    injection_point=None,
+    extraction_point=None,
+    injection_rate=3.0,
+    extraction_rate=3.0,
+    source_start_time=0.0,
+    source_end_time=None,
+
+    # --------------------------------------------------------------
+    # Transient solve
+    # 19 solve times + INITIAL -> 20 Exodus states
+    # --------------------------------------------------------------
+    start_time=0.0,
+    time_sequence=[
+        1.0,
+        86400.0,
+        604800.0,
+        2592000.0,
+        7776000.0,
+        15552000.0,
+        31536000.0,
+        63072000.0,
+        126144000.0,
+        315360000.0,
+        630720000.0,
+        946080000.0,
+        1261440000.0,
+        1576800000.0,
+        1892160000.0,
+        2207520000.0,
+        2522880000.0,
+        2838240000.0,
+        3153600014.0,
+    ],
+    end_time=None,
+    automatic_scaling=True,
+    compute_scaling_once=False,
+
+    print_linear_residuals=True,
+    print_nonlinear_converged_reason=True,
+    perf_graph=True,
+)
+
+# The mesh and input file are available from the builder if you want to save them:
+mesh_model1_simple_reservoir = reservoir_problem.mesh_results
+reservoir_problem.build_input_file("model1_generated_reservoir.i")
+
+model1_simple_reservoir_results = run_simulation_golem(
+    problem=reservoir_problem,
+    image_name="moose-dev:fixed",
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
+    output_dir=(
+        cwd
+        + "/examples/synthetic_examples/model1/"
+          "golem_simple_reservoir_output"
+    ),
+    nproc=4,
+)
+
+# Visualisation of results
+reservoir_initial_time = min(model1_simple_reservoir_results.nodes_by_time.keys())
+reservoir_final_time = max(model1_simple_reservoir_results.nodes_by_time.keys())
+
+plot_cross_section_2D(
+    model1_simple_reservoir_results,
+    "temperature",
+    origin=reservoir_problem.injection_point,
+    normal=(0, 1, 0),
+    cmap="coolwarm",
+)
+plot_cross_section_2D(
+    model1_simple_reservoir_results,
+    "pore_pressure",
+    origin=reservoir_problem.injection_point,
+    normal=(0, 1, 0),
+    cmap="coolwarm",
+)
+
+
+# NOTE: You can use resourvor_visualisation.pvsm in Paraview to visualize the results.
+
+
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 7: GOLEM - GENERATED SIMPLE-RESERVOIR MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 8: GOLEM - CUSTOM SIMPLE-RESERVOIR INPUT
+# ==============================================================================
+# Build the Model 1 reservoir mesh explicitly and run the custom GOLEM input.
+# ------------------------------------------------------------------------------
+
+# Simple reervoir solving with custom golem input file.
+# Create unstructure mosh
+reservoir_extent = (250, 750, 250, 750, 250, 750)
+# Two vertical 100 x 100 m planes, matching frac_1 and frac_2 in the
+# reservoir model. Each plane is four coplanar corner points.
+reservoir_fracture_planes = [(
+            400.0, 450.0, 450.0,
+            400.0, 550.0, 450.0,
+            400.0, 550.0, 550.0,
+            400.0, 450.0, 550.0,
+        ),
+        (
+            600.0, 450.0, 450.0,
+            600.0, 550.0, 450.0,
+            600.0, 550.0, 550.0,
+            600.0, 450.0, 550.0,
+        ),
+    ]
+# The reference well contains four connected line elements around the
+# extraction point. WBGeo accepts each well as one flat x,y,z sequence.
+reservoir_wells = [(
+        575.0, 500.0, 490.0,
+        587.5, 500.0, 495.0,
+        600.0, 500.0, 500.0,
+        612.5, 500.0, 505.0,
+        625.0, 500.0, 510.0,
+    )]
+
+reservoir_refinement = Refinement(
+        wells=LinearWellRefinement(
+            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
+        ),
+        extraplanes=ExtraPlaneRefinement(
+            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
+        ),
+    )
+
+mesh_model1_simple_reservoir = create_unstructured_mesh_data(
+        geomodel_result=structural_model_result,
+        extent=reservoir_extent,
+        wells=reservoir_wells,
+        extra_planes=reservoir_fracture_planes,
+        mesh_size=30.0,
+        curve_mesh_size=5.0,
+        mapping_litho="automatic_centers",
+        refinement=reservoir_refinement,
+    )
+
+# Solving the problem using custom golem input file. The GOLEM input file contains the Exodus material-block
+reservoir_input_path = (
+        cwd
+        + "/examples/synthetic_examples/model1/input_data/simulation_files/model1_simple_reservoir.i"
+    )
+with open(reservoir_input_path, encoding="utf-8") as stream:
+        reservoir_input = stream.read()
+
+# Solving the problem with Golem
+model1_simple_reservoir_results = run_simulation_golem(
+        problem=CustomGolemBuilder(
+            input_file_contents=reservoir_input,
+            mesh_results=mesh_model1_simple_reservoir,
+            geomodel_result=structural_model_result,
+            print_linear_residuals=True,
+        ),
+        image_name="moose-dev:fixed",
+        project_dir="/Users/marziehbaes/Documents/projects",
+        docker_dir="/projects",
+        output_dir=(
+            cwd
+            + "/examples/synthetic_examples/model1/"
+              "golem_simple_reservoir_output"
+        ),
+        nproc=4,
+    )
+
+# Visualisation of results
+reservoir_initial_time = min(model1_simple_reservoir_results.nodes_by_time.keys())
+reservoir_final_time = max(model1_simple_reservoir_results.nodes_by_time.keys())
+
+plot_cross_section_2D(model1_simple_reservoir_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm",)
+plot_cross_section_2D(model1_simple_reservoir_results, "pore_pressure", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm",)
+
+# NOTE: You can use resourvor_visualisation.pvsm in Paraview to visualize the results.
+
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 8: GOLEM - CUSTOM SIMPLE-RESERVOIR INPUT
+# ==============================================================================
+

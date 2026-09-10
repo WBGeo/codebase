@@ -778,8 +778,15 @@ class HydrothermalProblemBuilder:
         lines.append(f"    'Gamma_Top': ('vertex {','.join(map(str, top_ids))}', 'vertex'),")
         return lines
 
-    def _solver_blocks(self) -> Tuple[str, str]:
-        """Returns (precond_fn_def, ls_block) for the configured linear_solver."""
+    def _solver_blocks(self, stage: str = "heat") -> Tuple[str, str]:
+        """Return solver source for a pressure or heat stage.
+
+        Faulted pressure diffusion is symmetric but may contain permeability
+        jumps of many orders of magnitude.  PETSc ASM/ILU can then fail during
+        preconditioner setup with a zero pivot, before KSP performs an
+        iteration.  Use algebraic multigrid for that one stage only; retain
+        the established solver verbatim for heat and all non-faulted models.
+        """
         if self.linear_solver == "direct":
             return "", "    'ls': ('ls.scipy_direct', {}),"
 
@@ -788,6 +795,17 @@ class HydrothermalProblemBuilder:
                 "        'ksp_monitor': '',\n"
                 if self.print_linear_residuals else ""
             )
+            if stage == "pressure" and self.fault_group_id is not None:
+                return "", f"""    'ls': ('ls.petsc', {{
+        'method': 'fgmres',
+        'precond': 'gamg',
+        'ksp_gmres_restart': 100,
+        'ksp_divtol': 1.0e12,
+        'i_max': {self.linear_solver_i_max!r},
+        'eps_a': 1.0e-12,
+        'eps_r': {self.linear_solver_eps_r!r},
+        'verbose': {2 if self.print_linear_residuals else 0},
+{monitor}    }}),"""
             return "", f"""    'ls': ('ls.petsc', {{
         'method': 'fgmres',
         'precond': 'asm',
@@ -846,7 +864,9 @@ def setup_precond(mtx, context):
     }}),"""
         return precond_fn_def, ls_block
 
-    def _newton_ts_options_blocks(self, ls_block: str) -> str:
+    def _newton_ts_options_blocks(
+        self, ls_block: str, use_relative_tolerance: bool = False
+    ) -> str:
         """
         SfePy `solvers`/`options` dict body (literal source), shared by both the
         pressure and heat input files: the linear solver block passed in (`ls_block`,
@@ -854,13 +874,17 @@ def setup_precond(mtx, context):
         _run_sfepy_input_file's _check_convergence can parse a real pass/fail signal),
         and the `ts.simple` time-stepping config using self.t0/t1/num_steps.
         """
+        relative_tolerance = (
+            f"        'eps_r': {self.linear_solver_eps_r!r},\n"
+            if use_relative_tolerance else ""
+        )
         return f"""
 solvers = {{
 {ls_block}
     'newton': ('nls.newton', {{
         'i_max': 1,
         'eps_a': 1e-6,
-        'is_linear': True,
+{relative_tolerance}        'is_linear': True,
         # report_status defaults to False in SfePy -- without it, the only
         # printed line per solve is the per-iteration residual (no
         # definitive "did this actually converge" signal). With it,
@@ -916,7 +940,7 @@ options = {{
             flow_terms.append("dw_diffusion.i.Omega_fault(m_fault.perm_over_mu, q, p)")
 
         flow_eq = "\n  + ".join(flow_terms) + "\n  = 0"
-        precond_fn_def, ls_block = self._solver_blocks()
+        precond_fn_def, ls_block = self._solver_blocks(stage="pressure")
 
         content = f'''"""
 Auto-generated SfePy problem: steady-state Darcy pressure (stage 1 of 2).
@@ -964,7 +988,9 @@ integrals = {{
 equations = {{
     'flow': """{flow_eq}""",
 }}
-{self._newton_ts_options_blocks(ls_block)}'''
+{self._newton_ts_options_blocks(
+    ls_block, use_relative_tolerance=self.fault_group_id is not None
+)}'''
         with open(output_path, "w") as f:
             f.write(content)
         return output_path

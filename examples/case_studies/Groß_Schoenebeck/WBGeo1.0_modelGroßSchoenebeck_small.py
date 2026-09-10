@@ -27,6 +27,26 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
 
 cwd = os.getcwd()
 
+
+# ==============================================================================
+# GROSS SCHOENEBECK SMALL CASE STUDY - SCRIPT MAP
+# ==============================================================================
+# SECTION 1: Structural geological model
+# SECTION 2: Mesh generation and mesh utilities
+
+#
+# Each section starts and ends with a large banner so the workflow is easier to
+# navigate while keeping the existing smaller Groß Schönebeck model unchanged.
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+# Load the reduced Groß Schönebeck dataset, build the five stratigraphic series, configure interpolation, and compute the structural model result.
+# ------------------------------------------------------------------------------
+
 # WORKFLOW Groß Schoenebeck Case Study: 7-layer structural model
 
 #%%
@@ -128,6 +148,21 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
+# Build the explicit structured and implicit structured meshes, retain the optional unstructured-mesh example.
+# ------------------------------------------------------------------------------
+
 # Compute 3D meshes based on the structural model result using different meshing approaches.
 
 # Explicit structured mesh
@@ -161,7 +196,6 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 #plot_mesh_3d(mesh_explicit_unstr, structural_model_result, show_plotter=True)
 #plot_mesh_3d(mesh_str, structural_model_result, show_plotter=True)
 
-#%%
 
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
@@ -172,6 +206,10 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 #with open("filename_Gross_Schoenebeck.exo", "wb") as f:
 #    f.write(buf.getvalue())
 
+
+#%%
+
+
 # # Load engineering objects
 wells = load_wells_from_csv(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/wells.csv")
 csv_files=(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/seismic.csv",
@@ -181,16 +219,37 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
-#refinement = Refinement()
-#refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=500.0)
-#refinement.triangulations = TriangulationRefinement(hmin=15, hmax=90.0, d1=80.0, d2=150.0)
-# refinement.triangulation = TriangulationRefinement(hmin=8.0, hmax=90.0, d1=50.0, d2=100.0, enabled=True)
+refinement = Refinement()
+refinement.wells = LinearWellRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.triangulations = TriangulationRefinement(SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
 #
-# Available types per object:
-#   wells / sources:                    LinearWellRefinement, FunctionWellRefinement
-#                                       LinearSourceRefinement, FunctionSourceRefinement
-#   faults / ellipses / triangulations: FaultRefinement, EllipseRefinement, TriangulationRefinement
-#                                       (hmin/hmax = element sizes, d1/d2 = transition distances)
+# Available refinement types per object:
+#
+#   wells / sources / shafts:             LinearWellRefinement, FunctionWellRefinement
+#                                         LinearSourceRefinement, FunctionSourceRefinement
+#                                         LinearShaftRefinement, FunctionShaftRefinement
+#
+#       Linear refinement:                SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#       Function refinement:              expression = a function using the DIST variable
+#
+#   faults / ellipses / triangulations:   FaultRefinement, EllipseRefinement, TriangulationRefinement
+#   extra planes:                         ExtraPlaneRefinement
+#
+#                                         SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#   general point / line refinement:      GeneralRefinement
+#
+#                                         One coordinate = point refinement
+#                                         Two coordinates = line-segment refinement
+#
+#       Linear refinement:                SizeMin = minimum element size at the point or line
+#                                         DistMax = distance over which the element size
+#                                         increases linearly from SizeMin to mesh_size
+#
+#       Function refinement:              expression = a function using the DIST variable
 
 
 # # Explicit unstructured mesh with objects
@@ -214,3 +273,9 @@ with open("filename_example_gr_mesh.exo", "wb") as f:
      f.write(buf.getvalue())
 
 
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================

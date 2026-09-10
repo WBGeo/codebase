@@ -1,0 +1,506 @@
+"""Run a generated GOLEM problem in Docker and return its output paths."""
+from __future__ import annotations
+
+import logging
+import queue
+import re
+import shlex
+import shutil
+import subprocess
+import tempfile
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Optional, Union
+
+from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
+from core.object_components import MeshType, SimulationResults
+from core.simulation_components.output_format.exodus.unified_format_exodus import (
+    load_exodus_results,
+)
+
+from core.simulation_components.simulation_packages.golem.golem_model_builder import (
+    CustomGolemBuilder,
+    GolemHydrothermalProblemBuilder,
+    GolemSimpleReservoirProblemBuilder,
+)
+
+logger = logging.getLogger(__name__)
+
+MESH_TYPE_CODES = {
+    MeshType.IMPLICIT: "imp",
+    MeshType.STRUCTURED: "str",
+    MeshType.UNSTRUCTURED: "unstr",
+}
+
+
+def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> None:
+    """Validate a GOLEM/MOOSE input before starting Docker.
+
+    This mirrors the structural checks used by ``simulation_run`` while
+    accepting both modern ``[name]`` and legacy ``[./name]`` MOOSE subsection
+    syntax, which is emitted by the GOLEM builders in this module family.
+    """
+    required_blocks = [
+        "Mesh",
+        "Variables",
+        "Kernels",
+        "Executioner",
+        "Outputs",
+        "BCs",
+        "Materials",
+    ]
+    missing = [
+        block
+        for block in required_blocks
+        if not re.search(rf"^\s*\[{re.escape(block)}\]\s*$", content, re.MULTILINE)
+    ]
+    if missing:
+        raise ValueError("Missing required blocks: " + ", ".join(missing))
+
+    mesh_pattern = re.compile(
+        r"""
+        ^\s*\[Mesh\]\s*$
+        .*?
+        ^\s*type\s*=\s*FileMeshGenerator\s*$
+        .*?
+        ^\s*file\s*=\s*\$\{GOLEM_MESH_FILE\}\s*$
+        """,
+        re.DOTALL | re.MULTILINE | re.VERBOSE,
+    )
+    if not mesh_pattern.search(content):
+        raise ValueError(
+            "Mesh block must contain type = FileMeshGenerator and "
+            "file = ${GOLEM_MESH_FILE}"
+        )
+
+    def extract_parent_block(text: str, parent_block: str) -> str:
+        lines = text.splitlines()
+        inside_parent = False
+        depth = 0
+        collected = []
+        parent_start = f"[{parent_block}]"
+
+        for line in lines:
+            stripped = line.strip()
+            if not inside_parent:
+                if stripped == parent_start:
+                    inside_parent = True
+                continue
+
+            if stripped == "[]":
+                if depth == 0:
+                    break
+                depth -= 1
+                collected.append(line)
+                continue
+
+            if stripped == "[../]":
+                if depth > 0:
+                    depth -= 1
+                collected.append(line)
+                continue
+
+            if re.match(r"^\[(?:\./)?[A-Za-z_][A-Za-z0-9_]*\]$", stripped):
+                depth += 1
+            collected.append(line)
+
+        return "\n".join(collected)
+
+    def get_direct_child_blocks(text: str, parent_block: str):
+        lines = text.splitlines()
+        inside_parent = False
+        depth = 0
+        children = []
+        parent_start = f"[{parent_block}]"
+
+        for line in lines:
+            stripped = line.strip()
+            if not inside_parent:
+                if stripped == parent_start:
+                    inside_parent = True
+                continue
+
+            if stripped == "[]":
+                if depth == 0:
+                    break
+                depth -= 1
+                continue
+
+            if stripped == "[../]":
+                if depth > 0:
+                    depth -= 1
+                continue
+
+            match = re.match(
+                r"^\[(?:\./)?([A-Za-z_][A-Za-z0-9_]*)\]$", stripped
+            )
+            if match:
+                if depth == 0:
+                    children.append(match.group(1))
+                depth += 1
+
+        return children
+
+    materials_content = extract_parent_block(content, "Materials")
+    if not materials_content.strip():
+        raise ValueError("Materials block is empty")
+
+    material_sections = get_direct_child_blocks(content, "Materials")
+    if not material_sections:
+        raise ValueError("No material definitions found inside the [Materials] block")
+
+    if mesh_type == MeshType.UNSTRUCTURED:
+        n_mesh_blocks = len(mesh_results.elements) - 6
+    else:
+        n_mesh_blocks = len(mesh_results.elements)
+
+    if n_mesh_blocks <= 0:
+        raise ValueError("The mesh has no exportable material blocks")
+
+    # A material section does not have to correspond one-to-one with a mesh
+    # block.  GolemSimpleReservoirProblemBuilder intentionally groups several
+    # mesh blocks into sections such as [uniform_rock], [fractures], and [well].
+    # Validate the actual block assignments instead of counting subsections.
+    material_block_ids = set()
+    for match in re.finditer(
+        r"^\s*block\s*=\s*['\"]?([^'\"#\n]+)['\"]?\s*(?:#.*)?$",
+        materials_content,
+        re.MULTILINE,
+    ):
+        for token in match.group(1).split():
+            try:
+                material_block_ids.add(int(token))
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid material block id {token!r} in [Materials]"
+                ) from exc
+
+    if not material_block_ids:
+        raise ValueError(
+            "No material 'block = ...' assignments found inside [Materials]"
+        )
+
+    expected_block_ids = set(range(1, n_mesh_blocks + 1))
+    missing_material_ids = sorted(expected_block_ids - material_block_ids)
+    extra_material_ids = sorted(material_block_ids - expected_block_ids)
+
+    if missing_material_ids:
+        raise ValueError(
+            "The following mesh blocks have no material assignment: "
+            + ", ".join(map(str, missing_material_ids))
+        )
+    if extra_material_ids:
+        raise ValueError(
+            "The [Materials] block references non-exportable mesh block ids: "
+            + ", ".join(map(str, extra_material_ids))
+        )
+
+    variable_names = get_direct_child_blocks(content, "Variables")
+    if not variable_names:
+        raise ValueError("No variables found inside the [Variables] block")
+
+    kernels_content = extract_parent_block(content, "Kernels")
+    if not kernels_content.strip():
+        raise ValueError("Kernels block is empty")
+
+    kernel_variables = set(
+        re.findall(
+            r"^\s*variable\s*=\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\s*$",
+            kernels_content,
+            re.MULTILINE,
+        )
+    )
+    variables_without_kernel = [
+        variable for variable in variable_names if variable not in kernel_variables
+    ]
+    if variables_without_kernel:
+        raise ValueError(
+            "The following variables do not have at least one kernel: "
+            + ", ".join(variables_without_kernel)
+        )
+
+    logger.info(
+        "GOLEM input validation successful: %d mesh blocks covered by %d material sections; variables=%s",
+        n_mesh_blocks,
+        len(material_sections),
+        ", ".join(variable_names),
+    )
+
+
+def _stream_process(command, heartbeat_seconds: float = 10.0) -> str:
+    """Run GOLEM while printing output and silence-period heartbeats live."""
+    print("\n" + "=" * 72, flush=True)
+    print("Starting GOLEM Docker/MPI simulation", flush=True)
+    print("Command:", shlex.join(command), flush=True)
+    print("=" * 72, flush=True)
+
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1, universal_newlines=True,
+    )
+    if process.stdout is None:
+        raise RuntimeError("Could not capture GOLEM output")
+
+    output_queue = queue.Queue()
+
+    def read_output() -> None:
+        try:
+            for output_line in iter(process.stdout.readline, ""):
+                output_queue.put(output_line)
+        finally:
+            process.stdout.close()
+            output_queue.put(None)
+
+    reader = threading.Thread(target=read_output, daemon=True)
+    reader.start()
+
+    lines = []
+    start_time = time.monotonic()
+    last_activity = start_time
+    while True:
+        try:
+            line = output_queue.get(timeout=heartbeat_seconds)
+        except queue.Empty:
+            elapsed = time.monotonic() - start_time
+            silent = time.monotonic() - last_activity
+            print(
+                f"[GOLEM still running: elapsed {elapsed:.0f} s; "
+                f"no new output for {silent:.0f} s]",
+                flush=True,
+            )
+            continue
+
+        if line is None:
+            break
+        print(line, end="", flush=True)
+        logger.debug("GOLEM: %s", line.rstrip())
+        lines.append(line)
+        last_activity = time.monotonic()
+
+    reader.join()
+    return_code = process.wait()
+    output = "".join(lines)
+    if return_code:
+        raise RuntimeError(f"GOLEM exited with status {return_code}:\n{output}")
+    elapsed = time.monotonic() - start_time
+    print("=" * 72, flush=True)
+    print(f"GOLEM completed successfully in {elapsed:.1f} seconds", flush=True)
+    print("=" * 72 + "\n", flush=True)
+    return output
+
+
+def run_simulation_golem(
+    problem: Union[
+        GolemHydrothermalProblemBuilder,
+        GolemSimpleReservoirProblemBuilder,
+        CustomGolemBuilder,
+    ],
+    image_name: str,
+    project_dir: str,
+    docker_dir: str = "/project",
+    output_dir: Optional[str] = None,
+    nproc: int = 4,
+    keep_files_dir: Optional[str] = None,
+) -> SimulationResults:
+    """Build or copy, validate and execute a GOLEM input against a WBGeo mesh.
+
+    ``project_dir`` is bind-mounted only to expose the GOLEM executable at
+    ``docker_dir/golem/golem-opt``. Input and mesh files are copied into a
+    private directory in a named container, results are copied back after the
+    run, and the container (including its temporary directory) is removed.
+    ``problem`` may be an automatically generated hydrothermal/simple-reservoir
+    problem or a ``CustomGolemBuilder`` containing complete caller-supplied
+    GOLEM input.
+    """
+    if nproc < 1:
+        raise ValueError("nproc must be >= 1")
+    project = Path(project_dir).resolve()
+    project.mkdir(parents=True, exist_ok=True)
+    output = Path(output_dir).resolve() if output_dir else project / "golem_output"
+    output.mkdir(parents=True, exist_ok=True)
+
+    if keep_files_dir:
+        run_dir = Path(keep_files_dir).resolve()
+        run_dir.mkdir(parents=True, exist_ok=True)
+        temporary = False
+    else:
+        run_dir = Path(tempfile.mkdtemp(prefix="golem_run_", dir=project))
+        temporary = True
+
+    container_name = f"wbgeo_golem_{uuid.uuid4().hex[:12]}"
+    container_created = False
+    try:
+        mesh_path = run_dir / "wbgeo_mesh.exo"
+        input_path = run_dir / "wbgeo.i"
+        mesh_type_code = MESH_TYPE_CODES[problem.mesh_results.mesh_type]
+        exo = export_mesh_results_to_exodus(problem.mesh_results, type=mesh_type_code)
+        mesh_path.write_bytes(exo.getbuffer())
+        problem.build_input_file(str(input_path))
+
+        container_run = "/tmp/wbgeo_golem_run"
+        container_mesh = f"{container_run}/wbgeo_mesh.exo"
+        container_input = f"{container_run}/wbgeo.i"
+
+        generated = input_path.read_text(encoding="utf-8")
+        validate_golem_input(
+            generated,
+            problem.mesh_results,
+            problem.mesh_results.mesh_type,
+        )
+        if "${GOLEM_MESH_FILE}" not in generated:
+            raise ValueError("Generated GOLEM input has no ${GOLEM_MESH_FILE} placeholder")
+        input_path.write_text(
+            generated.replace("${GOLEM_MESH_FILE}", container_mesh), encoding="utf-8"
+        )
+
+        print(f"GOLEM host staging directory: {run_dir}", flush=True)
+        print(f"Input to copy: {input_path}", flush=True)
+        print(f"Mesh to copy: {mesh_path}", flush=True)
+        print(f"Docker container: {container_name}", flush=True)
+        print(f"MPI processes: {nproc}", flush=True)
+
+        golem_command = (
+            f'set -e; mkdir -p "{container_run}/output"; '
+            f'cd "{container_run}"; '
+            f'mpiexec --allow-run-as-root -n {nproc} '
+            f'{docker_dir.rstrip("/")}/golem/golem-opt -i "{container_input}"'
+        )
+        create_command = [
+            "docker", "create", "--name", container_name, "-i",
+            "-v", f"{project}:{docker_dir}",
+            image_name,
+            "-c", golem_command,
+        ]
+        created = subprocess.run(
+            create_command, text=True, capture_output=True, check=False
+        )
+        if created.returncode:
+            raise RuntimeError(
+                "Could not create the GOLEM Docker container:\n"
+                + created.stdout + created.stderr
+            )
+        container_created = True
+
+        # Copy the complete staging directory so the input and mesh exist in
+        # the container independently of the host bind mount.
+        copied = subprocess.run(
+            ["docker", "cp", str(run_dir) + "/.",
+             f"{container_name}:{container_run}"],
+            text=True, capture_output=True, check=False,
+        )
+        if copied.returncode:
+            raise RuntimeError(
+                "Could not copy GOLEM input files into the container:\n"
+                + copied.stdout + copied.stderr
+            )
+
+        transcript = _stream_process(["docker", "start", "-a", container_name])
+
+        # Copy the ENTIRE GOLEM working directory back from the container.
+        # Some MOOSE outputs (especially CSV when no file_base is given) are
+        # written directly beside wbgeo.i rather than inside output/.
+        container_snapshot = run_dir / "container_run"
+        container_snapshot.mkdir(exist_ok=True)
+
+        copied_back = subprocess.run(
+            ["docker", "cp", f"{container_name}:{container_run}/.",
+             str(container_snapshot)],
+            text=True, capture_output=True, check=False,
+        )
+        if copied_back.returncode:
+            raise RuntimeError(
+                "GOLEM completed but its working directory could not be copied "
+                "from Docker:\n" + copied_back.stdout + copied_back.stderr
+            )
+
+        # First preserve everything explicitly written under output/ at the
+        # root of the caller's output_dir.
+        staged_output = container_snapshot / "output"
+        if staged_output.is_dir():
+            shutil.copytree(staged_output, output, dirs_exist_ok=True)
+
+        # Then preserve generated files/directories written directly in the
+        # GOLEM working directory. Do not re-copy the staged input/mesh or the
+        # output directory itself; those inputs are saved below with stable
+        # WBGeo names.
+        excluded_root_names = {"wbgeo.i", "wbgeo_mesh.exo", "output"}
+        for item in container_snapshot.iterdir():
+            if item.name in excluded_root_names:
+                continue
+            destination = output / item.name
+            if item.is_dir():
+                shutil.copytree(item, destination, dirs_exist_ok=True)
+            elif item.is_file():
+                shutil.copy2(item, destination)
+
+        copied_files = sorted(
+            (path for path in output.rglob("*") if path.is_file()),
+            key=lambda path: str(path),
+        )
+        print(
+            f"Copied {len(copied_files)} GOLEM output file(s) to {output}",
+            flush=True,
+        )
+        for path in copied_files:
+            print(f"  {path.relative_to(output)}", flush=True)
+
+        # Exodus is still required to load the numerical result into WBGeo,
+        # but the search below does not restrict which files are preserved.
+        candidates = list(output.rglob("*.e")) + list(output.rglob("*.exo"))
+        if not candidates:
+            copied_listing = "\n".join(
+                f"  {path.relative_to(output)}" for path in copied_files
+            ) or "  <none>"
+            raise RuntimeError(
+                "GOLEM completed and its output files were copied, but no "
+                f"Exodus result exists in {output}. Copied files:\n"
+                + copied_listing
+            )
+        result_file = max(candidates, key=lambda path: path.stat().st_mtime)
+
+        transcript_path = output / "golem_stdout.txt"
+        transcript_path.write_text(transcript, encoding="utf-8")
+        if temporary:
+            # Preserve the generated inputs beside results before cleanup.
+            saved_input = output / "wbgeo_generated.i"
+            saved_mesh = output / "wbgeo_mesh.exo"
+            shutil.copy2(input_path, saved_input)
+            shutil.copy2(mesh_path, saved_mesh)
+        else:
+            saved_input, saved_mesh = input_path, mesh_path
+
+        run_info = {
+            "input_file": str(saved_input),
+            "mesh_file": str(saved_mesh),
+            "output_file": str(result_file),
+            "output_dir": str(output),
+            "stdout_file": str(transcript_path),
+        }
+        print(f"GOLEM Exodus result: {result_file}", flush=True)
+        print("Loading GOLEM Exodus result into SimulationResults...", flush=True)
+        simulation_results = load_exodus_results(run_info)
+        if not simulation_results.nodes_by_time:
+            raise RuntimeError(
+                f"The GOLEM Exodus file at {result_file} contained no readable time steps."
+            )
+        print(
+            f"Loaded {len(simulation_results.nodes_by_time)} GOLEM time step(s).",
+            flush=True,
+        )
+        return simulation_results
+    finally:
+        if container_created:
+            removed = subprocess.run(
+                ["docker", "rm", "-f", container_name],
+                text=True, capture_output=True, check=False,
+            )
+            if removed.returncode:
+                logger.warning(
+                    "Could not remove temporary GOLEM container %s: %s",
+                    container_name,
+                    (removed.stdout + removed.stderr).strip(),
+                )
+        if temporary:
+            shutil.rmtree(run_dir, ignore_errors=True)

@@ -34,6 +34,25 @@ from core.meshing_components.mesh_format.mesh_export import (
 
 cwd = os.getcwd()
 
+
+# ==============================================================================
+# MODEL 7 - SCRIPT MAP
+# ==============================================================================
+# SECTION 1: Structural geological model
+# SECTION 2: Mesh generation and mesh utilities
+#
+# Each section starts and ends with a large banner so the different sections are
+# visually separated while keeping the existing Model 7 workflow unchanged.
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+# Build the three-fault model, the two stratigraphic groups separated by an unconformity, and the structural model result.
+# ------------------------------------------------------------------------------
+
 # WORKFLOW Synthetic Model 7: 3 faults, 1 unconformity, 2 stratigraphic groups
 
 #%%
@@ -168,6 +187,21 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 
 #%%
 
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 1: STRUCTURAL GEOLOGICAL MODEL
+# ==============================================================================
+
+#%%
+
+# ==============================================================================
+# SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================
+# Build and visualize the supported mesh representation for Model 7 and document current meshing limitations.
+# ------------------------------------------------------------------------------
+
 # Compute 3D meshes based on the structural model result using different meshing approaches.
 # Meshing parameters not yet verified for this model.
 
@@ -188,7 +222,6 @@ mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=struc
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
 
 
-#%%
 
 # Optional: Example of how to export the unstructured mesh to Exodus format.
 # Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
@@ -198,3 +231,9 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 # buf = export_mesh_results_to_exodus(mesh_implicit_structured, type='imp')
 # with open("filename_example_mesh.exo", "wb") as f:
 #    f.write(buf.getvalue())
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 2: MESH GENERATION AND MESH UTILITIES
+# ==============================================================================

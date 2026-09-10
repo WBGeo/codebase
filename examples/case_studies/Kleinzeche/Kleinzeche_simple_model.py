@@ -301,11 +301,10 @@ refinement.wells=LinearWellRefinement(SizeMin=0.8, SizeMax=7.0, DistMin=30.0, Di
 
 # Refinment around fault
 refinement.faults = FaultRefinement(
-    hmin=0.8,
-    hmax=7,
-    d1=50.0,
-    d2=100.0,
-    enabled=True
+    SizeMin=0.8,
+    SizeMax=7,
+    DistMin=50.0,
+    DistMax=100.0,
  )
 
 mesh_explicit_unstructured = create_unstructured_mesh_data(
@@ -314,14 +313,14 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
     wells=wells,
     mesh_size=3,
     curve_mesh_size=2,
-    DISTANCE_THRESHOLD=3,
+    DISTANCE_THRESHOLD=3.0,
     PROJECTION_THRESHOLD=4,
-    EXTRUSION_FACTOR=4.2,
+    EXTRUSION_FACTOR=4.8,
     z_threshold=1,
     mapping_litho= 'manual',
     merge_file = cwd + "/examples/case_studies/Kleinzeche/input_data/block_groups.csv", # Only if mapping_litho='manual'
 
-    refinement= refinement
+    #refinement= refinement
 )
 
 #%%

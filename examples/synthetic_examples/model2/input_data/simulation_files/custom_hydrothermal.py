@@ -51,10 +51,9 @@ solve. So "STAGE 1" below solves the steady-state Darcy pressure equation
 in-process, via SfePy's own public library API (ProblemConf.from_file +
 Problem.from_conf + .solve()) -- not sfepy-run, not a subprocess -- using its
 own self-contained conf (a separate temp file, isolated from this file's own
-top-level names). The resulting per-cell Darcy velocity is computed via
-PyVista (point_data_to_cell_data + compute_derivative -- convert to cell
-data first, since compute_derivative's output location follows its input's,
-not its own preference= kwarg) and held in memory as _stage1_velocity.
+top-level names). The resulting per-cell Darcy velocity is reconstructed
+directly from the nodal P1 pressure field and held in memory as
+_stage1_velocity.
 "STAGE 2" (regions/fields/variables/materials/equations/
 solvers/options at THIS file's own top level) is what sfepy-run actually
 resolves and solves -- referencing _stage1_velocity via each group's
@@ -88,8 +87,8 @@ Rock/fluid/fault-zone properties (deliberately identical to
 WBGeo1.0_model2.py's own HydrothermalProblemBuilder call, so this is a fair
 comparison of technique, not different inputs) -- see that script for the
 literal values. Boundary conditions: p_top=0.0, p_bottom=1000000.0,
-t_top=10.0, t_bottom=60.0. t1=1108712183177.6438 (data-driven diffusion
-timescale, L^2/alpha), num_steps=2, include_flow=True.
+t_top=10.0, t_bottom=60.0. t0=0.0, t1=5.0e11, num_steps=3 time
+increments (four stored SFePy states), include_flow=True.
 
 Then:
     from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import CustomSfepyBuilder
@@ -146,7 +145,7 @@ fields = {
 }
 
 t0 = 0.0
-t1 = 1108712183177.6438
+t1 = 500000000000.0
 num_steps = 1
 dt = (t1 - t0) / num_steps
 
@@ -154,18 +153,6 @@ variables = {
     \'p\': (\'unknown field\', \'pressure\', 1),
     \'q\': (\'test field\', \'pressure\', \'p\'),
 }
-
-def setup_precond(mtx, context):
-    import scipy.sparse as sp
-    import scipy.sparse.linalg as spla
-    diag = mtx.diagonal().copy()
-    diag[diag == 0] = 1.0
-    dinv = sp.diags(1.0 / diag)
-    scaled = (dinv @ mtx).tocsc()
-    ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2)
-    def solve(b):
-        return ilu.solve(dinv @ b)
-    return spla.LinearOperator(mtx.shape, solve)
 
 materials = {
     'm0': ({'k_over_mu': [[1e-12, 0.0, 0.0], [0.0, 1e-12, 0.0], [0.0, 0.0, 1e-12]]},),
@@ -196,16 +183,24 @@ equations = {
 }
 
 solvers = {
-    \'ls\': (\'ls.scipy_iterative\', {
-        \'method\': \'bicgstab\',
+    # Fault pressure has a very large permeability contrast. AMG avoids
+    # the zero-pivot failures that an ILU preconditioner can produce.
+    \'ls\': (\'ls.petsc\', {
+        \'method\': \'fgmres\',
+        \'precond\': \'gamg\',
+        \'ksp_gmres_restart\': 100,
+        \'ksp_divtol\': 1.0e12,
         \'i_max\': 500,
+        \'eps_a\': 1.0e-12,
         \'eps_r\': 1e-8,
-        \'setup_precond\': setup_precond,
+        \'verbose\': 2,
+        \'ksp_monitor\': \'\',
     }),
     \'newton\': (\'nls.newton\', {
-        \'i_max\': 5,
+        \'i_max\': 1,
         \'eps_a\': 1e-6,
-        \'is_linear\': False,
+        \'eps_r\': 1e-8,
+        \'is_linear\': True,
         \'report_status\': True,
     }),
     \'ts\': (\'ts.simple\', {
@@ -242,30 +237,45 @@ _stage1_vtk_dir = tempfile.mkdtemp()
 _stage1_vtk_path = os.path.join(_stage1_vtk_dir, "pressure.0.vtk")
 _stage1_problem.save_state(_stage1_vtk_path, state=_stage1_state)
 
-# Darcy velocity from the solved pressure field: v = -(k/mu) * grad(p),
-# same technique HydrothermalProblemBuilder.compute_darcy_velocity uses
-# (documented in sim_for_review.md) -- point_data_to_cell_data() must run
-# BEFORE compute_derivative(), since the latter's output location follows
-# its input's, not its own preference= kwarg.
+# Darcy velocity from the solved pressure field: v = -(k/mu) * grad(p).
+# Reconstruct grad(p) directly from the nodal P1 field. Differentiating
+# cell-averaged VTK pressure would create artificial interface jumps.
 _grid = pv.read(_stage1_vtk_path)
-_grid = _grid.point_data_to_cell_data()
-_grid = _grid.compute_derivative(scalars="p")
-_grad_p = np.asarray(_grid.cell_data["gradient"])
+_pressure = np.asarray(_grid.point_data["p"], dtype=float).reshape(-1)
+_flat_cells = np.asarray(_grid.cells, dtype=np.int64)
+_connectivity = []
+_cursor = 0
+while _cursor < _flat_cells.size:
+    _n_cell_nodes = int(_flat_cells[_cursor])
+    _connectivity.append(_flat_cells[_cursor + 1:_cursor + 1 + _n_cell_nodes])
+    _cursor += _n_cell_nodes + 1
+if not _connectivity or any(len(_conn) != 4 for _conn in _connectivity):
+    raise ValueError(
+        "custom_hydrothermal.py expects model2's tetrahedral volume mesh"
+    )
+_connectivity = np.stack(_connectivity)
+_xyz = np.asarray(_grid.points, dtype=float)[_connectivity]
+_p_el = _pressure[_connectivity]
+_dx = _xyz - _xyz.mean(axis=1, keepdims=True)
+_dp = _p_el - _p_el.mean(axis=1, keepdims=True)
+_normal = np.einsum("nki,nkj->nij", _dx, _dx)
+_rhs = np.einsum("nki,nk->ni", _dx, _dp)
+try:
+    _grad_p = np.linalg.solve(_normal, _rhs)
+except np.linalg.LinAlgError:
+    _grad_p = np.stack([
+        np.linalg.lstsq(_a, _b, rcond=None)[0]
+        for _a, _b in zip(_dx, _dp)
+    ])
 
-# Per-group velocity split -- (group_id, k_over_mu) pairs computed from the
-# same rock/fault-zone properties as stage 2's materials below. Assumes
-# mesh cell order is preserved through the mesh export/SfePy round trip
-# (concatenated in the mesh's own block order), same assumption
-# HydrothermalProblemBuilder's own compute_darcy_velocity depends on.
+# Split by SFePy's actual global region cell IDs. Sequential offsets are
+# incorrect whenever cells belonging to material groups are interleaved.
 _group_ids_and_k_over_mu = [(0, 1e-12), (1, 1e-11), (2, 1e-11), (3, 1e-11), (4, 1e-11), (12, 1e-16)]
 _gid_to_region_name = {0: 'Omega0', 1: 'Omega1', 2: 'Omega2', 3: 'Omega3', 4: 'Omega4', 12: 'Omega_fault'}
 _stage1_velocity = {}
-_offset = 0
 for _gid, _k_over_mu in _group_ids_and_k_over_mu:
     _region_cells = _stage1_problem.domain.regions[_gid_to_region_name[_gid]].get_cells()
-    _n = len(_region_cells)
-    _stage1_velocity[_gid] = -_k_over_mu * _grad_p[_offset:_offset + _n]
-    _offset += _n
+    _stage1_velocity[_gid] = -_k_over_mu * _grad_p[_region_cells]
 
 # =======================================================================
 # STAGE 2 (the "official" conf sfepy-run resolves): transient heat with
@@ -288,9 +298,10 @@ fields = {
 }
 
 t0 = 0.0
-t1 = 1108712183177.6438
-num_steps = 2
-dt = (t1 - t0) / num_steps
+t1 = 500000000000.0
+# model2 requests three increments; SfePy n_step counts points including t0.
+num_steps = 3 + 1
+dt = (t1 - t0) / (num_steps - 1)
 
 variables = {
     'T': ('unknown field', 'temperature', 0, 1),
@@ -346,18 +357,6 @@ def velocity_fn_12(ts, coors, mode=None, problem=None, **kwargs):
     return {'v': v.reshape(v.shape[0], v.shape[1], 1)}
 
 
-def setup_precond(mtx, context):
-    import scipy.sparse as sp
-    import scipy.sparse.linalg as spla
-    diag = mtx.diagonal().copy()
-    diag[diag == 0] = 1.0
-    dinv = sp.diags(1.0 / diag)
-    scaled = (dinv @ mtx).tocsc()
-    ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2)
-    def solve(b):
-        return ilu.solve(dinv @ b)
-    return spla.LinearOperator(mtx.shape, solve)
-
 def ic_temp(coor, ic=None):
     z_min, z_max = float(np.min(coor[:, 2])), float(np.max(coor[:, 2]))
     T_top, T_bottom = 10.0, 60.0
@@ -373,18 +372,21 @@ functions = {
     'velocity_fn_12': (velocity_fn_12,)
 }
 
+# Normalize every energy term by rho_f*c_f. This improves conditioning but
+# does not alter the solution; the normalized advection coefficient is q.
+_rho_c_fluid = 4.186e6
 materials = {
-    'therm0': ({'k_eff': 2.8799999999999994, 'rho_c_eff': 2299300.0},),
+    'therm0': ({'k_eff': 2.8799999999999994 / _rho_c_fluid, 'rho_c_eff': 2299300.0 / _rho_c_fluid},),
     'darcy0': 'velocity_fn_0',
-    'therm1': ({'k_eff': 2.215, 'rho_c_eff': 2497900.0},),
+    'therm1': ({'k_eff': 2.215 / _rho_c_fluid, 'rho_c_eff': 2497900.0 / _rho_c_fluid},),
     'darcy1': 'velocity_fn_1',
-    'therm2': ({'k_eff': 2.215, 'rho_c_eff': 2497900.0},),
+    'therm2': ({'k_eff': 2.215 / _rho_c_fluid, 'rho_c_eff': 2497900.0 / _rho_c_fluid},),
     'darcy2': 'velocity_fn_2',
-    'therm3': ({'k_eff': 1.79, 'rho_c_eff': 2412900.0},),
+    'therm3': ({'k_eff': 1.79 / _rho_c_fluid, 'rho_c_eff': 2412900.0 / _rho_c_fluid},),
     'darcy3': 'velocity_fn_3',
-    'therm4': ({'k_eff': 1.79, 'rho_c_eff': 2412900.0},),
+    'therm4': ({'k_eff': 1.79 / _rho_c_fluid, 'rho_c_eff': 2412900.0 / _rho_c_fluid},),
     'darcy4': 'velocity_fn_4',
-    'therm12': ({'k_eff': 0.502, 'rho_c_eff': 2337720.0},),
+    'therm12': ({'k_eff': 0.502 / _rho_c_fluid, 'rho_c_eff': 2337720.0 / _rho_c_fluid},),
     'darcy12': 'velocity_fn_12',
 }
 
@@ -398,7 +400,7 @@ ebcs = {
 }
 
 integrals = {
-    'i': 1,
+    'i': 2,
 }
 
 equations = {
@@ -424,16 +426,24 @@ equations = {
 }
 
 solvers = {
-    'ls': ('ls.scipy_iterative', {
-        'method': 'bicgstab',
+    'ls': ('ls.petsc', {
+        'method': 'fgmres',
+        'precond': 'asm',
+        'sub_precond': 'ilu',
+        'pc_asm_overlap': 2,
+        'sub_pc_factor_levels': 3,
+        'ksp_gmres_restart': 100,
+        'ksp_divtol': 1.0e12,
         'i_max': 500,
+        'eps_a': 1.0e-12,
         'eps_r': 1e-8,
-        'setup_precond': setup_precond,
+        'verbose': 2,
+        'ksp_monitor': '',
     }),
     'newton': ('nls.newton', {
-        'i_max': 5,
+        'i_max': 1,
         'eps_a': 1e-6,
-        'is_linear': False,
+        'is_linear': True,
         'report_status': True,
     }),
     'ts': ('ts.simple', {
