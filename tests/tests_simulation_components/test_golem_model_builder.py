@@ -19,6 +19,41 @@ def _boundary_triangle():
     return CellBlock("triangle", np.array([[0, 1, 2]], dtype=int))
 
 
+def _synthetic_hydrothermal_unstructured_mesh(base_mesh, *, with_fault=True):
+    """Synthetic mesh valid for GolemHydrothermalProblemBuilder.
+
+    Hydrothermal GOLEM accepts only exported 3D rock blocks and 2D fault
+    blocks. In particular it must not contain the 1D well block that belongs
+    to the simple-reservoir benchmark layout. The final six triangle blocks
+    represent WBGeo's exterior boundaries and are excluded from materials.
+    """
+    nodes = np.asarray(base_mesh.nodes)
+    if len(nodes) < 4:
+        pytest.skip("base mesh fixture does not contain enough nodes")
+
+    material_blocks = [
+        CellBlock("tetra", np.array([[0, 1, 2, 3]], dtype=int)),
+    ]
+    block_ids = [np.array([0], dtype=int)]
+
+    if with_fault:
+        material_blocks.append(
+            CellBlock("triangle", np.array([[0, 1, 2]], dtype=int))
+        )
+        block_ids.append(np.array([-1], dtype=int))
+
+    boundaries = [_boundary_triangle() for _ in range(6)]
+    block_ids.extend([np.array([-1], dtype=int) for _ in range(6)])
+
+    return base_mesh.model_copy(
+        update={
+            "mesh_type": MeshType.UNSTRUCTURED,
+            "elements": material_blocks + boundaries,
+            "cell_data": {"block_id": block_ids},
+        }
+    )
+
+
 def _synthetic_unstructured_mesh(base_mesh, *, include_geological_fault=False):
     """Small synthetic material layout used without invoking Gmsh.
 
@@ -224,8 +259,8 @@ def test_hydrothermal_builder_structured_mesh_uses_robust_explicit_solver_settin
 def test_hydrothermal_builder_fault_blocks_require_fault_properties(
     model1_implicit_mesh, model1_structural_result
 ):
-    mesh = _synthetic_unstructured_mesh(
-        model1_implicit_mesh, include_geological_fault=True
+    mesh = _synthetic_hydrothermal_unstructured_mesh(
+        model1_implicit_mesh, with_fault=True
     )
 
     # For GolemHydrothermalProblemBuilder the two synthetic triangles above are
@@ -241,8 +276,8 @@ def test_hydrothermal_builder_fault_blocks_require_fault_properties(
 def test_hydrothermal_builder_fault_input_uses_frac_and_supg(
     model1_implicit_mesh, model1_structural_result, tmp_path
 ):
-    mesh = _synthetic_unstructured_mesh(
-        model1_implicit_mesh, include_geological_fault=False
+    mesh = _synthetic_hydrothermal_unstructured_mesh(
+        model1_implicit_mesh, with_fault=True
     )
     builder = GolemHydrothermalProblemBuilder(
         mesh_results=mesh,

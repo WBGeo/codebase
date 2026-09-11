@@ -302,7 +302,7 @@ def test_run_simulation_golem_create_failure_is_reported_without_starting_golem(
 
     monkeypatch.setattr(golem_run, "_stream_process", must_not_stream)
 
-    with pytest.raises(RuntimeError, match="Could not create.*image not found"):
+    with pytest.raises(RuntimeError, match=r"(?s)Could not create.*image not found"):
         golem_run.run_simulation_golem(
             builder,
             image_name="missing:image",

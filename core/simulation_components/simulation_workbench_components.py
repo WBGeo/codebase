@@ -1,19 +1,18 @@
 """
-WBGeo Workbench components for the SfePy and GOLEM simulation pipelines.
+WBGeo Workbench components for the SfePy pipeline and GOLEM hydrothermal/simple-reservoir pipelines.
 
 Thin-wrapper file only: per the project's "one workbench file per step" rule
 (already applied to structural_modeling_components/meshing_components),
 @wbgeo_component must appear here and nowhere else in core/simulation_components/.
-The actual solver logic lives in the SfePy/GOLEM builder and runner modules
+The actual logic lives in the SfePy/GOLEM builder and runner modules
 and is called here unmodified.
 """
 import os
 import pathlib
 import typing
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import pydantic
-from pydantic.dataclasses import dataclass as pydantic_dataclass
 from py_api_wbgeo import smartcontrols
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, InspectorHelper, \
     AnnotatedScriptType, BasicallyABufferedFile
@@ -30,9 +29,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run
     export_simulation_results as _export_simulation_results,
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder,
-    GolemFaultProperties,
-    GolemHydrothermalProblemBuilder,
+    CustomGolemBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
     GolemSimpleReservoirProblemBuilder,
 )
 from core.simulation_components.simulation_packages.golem.golem_run import (
@@ -58,44 +55,37 @@ CustomSfepyFileDataType = typing.Annotated[
     str, AnnotatedScriptType(name='path', color='aqua', identifier='CustomSfepyFileDataType',
                              controlled='RemoteFile|endswith=.py')]
 
-
-# GOLEM custom inputs are MOOSE ``.i`` files. Keep this as a RemoteFile path
-# for the same frontend/backend reason as CustomSfepyFileDataType above.
+# GOLEM custom inputs use the same RemoteFile pattern, but select MOOSE .i files.
 CustomGolemFileDataType = typing.Annotated[
     str, AnnotatedScriptType(name='path', color='aqua', identifier='CustomGolemFileDataType',
                              controlled='RemoteFile|endswith=.i')]
 
 
-@wbgeo_type(name='GOLEM Problem', color='#e07a5f', identifier='GolemProblem')
-@pydantic_dataclass
-class GolemProblem:
-    """Workbench-visible envelope for every supported GOLEM problem definition.
+@wbgeo_type(name='GOLEM Problem', color='#e07a5f', identifier='wbgeo::GolemProblem')
+class GolemProblem(pydantic.BaseModel):
+    """Workbench-visible envelope around one GOLEM problem definition.
 
-    The Workbench port DSL does not provide real Union-type connection
-    semantics, so all GOLEM Build components return this same registered type.
-    Exactly one inner problem must be set.
+    This mirrors SfepyProblem: the Workbench DSL needs one concrete registered
+    port type. GOLEM has two generated model families (hydrothermal and simple
+    reservoir) plus a custom-input path, and all three connect to the same
+    Run GOLEM Simulation component through this envelope.
     """
     hydrothermal: Optional[GolemHydrothermalProblemBuilder] = None
     simple_reservoir: Optional[GolemSimpleReservoirProblemBuilder] = None
     custom: Optional[CustomGolemBuilder] = None
 
-    def __post_init__(self):
-        active = (
-            self.hydrothermal is not None,
-            self.simple_reservoir is not None,
-            self.custom is not None,
+    def model_post_init(self, __context) -> None:
+        configured = sum(
+            item is not None
+            for item in (self.hydrothermal, self.simple_reservoir, self.custom)
         )
-        if sum(active) != 1:
+        if configured != 1:
             raise ValueError(
                 "GolemProblem needs exactly one of hydrothermal, simple_reservoir "
                 "or custom set."
             )
 
-    def inner(self) -> Union[
-        GolemHydrothermalProblemBuilder,
-        GolemSimpleReservoirProblemBuilder,
-        CustomGolemBuilder,
-    ]:
+    def inner(self):
         if self.hydrothermal is not None:
             return self.hydrothermal
         if self.simple_reservoir is not None:
@@ -175,6 +165,68 @@ SmartHydrothermalOptions = typing.Annotated[
     HydrothermalOptions, SmartInput(inputs=['geomodel_result'],
                                     to_form=hydrothermal_problem_smart_options,
                                     to_data=hydrothermal_problem_smart_options_to_data)]
+
+
+# -----------------------------------------------------------------------------
+# GOLEM smart options: same Workbench pattern as SfePy
+# -----------------------------------------------------------------------------
+
+_DEFAULT_GOLEM_FAULT_PROPERTIES = GolemFaultProperties(name="fault")
+
+
+class GolemHydrothermalOptions_Root(pydantic.BaseModel):
+    fluid: FluidProperties = FluidProperties()
+    rock_properties: Dict[str, RockUnitProperties] = {}
+    # One template is enough: GolemHydrothermalProblemBuilder duplicates it
+    # across multiple exported 2D fault blocks when necessary.
+    fault_properties: GolemFaultProperties = _DEFAULT_GOLEM_FAULT_PROPERTIES
+
+
+@wbgeo_type(name='GolemHydrothermalOptions', color='#e07a5f',
+            identifier='wbgeo::GolemHydrothermalOptions')
+class GolemHydrothermalOptions(pydantic.BaseModel):
+    root: GolemHydrothermalOptions_Root
+
+
+@wbgeo_component(identifier='wbgeo:__internal__golem_hydrothermal_problem_smart_options',
+                 title='golem_hydrothermal_problem_smart_options')
+def golem_hydrothermal_problem_smart_options(geomodel_result: StructuralModelResults) -> CtrlGroup:
+    """(Internal) smart form for GOLEM fluid/rock/fault properties."""
+    try:
+        rock_units = enumerate_rock_units(geomodel_result)
+    except Exception:
+        rock_units = []
+
+    return CtrlGroup(id='root', inner=[
+        CtrlLabel(label='Fluid Properties:'),
+        CtrlGroup(id='fluid', inner=smartcontrols.smart_group_from_type(
+            FluidProperties, FluidProperties())),
+        CtrlLabel(label='Rock Unit Properties:'),
+        CtrlGroup(id='rock_properties', inner=[
+            CtrlGroup(id=name, inner=[CtrlLabel(label=name)] + smartcontrols.smart_group_from_type(
+                RockUnitProperties, RockUnitProperties(name=name)))
+            for _, name in rock_units
+        ]),
+        CtrlLabel(label='Fault Properties (used when the exported mesh contains 2D fault blocks):'),
+        CtrlGroup(id='fault_properties', inner=smartcontrols.smart_group_from_type(
+            GolemFaultProperties, _DEFAULT_GOLEM_FAULT_PROPERTIES)),
+    ])
+
+
+@wbgeo_component(identifier='wbgeo:__internal__golem_hydrothermal_problem_smart_options_to_data',
+                 title='golem_hydrothermal_problem_smart_options_to_data')
+def golem_hydrothermal_problem_smart_options_to_data(
+    _input: SmartInputFormData,
+) -> GolemHydrothermalOptions:
+    return smartcontrols.form_data_to_wbgeo_type_data(_input, GolemHydrothermalOptions)
+
+
+SmartGolemHydrothermalOptions = typing.Annotated[
+    GolemHydrothermalOptions,
+    SmartInput(inputs=['geomodel_result'],
+               to_form=golem_hydrothermal_problem_smart_options,
+               to_data=golem_hydrothermal_problem_smart_options_to_data),
+]
 
 
 @wbgeo_component(
@@ -384,33 +436,16 @@ def run_simulation(problem: SfepyProblem) -> SimulationResults:
     return _run_simulation_sfepy(problem.inner())
 
 
-@wbgeo_component(
-    description='Exports simulation results from SfePy or GOLEM (all time steps) to '
-                'a downloadable VTK time series (.pvd + one .vtk per step, zipped).',
-    title='Export Simulation Results',
-    group='Export',
-    identifier='wbgeo::export_simulation_results',
-    return_name='file',
-)
-def export_simulation_results(simulation_result: SimulationResults, format: str = "vtk") -> BasicallyABufferedFile:
-    """
-    :param simulation_result: Simulation results from SFePy or GOLEM.
-    :param format: Export format; only "vtk" is implemented so far.
-    :return: A downloadable file containing the exported results.
-    """
-    return _export_simulation_results(simulation_result, format)
-
-
-
 # -----------------------------------------------------------------------------
-# GOLEM problem builders / runner
+# GOLEM problem builders / runner -- same Workbench pattern as SfePy
 # -----------------------------------------------------------------------------
 
 @wbgeo_component(
-    description="Builds a coupled thermal-hydraulic GOLEM/MOOSE problem from an "
-                "existing WBGeo mesh and structural model. The component only "
-                "constructs the problem definition; Docker/GOLEM is not started "
-                "until Run GOLEM Simulation is called.",
+    description="Builds the GOLEM hydrothermal problem definition from a mesh "
+                "and structural model. Use the smart options to set the same "
+                "per-rock-unit and fluid properties, plus a fault-property "
+                "template for exported 2D fault blocks. This only prepares "
+                "the problem; Docker/GOLEM is started by Run GOLEM Simulation.",
     title='Build GOLEM Hydrothermal Problem',
     color='#e07a5f',
     border_color='#000000',
@@ -422,7 +457,7 @@ def export_simulation_results(simulation_result: SimulationResults, format: str 
 def build_golem_hydrothermal_problem(
     mesh_results: MeshResults,
     geomodel_result: StructuralModelResults,
-    fault_properties: Optional[GolemFaultProperties] = None,
+    options: SmartGolemHydrothermalOptions = None,
     p_top: float = 0.0,
     p_bottom: float = 1.0e6,
     t_top: float = 10.0,
@@ -436,14 +471,25 @@ def build_golem_hydrothermal_problem(
     output_interval: int = 1,
     print_linear_residuals: bool = True,
 ) -> GolemProblem:
-    """Build a GOLEM hydrothermal problem without running Docker/GOLEM."""
+    """
+    :param mesh_results: The WBGeo mesh to solve on.
+    :param geomodel_result: Structural model associated with the mesh.
+    :param options: Smart GOLEM fluid/rock/fault properties.
+    :return: GOLEM problem envelope for Run GOLEM Simulation.
+    """
     check_mesh_has_known_type(mesh_results)
     check_mesh_has_lithology_mapping(mesh_results)
+
+    rock_properties = options.root.rock_properties if options and options.root.rock_properties else None
+    fluid = options.root.fluid if options else None
+    fault_properties = options.root.fault_properties if options else _DEFAULT_GOLEM_FAULT_PROPERTIES
 
     return GolemProblem(hydrothermal=GolemHydrothermalProblemBuilder(
         mesh_results=mesh_results,
         geomodel_result=geomodel_result,
+        rock_properties=rock_properties,
         fault_properties=fault_properties,
+        fluid=fluid,
         p_top=p_top,
         p_bottom=p_bottom,
         t_top=t_top,
@@ -460,9 +506,12 @@ def build_golem_hydrothermal_problem(
 
 
 @wbgeo_component(
-    description="Builds the GOLEM simple-reservoir benchmark problem, including "
-                "its unstructured reservoir mesh, synthetic fractures and well. "
-                "This component prepares the problem only; it does not run Docker.",
+    description="Builds the GOLEM simple-reservoir model. Unlike the GOLEM "
+                "hydrothermal model, this builder also creates its dedicated "
+                "unstructured reservoir mesh with synthetic fractures and a "
+                "well before generating the GOLEM/MOOSE input. This only "
+                "prepares the problem; Docker/GOLEM is started by Run GOLEM "
+                "Simulation.",
     title='Build GOLEM Simple Reservoir Problem',
     color='#e07a5f',
     border_color='#000000',
@@ -489,7 +538,26 @@ def build_golem_simple_reservoir_problem(
     end_time: Optional[float] = None,
     print_linear_residuals: bool = True,
 ) -> GolemProblem:
-    """Build the GOLEM simple-reservoir problem without executing GOLEM."""
+    """
+    :param geomodel_result: Structural model used to place/scale the reservoir geometry.
+    :param mesh_size: Target unstructured volume-mesh size.
+    :param curve_mesh_size: Target mesh size on well curves.
+    :param mapping_litho: Lithology mapping mode passed to the unstructured mesher.
+    :param gmsh_flag: Forwarded to the unstructured mesh builder.
+    :param initial_pressure: Initial reservoir pressure.
+    :param initial_temperature: Initial reservoir temperature.
+    :param boundary_pressure: Reservoir boundary pressure.
+    :param boundary_temperature: Reservoir boundary temperature.
+    :param injection_temperature: Injection-fluid temperature.
+    :param injection_rate: Injection rate.
+    :param extraction_rate: Extraction rate.
+    :param source_start_time: Start time for injection/extraction sources.
+    :param source_end_time: End time for sources; defaults inside the builder when None.
+    :param start_time: Simulation start time.
+    :param end_time: Simulation end time; defaults inside the builder when None.
+    :param print_linear_residuals: Include GOLEM linear residual output.
+    :return: GOLEM problem envelope for Run GOLEM Simulation.
+    """
     return GolemProblem(simple_reservoir=GolemSimpleReservoirProblemBuilder(
         geomodel_result=geomodel_result,
         mesh_size=mesh_size,
@@ -512,9 +580,9 @@ def build_golem_simple_reservoir_problem(
 
 
 @wbgeo_component(
-    description="Wraps a user-supplied complete GOLEM/MOOSE input (.i) file. "
-                "The file must contain ${GOLEM_MESH_FILE}; Docker/GOLEM is not "
-                "started while building the problem.",
+    description="Wraps a user-supplied complete GOLEM/MOOSE input file (.i) "
+                "instead of auto-generating one. The input must use "
+                "${GOLEM_MESH_FILE} in its FileMeshGenerator block.",
     title='Build Custom GOLEM Problem',
     color='#e07a5f',
     border_color='#000000',
@@ -530,18 +598,18 @@ def build_custom_golem_problem(
     geomodel_result: Optional[StructuralModelResults] = None,
     print_linear_residuals: bool = True,
 ) -> GolemProblem:
-    """Read a RemoteFile-controlled MOOSE input and create a CustomGolemBuilder."""
+    """Build a CustomGolemBuilder from a RemoteFile-controlled .i input."""
     check_mesh_has_known_type(mesh_results)
 
     datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
     full_path = os.path.join(datadir, input_file)
     try:
-        with open(full_path, "r", encoding="utf-8") as stream:
-            content = stream.read()
-    except FileNotFoundError as exc:
-        raise ValueError(f"Custom GOLEM input file not found: {full_path}") from exc
-    except UnicodeDecodeError as exc:
-        raise ValueError("Custom GOLEM input file is not valid UTF-8 text.") from exc
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError as e:
+        raise ValueError(f"Custom GOLEM input file not found: {full_path}") from e
+    except UnicodeDecodeError as e:
+        raise ValueError("Custom GOLEM input file is not valid UTF-8 text.") from e
 
     return GolemProblem(custom=CustomGolemBuilder(
         input_file_contents=content,
@@ -552,9 +620,9 @@ def build_custom_golem_problem(
 
 
 @wbgeo_component(
-    description="Runs a GOLEM problem in the configured Docker image. "
-                "The image/project paths and MPI process count are explicit "
-                "inputs because GOLEM is external to the WBGeo Python environment.",
+    description='Runs the given GOLEM problem definition in the configured Docker image. '
+                'The image/project paths and MPI process count are explicit because GOLEM '
+                'is external to the WBGeo Python environment.',
     title='Run GOLEM Simulation',
     color='pink',
     border_color='#000000',
@@ -571,7 +639,7 @@ def run_golem_simulation(
     nproc: int = 4,
     keep_files_dir: Optional[str] = None,
 ) -> SimulationResults:
-    """Run a prepared GOLEM problem using the GOLEM Docker runner."""
+    """Run a prepared GOLEM problem through the existing Docker runner."""
     return _run_simulation_golem(
         problem=problem.inner(),
         image_name=image_name,
@@ -581,6 +649,23 @@ def run_golem_simulation(
         nproc=nproc,
         keep_files_dir=keep_files_dir,
     )
+
+
+@wbgeo_component(
+    description='Exports simulation results from SfePy or GOLEM (all time steps) to '
+                'a downloadable VTK time series (.pvd + one .vtk per step, zipped).',
+    title='Export Simulation Results',
+    group='Export',
+    identifier='wbgeo::export_simulation_results',
+    return_name='file',
+)
+def export_simulation_results(simulation_result: SimulationResults, format: str = "vtk") -> BasicallyABufferedFile:
+    """
+    :param simulation_result: Simulation results from Run Simulation or Run GOLEM Simulation.
+    :param format: Export format; only "vtk" is implemented so far.
+    :return: A downloadable file containing the exported results.
+    """
+    return _export_simulation_results(simulation_result, format)
 
 
 # -----------------------------------------------------------------------------
