@@ -202,7 +202,60 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
 
 
 # -----------------------------------------------------------------------------
+# HydrothermalProblemBuilder solver default / PETSc configuration
+# -----------------------------------------------------------------------------
+
+def test_hydrothermal_builder_default_solver_is_petsc(
+    model1_implicit_mesh, model1_structural_result
+):
+    """The current production default is PETSc.
+
+    Keep this as a cheap configuration test rather than making every SfePy
+    end-to-end test require petsc4py/PETSc in CI.
+    """
+    builder = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+    )
+
+    assert builder.linear_solver == "petsc"
+    _, ls_block = builder._solver_blocks(stage="heat")
+    assert "'ls.petsc'" in ls_block
+    assert "'method': 'fgmres'" in ls_block
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_run_simulation_sfepy_default_petsc_when_available(
+    model1_implicit_mesh, model1_structural_result
+):
+    """Smoke-test the actual current PETSc default when PETSc is installed.
+
+    petsc4py is an optional/heavy dependency in the ordinary CI image, so this
+    test skips there instead of making unrelated hydrothermal integration
+    coverage fail because the PETSc runtime is absent.
+    """
+    pytest.importorskip("petsc4py")
+
+    builder = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        include_flow=False,
+        num_steps=1,
+    )
+    assert builder.linear_solver == "petsc"
+
+    result = run_simulation_sfepy(builder)
+    assert result.nodes_by_time
+    assert "T" in result.node_data_by_time[max(result.nodes_by_time)]
+
+
+# -----------------------------------------------------------------------------
 # run_simulation_sfepy -- real end-to-end solve (slow: launches sfepy-run)
+#
+# These physics/pathway tests explicitly use the SciPy iterative backend so
+# ordinary CI does not require the optional PETSc/petsc4py runtime. The current
+# production PETSc default is covered separately above.
 # -----------------------------------------------------------------------------
 
 @pytest.mark.integration
@@ -217,6 +270,7 @@ def test_run_simulation_sfepy_end_to_end_implicit_mesh(model1_implicit_mesh, mod
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         include_flow=True,
+        linear_solver="iterative",
         t1=5e9,
         num_steps=1,
         t_top=10.0,
@@ -253,6 +307,7 @@ def test_run_simulation_sfepy_output_dir_persists_both_stages(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         include_flow=True,
+        linear_solver="iterative",
         t1=5e9,
         num_steps=1,
     )
@@ -286,6 +341,7 @@ def test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_propert
         geomodel_result=model1_structural_result,
         rock_properties=homogeneous,
         include_flow=False,
+        linear_solver="iterative",
         num_steps=2,
     )
     result = run_simulation_sfepy(builder)
@@ -314,6 +370,7 @@ def test_run_simulation_sfepy_fault_zone_with_flow_end_to_end(
         fault_zone_properties=fault_zone_properties,
         fault_zone_n_voxels=1,
         include_flow=True,
+        linear_solver="iterative",
         num_steps=1,
     )
     assert builder.fault_zone_cell_mask is not None  # sanity: fault zone actually active
@@ -345,6 +402,7 @@ def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, mo
         geomodel_result=model1_structural_result,
         rock_properties=homogeneous,
         include_flow=False,
+        linear_solver="iterative",
         num_steps=1,
     )
     heat_file = str(tmp_path / "heat.py")
@@ -398,6 +456,7 @@ def test_run_simulation_sfepy_custom_builder_fault_zone_end_to_end(
         fault_zone_properties=fault_zone_properties,
         fault_zone_n_voxels=1,
         include_flow=False,
+        linear_solver="iterative",
         num_steps=1,
     )
     heat_file = str(tmp_path / "heat.py")
