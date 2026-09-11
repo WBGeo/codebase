@@ -97,7 +97,7 @@ def test_rejects_mesh_with_well_block(model1_implicit_mesh):
     mesh_with_well = model1_implicit_mesh.model_copy(update={
         "elements": list(model1_implicit_mesh.elements) + [well_block],
     })
-    with pytest.raises(ValueError, match="well/source block"):
+    with pytest.raises(ValueError, match=r"Unsupported cell type\(s\) detected"):
         CustomSfepyBuilder(
             input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=mesh_with_well,
         )

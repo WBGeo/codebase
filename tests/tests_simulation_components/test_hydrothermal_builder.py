@@ -190,7 +190,7 @@ def test_check_mesh_has_no_engineering_objects_raises_for_well(model1_implicit_m
     mesh_with_well = model1_implicit_mesh.model_copy(update={
         "elements": list(model1_implicit_mesh.elements) + [well_block],
     })
-    with pytest.raises(ValueError, match="well/source block"):
+    with pytest.raises(ValueError, match=r"Unsupported cell type\(s\) detected"):
         check_mesh_has_no_engineering_objects(mesh_with_well)
 
 
@@ -199,7 +199,7 @@ def test_check_mesh_has_no_engineering_objects_raises_for_source(model1_implicit
     mesh_with_source = model1_implicit_mesh.model_copy(update={
         "elements": list(model1_implicit_mesh.elements) + [source_block],
     })
-    with pytest.raises(ValueError, match="well/source block"):
+    with pytest.raises(ValueError, match=r"Unsupported cell type\(s\) detected"):
         check_mesh_has_no_engineering_objects(mesh_with_source)
 
 

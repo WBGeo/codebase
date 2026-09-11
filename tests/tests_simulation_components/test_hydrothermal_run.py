@@ -175,7 +175,7 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
     received = {}
 
     def fake_run_sfepy_input_file(input_file, mesh_results, mesh_type_code, output_dir=None,
-                                   fault_zone_cell_mask=None, fault_group_id=None):
+                                   fault_zone_cell_mask=None, fault_group_id=None, stream_output=False):
         received["fault_zone_cell_mask"] = fault_zone_cell_mask
         received["fault_group_id"] = fault_group_id
         return SfepyOutputType(output_dir="unused", is_temp=True, stdout="fake stdout")
