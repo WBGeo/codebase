@@ -664,9 +664,13 @@ class GolemHydrothermalProblemBuilder:
   time_step_interval = {self.output_interval!r}
   print_linear_residuals = {str(self.print_linear_residuals).lower()}
   perf_graph = true
-  [out]
+  [exo]
     type = Exodus
     file_base = 'output/wbgeo'
+    execute_on = 'INITIAL TIMESTEP_END'
+  []
+  [csv]
+    type = CSV
   []
 []
 """
@@ -679,11 +683,12 @@ class GolemHydrothermalProblemBuilder:
 class GolemSimpleReservoirProblemBuilder:
     """Create the Model-1 reservoir mesh AND its GOLEM input automatically.
 
-    The original simple-reservoir geometry is treated as a reference template
-    defined on a 0..1000 cube.  If the structural model has a different extent,
-    the reservoir sub-extent, fracture planes, well polyline, and default
-    injection/extraction points are affinely scaled into the actual structural
-    model extent.
+    The reservoir mesh fills the complete structural-model extent. The two
+    synthetic fracture planes keep their original Model-1 separation and are
+    centred laterally so their distances to the left/right model boundaries are
+    equal. The well keeps its original shape and offsets relative to the second
+    fracture plane. Injection/extraction points remain at the centres of the
+    first/second fracture planes, respectively.
 
     All 3D material blocks receive one common reservoir material. Existing 2D
     geological faults receive the same intrinsic rock properties, while the
@@ -712,8 +717,9 @@ class GolemSimpleReservoirProblemBuilder:
     # be supplied here without changing this builder.
     unstructured_mesh_options: Optional[Dict[str, Any]] = None
 
-    # Optional actual-coordinate overrides.  When None, the builder generates
-    # them by scaling the reference Model-1 reservoir geometry.
+    # Optional actual-coordinate overrides. When None, the reservoir uses the
+    # full structural-model extent and the internal Model-1 geometry is centred
+    # inside it while preserving its original absolute dimensions/distances.
     reservoir_extent_override: Optional[
         Tuple[float, float, float, float, float, float]
     ] = None
@@ -825,8 +831,9 @@ class GolemSimpleReservoirProblemBuilder:
     REFERENCE_MODEL_EXTENT: ClassVar[Tuple[float, ...]] = (
         0.0, 1000.0, 0.0, 1000.0, 0.0, 1000.0
     )
+    # The generated reservoir now uses the full structural-model domain.
     REFERENCE_RESERVOIR_EXTENT: ClassVar[Tuple[float, ...]] = (
-        250.0, 750.0, 250.0, 750.0, 250.0, 750.0
+        0.0, 1000.0, 0.0, 1000.0, 0.0, 1000.0
     )
     REFERENCE_FRACTURE_PLANES: ClassVar[Tuple[Tuple[float, ...], ...]] = (
         (
@@ -907,15 +914,80 @@ class GolemSimpleReservoirProblemBuilder:
         hi = self._scale_point((extent[1], extent[3], extent[5]))
         return (lo[0], hi[0], lo[1], hi[1], lo[2], hi[2])
 
-    def _scale_flat_xyz(self, coordinates: Tuple[float, ...]) -> Tuple[float, ...]:
+    @staticmethod
+    def _translate_flat_xyz(
+        coordinates: Tuple[float, ...],
+        *,
+        reference_origin: Tuple[float, float, float],
+        destination_origin: Tuple[float, float, float],
+    ) -> Tuple[float, ...]:
+        """Translate flat x,y,z coordinates without changing their shape/size."""
         if len(coordinates) % 3:
             raise ValueError("Plane/well coordinate sequences must contain x,y,z triples")
-        scaled = []
+        translated = []
         for i in range(0, len(coordinates), 3):
-            scaled.extend(self._scale_point(
-                (coordinates[i], coordinates[i + 1], coordinates[i + 2])
-            ))
-        return tuple(scaled)
+            translated.extend(
+                (
+                    destination_origin[0] + coordinates[i] - reference_origin[0],
+                    destination_origin[1] + coordinates[i + 1] - reference_origin[1],
+                    destination_origin[2] + coordinates[i + 2] - reference_origin[2],
+                )
+            )
+        return tuple(float(v) for v in translated)
+
+    def _default_centered_geometry(self):
+        """Return planes, well and source points for the full model domain.
+
+        The original Model-1 fracture spacing is preserved as an absolute
+        distance. The plane pair is centred in x, giving equal left/right
+        margins. Their 100 x 100 geometry remains centred in y and z. The well
+        is translated with fracture 2, preserving all original offsets.
+        """
+        xmin, xmax, ymin, ymax, zmin, zmax = self.model_extent
+        x_center = 0.5 * (xmin + xmax)
+        y_center = 0.5 * (ymin + ymax)
+        z_center = 0.5 * (zmin + zmax)
+
+        reference_plane_1_x = float(self.REFERENCE_FRACTURE_PLANES[0][0])
+        reference_plane_2_x = float(self.REFERENCE_FRACTURE_PLANES[1][0])
+        plane_spacing = reference_plane_2_x - reference_plane_1_x
+        if plane_spacing <= 0:
+            raise ValueError("Reference fracture-plane spacing must be positive")
+        if (xmax - xmin) < plane_spacing:
+            raise ValueError(
+                "Structural-model x extent is smaller than the required "
+                f"simple-reservoir fracture spacing ({plane_spacing})."
+            )
+
+        # Both planes have the same lateral distance to the corresponding
+        # x-boundary while keeping their original absolute separation.
+        plane_1_x = x_center - 0.5 * plane_spacing
+        plane_2_x = x_center + 0.5 * plane_spacing
+
+        reference_center = self.REFERENCE_INJECTION_POINT
+        plane_1 = self._translate_flat_xyz(
+            self.REFERENCE_FRACTURE_PLANES[0],
+            reference_origin=reference_center,
+            destination_origin=(plane_1_x, y_center, z_center),
+        )
+        plane_2 = self._translate_flat_xyz(
+            self.REFERENCE_FRACTURE_PLANES[1],
+            reference_origin=self.REFERENCE_EXTRACTION_POINT,
+            destination_origin=(plane_2_x, y_center, z_center),
+        )
+
+        wells = [
+            self._translate_flat_xyz(
+                well,
+                reference_origin=self.REFERENCE_EXTRACTION_POINT,
+                destination_origin=(plane_2_x, y_center, z_center),
+            )
+            for well in self.REFERENCE_WELLS
+        ]
+
+        injection = (plane_1_x, y_center, z_center)
+        extraction = (plane_2_x, y_center, z_center)
+        return [plane_1, plane_2], wells, injection, extraction
 
     def _prepare_scaled_geometry(self) -> None:
         self.model_extent = self._extent_tuple(
@@ -924,41 +996,40 @@ class GolemSimpleReservoirProblemBuilder:
         self.axis_scales = self._axis_scales()
         self.length_scale = min(self.axis_scales)
 
+        # By default, Simple Reservoir now occupies the complete structural
+        # domain. An explicit override remains an actual-coordinate override.
         self.reservoir_extent = (
             self._extent_tuple(self.reservoir_extent_override)
             if self.reservoir_extent_override is not None
-            else self._scale_extent(self.REFERENCE_RESERVOIR_EXTENT)
+            else self.model_extent
         )
+
+        (
+            default_fracture_planes,
+            default_wells,
+            default_injection,
+            default_extraction,
+        ) = self._default_centered_geometry()
 
         self.fracture_planes = (
             [tuple(float(v) for v in plane) for plane in self.fracture_planes_override]
             if self.fracture_planes_override is not None
-            else [
-                self._scale_flat_xyz(plane)
-                for plane in self.REFERENCE_FRACTURE_PLANES
-            ]
+            else default_fracture_planes
         )
 
         self.wells = (
             [tuple(float(v) for v in well) for well in self.wells_override]
             if self.wells_override is not None
-            else [
-                self._scale_flat_xyz(well)
-                for well in self.REFERENCE_WELLS
-            ]
+            else default_wells
         )
 
         if self.injection_point is None:
-            self.injection_point = self._scale_point(
-                self.REFERENCE_INJECTION_POINT
-            )
+            self.injection_point = default_injection
         else:
             self.injection_point = tuple(float(v) for v in self.injection_point)
 
         if self.extraction_point is None:
-            self.extraction_point = self._scale_point(
-                self.REFERENCE_EXTRACTION_POINT
-            )
+            self.extraction_point = default_extraction
         else:
             self.extraction_point = tuple(float(v) for v in self.extraction_point)
 
@@ -1023,6 +1094,146 @@ class GolemSimpleReservoirProblemBuilder:
                 )
 
         self.mesh_results = create_unstructured_mesh_data(**mesh_kwargs)
+
+    def build_mesh_generation_file(
+        self,
+        output_path: str,
+        *,
+        mesh_variable_name: str = "mesh_simple_reservoir",
+        geomodel_variable_name: str = "structural_model_result",
+    ) -> str:
+        """Write a readable Python recipe that reproduces this reservoir mesh.
+
+        The file records the resolved geometry used by the builder, the
+        effective refinement values, and the mesh options passed to
+        ``create_unstructured_mesh_data``. The generated recipe expects the
+        structural-model result to exist under ``geomodel_variable_name``.
+        """
+        identifier = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+        if not identifier.fullmatch(mesh_variable_name):
+            raise ValueError(
+                "mesh_variable_name must be a valid Python identifier; got "
+                f"{mesh_variable_name!r}"
+            )
+        if not identifier.fullmatch(geomodel_variable_name):
+            raise ValueError(
+                "geomodel_variable_name must be a valid Python identifier; got "
+                f"{geomodel_variable_name!r}"
+            )
+
+        def _format_flat_xyz(values: Tuple[float, ...]) -> str:
+            rows = []
+            for index in range(0, len(values), 3):
+                xyz = values[index:index + 3]
+                rows.append(
+                    "        " + ", ".join(repr(float(value)) for value in xyz) + ","
+                )
+            return "\n".join(rows)
+
+        extent_text = ", ".join(
+            repr(float(value)) for value in self.reservoir_extent
+        )
+        planes_text = "\n".join(
+            "    (\n" + _format_flat_xyz(tuple(plane)) + "\n    ),"
+            for plane in self.fracture_planes
+        )
+        wells_text = "\n".join(
+            "    (\n" + _format_flat_xyz(tuple(well)) + "\n    ),"
+            for well in self.wells
+        )
+
+        well_size_min = self._scaled_refinement_value(self.well_refine_size_min)
+        well_size_max = self._scaled_refinement_value(self.well_refine_size_max)
+        well_dist_min = self._scaled_refinement_value(self.well_refine_dist_min)
+        well_dist_max = self._scaled_refinement_value(self.well_refine_dist_max)
+        frac_size_min = self._scaled_refinement_value(self.fracture_refine_size_min)
+        frac_size_max = self._scaled_refinement_value(self.fracture_refine_size_max)
+        frac_dist_min = self._scaled_refinement_value(self.fracture_refine_dist_min)
+        frac_dist_max = self._scaled_refinement_value(self.fracture_refine_dist_max)
+
+        mesh_kwargs: Dict[str, Any] = {
+            "mesh_size": self.mesh_size,
+            "curve_mesh_size": self.curve_mesh_size,
+            "mapping_litho": self.mapping_litho,
+            "gmsh_flag": self.gmsh_flag,
+        }
+        if self.merge_file is not None:
+            mesh_kwargs["merge_file"] = self.merge_file
+        if self.z_threshold is not None:
+            mesh_kwargs["z_threshold"] = self.z_threshold
+        mesh_kwargs.update(dict(self.unstructured_mesh_options or {}))
+
+        option_lines = []
+        option_dict: Dict[str, Any] = {}
+        for key, value in mesh_kwargs.items():
+            if identifier.fullmatch(str(key)):
+                option_lines.append(f"    {key}={value!r},")
+            else:
+                option_dict[key] = value
+
+        kwargs_setup = ""
+        kwargs_expansion = ""
+        if option_dict:
+            kwargs_setup = (
+                "\nreservoir_extra_mesh_options = " + repr(option_dict) + "\n"
+            )
+            kwargs_expansion = "\n    **reservoir_extra_mesh_options,"
+
+        option_text = "\n".join(option_lines)
+
+        recipe = f"""# Generated by GolemSimpleReservoirProblemBuilder.
+# This records the exact reservoir mesh recipe used by the builder.
+# It expects `{geomodel_variable_name}` to already contain StructuralModelResults.
+
+from core.meshing_components.explicit.unstructured.mesh_data import (
+    create_unstructured_mesh_data,
+)
+from core.meshing_components.explicit.unstructured.refinement_mesh import (
+    Refinement,
+    LinearWellRefinement,
+    ExtraPlaneRefinement,
+)
+
+reservoir_extent = ({extent_text})
+
+# Synthetic fracture planes resolved by the builder.
+reservoir_fracture_planes = [
+{planes_text}
+]
+
+# Each well is one flat x, y, z sequence.
+reservoir_wells = [
+{wells_text}
+]
+
+reservoir_refinement = Refinement(
+    wells=LinearWellRefinement(
+        SizeMin={well_size_min!r},
+        SizeMax={well_size_max!r},
+        DistMin={well_dist_min!r},
+        DistMax={well_dist_max!r},
+    ),
+    extraplanes=ExtraPlaneRefinement(
+        SizeMin={frac_size_min!r},
+        SizeMax={frac_size_max!r},
+        DistMin={frac_dist_min!r},
+        DistMax={frac_dist_max!r},
+    ),
+)
+{kwargs_setup}
+{mesh_variable_name} = create_unstructured_mesh_data(
+    geomodel_result={geomodel_variable_name},
+    extent=reservoir_extent,
+    wells=reservoir_wells,
+    extra_planes=reservoir_fracture_planes,
+    refinement=reservoir_refinement,
+{option_text}{kwargs_expansion}
+)
+"""
+
+        with open(output_path, "w", encoding="utf-8") as stream:
+            stream.write(recipe)
+        return output_path
 
     def _classify_material_blocks(self) -> None:
         """Classify material blocks independently of whether the model has faults.

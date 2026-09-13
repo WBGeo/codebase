@@ -435,6 +435,29 @@ def run_simulation_golem(
             elif item.is_file():
                 shutil.copy2(item, destination)
 
+        # GOLEM/MOOSE may create recovery/checkpoint directories such as
+        # ``wbgeo_out_cp`` during long runs. These are internal restart data,
+        # not user-facing WBGeo simulation results, so remove them from the
+        # final output directory for all GOLEM problem types (hydrothermal,
+        # simple reservoir, and custom).
+        checkpoint_dirs = sorted(
+            (
+                path
+                for path in output.rglob("*")
+                if path.is_dir() and path.name.endswith("_cp")
+            ),
+            key=lambda path: len(path.parts),
+            reverse=True,
+        )
+        for checkpoint_dir in checkpoint_dirs:
+            shutil.rmtree(checkpoint_dir, ignore_errors=True)
+
+        # The Docker working directory has now been fully copied into the
+        # caller's output directory (with internal *_cp checkpoint folders
+        # filtered out). Remove the temporary host-side snapshot immediately
+        # instead of keeping a duplicate until the end of the run.
+        shutil.rmtree(container_snapshot, ignore_errors=True)
+
         copied_files = sorted(
             (path for path in output.rglob("*") if path.is_file()),
             key=lambda path: str(path),

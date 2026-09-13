@@ -354,6 +354,26 @@ def test_simple_reservoir_builder_scales_classifies_and_generates_input_without_
 
     validate_golem_input(generated, fake_mesh, MeshType.UNSTRUCTURED)
 
+    mesh_recipe_path = tmp_path / "model1_generated_reservoir_mesh.py"
+    returned_path = builder.build_mesh_generation_file(
+        str(mesh_recipe_path),
+        mesh_variable_name="mesh_model1_simple_reservoir",
+    )
+    assert returned_path == str(mesh_recipe_path)
+
+    mesh_recipe = mesh_recipe_path.read_text()
+    assert "reservoir_extent =" in mesh_recipe
+    assert "reservoir_fracture_planes = [" in mesh_recipe
+    assert "reservoir_wells = [" in mesh_recipe
+    assert "reservoir_refinement = Refinement(" in mesh_recipe
+    assert "mesh_model1_simple_reservoir = create_unstructured_mesh_data(" in mesh_recipe
+    assert "geomodel_result=structural_model_result" in mesh_recipe
+    assert "mesh_size=25.0" in mesh_recipe
+    assert "curve_mesh_size=4.0" in mesh_recipe
+
+    # The generated recipe itself must be valid Python.
+    compile(mesh_recipe, str(mesh_recipe_path), "exec")
+
 
 @pytest.mark.parametrize(
     "time_sequence, message",

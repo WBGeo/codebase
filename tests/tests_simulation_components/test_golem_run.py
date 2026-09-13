@@ -217,6 +217,11 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
             destination.mkdir(parents=True, exist_ok=True)
             (destination / "output").mkdir(exist_ok=True)
             (destination / "output" / "wbgeo.e").write_bytes(b"result")
+            # Simulate MOOSE recovery/checkpoint output produced by a long
+            # hydrothermal run. The runner must not expose it to output_dir.
+            cp_dir = destination / "output" / "wbgeo_out_cp"
+            cp_dir.mkdir(exist_ok=True)
+            (cp_dir / "checkpoint_mesh.cpr").write_bytes(b"checkpoint")
             (destination / "diagnostic.csv").write_text("x,y\n1,2\n")
 
         return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -229,6 +234,10 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
 
     def fake_load_exodus_results(run_info):
         loaded.update(run_info)
+        # The temporary Docker working-directory snapshot must be removed
+        # immediately after its contents have been copied to output_dir.
+        project_root = tmp_path / "project"
+        assert not list(project_root.rglob("container_run"))
         return result
 
     monkeypatch.setattr(golem_run, "load_exodus_results", fake_load_exodus_results)
@@ -261,6 +270,11 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
     # Real staging/output-preservation code still ran.
     assert (output_dir / "golem_stdout.txt").read_text() == "fake GOLEM stdout\n"
     assert (output_dir / "diagnostic.csv").exists()
+    assert not (output_dir / "wbgeo_out_cp").exists()
+    assert not any(
+        path.is_dir() and path.name.endswith("_cp")
+        for path in output_dir.rglob("*")
+    )
     assert (output_dir / "wbgeo_generated.i").exists()
     assert (output_dir / "wbgeo_mesh.exo").read_bytes() == b"fake-exodus"
 
@@ -308,3 +322,111 @@ def test_run_simulation_golem_create_failure_is_reported_without_starting_golem(
             image_name="missing:image",
             project_dir=str(tmp_path),
         )
+
+
+def test_run_simulation_golem_custom_problem_removes_checkpoint_directory(
+    monkeypatch, model1_implicit_mesh, tmp_path
+):
+    """Custom GOLEM output must not expose MOOSE *_cp checkpoint directories."""
+    custom_input = """[Mesh]
+  type = FileMeshGenerator
+  file = ${GOLEM_MESH_FILE}
+[]
+[Variables]
+  [pore_pressure]
+  []
+[]
+[Kernels]
+  [k]
+    variable = pore_pressure
+  []
+[]
+[Executioner]
+  type = Transient
+[]
+[Outputs]
+  [exo]
+    type = Exodus
+    file_base = 'output/wbgeo'
+  []
+[]
+[BCs]
+  [dummy]
+    variable = pore_pressure
+    boundary = top
+    value = 0
+  []
+[]
+[Materials]
+  [m]
+    block = 1
+  []
+[]
+"""
+
+    builder = CustomGolemBuilder(
+        input_file_contents=custom_input,
+        mesh_results=model1_implicit_mesh,
+    )
+
+    fake_exodus = io.BytesIO(b"fake-exodus")
+    monkeypatch.setattr(
+        golem_run,
+        "export_mesh_results_to_exodus",
+        lambda mesh, type: fake_exodus,
+    )
+
+    monkeypatch.setattr(
+        golem_run,
+        "_stream_process",
+        lambda command: "fake GOLEM stdout\n",
+    )
+
+    commands = []
+
+    def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        commands.append(command)
+
+        if (
+            len(command) >= 4
+            and command[:2] == ["docker", "cp"]
+            and ":" in command[2]
+        ):
+            destination = Path(command[3])
+            destination.mkdir(parents=True, exist_ok=True)
+
+            out_dir = destination / "output"
+            out_dir.mkdir(exist_ok=True)
+            (out_dir / "wbgeo.e").write_bytes(b"result")
+
+            cp_dir = out_dir / "wbgeo_out_cp"
+            cp_dir.mkdir(exist_ok=True)
+            (cp_dir / "restart.cpr").write_bytes(b"checkpoint")
+
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(golem_run.subprocess, "run", fake_subprocess_run)
+
+    result = SimulationResults()
+    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
+    monkeypatch.setattr(
+        golem_run,
+        "load_exodus_results",
+        lambda run_info: result,
+    )
+
+    output_dir = tmp_path / "custom_results"
+    returned = golem_run.run_simulation_golem(
+        builder,
+        image_name="registry.example/golem:test",
+        project_dir=str(tmp_path / "project"),
+        output_dir=str(output_dir),
+    )
+
+    assert returned is result
+    assert (output_dir / "wbgeo.e").exists()
+    assert not (output_dir / "wbgeo_out_cp").exists()
+    assert not any(
+        path.is_dir() and path.name.endswith("_cp")
+        for path in output_dir.rglob("*")
+    )
