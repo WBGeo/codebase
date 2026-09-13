@@ -360,7 +360,7 @@ def test_run_simulation_golem_custom_problem_removes_checkpoint_directory(
 []
 [Materials]
   [m]
-    block = 1
+    block = '1 2 3'
   []
 []
 """
