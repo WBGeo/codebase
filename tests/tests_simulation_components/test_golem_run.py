@@ -7,6 +7,7 @@ import pytest
 import core.simulation_components.simulation_packages.golem.golem_run as golem_run
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
+    CustomGolemBuilder,
     GolemHydrothermalProblemBuilder,
 )
 
