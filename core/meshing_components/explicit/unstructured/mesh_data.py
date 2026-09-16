@@ -15,6 +15,9 @@ from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults, MeshType
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
+from core.meshing_components.explicit.unstructured.domain_geometry import (
+    domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
+)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
                                                                LinearSourceRefinement,FunctionSourceRefinement,)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
@@ -162,46 +165,14 @@ def point_on_line_segment(pt: Tuple[float, float, float], p1: Tuple[float, float
     return max(ratios) - min(ratios) < tol
 
 
-def _check_extent_format(extent: List[float]) -> None:
-    """
-    Validate the format of a spatial extent.
-
-    Args:
-    extent (List[float]): Spatial extent defined as: [xmin, xmax, ymin, ymax, zmin, zmax]
-
-    Raises:
-    ValueError: If extent is None or does not contain exactly 6 values.
-    """
-
-    if extent is None:
-        raise ValueError("Extent is None")
-
-    if len(extent) != 6:
-        raise ValueError(
-            f"Extent must be [xmin, xmax, ymin, ymax, zmin, zmax], got {extent}"
-        )
+def _check_extent_format(extent) -> None:
+    """Validate either a legacy 6-value extent or an 8-corner oriented box."""
+    normalize_domain(extent)
 
 
-def point_inside_extent(point: Tuple[float, float, float], extent: List[float]) -> bool:
-    """
-    Check whether a 3D point lies inside or on the boundary of an extent.
-
-    Args:
-    point (tuple(float, float, float)): The point coordinates (x, y, z).
-    extent (List[float]): Spatial extent defined as:[xmin, xmax, ymin, ymax, zmin, zmax]
-
-    Returns
-    bool : True if the point is inside or on the boundary of the extent, False otherwise.
-    """
-    x, y, z = point
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
-    return (
-        xmin <= x <= xmax and
-        ymin <= y <= ymax and
-        zmin <= z <= zmax
-    )
-
+def point_inside_extent(point: Tuple[float, float, float], extent) -> bool:
+    """Return True when a point is inside the legacy or 8-corner domain."""
+    return point_inside_domain(point, extent)
 
 def assert_point_inside_extent(point: Tuple[float, float, float], extent: List[float], obj_type: str = "",
     obj_id: Optional[int] = None, point_idx: Optional[int] = None) -> None:
@@ -318,21 +289,9 @@ def validate_shafts(shafts: List[Dict[str, Tuple[float, ...]]], extent: List[flo
 
     _check_extent_format(extent)
 
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
-    def assert_center_inside( point: Tuple[float, float, float], shaft_id: int,) -> None:
-        """
-        Assert that a shaft center lies inside or on the model extent.
-        """
-
-        x, y, z = point
-
-        if not (
-            xmin <= x <= xmax and
-            ymin <= y <= ymax and
-            zmin <= z <= zmax
-        ):
-
+    def assert_center_inside(point: Tuple[float, float, float], shaft_id: int,) -> None:
+        """Assert that a shaft center lies inside or on the model domain."""
+        if not point_inside_domain(point, extent):
             raise ValueError(
                 f"Shaft '{shaft_id}' center {tuple(point)} is outside extent {extent}"
             )
@@ -430,35 +389,10 @@ def validate_planes(planes: List[Tuple[float, ...]], extent:List[float], tol: fl
               - or is not planar within the given tolerance.
     """
 
-    xmin: float
-    xmax: float
-    ymin: float
-    ymax: float
-    zmin: float
-    zmax: float
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
+    _check_extent_format(extent)
 
     def assert_point_inside(point: Tuple[float, float, float], plane_no: int) -> None:
-        """
-        Assert that a plane point lies inside or on the model extent.
-
-        Args:
-        point (tuple(float, float, float)): Point coordinates (x, y, z).
-        plane_no (int): 1-based plane index for user-facing error messages.
-
-        Raises:
-        ValueError: If the point lies outside the extent.
-        """
-        x: float
-        y: float
-        z: float
-        x, y, z = point
-
-        if not (
-            xmin <= x <= xmax and
-            ymin <= y <= ymax and
-            zmin <= z <= zmax
-        ):
+        if not point_inside_domain(point, extent):
             raise ValueError(
                 f"Plane #{plane_no}, point {tuple(point)} "
                 f"is outside extent {extent}"
@@ -548,15 +482,25 @@ def validate_ellipses(ellipses: List[Dict], extent: Optional[List[float]] = None
         # --- Extent check ---
         if extent is not None:
 
-            xmin, xmax, ymin, ymax, zmin, zmax = extent
-
             R = max(r1, r2)
-
-            if not (
-                xmin <= cx - R and cx + R <= xmax and
-                ymin <= cy - R and cy + R <= ymax and
-                zmin <= cz - R and cz + R <= zmax
-            ):
+            kind, data = normalize_domain(extent)
+            if kind == "extent":
+                xmin, xmax, ymin, ymax, zmin, zmax = data
+                inside = (
+                    xmin <= cx - R and cx + R <= xmax and
+                    ymin <= cy - R and cy + R <= ymax and
+                    zmin <= cz - R and cz + R <= zmax
+                )
+            else:
+                origin = data[0]
+                basis = np.column_stack((data[1]-data[0], data[3]-data[0], data[4]-data[0]))
+                inv_basis = np.linalg.inv(basis)
+                q = inv_basis @ (np.array([cx, cy, cz]) - origin)
+                # A radius-R sphere around the ellipse is conservative.  In local
+                # coordinates its half-width along coordinate i is R*||row_i(B^-1)||.
+                dq = R * np.linalg.norm(inv_basis, axis=1)
+                inside = bool(np.all(q - dq >= -1e-9) and np.all(q + dq <= 1.0 + 1e-9))
+            if not inside:
                 raise ValueError(
                     f"Ellipse #{idx}: center ({cx},{cy},{cz}) with max radius {R} "
                     f"extends outside extent {extent}"
@@ -598,15 +542,8 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
         raise ValueError("points must have 3 or 4 columns (x,y,z[,id])")
 
 
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
     xyz = points[:, :3]  # only spatial coordinates
-
-    mask = (
-        (xyz[:, 0] >= xmin) & (xyz[:, 0] <= xmax) &
-        (xyz[:, 1] >= ymin) & (xyz[:, 1] <= ymax) &
-        (xyz[:, 2] >= zmin) & (xyz[:, 2] <= zmax)
-    )
+    mask = points_inside_domain(xyz, extent)
 
     outside_points = points[~mask]
 
@@ -614,8 +551,7 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
 
         msg = (
             f"{outside_points.shape[0]} triangulation points lie outside the extent.\n"
-            f"Extent: xmin={xmin}, xmax={xmax}, ymin={ymin}, ymax={ymax}, "
-            f"zmin={zmin}, zmax={zmax}\n"
+            f"Domain: {np.asarray(extent).tolist()}\n"
             f"First few invalid points:\n{outside_points[:5]}"
         )
 
@@ -2422,50 +2358,21 @@ def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData,) -> 
     return np.array(all_points, dtype=np.float64)
 
 
-def classify_boundary_nodes(nodes: NDArray[np.float64], extent: List[float], tol_ratio: float = 1e-4) -> Dict[str, List[int]]:
-    nodes = np.asarray(nodes)
-
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
-    dx = xmax - xmin
-    dy = ymax - ymin
-    dz = zmax - zmin
-
-    tolx = dx * tol_ratio
-    toly = dy * tol_ratio
-    tolz = dz * tol_ratio
-
+def classify_boundary_nodes(nodes: NDArray[np.float64], extent, tol_ratio: float = 1e-4) -> Dict[str, List[int]]:
+    """Classify nodes on the six local faces of either supported domain form."""
+    nodes = np.asarray(nodes, dtype=float)
+    local = np.asarray(domain_local_coordinates(nodes, extent), dtype=float)
     boundary_groups = {
-        "left": [],
-        "right": [],
-        "front": [],
-        "back": [],
-        "bottom": [],
-        "top": [],
+        "left": [], "right": [], "front": [], "back": [], "bottom": [], "top": []
     }
-
-    for i, (x, y, z) in enumerate(nodes):
-
-        if abs(x - xmin) <= tolx:
-            boundary_groups["left"].append(i)
-
-        if abs(x - xmax) <= tolx:
-            boundary_groups["right"].append(i)
-
-        if abs(y - ymin) <= toly:
-            boundary_groups["front"].append(i)
-
-        if abs(y - ymax) <= toly:
-            boundary_groups["back"].append(i)
-
-        if abs(z - zmin) <= tolz:
-            boundary_groups["bottom"].append(i)
-
-        if abs(z - zmax) <= tolz:
-            boundary_groups["top"].append(i)
-
+    tests = (
+        ("left", 0, 0.0), ("right", 0, 1.0),
+        ("front", 1, 0.0), ("back", 1, 1.0),
+        ("bottom", 2, 0.0), ("top", 2, 1.0),
+    )
+    for name, axis, target in tests:
+        boundary_groups[name] = np.flatnonzero(np.abs(local[:, axis] - target) <= tol_ratio).tolist()
     return boundary_groups
-
 
 def build_point_sets(boundary_groups: Dict[str, List[int]], n_nodes: int) -> Dict[str, NDArray[np.int64]]:
     point_sets = {}
@@ -2572,7 +2479,7 @@ def create_unstructured_mesh_data(
         PROJECTION_THRESHOLD (float): Distance threshold for projecting points when calculating extrusion.
         EXTRUSION_FACTOR (float): Factor that scales extrusion distance.
         z_threshold (float): Threshold for determining whether two surfaces on either side of a fault are close in elevation.
-        extent (list): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
+        extent: Either [xmin, xmax, ymin, ymax, zmin, zmax] for the legacy axis-aligned box, or 8 ordered (x, y, z) corners for an oriented box.
         smooth (float): smoothness factor for interpolation of surfaces
         gmsh_flag (bool):  If True, enables writing the GMSH original mesh to the disk (default=False)
         mapping_litho (str): Controls lithological processing mode.
@@ -2658,28 +2565,30 @@ def create_unstructured_mesh_data(
     ########################
     # extract extent of model
     ########################
-    extent_arr: NDArray[np.float64]
-
+    # ``extent`` is backward compatible:
+    #   * 6 values -> legacy axis-aligned box
+    #   * 8 (x,y,z) corners -> oriented parallelepiped
     if extent is None or len(extent) == 0:
-        extent_arr = np.asarray(
-            geomodel_result.structural_frame.grid.extent,
-            dtype=float,
-        )
+        domain_spec = np.asarray(geomodel_result.structural_frame.grid.extent, dtype=float)
     else:
-        extent_arr = np.asarray(extent, dtype=float)
+        domain_spec = np.asarray(extent, dtype=float)
+    normalize_domain(domain_spec)
+    # Some legacy surface interpolation/import code still needs an axis-aligned
+    # bounding range.  This AABB is NOT used to create the final 8-corner volume.
+    extent_arr = domain_aabb(domain_spec)
 
     #################################################
     # check if engineering objects are inside extent
     #################################################
-    validate_wells(wells, extent_arr)
-    validate_sources(sources, extent_arr)
-    validate_shafts(mine_shafts, extent_arr)
-    validate_planes(extra_planes, extent_arr)
-    validate_ellipses(ellipses, extent_arr)
+    validate_wells(wells, domain_spec)
+    validate_sources(sources, domain_spec)
+    validate_shafts(mine_shafts, domain_spec)
+    validate_planes(extra_planes, domain_spec)
+    validate_ellipses(ellipses, domain_spec)
 
     if len(triangulations) > 0:
         triangulations = np.asarray(triangulations, dtype=np.float64)
-        validate_triangulation(triangulations, extent_arr)
+        validate_triangulation(triangulations, domain_spec)
 
     # Initialize GMSH
     try:
@@ -2728,8 +2637,9 @@ def create_unstructured_mesh_data(
         source_tag: List[int]
         boundary_tags: List[int]
 
+        fragment_domain = bounds if normalize_domain(domain_spec)[0] == "extent" else domain_spec
         ov, well_tags, shaft_tags, tri_group_tags, tri_surface_tags, source_tag, boundary_tags = fragment_surfaces(surfaces,
-            bounds, ref_surface_indices, wells, extra_planes, sources, mine_shafts, ellipses=ellipses,
+            fragment_domain, ref_surface_indices, wells, extra_planes, sources, mine_shafts, ellipses=ellipses,
             triangulations=triangulations, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,refinement=refinement,
         )
 
@@ -2750,7 +2660,8 @@ def create_unstructured_mesh_data(
         extent_mesh = np.array([x_min, x_max, y_min, y_max, z_min, z_max])
 
         # 2. Identify physical boundaries using original geometry
-        boundary_groups = classify_boundary_nodes(nodes_global, extent_mesh)
+        boundary_domain = extent_mesh if normalize_domain(domain_spec)[0] == "extent" else domain_spec
+        boundary_groups = classify_boundary_nodes(nodes_global, boundary_domain)
         point_sets = build_point_sets(boundary_groups, len(nodes_global))
 
         # 3. Transform ALL node coordinates to the new coordinate system

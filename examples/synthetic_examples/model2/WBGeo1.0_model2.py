@@ -31,7 +31,8 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     FaultRefinement, ExtraPlaneRefinement)
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (run_simulation_sfepy,export_simulation_results,)
+
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
 
@@ -359,8 +360,12 @@ rock_properties = {
     "rock3": RockUnitProperties(name="rock3", porosity=0.15, permeability=1e-14, k_solid=2.0, rho_c_solid=2.1e6),
     "rock4": RockUnitProperties(name="rock4", porosity=0.15, permeability=1e-14, k_solid=2.0, rho_c_solid=2.1e6),
 }
-fluid = FluidProperties()
-
+fluid = FluidProperties(
+    viscosity=1.0e-3,
+    thermal_conductivity=0.6,
+    density=1000,
+    fluid_modulus = 2.2e9 ,
+)
 # Sealing fault (low k/porosity/permeability vs. host rock); flip higher for a conduit instead.
 fault_zone_properties = RockUnitProperties(
     name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2.3e6
@@ -404,7 +409,11 @@ plot_cross_section_2D(
 )
 
 #%%
+# save the outputs as zip file
 
+buf = export_simulation_results(data_by_time , format="vtk")
+with open("simulation_results.zip", "wb") as f:
+    f.write(buf.getvalue())
 
 # ------------------------------------------------------------------------------
 # END SECTION 3: SFEPY - GENERATED HYDROTHERMAL MODEL
@@ -573,7 +582,11 @@ plot_cross_section_2D(
     problem_golem_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
 )
 
+# save the outputs as zip file
+buf = export_simulation_results(problem_golem_results, format="golem",)
 
+with open("simulation_golem_results.zip", "wb") as f:
+    f.write(buf.getvalue())
 
 
 # ------------------------------------------------------------------------------

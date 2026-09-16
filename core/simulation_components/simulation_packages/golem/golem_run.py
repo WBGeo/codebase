@@ -504,6 +504,13 @@ def run_simulation_golem(
         print(f"GOLEM Exodus result: {result_file}", flush=True)
         print("Loading GOLEM Exodus result into SimulationResults...", flush=True)
         simulation_results = load_exodus_results(run_info)
+        # Keep the native GOLEM Exodus result path on the unified result object.
+        # The generic simulation exporter uses this path for format="exodus" so
+        # GOLEM's original multi-time-step wbgeo.e is returned unchanged instead
+        # of reconstructing one Exodus file per time step.
+        simulation_results.source_exodus_file = str(result_file)
+        simulation_results.source_output_dir = str(output)
+        simulation_results.source_solver = "golem"
         if not simulation_results.nodes_by_time:
             raise RuntimeError(
                 f"The GOLEM Exodus file at {result_file} contained no readable time steps."

@@ -592,74 +592,9 @@ def run_simulation_sfepy(
     return _run_hydrothermal_problem(problem, keep_files_dir, output_dir)
 
 
-def export_simulation_results(sim: SimulationResults, format: str = "vtk") -> BasicallyABufferedFile:
-    """
-    "Download Simulation Results" component, mirroring export_mesh_results_to_X()
-    / "Download Mesh" for MeshResults. run_simulation_sfepy() doesn't keep
-    SfePy's raw output files around (see its docstring), so this serializes
-    SimulationResults's in-memory dicts (nodes_by_time, cells_by_time,
-    node_data_by_time, ...) back out to a file, rather than reusing any
-    on-disk SfePy output.
 
-    format="vtk" is the only one implemented so far -- see
-    _export_simulation_results_to_vtk() for what it actually produces.
-    Exodus (mirroring export_mesh_results_to_exodus, already used
-    internally by _run_sfepy_input_file() for the mesh side) would be the
-    natural next format if needed.
-    """
-    if format != "vtk":
-        raise NotImplementedError(
-            f"export_simulation_results only supports format='vtk' so far, got {format!r}."
-        )
-    return _export_simulation_results_to_vtk(sim)
-
-
-def _export_simulation_results_to_vtk(sim: SimulationResults) -> BasicallyABufferedFile:
-    """
-    Writes one legacy .vtk file per solved time step (via
-    simulation_visualization.build_grid_from_class() + PyVista's own writer --
-    same legacy .vtk format core.meshing_components.mesh_format.vtk.VTK_format
-    uses for MeshResults, for consistency) plus a ParaView .pvd collection
-    file tying them together with their actual time values, so the result
-    opens directly in ParaView with time-stepping/animation across the whole
-    transient result -- not just a single snapshot. All bundled into one
-    .zip, since BasicallyABufferedFile is a single in-memory file and a
-    multi-file time series can't be one raw VTK file.
-    """
-    times = sorted(sim.nodes_by_time.keys())
-    if not times:
-        raise ValueError("SimulationResults has no time steps to export.")
-
-    tmp_dir = tempfile.mkdtemp(prefix="sim_export_")
-    try:
-        vtk_names = [f"result_{i:04d}.vtk" for i in range(len(times))]
-        for name, t in zip(vtk_names, times):
-            grid = build_grid_from_class(sim, t)
-            grid.save(os.path.join(tmp_dir, name))
-
-        dataset_lines = "\n".join(
-            f'    <DataSet timestep="{t}" group="" part="0" file="{name}"/>'
-            for name, t in zip(vtk_names, times)
-        )
-        pvd_content = (
-            '<?xml version="1.0"?>\n'
-            '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n'
-            "  <Collection>\n"
-            f"{dataset_lines}\n"
-            "  </Collection>\n"
-            "</VTKFile>\n"
-        )
-        pvd_path = os.path.join(tmp_dir, "results.pvd")
-        with open(pvd_path, "w") as f:
-            f.write(pvd_content)
-
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.write(pvd_path, "results.pvd")
-            for name in vtk_names:
-                zf.write(os.path.join(tmp_dir, name), name)
-        buf.seek(0)
-        buf.filename = "simulation_results.zip"
-        return buf
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+# Backward-compatible import. The generic exporter is solver-independent and
+# now lives in simulation_packages/simulation_export.py.
+from core.simulation_components.simulation_packages.simulation_export import (
+    export_simulation_results,
+)

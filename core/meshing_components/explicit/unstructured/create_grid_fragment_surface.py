@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 from numpy.typing import NDArray
 from scipy.interpolate import Rbf
 from core.object_components import  ExtentData
+from core.meshing_components.explicit.unstructured.domain_geometry import (
+    add_gmsh_domain_volume, domain_aabb, domain_local_coordinates, normalize_domain
+)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
                                                                LinearSourceRefinement,FunctionSourceRefinement,)
 from core.meshing_components.explicit.unstructured.refinement_fields import (build_refinement_fields, apply_background_fields,build_triangulation_mesh_callback,build_combined_mesh_callback)
@@ -486,9 +489,14 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     ##############
     # CREAT A BOX
     ##############
-    x_min, x_max, y_min, y_max, z_min, z_max = extent
+    # ``extent`` supports both the legacy 6-value axis-aligned form and
+    # an 8-corner oriented box.  The AABB is retained only for scale/tolerance
+    # calculations; the actual OCC volume follows the supplied domain exactly.
+    domain_spec = extent
+    x_min, x_max, y_min, y_max, z_min, z_max = domain_aabb(domain_spec)
+    domain_kind, _domain_data = normalize_domain(domain_spec)
 
-    v: int = gmsh.model.occ.addBox(x_min , y_min , z_min, x_max - x_min, y_max - y_min, z_max - z_min)
+    v: int = add_gmsh_domain_volume(gmsh, domain_spec)
 
     def clamp_to_nearest_boundary(val: float, min_val: float, max_val: float) -> float:
       """
@@ -541,9 +549,10 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             for j in range(0, len(coords), 3):
 
                 x, y, z = coords[j], coords[j+1], coords[j+2]
-                x = clamp_to_nearest_boundary(x, x_min, x_max)
-                y = clamp_to_nearest_boundary(y, y_min, y_max)
-                z = clamp_to_nearest_boundary(z, z_min, z_max)
+                if domain_kind == "extent":
+                    x = clamp_to_nearest_boundary(x, x_min, x_max)
+                    y = clamp_to_nearest_boundary(y, y_min, y_max)
+                    z = clamp_to_nearest_boundary(z, z_min, z_max)
                 p = gmsh.model.occ.addPoint(x, y, z)
 
                 points.append(p)
@@ -580,22 +589,26 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             x3_m, y3_m, z3_m,
             x4_m, y4_m, z4_m) = extra_planes[i_layer]
 
-            # Clamp ALL points to extent
-            x1_m = clamp_to_nearest_boundary(x1_m, x_min, x_max)
-            y1_m = clamp_to_nearest_boundary(y1_m, y_min, y_max)
-            z1_m = clamp_to_nearest_boundary(z1_m, z_min, z_max)
+            # Preserve the historical coordinate-wise clamping for the legacy
+            # axis-aligned extent.  For an oriented box the inputs have already
+            # been validated in true box-local coordinates, so no AABB clamping
+            # is applied (it would move points to the wrong faces).
+            if domain_kind == "extent":
+                x1_m = clamp_to_nearest_boundary(x1_m, x_min, x_max)
+                y1_m = clamp_to_nearest_boundary(y1_m, y_min, y_max)
+                z1_m = clamp_to_nearest_boundary(z1_m, z_min, z_max)
 
-            x2_m = clamp_to_nearest_boundary(x2_m, x_min, x_max)
-            y2_m = clamp_to_nearest_boundary(y2_m, y_min, y_max)
-            z2_m = clamp_to_nearest_boundary(z2_m, z_min, z_max)
+                x2_m = clamp_to_nearest_boundary(x2_m, x_min, x_max)
+                y2_m = clamp_to_nearest_boundary(y2_m, y_min, y_max)
+                z2_m = clamp_to_nearest_boundary(z2_m, z_min, z_max)
 
-            x3_m = clamp_to_nearest_boundary(x3_m, x_min, x_max)
-            y3_m = clamp_to_nearest_boundary(y3_m, y_min, y_max)
-            z3_m = clamp_to_nearest_boundary(z3_m, z_min, z_max)
+                x3_m = clamp_to_nearest_boundary(x3_m, x_min, x_max)
+                y3_m = clamp_to_nearest_boundary(y3_m, y_min, y_max)
+                z3_m = clamp_to_nearest_boundary(z3_m, z_min, z_max)
 
-            x4_m = clamp_to_nearest_boundary(x4_m, x_min, x_max)
-            y4_m = clamp_to_nearest_boundary(y4_m, y_min, y_max)
-            z4_m = clamp_to_nearest_boundary(z4_m, z_min, z_max)
+                x4_m = clamp_to_nearest_boundary(x4_m, x_min, x_max)
+                y4_m = clamp_to_nearest_boundary(y4_m, y_min, y_max)
+                z4_m = clamp_to_nearest_boundary(z4_m, z_min, z_max)
 
             # Create OCC points
             p1 = gmsh.model.occ.addPoint(x1_m, y1_m, z1_m)
@@ -1945,23 +1958,32 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             xmin_s, ymin_s, zmin_s, xmax_s, ymax_s, zmax_s = \
                 gmsh.model.occ.getBoundingBox(2, surf)
 
-            if abs(xmin_s - x_min) <= tol and abs(xmax_s - x_min) <= tol:
-                boundary_groups["XMIN"].append(surf)
-
-            elif abs(xmin_s - x_max) <= tol and abs(xmax_s - x_max) <= tol:
-                boundary_groups["XMAX"].append(surf)
-
-            elif abs(ymin_s - y_min) <= tol and abs(ymax_s - y_min) <= tol:
-                boundary_groups["YMIN"].append(surf)
-
-            elif abs(ymin_s - y_max) <= tol and abs(ymax_s - y_max) <= tol:
-                boundary_groups["YMAX"].append(surf)
-
-            elif abs(zmin_s - z_min) <= tol and abs(zmax_s - z_min) <= tol:
-                boundary_groups["ZMIN"].append(surf)
-
-            elif abs(zmin_s - z_max) <= tol and abs(zmax_s - z_max) <= tol:
-                boundary_groups["ZMAX"].append(surf)
+            if domain_kind == "extent":
+                if abs(xmin_s - x_min) <= tol and abs(xmax_s - x_min) <= tol:
+                    boundary_groups["XMIN"].append(surf)
+                elif abs(xmin_s - x_max) <= tol and abs(xmax_s - x_max) <= tol:
+                    boundary_groups["XMAX"].append(surf)
+                elif abs(ymin_s - y_min) <= tol and abs(ymax_s - y_min) <= tol:
+                    boundary_groups["YMIN"].append(surf)
+                elif abs(ymin_s - y_max) <= tol and abs(ymax_s - y_max) <= tol:
+                    boundary_groups["YMAX"].append(surf)
+                elif abs(zmin_s - z_min) <= tol and abs(zmax_s - z_min) <= tol:
+                    boundary_groups["ZMIN"].append(surf)
+                elif abs(zmin_s - z_max) <= tol and abs(zmax_s - z_max) <= tol:
+                    boundary_groups["ZMAX"].append(surf)
+            else:
+                # A rotated face is not constant in global x/y/z.  Classify it
+                # by the center of mass in normalized box-local coordinates.
+                center = gmsh.model.occ.getCenterOfMass(2, surf)
+                q = np.asarray(domain_local_coordinates(center, domain_spec))
+                face_distances = {
+                    "XMIN": abs(q[0]), "XMAX": abs(q[0] - 1.0),
+                    "YMIN": abs(q[1]), "YMAX": abs(q[1] - 1.0),
+                    "ZMIN": abs(q[2]), "ZMAX": abs(q[2] - 1.0),
+                }
+                name, distance = min(face_distances.items(), key=lambda item: item[1])
+                if distance <= 1e-4:
+                    boundary_groups[name].append(surf)
 
         # Create physical groups
         boundary_tags = []

@@ -26,6 +26,8 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
     run_simulation_sfepy as _run_simulation_sfepy,
+)
+from core.simulation_components.simulation_packages.simulation_export import (
     export_simulation_results as _export_simulation_results,
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
@@ -653,7 +655,7 @@ def run_golem_simulation(
 
 @wbgeo_component(
     description='Exports simulation results from SfePy or GOLEM (all time steps) to '
-                'a downloadable VTK time series (.pvd + one .vtk per step, zipped).',
+                'downloadable simulation results in VTK or Exodus format (zipped time series).',
     title='Export Simulation Results',
     group='Export',
     identifier='wbgeo::export_simulation_results',
@@ -662,7 +664,7 @@ def run_golem_simulation(
 def export_simulation_results(simulation_result: SimulationResults, format: str = "vtk") -> BasicallyABufferedFile:
     """
     :param simulation_result: Simulation results from Run Simulation or Run GOLEM Simulation.
-    :param format: Export format; only "vtk" is implemented so far.
+    :param format: Export format: "vtk" or "exodus".
     :return: A downloadable file containing the exported results.
     """
     return _export_simulation_results(simulation_result, format)

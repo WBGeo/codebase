@@ -181,6 +181,7 @@ mesh_str = create_structured_mesh_data(
 # Implicit structured mesh
 mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
+
 # Explicit unstructured mesh
 #mesh_explicit_unstr = create_unstructured_mesh_data(
 #    geomodel_result=structural_model_result,
@@ -223,7 +224,7 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 # # Load engineering objects
 wells = load_wells_from_csv(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/wells.csv")
 csv_files=(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/seismic.csv",
-           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/multi.csv")
+           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/well.csv")
 triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # --- Optional: adaptive mesh refinement around objects ---
@@ -262,23 +263,34 @@ refinement.triangulations = TriangulationRefinement(SizeMin=20.0, SizeMax=90.0, 
 #       Function refinement:              expression = a function using the DIST variable
 
 
-# # Explicit unstructured mesh with objects
-mesh_unstructured_with_objects = create_unstructured_mesh_data(
-     geomodel_result=structural_model_result,
-     wells=wells,
-     triangulations=triangulations,
-     mesh_size=75,
-     curve_mesh_size=5,
-     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
-     #mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
-     #merge_file = cwd + "/examples/synthetic_examples/model1/input_data/block_groups.csv",  # if mapping_litho='manual'
-     refinement=refinement,
-)
+extent = [
+    # Bottom face: z = -4400
+    (405000.0353, 5863600.0626, -4385.59),
+    (406521.6994, 5863105.5584, -4385.59),
+    (406027.2389, 5861583.8632, -4385.59),
+    (404505.5390, 5862078.2464, -4385.59),
 
-# save the mesh
-buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
-with open("filename_example_gr_mesh.exo", "wb") as f:
-     f.write(buf.getvalue())
+    # Top face: z = -3700
+    (405000.0353, 5863600.0626, -3754.44),
+    (406521.6994, 5863105.5584, -3754.44),
+    (406027.2389, 5861583.8632, -3754.44),
+    (404505.5390, 5862078.2464, -3754.44),
+]
+
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    extent=extent,
+    wells=wells,
+    triangulations=triangulations,
+    mesh_size=75,
+    curve_mesh_size=5,
+    gmsh_flag=True,
+    rotation_angle=18,
+    refinement=refinement,
+)
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
+with open("filename_Gross_Schoenebeck_coor_rot.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 
 
