@@ -78,7 +78,7 @@ def _export_simulation_results_to_vtk(
             for name in vtk_names:
                 zf.write(os.path.join(tmp_dir, name), name)
         buf.seek(0)
-        buf.filename = "simulation_results_vtk.zip"
+        buf.filename = "simulation_results.zip"
         return buf
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

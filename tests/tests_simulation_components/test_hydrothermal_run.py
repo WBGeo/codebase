@@ -100,8 +100,8 @@ def test_export_simulation_results_default_format_is_vtk():
 
 def test_export_simulation_results_rejects_unsupported_format():
     sim = _synthetic_simulation_results()
-    with pytest.raises(NotImplementedError, match="format='vtk'"):
-        export_simulation_results(sim, format="exodus")
+    with pytest.raises(NotImplementedError, match="Unsupported simulation export format"):
+        export_simulation_results(sim, format="invalid")
 
 
 def test_export_simulation_results_zip_contains_pvd_and_one_vtk_per_step():
