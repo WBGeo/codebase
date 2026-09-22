@@ -43,7 +43,7 @@ class LoadShaftsTestCase(unittest.TestCase):
     def test_missing_value(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Missing value(s)")
+            re.escape("non-numeric shaft value")
         ):
             load_shafts_from_csv(data_dir + "invalid_shafts_missing_value.csv"
             )
@@ -51,7 +51,7 @@ class LoadShaftsTestCase(unittest.TestCase):
     def test_invalid_column_count(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Invalid shaft line")
+            re.escape("expected 8 shaft columns")
         ):
             load_shafts_from_csv(
                 data_dir + "invalid_shafts_columns.csv"
@@ -80,7 +80,7 @@ class LoadShaftsTestCase(unittest.TestCase):
         ]
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Shaft '1' center (1500.0, 500.0, 100.0) is outside extent")
+            re.escape("Shaft '1' at (1500.0, 500.0, 100.0) is outside extent")
         ):
             validate_shafts(shafts_outside, self.extent)
 

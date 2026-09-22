@@ -35,7 +35,7 @@ class LoadSourcesTestCase(unittest.TestCase):
     def test_missing_value(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("(missing x, y, or z value)")
+            re.escape("non-numeric source value")
         ):
             load_sources_from_csv(
                 data_dir + "invalid_sources_missing_value.csv"
@@ -44,7 +44,7 @@ class LoadSourcesTestCase(unittest.TestCase):
     def test_invalid_column_count(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Invalid source line")
+            re.escape("expected 4 columns (id,x,y,z)")
         ):
             load_sources_from_csv(
                 data_dir + "invalid_sources_columns.csv"
@@ -53,7 +53,7 @@ class LoadSourcesTestCase(unittest.TestCase):
     def test_duplicate_source_id(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("has more than one coordinates")
+            re.escape("Duplicate source definition for source ID '1'")
         ):
             load_sources_from_csv(
                 data_dir + "invalid_sources_duplicate_id.csv"
@@ -62,7 +62,7 @@ class LoadSourcesTestCase(unittest.TestCase):
     def test_non_numeric_values(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Non-numeric value in source definition")
+            re.escape("non-numeric source value")
         ):
             load_sources_from_csv(
                 data_dir + "invalid_sources_non_numeric.csv"

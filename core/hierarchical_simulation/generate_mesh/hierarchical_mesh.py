@@ -12,19 +12,6 @@ from core.meshing_components.explicit.unstructured.mesh_data import (
 )
 
 
-@wbgeo_component(
-    description=(
-        'Creates two hierarchical meshes: a larger parent mesh and a smaller nested mesh. '
-        'Supports explicit unstructured, explicit structured, and implicit structured meshes. '
-        'Engineering objects are supported only for explicit unstructured meshes.'
-    ),
-    title='Create Hierarchical Mesh',
-    color='#A52A2A',  # brown
-    border_color='#000000',
-    group='Hierarchical Simulation',
-    identifier='wbgeo::hierarchical_mesh',
-    return_name=('Mesh 1', 'Mesh 2', 'Boundary Nodes'),
-)
 def hierarchical_mesh(
     geomodel_result: StructuralModelResults,
     mesh_type: str = "Un",

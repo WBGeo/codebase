@@ -93,17 +93,6 @@ def open_exodus_in_paraview(
     return process
 
 
-@wbgeo_component(
-    identifier="wbgeo::open_hierarchical_exodus_in_paraview",
-    title="Open Hierarchical Exodus in ParaView",
-    description=(
-        "Opens the two exported hierarchical Exodus meshes in the ParaView "
-        "desktop application for native block visibility and inspection."
-    ),
-    color="#A52A2A",
-    border_color="#000000",
-    group="Hierarchical Simulation",
-)
 def open_hierarchical_exodus_in_paraview(
     mesh1_exodus: PathLike,
     mesh2_exodus: PathLike,
