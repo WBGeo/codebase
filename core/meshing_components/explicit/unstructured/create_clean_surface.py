@@ -993,15 +993,15 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
                         nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR
                     )
                     # check if all surfaces cut the fault after extension
-                    # plot_one_extended_surface_with_reference(
-                    #    file=file,
-                    #    points=points,
-                    #    ref_file=ref_file,
-                    #    ref_points=ref_points,
-                    #    extruded_points=extruded_intersection_points,
-                    #    intersection_points=nearest_ref_points,
-                    #    point_size=5,
-                    #)
+                    plot_one_extended_surface_with_reference(
+                        file=file,
+                        points=points,
+                        ref_file=ref_file,
+                        ref_points=ref_points,
+                        extruded_points=extruded_intersection_points,
+                        intersection_points=nearest_ref_points,
+                        point_size=5,
+                    )
                     # Add extruded points for this reference surface to the list
                     all_extruded_points_for_current_surface.append(extruded_intersection_points)
 
@@ -1013,7 +1013,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
                     # Update the surface with the new set of points
                     cleaned_surfaces[i] = (file, updated_points)
         # Optionally, visualize all surfaces including extruded points
-        #_surfaces_with_extrusions(
+        #plot_surfaces_with_extrusions(
 
         #    cleaned_surfaces=cleaned_surfaces,
         #    intersection_points=intersection_points,

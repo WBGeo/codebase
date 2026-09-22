@@ -97,5 +97,21 @@ class TestValidateTriangulation(unittest.TestCase):
         self.assertTrue(np.array_equal(result, pts))
 
 ##########################################
+
+    def test_valid_hierarchical_triangulations(self):
+        pts1 = np.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]])
+        pts2 = np.array([[5, 5, 5], [6, 6, 6], [7, 7, 7]])
+        result = validate_triangulation({1: [pts1], 2: [pts2]}, self.extent)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(set(result), {1, 2})
+
+    def test_hierarchical_triangulation_outside_raises(self):
+        pts1 = np.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]])
+        pts2 = np.array([[5, 5, 5], [20, 5, 5], [7, 7, 7]])
+        with self.assertRaises(ValueError):
+            validate_triangulation(
+                {1: [pts1], 2: [pts2]}, self.extent, raise_error=True
+            )
+
 if __name__ == "__main__":
     unittest.main()

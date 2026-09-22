@@ -67,5 +67,18 @@ class TestValidateSources(unittest.TestCase):
         self.assertIn("Source", str(ctx.exception))
 
 #######################################
+
+    def test_valid_hierarchical_sources(self):
+        extent = [0, 10, 0, 10, 0, 10]
+        validate_sources({
+            1: [(1, 1, 1), (2, 2, 2)],
+            2: [(5, 5, 5), (10, 10, 10)],
+        }, extent)
+
+    def test_hierarchical_source_outside_raises(self):
+        extent = [0, 10, 0, 10, 0, 10]
+        with self.assertRaises(ValueError):
+            validate_sources({1: [(1, 1, 1)], 2: [(20, 5, 5)]}, extent)
+
 if __name__ == "__main__":
     unittest.main()

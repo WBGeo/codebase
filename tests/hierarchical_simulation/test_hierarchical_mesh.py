@@ -1,0 +1,280 @@
+
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import numpy as np
+
+from core.hierarchical_simulation.generate_mesh.hierarchical_mesh import hierarchical_mesh
+
+
+def geomodel(extent=(0, 10, 0, 10, 0, 10)):
+    grid = SimpleNamespace(extent=extent)
+    frame = SimpleNamespace(grid=grid)
+    return SimpleNamespace(structural_frame=frame)
+
+
+def mesh(nodes):
+    return SimpleNamespace(nodes=np.asarray(nodes, dtype=float), elements=[0])
+
+
+BIG_NODES = [
+    [0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0],
+    [0, 0, 10], [10, 0, 10], [0, 10, 10], [10, 10, 10],
+    [2, 2, 2], [8, 2, 2], [2, 8, 2], [8, 8, 2],
+    [2, 2, 8], [8, 2, 8], [2, 8, 8], [8, 8, 8],
+]
+
+SMALL_NODES = [
+    [2, 2, 2], [8, 2, 2], [2, 8, 2], [8, 8, 2],
+    [2, 2, 8], [8, 2, 8], [2, 8, 8], [8, 8, 8],
+]
+
+
+class TestHierarchicalMeshValidation(unittest.TestCase):
+
+    def test_invalid_mesh_type(self):
+        with self.assertRaises(ValueError):
+            hierarchical_mesh(geomodel(), mesh_type="bad", extent2=[2, 8, 2, 8, 2, 8])
+
+    def test_extent2_is_required(self):
+        with self.assertRaisesRegex(ValueError, "extent2"):
+            hierarchical_mesh(geomodel(), mesh_type="Un", mesh_size1=2, extent2=None)
+
+    def test_extent2_must_be_inside_extent1(self):
+        with self.assertRaisesRegex(ValueError, "fully inside"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Un",
+                mesh_size1=2,
+                extent1=[0, 10, 0, 10, 0, 10],
+                extent2=[-1, 8, 2, 8, 2, 8],
+            )
+
+    def test_unstructured_requires_mesh_size1(self):
+        with self.assertRaisesRegex(ValueError, "mesh_size1"):
+            hierarchical_mesh(
+                geomodel(), mesh_type="Un", extent2=[2, 8, 2, 8, 2, 8]
+            )
+
+    def test_unstructured_rejects_structured_controls(self):
+        with self.assertRaisesRegex(ValueError, "only valid for structured"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Un",
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+                refinement1=[1, 1, 1],
+            )
+
+    def test_structured_requires_controls(self):
+        with self.assertRaisesRegex(ValueError, "must be provided"):
+            hierarchical_mesh(
+                geomodel(), mesh_type="Str", extent2=[2, 8, 2, 8, 2, 8]
+            )
+
+    def test_structured_rejects_mesh_sizes(self):
+        with self.assertRaisesRegex(ValueError, "only valid for unstructured"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Str",
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+                refinement1=[1, 1, 1],
+                mesh_devision1=(4, 4),
+            )
+
+    def test_implicit_rejects_explicit_controls(self):
+        with self.assertRaisesRegex(ValueError, "do not accept"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Im",
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+            )
+
+
+class TestHierarchicalUnstructured(unittest.TestCase):
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_hierarchical_objects_are_selected_per_mesh(self, create):
+        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+
+        wells = {
+            1: [(1, 1, 1, 4, 4, 4)],
+            2: [(3, 3, 3, 7, 7, 7)],
+        }
+        sources = {
+            1: [(1, 1, 1)],
+            2: [(5, 5, 5)],
+        }
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent1="whole",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=3,
+            mesh_size2=1,
+            wells=wells,
+            sources=sources,
+        )
+
+        self.assertEqual(create.call_count, 2)
+        first = create.call_args_list[0].kwargs
+        second = create.call_args_list[1].kwargs
+
+        self.assertEqual(first["mesh_size"], 3)
+        self.assertEqual(second["mesh_size"], 1)
+        self.assertEqual(first["sources"], [(1, 1, 1)])
+        self.assertEqual(second["sources"], [(5, 5, 5)])
+        self.assertEqual(first["wells"], wells[1])
+        self.assertEqual(second["wells"], wells[2])
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_nonhierarchical_objects_are_used_for_both_and_clipped(self, create):
+        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            sources=[(1, 1, 1), (5, 5, 5), (9, 9, 9)],
+            wells=[(0, 5, 5, 10, 5, 5)],
+        )
+
+        outer = create.call_args_list[0].kwargs
+        inner = create.call_args_list[1].kwargs
+
+        self.assertEqual(outer["sources"], [(1, 1, 1), (5, 5, 5), (9, 9, 9)])
+        self.assertEqual(inner["sources"], [(5, 5, 5)])
+
+        np.testing.assert_allclose(
+            np.asarray(inner["wells"][0]).reshape(-1, 3),
+            [[2, 5, 5], [8, 5, 5]],
+        )
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_all_engineering_object_types_are_unwrapped(self, create):
+        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+
+        tri1 = np.array([[1, 1, 1, 11], [2, 2, 2, 11], [3, 3, 3, 11]], dtype=float)
+        tri2 = np.array([[3, 3, 3, 22], [4, 4, 4, 22], [5, 5, 5, 22]], dtype=float)
+
+        kwargs = dict(
+            wells={1: [(1,1,1, 2,2,2)], 2: [(3,3,3, 4,4,4)]},
+            sources={1: [(1,1,1)], 2: [(4,4,4)]},
+            shafts={
+                1: [(1,1,1, 1,0,0, 0.2)],
+                2: [(3,3,3, 1,0,0, 0.2)],
+            },
+            extra_planes={
+                1: [(1,1,1, 2,1,1, 2,2,1, 1,2,1)],
+                2: [(3,3,3, 4,3,3, 4,4,3, 3,4,3)],
+            },
+            ellipses={
+                1: [{"center": (2,2,2), "radii": (0.2,0.2), "normal": (0,0,1)}],
+                2: [{"center": (4,4,4), "radii": (0.2,0.2), "normal": (0,0,1)}],
+            },
+            triangulations={1: tri1, 2: tri2},
+        )
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            **kwargs,
+        )
+
+        outer = create.call_args_list[0].kwargs
+        inner = create.call_args_list[1].kwargs
+
+        self.assertEqual(outer["sources"], kwargs["sources"][1])
+        self.assertEqual(inner["sources"], kwargs["sources"][2])
+        self.assertEqual(inner["shafts"][0][-1], 0.2)
+        self.assertEqual(len(inner["extra_planes"]), 1)
+        self.assertEqual(len(inner["ellipses"]), 1)
+        np.testing.assert_array_equal(inner["triangulations"], tri2)
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_mesh_size2_defaults_to_mesh_size1(self, create):
+        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=7,
+        )
+        self.assertEqual(create.call_args_list[0].kwargs["mesh_size"], 7)
+        self.assertEqual(create.call_args_list[1].kwargs["mesh_size"], 7)
+
+
+class TestStructuredAndImplicit(unittest.TestCase):
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_structured_mesh_data")
+    def test_structured_defaults_second_controls_to_first(self, create):
+        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Str",
+            extent2=[2, 8, 2, 8, 2, 8],
+            refinement1=[2, 2, 2],
+            mesh_devision1=(4, 4),
+        )
+
+        self.assertEqual(create.call_count, 2)
+        self.assertEqual(create.call_args_list[1].kwargs["refinement_data"], [2, 2, 2])
+        self.assertEqual(create.call_args_list[1].kwargs["mesh_devision"], (4, 4))
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_implicit_structured_mesh")
+    def test_implicit_creates_two_extents(self, create):
+        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Im",
+            extent1="whole",
+            extent2=[2, 8, 2, 8, 2, 8],
+            implicit_params={"example": 1},
+        )
+
+        self.assertEqual(create.call_count, 2)
+        np.testing.assert_array_equal(
+            create.call_args_list[0].kwargs["extent"],
+            [0, 10, 0, 10, 0, 10],
+        )
+        np.testing.assert_array_equal(
+            create.call_args_list[1].kwargs["extent"],
+            [2, 8, 2, 8, 2, 8],
+        )
+        self.assertEqual(create.call_args_list[0].kwargs["example"], 1)
+
+
+class TestBoundaryMatching(unittest.TestCase):
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_returns_six_boundary_faces_with_big_mesh_node_ids(self, create):
+        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+
+        _, _, boundary = hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+        )
+
+        self.assertEqual(
+            set(boundary),
+            {"left", "right", "front", "back", "bottom", "top"},
+        )
+        for values in boundary.values():
+            self.assertEqual(values.shape[1], 4)
+            self.assertTrue(np.all(values[:, 0] >= 0))
+            self.assertTrue(np.all(values[:, 0] < len(BIG_NODES)))
+
+
+if __name__ == "__main__":
+    unittest.main()

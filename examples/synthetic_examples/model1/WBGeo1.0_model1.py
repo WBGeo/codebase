@@ -43,6 +43,10 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement, LinearShaftRefinement, FunctionShaftRefinement, GeneralRefinement)
 #%%
 
+from core.hierarchical_simulation.generate_mesh.hierarchical_mesh import hierarchical_mesh
+from core.hierarchical_simulation.export_data.exodus.exo_format import export_meshes_exodus
+from core.hierarchical_simulation.visualization.hierarchical_meshing_visualization import plot_hierarchical_meshes_3d
+from core.hierarchical_simulation.visualization.hierarchical_paraview_visualization import open_hierarchical_exodus_in_paraview
 cwd = os.getcwd()
 
 
@@ -164,11 +168,11 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Explicit unstructured mesh
-mesh_explicit_unstructured = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
-    mesh_size=30,
-    curve_mesh_size=5
-)
+##mesh_explicit_unstructured = create_unstructured_mesh_data(
+##    geomodel_result=structural_model_result,
+##    mesh_size=30,
+##    curve_mesh_size=5
+##)
 
 # Explicit structured mesh
 mesh_explicit_structured = create_structured_mesh_data(
@@ -200,14 +204,14 @@ mesh_explicit_structured = create_structured_mesh_data(
 # Optional: Example of how to include objects (only works for unstructured mesh)
 
 # # Load engineering objects
-#wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
-#shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
-#sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
-#planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
-#ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
-#csv_files=(cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
-#           cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
-#triangulations= load_triangulations_planes_from_csv(csv_files)
+wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_wells.csv")
+shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_shafts.csv")
+sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
+planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
+ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
+csv_files=(cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
+           cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
+triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
@@ -335,33 +339,33 @@ fluid = FluidProperties(
     heat_capacity=1200,
 )
 
-builder = HydrothermalProblemBuilder(
-    mesh_results=mesh_explicit_unstructured,
-    geomodel_result=structural_model_result,
-    print_linear_residuals=True,
-    rock_properties=rock_properties,
-    fluid=fluid,
-    include_flow=True,
-    t1=5e11,
-    num_steps=3,
-)
+##builder = HydrothermalProblemBuilder(
+##    mesh_results=mesh_explicit_unstructured,
+##    geomodel_result=structural_model_result,
+##    print_linear_residuals=True,
+##    rock_properties=rock_properties,
+##    fluid=fluid,
+##    include_flow=True,
+##    t1=5e11,
+##    num_steps=3,
+##)
 #%%
 
 # Pre-flight check: confirms rock_properties landed on the right cells.
-plot_builder_materials(builder)
+##plot_builder_materials(builder)
 
 #%%
 
-data_by_time = run_simulation_sfepy(builder)
+##data_by_time = run_simulation_sfepy(builder)
 
 #%%
 
 # Visualize simulation results
-final_time = max(data_by_time.nodes_by_time.keys())
-plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
-plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+##final_time = max(data_by_time.nodes_by_time.keys())
+##plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
+##plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
+##plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
+##plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
 
 #%%
 
@@ -452,63 +456,63 @@ plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0
 # ------------------------------------------------------------------------------
 
 # Run the hydrothermal model using GOLEM with the same material objects.
-problem_golem = GolemHydrothermalProblemBuilder(
-    mesh_results=mesh_explicit_unstructured,
-    geomodel_result=structural_model_result,
-    fluid=fluid,
-    print_linear_residuals=True,
-    rock_properties=rock_properties,
-    p_top=0.0,
-    p_bottom=1.0e6,
-    t_top=10.0,
-    t_bottom=60.0,
-    initial_pressure=0.0,
-    # Omitted/None: calculate the 60 -> 10 C linear profile from z.
-    initial_temperature=None,
-    start_time=0.0,
-    end_time=5.0e11,
-    dt=5.0e11 / 3,
-    num_steps=3,
-)
+##problem_golem = GolemHydrothermalProblemBuilder(
+##    mesh_results=mesh_explicit_unstructured,
+##    geomodel_result=structural_model_result,
+##    fluid=fluid,
+##    print_linear_residuals=True,
+##    rock_properties=rock_properties,
+##    p_top=0.0,
+##    p_bottom=1.0e6,
+##    t_top=10.0,
+##    t_bottom=60.0,
+##    initial_pressure=0.0,
+##    # Omitted/None: calculate the 60 -> 10 C linear profile from z.
+##    initial_temperature=None,
+##    start_time=0.0,
+##    end_time=5.0e11,
+##    dt=5.0e11 / 3,
+##    num_steps=3,
+##)
 
 # copy the input file to a diectory
-problem_golem.build_input_file("/tmp/wbgeo_golem_model1.i")
+##problem_golem.build_input_file("/tmp/wbgeo_golem_model1.i")
 
 # Run the constructed problem in GOLEM's Docker image. The runner creates the
 # temporary input file automatically, so no separate build_input_file() call
 # is required here.
-problem_golem_results = run_simulation_golem(
-    problem=problem_golem,
-    image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
-    docker_dir="/projects",
+##problem_golem_results = run_simulation_golem(
+##    problem=problem_golem,
+##    image_name="moose-dev:fixed",
+##    project_dir="/Users/marziehbaes/Documents/projects",
+##    docker_dir="/projects",
 
-    output_dir=(
-        cwd
-        + "/examples/synthetic_examples/model1/"
-          "golem_auto_output"
-    ),
+##    output_dir=(
+##        cwd
+##        + "/examples/synthetic_examples/model1/"
+##          "golem_auto_output"
+##    ),
 
-    nproc=4,
-)
+##    nproc=4,
+##)
 
 # Results
 
 #print("GOLEM simulation completed")
-final_time = max(problem_golem_results.nodes_by_time.keys())
-initial_time = min(problem_golem_results.nodes_by_time.keys())
+##final_time = max(problem_golem_results.nodes_by_time.keys())
+##initial_time = min(problem_golem_results.nodes_by_time.keys())
 
-print("Loaded times:", sorted(problem_golem_results.nodes_by_time.keys()))
-print("GOLEM point variables:", list(problem_golem_results.node_data_by_time[final_time].keys()))
-print("GOLEM cell variables:", list(problem_golem_results.cell_data_by_time[final_time].keys()))
+##print("Loaded times:", sorted(problem_golem_results.nodes_by_time.keys()))
+##print("GOLEM point variables:", list(problem_golem_results.node_data_by_time[final_time].keys()))
+##print("GOLEM cell variables:", list(problem_golem_results.cell_data_by_time[final_time].keys()))
 
 # Visualize GOLEM's native result names.
-plot_variable_at_a_time(problem_golem_results, "temperature", time=initial_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(problem_golem_results, "temperature", time=final_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(problem_golem_results, "pore_pressure", time=final_time, cmap="coolwarm", show_edges=True)
-plot_cross_section_2D(
-    problem_golem_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
-)
+##plot_variable_at_a_time(problem_golem_results, "temperature", time=initial_time, cmap="coolwarm", show_edges=True)
+##plot_variable_at_a_time(problem_golem_results, "temperature", time=final_time, cmap="coolwarm", show_edges=True)
+##plot_variable_at_a_time(problem_golem_results, "pore_pressure", time=final_time, cmap="coolwarm", show_edges=True)
+##plot_cross_section_2D(
+##    problem_golem_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+##)
 
 
 
@@ -589,16 +593,16 @@ plot_cross_section_2D(
 
 # Simple reservoir problem solving with builder using Golem
 
-reservoir_problem = GolemSimpleReservoirProblemBuilder(
-    geomodel_result=structural_model_result,
+##reservoir_problem = GolemSimpleReservoirProblemBuilder(
+##    geomodel_result=structural_model_result,
 
     # --------------------------------------------------------------
     # Unstructured mesh inputs
     # --------------------------------------------------------------
-    mesh_size=50.0,
-    curve_mesh_size=5.0,
-    mapping_litho="automatic_centers",
-    gmsh_flag=False,
+##    mesh_size=50.0,
+##    curve_mesh_size=5.0,
+##    mapping_litho="automatic_centers",
+##    gmsh_flag=False,
     # z_threshold=None,
     # merge_file=None,
     #
@@ -609,133 +613,133 @@ reservoir_problem = GolemSimpleReservoirProblemBuilder(
     # Refinement inputs
     # Defaults reproduce the original simple-reservoir refinement.
     # --------------------------------------------------------------
-    well_refine_size_min=5.0,
-    well_refine_size_max=30.0,
-    well_refine_dist_min=10.0,
-    well_refine_dist_max=60.0,
+##    well_refine_size_min=5.0,
+##    well_refine_size_max=30.0,
+##    well_refine_dist_min=10.0,
+##    well_refine_dist_max=60.0,
 
-    fracture_refine_size_min=5.0,
-    fracture_refine_size_max=30.0,
-    fracture_refine_dist_min=10.0,
-    fracture_refine_dist_max=60.0,
+##    fracture_refine_size_min=5.0,
+##    fracture_refine_size_max=30.0,
+##    fracture_refine_dist_min=10.0,
+##    fracture_refine_dist_max=60.0,
 
     # Scale refinement lengths when the structural model extent changes.
-    scale_refinement_with_model=True,
+##    scale_refinement_with_model=True,
 
     # --------------------------------------------------------------
     # One common material for ALL 3D reservoir blocks
     # --------------------------------------------------------------
-    rock_porosity=0.1,
-    rock_permeability=1.0e-15,
-    rock_density=2.6e3,
-    rock_thermal_conductivity=3.0,
-    rock_heat_capacity=950.0,
+##    rock_porosity=0.1,
+##    rock_permeability=1.0e-15,
+##    rock_density=2.6e3,
+##    rock_thermal_conductivity=3.0,
+##    rock_heat_capacity=950.0,
 
     # Fracture
-    fracture_porosity=1.0,
-    fracture_aperture=1.0e-4,
+##    fracture_porosity=1.0,
+##    fracture_aperture=1.0e-4,
 
     # Well
-    well_porosity=1.0,
-    well_permeability=3.12e-4,
-    well_scaling_factor=0.05,
+##    well_porosity=1.0,
+##    well_permeability=3.12e-4,
+##    well_scaling_factor=0.05,
 
     # Fluid
-    fluid_density=1.0e3,
-    fluid_viscosity=1.0e-3,
-    fluid_heat_capacity=4.2e3,
-    fluid_thermal_conductivity=0.65,
-    fluid_modulus=2.5e9,
+##    fluid_density=1.0e3,
+##    fluid_viscosity=1.0e-3,
+##    fluid_heat_capacity=4.2e3,
+##    fluid_thermal_conductivity=0.65,
+##    fluid_modulus=2.5e9,
 
     # --------------------------------------------------------------
     # Initial / boundary / source inputs from simple_reservoir.i
     # --------------------------------------------------------------
-    initial_pressure=1.0e7,
-    initial_temperature=150.0,
-    boundary_pressure=1.0e7,
-    boundary_temperature=150.0,
-    injection_temperature=70.0,
+##    initial_pressure=1.0e7,
+##    initial_temperature=150.0,
+##    boundary_pressure=1.0e7,
+##    boundary_temperature=150.0,
+##    injection_temperature=70.0,
 
     # None means: use the automatically scaled reference positions.
-    injection_point=None,
-    extraction_point=None,
-    injection_rate=3.0,
-    extraction_rate=3.0,
-    source_start_time=0.0,
-    source_end_time=None,
+##    injection_point=None,
+##    extraction_point=None,
+##    injection_rate=3.0,
+##    extraction_rate=3.0,
+##    source_start_time=0.0,
+##    source_end_time=None,
 
     # --------------------------------------------------------------
     # Transient solve
     # 19 solve times + INITIAL -> 20 Exodus states
     # --------------------------------------------------------------
-    start_time=0.0,
-    time_sequence=[
-        1.0,
-        86400.0,
-        604800.0,
-        2592000.0,
-        7776000.0,
-        15552000.0,
-        31536000.0,
-        63072000.0,
-        126144000.0,
-        315360000.0,
-        630720000.0,
-        946080000.0,
-        1261440000.0,
-        1576800000.0,
-        1892160000.0,
-        2207520000.0,
-        2522880000.0,
-        2838240000.0,
-        3153600014.0,
-    ],
-    end_time=None,
-    automatic_scaling=True,
-    compute_scaling_once=False,
+##    start_time=0.0,
+##    time_sequence=[
+##        1.0,
+##        86400.0,
+##        604800.0,
+##        2592000.0,
+##        7776000.0,
+##        15552000.0,
+##        31536000.0,
+##        63072000.0,
+##        126144000.0,
+##        315360000.0,
+##        630720000.0,
+##        946080000.0,
+##        1261440000.0,
+##        1576800000.0,
+##        1892160000.0,
+##        2207520000.0,
+##        2522880000.0,
+##        2838240000.0,
+##        3153600014.0,
+##    ],
+##    end_time=None,
+##    automatic_scaling=True,
+##    compute_scaling_once=False,
 
-    print_linear_residuals=True,
-    print_nonlinear_converged_reason=True,
-    perf_graph=True,
-)
+##    print_linear_residuals=True,
+##    print_nonlinear_converged_reason=True,
+##    perf_graph=True,
+##)
 
 # The mesh and mesh genrating parameters and input file for golem are available from the builder if you want to save them:
-mesh_model1_simple_reservoir = reservoir_problem.mesh_results
-reservoir_problem.build_input_file("model1_generated_reservoir.i")
-reservoir_problem.build_mesh_generation_file("model1_generated_reservoir_mesh.py")
+##mesh_model1_simple_reservoir = reservoir_problem.mesh_results
+##reservoir_problem.build_input_file("model1_generated_reservoir.i")
+##reservoir_problem.build_mesh_generation_file("model1_generated_reservoir_mesh.py")
 
 # Run the simulation using Golem
-model1_simple_reservoir_results = run_simulation_golem(
-    problem=reservoir_problem,
-    image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
-    docker_dir="/projects",
-    output_dir=(
-        cwd
-        + "/examples/synthetic_examples/model1/"
-          "golem_simple_reservoir_output"
-    ),
-    nproc=4,
-)
+##model1_simple_reservoir_results = run_simulation_golem(
+##    problem=reservoir_problem,
+##    image_name="moose-dev:fixed",
+##    project_dir="/Users/marziehbaes/Documents/projects",
+##    docker_dir="/projects",
+##    output_dir=(
+##        cwd
+##        + "/examples/synthetic_examples/model1/"
+##          "golem_simple_reservoir_output"
+##    ),
+##    nproc=4,
+##)
 
 # Visualisation of results
-reservoir_initial_time = min(model1_simple_reservoir_results.nodes_by_time.keys())
-reservoir_final_time = max(model1_simple_reservoir_results.nodes_by_time.keys())
+##reservoir_initial_time = min(model1_simple_reservoir_results.nodes_by_time.keys())
+##reservoir_final_time = max(model1_simple_reservoir_results.nodes_by_time.keys())
 
-plot_cross_section_2D(
-    model1_simple_reservoir_results,
-    "temperature",
-    origin=reservoir_problem.injection_point,
-    normal=(0, 1, 0),
-    cmap="coolwarm",
-)
-plot_cross_section_2D(
-    model1_simple_reservoir_results,
-    "pore_pressure",
-    origin=reservoir_problem.injection_point,
-    normal=(0, 1, 0),
-    cmap="coolwarm",
-)
+##plot_cross_section_2D(
+##    model1_simple_reservoir_results,
+##    "temperature",
+##    origin=reservoir_problem.injection_point,
+##    normal=(0, 1, 0),
+##    cmap="coolwarm",
+##)
+##plot_cross_section_2D(
+##    model1_simple_reservoir_results,
+##    "pore_pressure",
+##    origin=reservoir_problem.injection_point,
+##    normal=(0, 1, 0),
+##    cmap="coolwarm",
+##)
 
 
 # NOTE: You can use resourvor_visualisation.pvsm in Paraview to visualize the results.
@@ -761,86 +765,86 @@ plot_cross_section_2D(
 # the full structural-model domain, two 100 x 100 vertical planes at x=400
 # and x=600 (200 m apart and equally 400 m from the lateral boundaries),
 # and the original well translated with/around the second plane.
-reservoir_extent = (0, 1000, 0, 1000, 0, 1000)
+#reservoir_extent = (0, 1000, 0, 1000, 0, 1000)
 
 # Two vertical 100 x 100 m planes, matching the generated builder geometry.
 # Plane separation = 200 m; lateral margins = 400 m on both sides.
-reservoir_fracture_planes = [(
-            400.0, 450.0, 450.0,
-            400.0, 550.0, 450.0,
-            400.0, 550.0, 550.0,
-            400.0, 450.0, 550.0,
-        ),
-        (
-            600.0, 450.0, 450.0,
-            600.0, 550.0, 450.0,
-            600.0, 550.0, 550.0,
-            600.0, 450.0, 550.0,
-        ),
-    ]
+#reservoir_fracture_planes = [(
+#            400.0, 450.0, 450.0,
+#            400.0, 550.0, 450.0,
+#            400.0, 550.0, 550.0,
+#            400.0, 450.0, 550.0,
+#        ),
+#        (
+#            600.0, 450.0, 450.0,
+#            600.0, 550.0, 450.0,
+#            600.0, 550.0, 550.0,
+#            600.0, 450.0, 550.0,
+#        ),
+#    ]
 # The reference well contains four connected line elements around the
 # extraction point. WBGeo accepts each well as one flat x,y,z sequence.
-reservoir_wells = [(
-        575.0, 500.0, 490.0,
-        587.5, 500.0, 495.0,
-        600.0, 500.0, 500.0,
-        612.5, 500.0, 505.0,
-        625.0, 500.0, 510.0,
-    )]
+#reservoir_wells = [(
+#        575.0, 500.0, 490.0,
+#        587.5, 500.0, 495.0,
+#        600.0, 500.0, 500.0,
+#        612.5, 500.0, 505.0,
+#        625.0, 500.0, 510.0,
+#    )]
 
-reservoir_refinement = Refinement(
-        wells=LinearWellRefinement(
-            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
-        ),
-        extraplanes=ExtraPlaneRefinement(
-            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
-        ),
-    )
+#reservoir_refinement = Refinement(
+#        wells=LinearWellRefinement(
+#            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
+#        ),
+#        extraplanes=ExtraPlaneRefinement(
+#            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
+#        ),
+#    )
 
-mesh_model1_simple_reservoir = create_unstructured_mesh_data(
-        geomodel_result=structural_model_result,
-        extent=reservoir_extent,
-        wells=reservoir_wells,
-        extra_planes=reservoir_fracture_planes,
-        mesh_size=50.0,
-        curve_mesh_size=5.0,
-        mapping_litho="automatic_centers",
-        refinement=reservoir_refinement,
-    )
+#mesh_model1_simple_reservoir = create_unstructured_mesh_data(
+#        geomodel_result=structural_model_result,
+#        extent=reservoir_extent,
+#        wells=reservoir_wells,
+#        extra_planes=reservoir_fracture_planes,
+#        mesh_size=50.0,
+#        curve_mesh_size=5.0,
+#        mapping_litho="automatic_centers",
+#        refinement=reservoir_refinement,
+#    )
 
 # Solving the problem using custom golem input file. The GOLEM input file contains the Exodus material-block
-reservoir_input_path = (
-        cwd
-        + "/examples/synthetic_examples/model1/input_data/simulation_files/model1_simple_reservoir.i"
-    )
-with open(reservoir_input_path, encoding="utf-8") as stream:
-        reservoir_input = stream.read()
+#reservoir_input_path = (
+#        cwd
+#        + "/examples/synthetic_examples/model1/input_data/simulation_files/model1_simple_reservoir.i"
+#    )
+#with open(reservoir_input_path, encoding="utf-8") as stream:
+#        reservoir_input = stream.read()
 
 # Solving the problem with Golem
-model1_simple_reservoir_results = run_simulation_golem(
-        problem=CustomGolemBuilder(
-            input_file_contents=reservoir_input,
-            mesh_results=mesh_model1_simple_reservoir,
-            geomodel_result=structural_model_result,
-            print_linear_residuals=True,
-        ),
-        image_name="moose-dev:fixed",
-        project_dir="/Users/marziehbaes/Documents/projects",
-        docker_dir="/projects",
-        output_dir=(
-            cwd
-            + "/examples/synthetic_examples/model1/"
-              "golem_custom_simple_reservoir_output"
-        ),
-        nproc=4,
-    )
+#model1_simple_reservoir_results = run_simulation_golem(
+#        problem=CustomGolemBuilder(
+#            input_file_contents=reservoir_input,
+#            mesh_results=mesh_model1_simple_reservoir,
+#            geomodel_result=structural_model_result,
+#            print_linear_residuals=True,
+#        ),
+#        image_name="moose-dev:fixed",
+#        project_dir="/Users/marziehbaes/Documents/projects",
+#        docker_dir="/projects",
+#        output_dir=(
+#            cwd
+#            + "/examples/synthetic_examples/model1/"
+#              "golem_custom_simple_reservoir_output"
+#        ),
+#        nproc=4,
+#    )
 
 # Visualisation of results
-reservoir_initial_time = min(model1_simple_reservoir_results.nodes_by_time.keys())
-reservoir_final_time = max(model1_simple_reservoir_results.nodes_by_time.keys())
+#reservoir_initial_time = min(model1_simple_reservoir_results.nodes_by_time.keys())
+#reservoir_final_time = max(model1_simple_reservoir_results.nodes_by_time.keys())
 
-plot_cross_section_2D(model1_simple_reservoir_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm",)
-plot_cross_section_2D(model1_simple_reservoir_results, "pore_pressure", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm",)
+#plot_cross_section_2D(model1_simple_reservoir_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm",)
+#plot_cross_section_2D(model1_simple_reservoir_results, "pore_pressure", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm",)
 
 # NOTE: You can use resourvor_visualisation.pvsm in Paraview to visualize the results.
 
@@ -851,3 +855,138 @@ plot_cross_section_2D(model1_simple_reservoir_results, "pore_pressure", origin=(
 # END SECTION 8: GOLEM - CUSTOM SIMPLE-RESERVOIR INPUT
 # ==============================================================================
 
+
+
+# hierarchical mesh generation and export
+# unstructured mesh
+
+engineering_objects_dir = (
+    cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/"
+)
+
+# Load all engineering objects in hierarchical mode.
+hierarchical_wells = load_wells_from_csv(
+    engineering_objects_dir + "model_1_wells_hierarchical.csv",
+    key_hierarchical=True,
+)
+
+hierarchical_sources = load_sources_from_csv(
+    engineering_objects_dir + "model_1_sources_hierarchical.csv",
+    key_hierarchical=True,
+)
+
+hierarchical_mining_shafts = load_shafts_from_csv(
+    engineering_objects_dir + "model_1_shafts_hierarchical.csv",
+    key_hierarchical=True,
+)
+
+hierarchical_ellipses = load_ellipses_from_csv(
+    engineering_objects_dir + "model_1_ellipses_hierarchical.csv",
+    key_hierarchical=True,
+)
+
+hierarchical_extra_planes = load_planes_from_csv(
+    engineering_objects_dir + "model_1_planes_hierarchical.csv",
+    key_hierarchical=True,
+)
+
+hierarchical_triangulation_files = (
+    engineering_objects_dir + "seismic_plane_new_offset_0_hierarchical.csv",
+    engineering_objects_dir + "seismic_plane_new_offset_1_hierarchical.csv",
+)
+hierarchical_triangulations = load_triangulations_planes_from_csv(
+    hierarchical_triangulation_files,
+    key_hierarchical=True,
+)
+
+# Refinement
+refinement = Refinement()
+refinement.wells = LinearWellRefinement(
+    SizeMin=10.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
+)
+refinement.sources = LinearSourceRefinement(
+    SizeMin=10.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
+)
+refinement.shafts = LinearShaftRefinement(
+    SizeMin=10.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
+)
+refinement.ellipses = EllipseRefinement(
+    SizeMin=15.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0
+)
+refinement.extraplanes = ExtraPlaneRefinement(
+    SizeMin=15.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0
+)
+refinement.triangulations = TriangulationRefinement(
+    SizeMin=15.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0
+)
+
+mesh1, mesh2, nodes_bcs = hierarchical_mesh(
+    geomodel_result=structural_model_result,
+    mesh_type="Un",
+
+    extent1="whole",
+    extent2=[300, 900, 200, 900, 100, 800],
+
+
+    wells=hierarchical_wells,
+    sources=hierarchical_sources,
+    shafts=hierarchical_mining_shafts,
+    ellipses=hierarchical_ellipses,
+    extra_planes=hierarchical_extra_planes,
+    triangulations=hierarchical_triangulations,
+
+    # if the engoneering obkjects in both meshhes are the same, one can define only engineering bjects for the bigger model and the
+    # program cuts the objects to be inside the smaller one.
+    #wells=wells,
+    #sources=sources,
+    #shafts=shafts,
+    #ellipses=ellipses,
+    #extra_planes=planes,
+    #triangulations=triangulations,
+    # unstructured
+    mesh_size1=30,
+    mesh_size2=20,
+    unstructured_params={
+        "curve_mesh_size": 5,
+        "refinement": refinement,
+    },
+)
+
+
+# Export the hierarchical meshes to Exodus first. ParaView opens these files.
+mesh1_exodus = "mesh1r.exo"
+mesh2_exodus = "mesh2r.exo"
+boundary_nodes_file = "boundary_nodesr"
+
+export_meshes_exodus(
+    mesh1,
+    mesh2,
+    nodes_bcs,
+    mesh1_exodus,
+    mesh2_exodus,
+    boundary_nodes_file,
+)
+
+# Open both hierarchical Exodus meshes in one ParaView GUI session.
+# ParaView is launched as a separate process, so the Python script continues
+# immediately to the WBGeo/PyVista hierarchical visualization below.
+open_hierarchical_exodus_in_paraview(
+    mesh1_exodus=mesh1_exodus,
+    mesh2_exodus=mesh2_exodus,
+    paraview_executable=(
+        "/Applications/ParaView-5.12.0.app/"
+        "Contents/MacOS/paraview"
+    ),
+)
+
+
+# Interactive WBGeo/PyVista hierarchical mesh visualization.
+plot_hierarchical_meshes_3d(
+    mesh1,
+    mesh2,
+    structural_model_result,
+    show_plotter=True,
+    link_views=True,
+    volume_opacity=1.0,
+    show_block_controls=True,
+)

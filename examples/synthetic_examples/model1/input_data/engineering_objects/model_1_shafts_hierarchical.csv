@@ -1,0 +1,3 @@
+# shaftid, x_center, y_center, z_center, x_axes, y_axes, z_axes, radius, key
+1, 300,300,700, 1000,0,0, 20, 1
+1, 600,500,500, 0,0,200, 20, 2
