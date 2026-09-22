@@ -42,16 +42,16 @@ def hierarchical_mesh(
     ellipses: Optional[EllipseData] = None,
     triangulations: Optional[TriangulationData] = None,
     # structured
-    refinement1: Optional[Any] = None,
-    refinement2: Optional[Any] = None,
-    mesh_devision1: Optional[Any] = None,
-    mesh_devision2: Optional[Any] = None,
+    refinement1: object = None,
+    refinement2: object = None,
+    mesh_devision1: object = None,
+    mesh_devision2: object = None,
 
-    unstructured_params: Optional[Dict[str, Any]] = None,
-    structured_params: Optional[Dict[str, Any]] = None,
-    implicit_params: Optional[Dict[str, Any]] = None,
+    unstructured_params: dict = None,
+    structured_params: dict = None,
+    implicit_params: dict = None,
 
-) -> Tuple[MeshResults, MeshResults, np.ndarray]:
+) -> tuple:
 
     mesh_type = mesh_type.lower()
 
