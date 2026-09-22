@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from core.object_components import MeshResults
-from core.meshing_components.mesh_format.VTM.VTM_format import (
+from core.meshing_components.mesh_format.vtm.VTM_format import (
     export_mesh_results_to_vtm
 )
 

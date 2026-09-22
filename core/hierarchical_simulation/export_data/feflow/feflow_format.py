@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from core.object_components import MeshResults
-from core.meshing_components.mesh_format.FEFLOW.Feflow_format import (
+from core.meshing_components.mesh_format.feflow.Feflow_format import (
     export_mesh_results_to_feflow
 )
 

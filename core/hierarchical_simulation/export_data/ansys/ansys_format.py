@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from core.object_components import MeshResults
-from core.meshing_components.mesh_format.ANSYS.Ansys_format import (
+from core.meshing_components.mesh_format.ansys.Ansys_format import (
     export_mesh_results_to_ansys
 )
 
