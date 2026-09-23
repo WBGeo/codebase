@@ -61,6 +61,7 @@ cwd = os.getcwd()
 # SECTION 6: GOLEM custom hydrothermal simulation
 # SECTION 7: GOLEM generated simple-reservoir simulation
 # SECTION 8: GOLEM custom simple-reservoir simulation
+# SECTION 9: Hierarchical mesh generation and export
 #
 # Each section starts and ends with a large banner so the different sections are
 # visually separated while keeping the existing Model 1 code in one file.
@@ -857,8 +858,13 @@ fluid = FluidProperties(
 
 
 
-# hierarchical mesh generation and export
-# unstructured mesh
+# ==============================================================================
+# SECTION 9: HIERARCHICAL MESH GENERATION AND EXPORT
+# ==============================================================================
+# Build two nested unstructured meshes, export them, and visualize the hierarchy.
+# ------------------------------------------------------------------------------
+
+# Unstructured hierarchical mesh
 
 engineering_objects_dir = (
     cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/"
@@ -990,3 +996,9 @@ plot_hierarchical_meshes_3d(
     volume_opacity=1.0,
     show_block_controls=True,
 )
+
+#%%
+
+# ------------------------------------------------------------------------------
+# END SECTION 9: HIERARCHICAL MESH GENERATION AND EXPORT
+# ==============================================================================

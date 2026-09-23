@@ -6,7 +6,6 @@
 import pandas as pd
 import os
 import re
-
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
@@ -240,6 +239,8 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
     PROJECTION_THRESHOLD = 60,
     EXTRUSION_FACTOR = 80,
     z_threshold = 10,
+#    #interpolated_surface_csv_dir="model2_interpolated_surfaces",
+
 )
 
 # Explicit structured mesh
@@ -248,8 +249,21 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
 #%%
 
 # Plot the meshing results
-plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
+#plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
+
+mesh_explicit_unst_from_file = create_unstructured_mesh_data(
+    surface_csv_dir= cwd+ "/examples/synthetic_examples/model2/input_data/surfaces",
+
+    extent=(0, 2500, 0, 1000, 0, 1000),
+
+    mesh_size=50,
+    curve_mesh_size=5,
+    tolerance=50,
+
+    mapping_litho="none",
+)
+plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter=True)
 
 #%%
 

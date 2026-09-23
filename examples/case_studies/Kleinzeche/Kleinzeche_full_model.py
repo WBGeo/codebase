@@ -70,6 +70,27 @@ fault_orientations   = pd.read_csv(os.path.join(_INPUT_DATA_DIR, 'fault1_orienta
 
 #%%
 
+# DIRTY FIX for create_unstructured_mesh_data(): with this model's fault
+# offset, the Strat_Series1 surfaces on the X~380048 side (hanging wall per
+# prepare_input_data.py) land on a grid-boundary-aligned Z that trips a known
+# meshing bug. The input data here is low quality anyway, so nudge those
+# points down slightly to break the alignment. Never touches the original
+# surface_points df -- operates on a copy, only for Strat_Series1 formations
+# (Silt/Sand/Clay/Coal), only on the X~380048 side of Fault-1.
+_SHIFT_Z = -20.5  # m; adjust if this doesn't clear the meshing failure (was -2.0, bumped after -2.0 didn't clear the GMSH fragment() BOPAlgo_AlertBuilderFailed)
+_SHIFT_X_THRESHOLD = 380060.0  # separates the X~380048 cluster from Fault-1's trace (X 380050-380075) and the X~380090+ cluster
+_SHIFT_FORMATIONS = ('Silt-1', 'Sand-1', 'Silt-2', 'Sand-2', 'Silt-3', 'Sand-3', 'Clay-1', 'Coal-1', 'Clay-2')
+
+surface_points_shifted = surface_points.copy()
+_shift_mask = (
+    surface_points_shifted['formation'].isin(_SHIFT_FORMATIONS)
+    & (surface_points_shifted['X'] < _SHIFT_X_THRESHOLD)
+)
+surface_points_shifted.loc[_shift_mask, 'Z'] += _SHIFT_Z
+print(f"Shifted {_shift_mask.sum()} surface points by {_SHIFT_Z} m (X < {_SHIFT_X_THRESHOLD}, Strat_Series1 formations)")
+
+#%%
+
 # Create a grid for the model
 # Z extended 10 m below Z_MIN to capture Clay/Coal in the hanging wall.
 _Z_MIN_MODEL = Z_MIN - 10   # 30 m
@@ -134,7 +155,7 @@ for _series, _fms in _ALL_SERIES:
 data_elements = InputData_StructuralElements(
     name='Kleinzeche_full',
     mapping_object=mapping_object,
-    surface_points=surface_points,
+    surface_points=surface_points_shifted,
     orientations=orientations,
 )
 
@@ -281,17 +302,23 @@ p.add_text('Boreholes', position=(0.065, 0.062), font_size=11, color='white', sh
 p.show()
 
 #%%
-
+z_e=_Z_MIN_MODEL-2
 # Compute 3D meshes based on the structural model result
 # DISTANCE_THRESHOLD must be << model extent to avoid removing all points from small models.
 # WARNING: Runtime extremely high
-# mesh_unstructured = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     z_threshold=0.1,
-#     tolerance=1,
-#     DISTANCE_THRESHOLD=5,
-#     mesh_size=10,
-# )
+mesh_explicit_unstructured = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    tolerance=1,
+    #wells=wells,
+    extent=(380043, 380128, 5700896, 5700938, z_e, 125),
+    mesh_size=1,
+    curve_mesh_size=8,
+    DISTANCE_THRESHOLD=2.0,
+    PROJECTION_THRESHOLD=3.8,
+    EXTRUSION_FACTOR=4.5,
+    z_threshold=1,
+    mapping_litho= 'none',
+)
 
 #%%
 
