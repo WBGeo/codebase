@@ -115,6 +115,45 @@ class TestHierarchicalMeshValidation(unittest.TestCase):
                 mesh_size1=2,
             )
 
+    def test_requires_geomodel_or_surface_csv_dir(self):
+        with self.assertRaisesRegex(ValueError, "geomodel_result or surface_csv_dir"):
+            hierarchical_mesh(
+                mesh_type="Un",
+                extent1=[0, 10, 0, 10, 0, 10],
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+            )
+
+    def test_csv_only_requires_explicit_outer_extent(self):
+        with self.assertRaisesRegex(ValueError, "explicit extent"):
+            hierarchical_mesh(
+                mesh_type="Un",
+                surface_csv_dir="surfaces",
+                extent1="whole",
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+            )
+
+    def test_csv_surfaces_are_rejected_for_structured_mesh(self):
+        with self.assertRaisesRegex(ValueError, "only supported for unstructured"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Str",
+                surface_csv_dir="surfaces",
+                extent2=[2, 8, 2, 8, 2, 8],
+                refinement1=[1, 1, 1],
+                mesh_devision1=(4, 4),
+            )
+
+    def test_csv_surfaces_are_rejected_for_implicit_mesh(self):
+        with self.assertRaisesRegex(ValueError, "only supported for unstructured"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Im",
+                surface_csv_dir="surfaces",
+                extent2=[2, 8, 2, 8, 2, 8],
+            )
+
 
 class TestHierarchicalUnstructured(unittest.TestCase):
 
@@ -251,6 +290,78 @@ class TestHierarchicalUnstructured(unittest.TestCase):
         self.assertEqual(second["curve_mesh_size"], 5)
         self.assertTrue(first["gmsh_flag"])
         self.assertTrue(second["gmsh_flag"])
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_csv_only_input_is_forwarded_to_both_meshes(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        hierarchical_mesh(
+            mesh_type="Un",
+            surface_csv_dir="surfaces",
+            extent1=[0, 10, 0, 10, 0, 10],
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=3,
+            mesh_size2=1,
+        )
+
+        self.assertEqual(create.call_count, 2)
+        for call in create.call_args_list:
+            self.assertIsNone(call.args[0])
+            self.assertEqual(call.kwargs["surface_csv_dir"], "surfaces")
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_geomodel_workflow_does_not_inject_surface_csv_dir(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        model = geomodel()
+        hierarchical_mesh(
+            model,
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+        )
+
+        self.assertIs(create.call_args_list[0].args[0], model)
+        self.assertIs(create.call_args_list[1].args[0], model)
+        self.assertNotIn("surface_csv_dir", create.call_args_list[0].kwargs)
+        self.assertNotIn("surface_csv_dir", create.call_args_list[1].kwargs)
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_duplicate_surface_csv_dir_is_rejected(self, create):
+        with self.assertRaisesRegex(ValueError, "both to hierarchical_mesh"):
+            hierarchical_mesh(
+                mesh_type="Un",
+                surface_csv_dir="surfaces",
+                extent1=[0, 10, 0, 10, 0, 10],
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+                unstructured_params={"surface_csv_dir": "other_surfaces"},
+            )
+        create.assert_not_called()
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_csv_input_keeps_level_specific_unstructured_params(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        hierarchical_mesh(
+            mesh_type="Un",
+            surface_csv_dir="surfaces",
+            extent1=[0, 10, 0, 10, 0, 10],
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            unstructured_params={"curve_mesh_size": 5},
+            unstructured_params1={"rotation_angle": 20},
+            unstructured_params2={"rotation_angle": 45},
+        )
+
+        first = create.call_args_list[0].kwargs
+        second = create.call_args_list[1].kwargs
+        self.assertEqual(first["surface_csv_dir"], "surfaces")
+        self.assertEqual(second["surface_csv_dir"], "surfaces")
+        self.assertEqual(first["curve_mesh_size"], 5)
+        self.assertEqual(second["curve_mesh_size"], 5)
+        self.assertEqual(first["rotation_angle"], 20)
+        self.assertEqual(second["rotation_angle"], 45)
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_level_specific_unstructured_params_override_common_values(self, create):

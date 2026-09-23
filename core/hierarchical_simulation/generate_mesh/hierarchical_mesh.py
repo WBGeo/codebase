@@ -13,8 +13,9 @@ from core.meshing_components.explicit.unstructured.mesh_data import (
 
 
 def hierarchical_mesh(
-    geomodel_result: StructuralModelResults,
+    geomodel_result: Optional[StructuralModelResults] = None,
     mesh_type: str = "Un",
+    surface_csv_dir: Optional[str] = None,
 
     extent1: Union[List[float], str] = "whole",
     extent2: Union[List[float], str] = None,
@@ -58,6 +59,19 @@ def hierarchical_mesh(
     }
     structured_params = structured_params or {}
     implicit_params = implicit_params or {}
+
+    # CSV geological surfaces are supported for unstructured hierarchical
+    # meshing. The same surface directory is passed to both hierarchy levels.
+    if surface_csv_dir is not None and mesh_type != "un":
+        raise ValueError(
+            "surface_csv_dir is only supported for unstructured hierarchical meshes."
+        )
+
+    if geomodel_result is None and surface_csv_dir is None:
+        raise ValueError(
+            "Provide geomodel_result or surface_csv_dir for hierarchical meshing."
+        )
+
 
     # --------------------------------------------------
     # Parameter checks
@@ -134,15 +148,26 @@ def hierarchical_mesh(
 
     def _resolve_extent(extent):
 
-        model_extent = np.asarray(
-            geomodel_result.structural_frame.grid.extent,
-            dtype=float
-        )
+        model_extent = None
+        if geomodel_result is not None:
+            model_extent = np.asarray(
+                geomodel_result.structural_frame.grid.extent,
+                dtype=float
+            )
 
         if isinstance(extent, str) and extent.lower() == "whole":
+            if model_extent is None:
+                raise ValueError(
+                    "extent='whole' requires geomodel_result. "
+                    "For CSV surface input, provide an explicit extent."
+                )
             return model_extent
 
-        if extent is None or len(extent) == 0:
+        if extent is None or (not isinstance(extent, str) and len(extent) == 0):
+            if model_extent is None:
+                raise ValueError(
+                    "CSV surface input requires an explicit extent."
+                )
             return model_extent
 
         return np.asarray(extent, dtype=float)
@@ -383,6 +408,20 @@ def hierarchical_mesh(
             level_unstructured_params = (
                 unstructured_params1 if mesh_id == 1 else unstructured_params2
             )
+
+            # Reuse create_unstructured_mesh_data() for both input modes:
+            # structural-model surfaces or a directory of geological CSV surfaces.
+            # Do not duplicate surface loading/interpolation logic here.
+            if surface_csv_dir is not None:
+                if "surface_csv_dir" in level_unstructured_params:
+                    raise ValueError(
+                        "surface_csv_dir was provided both to hierarchical_mesh() "
+                        "and in unstructured parameters."
+                    )
+                level_unstructured_params = {
+                    **level_unstructured_params,
+                    "surface_csv_dir": surface_csv_dir,
+                }
 
             return create_unstructured_mesh_data(
                 geomodel_result,
