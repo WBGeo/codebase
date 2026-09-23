@@ -2111,15 +2111,6 @@ def meshit_coordinate_transform(nodes, angle_deg):
     return local
 
 
-# Register this function as a component
-@wbgeo_component(description='Provides unstructured mesh',
-                 title='Create Unstructured Mesh',  # The title shown in the GUI
-                 color='#cc9999',  # the color of the components
-                 border_color='#000000',  # and its border color
-                 group='Meshing',
-                 identifier='create_unstructured_mesh_data',  # a unique identifier
-                 return_name='Mesh',  # the name for the returned-port
-                 )  # inputs are handled via the method signature
 def _is_fault_csv(path: Path) -> bool:
     """Identify reference/fault surfaces from their CSV filenames."""
     stem = path.stem.lower()
@@ -2277,6 +2268,15 @@ def export_interpolated_surface_csvs(interpolated_surfaces, surface_names, outpu
     return folder
 
 
+# Register this function as a component
+@wbgeo_component(description='Provides unstructured mesh',
+                 title='Create Unstructured Mesh',  # The title shown in the GUI
+                 color='#cc9999',  # the color of the components
+                 border_color='#000000',  # and its border color
+                 group='Meshing',
+                 identifier='create_unstructured_mesh_data',  # a unique identifier
+                 return_name='Mesh',  # the name for the returned-port
+                 )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
     geomodel_result: Optional[StructuralModelResults] = None,
     wells: Optional[WellData] = None,
