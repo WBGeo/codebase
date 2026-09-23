@@ -956,6 +956,9 @@ mesh1, mesh2, nodes_bcs = hierarchical_mesh(
         "curve_mesh_size": 5,
         "refinement": refinement,
     },
+    unstructured_params2={
+        "rotation_angle": 45,
+    },
 )
 
 

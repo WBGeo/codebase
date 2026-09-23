@@ -35,6 +35,8 @@ def hierarchical_mesh(
     mesh_devision2: object = None,
 
     unstructured_params: dict = None,
+    unstructured_params1: dict = None,
+    unstructured_params2: dict = None,
     structured_params: dict = None,
     implicit_params: dict = None,
 
@@ -42,7 +44,18 @@ def hierarchical_mesh(
 
     mesh_type = mesh_type.lower()
 
+    # Common unstructured parameters are applied to both meshes.
+    # Level-specific dictionaries override only the values supplied for that
+    # hierarchy level (for example, a different rotation_angle for mesh2).
     unstructured_params = unstructured_params or {}
+    unstructured_params1 = {
+        **unstructured_params,
+        **(unstructured_params1 or {}),
+    }
+    unstructured_params2 = {
+        **unstructured_params,
+        **(unstructured_params2 or {}),
+    }
     structured_params = structured_params or {}
     implicit_params = implicit_params or {}
 
@@ -367,6 +380,10 @@ def hierarchical_mesh(
                 mesh_triangulations,
             )
 
+            level_unstructured_params = (
+                unstructured_params1 if mesh_id == 1 else unstructured_params2
+            )
+
             return create_unstructured_mesh_data(
                 geomodel_result,
                 extent=extent_array,
@@ -377,7 +394,7 @@ def hierarchical_mesh(
                 extra_planes=mesh_extra_planes,
                 ellipses=mesh_ellipses,
                 triangulations=mesh_triangulations,
-                **unstructured_params
+                **level_unstructured_params
             )
 
         elif mesh_type == "str":
@@ -414,55 +431,125 @@ def hierarchical_mesh(
     mesh2 = _create_mesh(extent2_resolved, 2)
 
     # --------------------------------------------------
-    # Extract boundary nodes of small mesh by faces
+    # Get boundary nodes of the small mesh from point_sets
     # --------------------------------------------------
+    #
+    # The unstructured mesher already determines the physical boundary-node
+    # sets when MeshResults is created. Reuse those sets here instead of
+    # detecting faces again from min/max x, y and z. This is important for
+    # rotated/oriented domains, whose physical faces need not be parallel to
+    # the global coordinate axes.
+    #
+    # point_sets contains node IDs, e.g.
+    #   {"left": [...], "right": [...], "front": [...],
+    #    "back": [...], "bottom": [...], "top": [...]}
+    #
+    # The corresponding coordinates are obtained directly from mesh2.nodes.
 
-    nodes_small = mesh2.nodes
+    nodes_small = np.asarray(mesh2.nodes, dtype=float)
+    nodes_big = np.asarray(mesh1.nodes, dtype=float)
 
-    min_x, max_x = nodes_small[:, 0].min(), nodes_small[:, 0].max()
-    min_y, max_y = nodes_small[:, 1].min(), nodes_small[:, 1].max()
-    min_z, max_z = nodes_small[:, 2].min(), nodes_small[:, 2].max()
+    def _extent_xy_center(extent):
+        # mesh_data.py rotates the output coordinates around the centre of the
+        # meshed domain. Support both the normal six-value extent and an
+        # eight-corner extent.
+        arr = np.asarray(extent, dtype=float)
+        if arr.ndim == 1 and arr.size == 6:
+            return np.array([
+                0.5 * (arr[0] + arr[1]),
+                0.5 * (arr[2] + arr[3]),
+            ])
+        arr = arr.reshape(-1, 3)
+        if arr.shape[0] != 8:
+            raise ValueError(
+                "Extent must contain six values or eight 3D corner points."
+            )
+        return arr[:, :2].mean(axis=0)
 
-    boundary_faces = {
+    def _undo_unstructured_output_transform(nodes, extent, params):
+        # create_unstructured_mesh_data() stores rotated x/y coordinates after
+        # translating the domain centre to the origin. Undo that operation so
+        # mesh1 and mesh2 can be compared in the same original/world frame.
+        result = np.asarray(nodes, dtype=float).copy()
+        angle = params.get("rotation_angle", None)
+        if angle is None:
+            return result
 
-        "left": nodes_small[
-            np.isclose(nodes_small[:, 0], min_x)
-        ],
+        theta = np.deg2rad(float(angle))
+        c = np.cos(theta)
+        s = np.sin(theta)
 
-        "right": nodes_small[
-            np.isclose(nodes_small[:, 0], max_x)
-        ],
+        xr = result[:, 0].copy()
+        yr = result[:, 1].copy()
 
-        "front": nodes_small[
-            np.isclose(nodes_small[:, 1], min_y)
-        ],
+        # Inverse of:
+        #   xr = x*c - y*s
+        #   yr = x*s + y*c
+        x = xr * c + yr * s
+        y = -xr * s + yr * c
 
-        "back": nodes_small[
-            np.isclose(nodes_small[:, 1], max_y)
-        ],
+        cx, cy = _extent_xy_center(extent)
+        result[:, 0] = x + cx
+        result[:, 1] = y + cy
+        return result
 
-        "bottom": nodes_small[
-            np.isclose(nodes_small[:, 2], min_z)
-        ],
+    # point_sets identify WHICH mesh2 nodes are on each physical face.
+    # The KD-tree search must use a common coordinate frame when the two
+    # hierarchy levels have different rotations/translations.
+    if mesh_type == "un":
+        nodes_big_search = _undo_unstructured_output_transform(
+            nodes_big, extent1_resolved, unstructured_params1
+        )
+        nodes_small_search = _undo_unstructured_output_transform(
+            nodes_small, extent2_resolved, unstructured_params2
+        )
+    else:
+        nodes_big_search = nodes_big
+        nodes_small_search = nodes_small
 
-        "top": nodes_small[
-            np.isclose(nodes_small[:, 2], max_z)
-        ],
-    }
+    face_names = ("left", "right", "front", "back", "bottom", "top")
+
+    if not getattr(mesh2, "point_sets", None):
+        raise ValueError(
+            "mesh2 does not contain boundary point_sets. "
+            "Hierarchical boundary matching requires the boundary node sets "
+            "created by the mesh generator."
+        )
+
+    boundary_faces = {}
+    for face in face_names:
+        node_ids = np.asarray(mesh2.point_sets.get(face, []), dtype=int)
+
+        if node_ids.size == 0:
+            boundary_faces[face] = np.empty((0, 3), dtype=float)
+            continue
+
+        if np.any(node_ids < 0) or np.any(node_ids >= len(nodes_small)):
+            raise ValueError(
+                f"mesh2.point_sets['{face}'] contains invalid node IDs."
+            )
+
+        boundary_faces[face] = nodes_small_search[node_ids]
 
 
     # --------------------------------------------------
     # Find closest nodes in big mesh for each face
     # --------------------------------------------------
+    #
+    # Search only uses the already identified physical boundary nodes from
+    # mesh2. No boundary geometry is reconstructed from extent2.
 
-    nodes_big = mesh1.nodes
-    tree = cKDTree(nodes_big)
-
+    tree = cKDTree(nodes_big_search)
     boundary_nodes_big = {}
 
     for face, face_nodes in boundary_faces.items():
 
+        if face_nodes.size == 0:
+            boundary_nodes_big[face] = np.empty((0, 4), dtype=float)
+            continue
+
         _, idx_closest = tree.query(face_nodes)
+        idx_closest = np.asarray(idx_closest, dtype=int)
 
         closest_nodes_big = nodes_big[idx_closest]
 

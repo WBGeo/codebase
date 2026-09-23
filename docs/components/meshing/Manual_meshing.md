@@ -144,6 +144,41 @@ requirements than structured meshing.
 This is the only meshing method that supports embedding engineering
 objects and faults.
 
+#### Geological surfaces from CSV files
+
+In addition to using geological surfaces obtained directly from the
+structural-model result, the explicit unstructured mesh can be generated
+from geological surfaces stored in CSV files. This provides a manual
+surface-input workflow for cases where the surface geometry has already
+been generated, interpolated, edited, or exported separately.
+
+Each CSV file represents one geological surface and contains its 3D
+point coordinates as `x, y, z`. Surface CSV files may contain an `x,y,z`
+header or may be headerless. Normal vectors do not need to be supplied
+in the CSV files.
+
+Fault surfaces are identified by their filenames and must be named using
+the following convention:
+
+    fault1.csv
+    fault2.csv
+    fault3.csv
+    ...
+
+Files whose names start with `fault` are therefore interpreted as fault
+surfaces rather than ordinary stratigraphic surfaces.
+
+The CSV workflow automatically distinguishes between complete gridded
+surfaces and incomplete or scattered point sets. If a CSV already
+contains a complete gridded surface, its coordinates are used directly
+and the surface interpolation step is skipped. If the CSV contains a
+downsampled, incomplete, or scattered representation of a surface, the
+surface is interpolated before the unstructured mesh geometry is
+constructed.
+
+The CSV-surface workflow is an alternative surface-input route for the
+explicit unstructured mesh.
+
 #### Engineering objects
 
 All engineering objects below are optional, loaded from CSV files, and
@@ -411,23 +446,46 @@ sources, shafts, triangulated surfaces, ellipses, extra planes, faults,
 and user-defined general points or line segments. See [Mesh
 refinement](#mesh-refinement) below.
 
--   **`rotation_angle`** *(optional)*: A parameter that results in rotation of the generated
-    unstructured mesh about the z-axis. The angle is specified in
-    degrees. Before rotation, the x-y coordinates are translated so that
-    the centre of the generated mesh is at the origin; the mesh is then
-    rotated by `rotation_angle`, while z coordinates remain unchanged.
-    This parameter is useful when the final mesh coordinate system
-    should be aligned with a preferred direction, for example principal
-    stress directions. 
+-   **`rotation_angle`** *(optional)*: A parameter that results in
+    rotation of the generated unstructured mesh about the z-axis. The
+    angle is specified in degrees. Before rotation, the x-y coordinates
+    are translated so that the centre of the generated mesh is at the
+    origin; the mesh is then rotated by `rotation_angle`, while z
+    coordinates remain unchanged. This parameter is useful when the
+    final mesh coordinate system should be aligned with a preferred
+    direction, for example principal stress directions.
+
+-   **`interpolated_surface_csv_dir`** *(optional)*: Directory in which
+    the interpolated geological surfaces are saved as CSV files. This is
+    useful for inspecting the surfaces used for meshing or reusing the
+    interpolated surfaces in a later workflow.
+
+For models containing faults, a single geological horizon may be split
+into several disconnected surface patches. Consequently, the
+interpolation output can contain more than one CSV file for the same
+geological surface. The files use a common surface identifier with an
+additional patch index, for example:
+
+    surface_0_1.csv
+    surface_0_2.csv
+    surface_0_3.csv
+
+These files belong to the same geological surface but represent separate
+parts of that surface because the surface has been split by the fault
+geometry. They may be kept as separate patches for meshing or combined
+later when a single point set for the complete horizon is required.
 
 In the codebase, an additional argument is required as the first input:
 
--   **`geomodel_result`**: Output of the structural model, containing
-    geological surfaces and their vertices, faults, normal vectors,
-    model extent, and grid points with material identifiers for each
-    geological layer.
+-   **`geomodel_result` or `surface_csv_dir`**: `geomodel_result`
+    contains the output of the structural model, including geological
+    surfaces and their vertices, faults, normal vectors, model extent,
+    and grid points with material identifiers for each geological layer.
+    Alternatively, geological surfaces can be provided as CSV files by
+    passing the path to their directory through `surface_csv_dir`. The
+    required CSV structure is described above.
 
-Example call in the codebase:
+Example of creating an unstructured mesh from structural-model results:
 
 ``` python
 mesh_unstructured_with_objects = create_unstructured_mesh_data(
@@ -448,6 +506,7 @@ mesh_unstructured_with_objects = create_unstructured_mesh_data(
     mapping_litho="automatic_centers",
     refinement=refinement,
     rotation_angle=30.0,
+    interpolated_surface_csv_dir="model2_interpolated_surfaces",
 )
 ```
 
@@ -463,15 +522,37 @@ applies centroid-based automatic lithological mapping, and `refinement`
 applies the local refinement definitions. `rotation_angle=30.0` is an
 independent input parameter of the unstructured mesh generator. It
 recentres the x-y coordinates on the mesh centre and rotates the
-generated mesh by 30° about the z-axis.
+generated mesh by 30° about the z-axis. If
+`interpolated_surface_csv_dir` is provided, the interpolated geological
+surfaces are also saved in the specified directory.
+
+Example of creating an unstructured mesh from CSV files containing
+geological surfaces:
+
+``` python
+mesh_explicit_unst_from_file = create_unstructured_mesh_data(
+    surface_csv_dir=cwd + "/examples/synthetic_examples/model2/input_data/surfaces",
+
+    extent=(0, 2500, 0, 1000, 0, 1000),
+
+    mesh_size=50,
+    curve_mesh_size=5,
+    tolerance=50,
+
+    mapping_litho="none",
+)
+```
+
+This generates an unstructured tetrahedral mesh from the CSV files
+stored in the directory specified by `surface_csv_dir`.
 
 #### Mesh refinement
 
 The Workbench provides local control of mesh resolution around
 geological, engineering, and user-defined features. A single
 `Refinement` object can combine several refinement definitions. Where
-multiple refinements overlap, the minimum local mesh size
-controls the generated mesh.
+multiple refinements overlap, the minimum local mesh size controls the
+generated mesh.
 
 The current `Refinement` object supports:
 
@@ -484,7 +565,8 @@ The current `Refinement` object supports:
 -   **`extraplanes`** --- refinement around the additional planes
     supplied through `extra_planes`.
 -   **`faults`** --- refinement around fault surfaces.
--   **`general`** --- refinement around one  user-defined point or a finite line defined by two endpoints
+-   **`general`** --- refinement around one user-defined point or a
+    finite line defined by two endpoints
 
 ##### Linear refinement around wells, sources, and shafts
 
@@ -539,9 +621,10 @@ refinement.wells = FunctionWellRefinement(
 
 ##### Refinement around surfaces
 
-Refinement around Triangulations, ellipses, faults, and extra planes can be done only using a linear refinement with the same
-parameter names as the other linear refinement definitions: `SizeMin`,
-`SizeMax`, `DistMin`, and `DistMax`. 
+Refinement around Triangulations, ellipses, faults, and extra planes can
+be done only using a linear refinement with the same parameter names as
+the other linear refinement definitions: `SizeMin`, `SizeMax`,
+`DistMin`, and `DistMax`.
 
 ``` python
 refinement = Refinement()
@@ -574,7 +657,6 @@ refinement.ellipses = ExtraPlaneRefinement(
     DistMax=100.0,
 )
 ```
-
 
 ##### General point and line refinement
 

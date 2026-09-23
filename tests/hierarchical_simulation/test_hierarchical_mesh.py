@@ -14,8 +14,12 @@ def geomodel(extent=(0, 10, 0, 10, 0, 10)):
     return SimpleNamespace(structural_frame=frame)
 
 
-def mesh(nodes):
-    return SimpleNamespace(nodes=np.asarray(nodes, dtype=float), elements=[0])
+def mesh(nodes, point_sets=None):
+    return SimpleNamespace(
+        nodes=np.asarray(nodes, dtype=float),
+        elements=[0],
+        point_sets=point_sets or {},
+    )
 
 
 BIG_NODES = [
@@ -29,6 +33,24 @@ SMALL_NODES = [
     [2, 2, 2], [8, 2, 2], [2, 8, 2], [8, 8, 2],
     [2, 2, 8], [8, 2, 8], [2, 8, 8], [8, 8, 8],
 ]
+
+
+SMALL_POINT_SETS = {
+    "left": [0, 2, 4, 6],
+    "right": [1, 3, 5, 7],
+    "front": [0, 1, 4, 5],
+    "back": [2, 3, 6, 7],
+    "bottom": [0, 1, 2, 3],
+    "top": [4, 5, 6, 7],
+}
+
+
+def big_mesh():
+    return mesh(BIG_NODES)
+
+
+def small_mesh(nodes=SMALL_NODES):
+    return mesh(nodes, point_sets=SMALL_POINT_SETS)
 
 
 class TestHierarchicalMeshValidation(unittest.TestCase):
@@ -98,7 +120,7 @@ class TestHierarchicalUnstructured(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_hierarchical_objects_are_selected_per_mesh(self, create):
-        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        create.side_effect = [big_mesh(), small_mesh()]
 
         wells = {
             1: [(1, 1, 1, 4, 4, 4)],
@@ -133,7 +155,7 @@ class TestHierarchicalUnstructured(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_nonhierarchical_objects_are_used_for_both_and_clipped(self, create):
-        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        create.side_effect = [big_mesh(), small_mesh()]
 
         hierarchical_mesh(
             geomodel(),
@@ -157,7 +179,7 @@ class TestHierarchicalUnstructured(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_all_engineering_object_types_are_unwrapped(self, create):
-        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        create.side_effect = [big_mesh(), small_mesh()]
 
         tri1 = np.array([[1, 1, 1, 11], [2, 2, 2, 11], [3, 3, 3, 11]], dtype=float)
         tri2 = np.array([[3, 3, 3, 22], [4, 4, 4, 22], [5, 5, 5, 22]], dtype=float)
@@ -200,7 +222,7 @@ class TestHierarchicalUnstructured(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_mesh_size2_defaults_to_mesh_size1(self, create):
-        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        create.side_effect = [big_mesh(), small_mesh()]
         hierarchical_mesh(
             geomodel(),
             mesh_type="Un",
@@ -211,11 +233,52 @@ class TestHierarchicalUnstructured(unittest.TestCase):
         self.assertEqual(create.call_args_list[1].kwargs["mesh_size"], 7)
 
 
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_common_unstructured_params_are_applied_to_both_meshes(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            unstructured_params={"curve_mesh_size": 5, "gmsh_flag": True},
+        )
+
+        first = create.call_args_list[0].kwargs
+        second = create.call_args_list[1].kwargs
+        self.assertEqual(first["curve_mesh_size"], 5)
+        self.assertEqual(second["curve_mesh_size"], 5)
+        self.assertTrue(first["gmsh_flag"])
+        self.assertTrue(second["gmsh_flag"])
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_level_specific_unstructured_params_override_common_values(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            unstructured_params={"curve_mesh_size": 5, "rotation_angle": 10},
+            unstructured_params1={"rotation_angle": 20},
+            unstructured_params2={"rotation_angle": 45},
+        )
+
+        first = create.call_args_list[0].kwargs
+        second = create.call_args_list[1].kwargs
+        self.assertEqual(first["curve_mesh_size"], 5)
+        self.assertEqual(second["curve_mesh_size"], 5)
+        self.assertEqual(first["rotation_angle"], 20)
+        self.assertEqual(second["rotation_angle"], 45)
+
+
 class TestStructuredAndImplicit(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_structured_mesh_data")
     def test_structured_defaults_second_controls_to_first(self, create):
-        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        create.side_effect = [big_mesh(), small_mesh()]
 
         hierarchical_mesh(
             geomodel(),
@@ -231,7 +294,7 @@ class TestStructuredAndImplicit(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_implicit_structured_mesh")
     def test_implicit_creates_two_extents(self, create):
-        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        create.side_effect = [big_mesh(), small_mesh()]
 
         hierarchical_mesh(
             geomodel(),
@@ -257,7 +320,7 @@ class TestBoundaryMatching(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_returns_six_boundary_faces_with_big_mesh_node_ids(self, create):
-        create.side_effect = [mesh(BIG_NODES), mesh(SMALL_NODES)]
+        create.side_effect = [big_mesh(), small_mesh()]
 
         _, _, boundary = hierarchical_mesh(
             geomodel(),
@@ -274,6 +337,52 @@ class TestBoundaryMatching(unittest.TestCase):
             self.assertEqual(values.shape[1], 4)
             self.assertTrue(np.all(values[:, 0] >= 0))
             self.assertTrue(np.all(values[:, 0] < len(BIG_NODES)))
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_boundary_nodes_are_taken_from_mesh2_point_sets(self, create):
+        # Add an interior node whose coordinates would confuse a min/max-based
+        # boundary detector. Only the explicitly listed point-set nodes should
+        # participate in boundary matching.
+        small_nodes = np.vstack([np.asarray(SMALL_NODES, dtype=float), [2, 5, 5]])
+        create.side_effect = [big_mesh(), small_mesh(small_nodes)]
+
+        _, _, boundary = hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+        )
+
+        self.assertEqual(len(boundary["left"]), len(SMALL_POINT_SETS["left"]))
+        self.assertEqual(len(boundary["right"]), len(SMALL_POINT_SETS["right"]))
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_missing_point_sets_raise_clear_error(self, create):
+        create.side_effect = [big_mesh(), mesh(SMALL_NODES)]
+
+        with self.assertRaisesRegex(ValueError, "point_sets"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Un",
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+            )
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_different_rotation_angles_are_accepted_for_each_level(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            unstructured_params1={"rotation_angle": 20},
+            unstructured_params2={"rotation_angle": 45},
+        )
+
+        self.assertEqual(create.call_args_list[0].kwargs["rotation_angle"], 20)
+        self.assertEqual(create.call_args_list[1].kwargs["rotation_angle"], 45)
 
 
 if __name__ == "__main__":

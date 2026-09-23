@@ -112,6 +112,11 @@ converts it back to WBGeo's common result representation.
 
 ## Workflow
 
+> **Examples:** Examples 1 and 2 demonstrate how to use the two
+> simulation pipelines available in WBGeo: **SfePy** and
+> **GOLEM/MOOSE**. They provide practical examples of building, running,
+> and working with simulation problems using these solvers.
+
 ### 1. Build the problem definition
 
 Choose the builder corresponding to the solver and model type.
@@ -763,6 +768,13 @@ GOLEM/MOOSE may produce several output files. In addition to the native
 Exodus result (normally `wbgeo.e`), a model may produce CSV files or
 other configured outputs.
 
+> **Note:** Model 1 and Model 2 in the examples demonstrate how to use
+> the **GOLEM/MOOSE** and **SfePy** simulation workflows. For the
+> **GOLEM Simple Reservoir Problem**, the simulation results can be
+> exported as an **Exodus** file and opened in **ParaView**. For
+> improved visualisation of the reservoir results, use the provided
+> ParaView state file `reservoir_visualisation.pvsm`.
+
 There are two ways to keep GOLEM results in the codebase.
 
 **Option 1 - define `output_dir` when running GOLEM.**
@@ -831,6 +843,13 @@ file.
 
 Once a simulation has been converted to `SimulationResults`, SfePy and
 GOLEM results can use the same result plotting functions.
+
+For the **GOLEM Simple Reservoir Problem**, the saved ParaView state
+file `reservoir_visualisation.pvsm` can be opened in **ParaView** for
+more detailed visualisation of the simulation results. The state file
+provides a prepared visualisation setup for inspecting the reservoir
+simulation output and can be used in addition to the plotting functions
+available directly in WBGeo.
 
 ### Plot Materials
 
@@ -951,12 +970,11 @@ plot_cross_section_difference_2D(
 )
 ```
 
-
 #### Plot a variable along a line
 
 `plot_variable_along_line()` samples a variable along a straight line
-between two points at one time step and plots the sampled values
-against distance along the line.
+between two points at one time step and plots the sampled values against
+distance along the line.
 
 Example call in the codebase:
 
@@ -976,7 +994,7 @@ Sampling is performed from the simulation mesh using PyVista.
 #### Print a variable at a point
 
 `print_variable_at_point()` samples a variable at a specified point and
-time. 
+time.
 
 Example call in the codebase:
 
