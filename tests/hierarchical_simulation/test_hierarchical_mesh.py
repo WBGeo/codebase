@@ -480,6 +480,64 @@ class TestBoundaryMatching(unittest.TestCase):
             )
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_rotation_angle_translate_target_xyz_are_passed_per_level(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            unstructured_params1={
+                "rotation_angle_translate": 20,
+                "xt": 100,
+                "yt": 200,
+                "zt": 300,
+            },
+            unstructured_params2={
+                "rotation_angle_translate": 45,
+                "xt": 400,
+                "yt": 500,
+                "zt": 600,
+            },
+        )
+
+        first = create.call_args_list[0].kwargs
+        second = create.call_args_list[1].kwargs
+        self.assertEqual(first["rotation_angle_translate"], 20)
+        self.assertEqual((first["xt"], first["yt"], first["zt"]), (100, 200, 300))
+        self.assertEqual(second["rotation_angle_translate"], 45)
+        self.assertEqual((second["xt"], second["yt"], second["zt"]), (400, 500, 600))
+        self.assertNotIn("target_center_x", first)
+        self.assertNotIn("target_center_y", first)
+        self.assertNotIn("target_center_z", first)
+        self.assertNotIn("target_center_x", second)
+        self.assertNotIn("target_center_y", second)
+        self.assertNotIn("target_center_z", second)
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_rotation_angle_does_not_add_translation_arguments(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        hierarchical_mesh(
+            geomodel(),
+            mesh_type="Un",
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+            unstructured_params1={"rotation_angle": 20},
+            unstructured_params2={"rotation_angle": 45},
+        )
+
+        for call in create.call_args_list:
+            kwargs = call.kwargs
+            self.assertNotIn("xt", kwargs)
+            self.assertNotIn("yt", kwargs)
+            self.assertNotIn("zt", kwargs)
+            self.assertNotIn("target_center_x", kwargs)
+            self.assertNotIn("target_center_y", kwargs)
+            self.assertNotIn("target_center_z", kwargs)
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_different_rotation_angles_are_accepted_for_each_level(self, create):
         create.side_effect = [big_mesh(), small_mesh()]
 

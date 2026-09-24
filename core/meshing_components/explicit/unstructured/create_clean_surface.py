@@ -1,6 +1,4 @@
 import logging
-from pathlib import Path
-import re
 import pandas as pd
 import pyvista as pv
 import numpy as np
@@ -606,8 +604,7 @@ def plot_surfaces_with_extrusions(cleaned_surfaces: List[Tuple[int, NDArray[np.f
 
 
 def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD: float = 50.0, PROJECTION_THRESHOLD: float = 60.0,
-    EXTRUSION_FACTOR: float = 100.0, z_threshold: float = 10.0,
-    raw_surface_csv_dir: Optional[str] = None, use_raw_surfaces: bool = False) -> Tuple[List[Tuple[str | int, NDArray[np.float64]]],
+    EXTRUSION_FACTOR: float = 100.0, z_threshold: float = 10.0) -> Tuple[List[Tuple[str | int, NDArray[np.float64]]],
     Dict[str | int, int], pd.DataFrame]:
     """
     Prepares geological surface data by cleaning overlapping points, identifying faults,
@@ -683,33 +680,6 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
         surfaces = [(i, surface) for i, surface in enumerate(raw_surfaces)]
         result = [False] * len(surfaces)
-
-    # Optional direct structural-surface path: no unstructured-meshing cut,
-    # clustering or fault-adjacent extrusion. The structural model's own mesh
-    # selection above is unchanged (including its existing extended meshes).
-    if raw_surface_csv_dir is not None:
-        output_dir = Path(raw_surface_csv_dir).expanduser()
-        output_dir.mkdir(parents=True, exist_ok=True)
-        entries = (list(geo_grads.items()) + list(fault_grads.items())) if has_faults else []
-        if has_faults:
-            for index, (name, entry) in enumerate(entries):
-                pts = np.asarray(entry["points"], dtype=float)
-                if pts.ndim != 2 or pts.shape[1] != 3:
-                    raise ValueError(f"Surface {name!r}: coordinates must be (N, 3)")
-                safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(name))[:80]
-                kind = "geology" if index < len(geo_grads) else "fault"
-                pd.DataFrame(pts, columns=["x", "y", "z"]).to_csv(
-                    output_dir / f"{index:03d}_{kind}_{safe_name}.csv", index=False)
-        else:
-            for index, (_, pts) in enumerate(surfaces):
-                pd.DataFrame(np.asarray(pts), columns=["x", "y", "z"]).to_csv(
-                    output_dir / f"{index:03d}_geology.csv", index=False)
-        logger.info("Exported %d structural surfaces to %s", len(surfaces), output_dir)
-
-    if use_raw_surfaces:
-        reference_indices = {surface_id: index for index, (surface_id, _) in enumerate(surfaces)
-                             if result[index]}
-        return surfaces, reference_indices, grid_litho
 
     # ---- SAFETY CHECK  ----
     n_surfaces = len(surfaces)
@@ -1023,15 +993,15 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
                         nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR
                     )
                     # check if all surfaces cut the fault after extension
-                    #plot_one_extended_surface_with_reference(
-                    #    file=file,
-                    #    points=points,
-                    #    ref_file=ref_file,
-                    #    ref_points=ref_points,
-                    #    extruded_points=extruded_intersection_points,
-                    #    intersection_points=nearest_ref_points,
-                    #    point_size=5,
-                    #)
+                    plot_one_extended_surface_with_reference(
+                        file=file,
+                        points=points,
+                        ref_file=ref_file,
+                        ref_points=ref_points,
+                        extruded_points=extruded_intersection_points,
+                        intersection_points=nearest_ref_points,
+                        point_size=5,
+                    )
                     # Add extruded points for this reference surface to the list
                     all_extruded_points_for_current_surface.append(extruded_intersection_points)
 

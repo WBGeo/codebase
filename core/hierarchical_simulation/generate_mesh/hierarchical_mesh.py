@@ -506,30 +506,63 @@ def hierarchical_mesh(
         return arr[:, :2].mean(axis=0)
 
     def _undo_unstructured_output_transform(nodes, extent, params):
-        # create_unstructured_mesh_data() stores rotated x/y coordinates after
-        # translating the domain centre to the origin. Undo that operation so
-        # mesh1 and mesh2 can be compared in the same original/world frame.
+        """Return unstructured output nodes to the original/world frame.
+
+        rotation_angle is a pure rotation about (0, 0).
+        rotation_angle_translate rotates coordinates relative to the model centre
+        and optionally places that centre at a user-specified target coordinate.
+        """
         result = np.asarray(nodes, dtype=float).copy()
-        angle = params.get("rotation_angle", None)
-        if angle is None:
+
+        pure_angle = params.get("rotation_angle", None)
+        translated_angle = params.get("rotation_angle_translate", None)
+
+        if pure_angle is not None and translated_angle is not None:
+            raise ValueError(
+                "Use either rotation_angle or rotation_angle_translate, not both."
+            )
+
+        if pure_angle is not None:
+            theta = np.deg2rad(float(pure_angle))
+            c = np.cos(theta)
+            s = np.sin(theta)
+            xr = result[:, 0].copy()
+            yr = result[:, 1].copy()
+            result[:, 0] = xr * c + yr * s
+            result[:, 1] = -xr * s + yr * c
             return result
 
-        theta = np.deg2rad(float(angle))
+        if translated_angle is None:
+            return result
+
+        tx = params.get("target_center_x", None)
+        ty = params.get("target_center_y", None)
+        tz = params.get("target_center_z", None)
+        targets = (tx, ty, tz)
+        if any(v is not None for v in targets) and not all(v is not None for v in targets):
+            raise ValueError(
+                "target_center_x, target_center_y, and target_center_z must be provided together."
+            )
+        tx = 0.0 if tx is None else float(tx)
+        ty = 0.0 if ty is None else float(ty)
+        tz = 0.0 if tz is None else float(tz)
+
+        xr = result[:, 0].copy() - tx
+        yr = result[:, 1].copy() - ty
+        zr = result[:, 2].copy() - tz
+
+        theta = np.deg2rad(float(translated_angle))
         c = np.cos(theta)
         s = np.sin(theta)
-
-        xr = result[:, 0].copy()
-        yr = result[:, 1].copy()
-
-        # Inverse of:
-        #   xr = x*c - y*s
-        #   yr = x*s + y*c
         x = xr * c + yr * s
         y = -xr * s + yr * c
 
         cx, cy = _extent_xy_center(extent)
+        arr = np.asarray(extent, dtype=float)
+        cz = 0.5 * (arr[4] + arr[5]) if arr.ndim == 1 and arr.size == 6 else arr.reshape(-1, 3)[:, 2].mean()
         result[:, 0] = x + cx
         result[:, 1] = y + cy
+        result[:, 2] = zr + cz
         return result
 
     # point_sets identify WHICH mesh2 nodes are on each physical face.

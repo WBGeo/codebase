@@ -1,7 +1,6 @@
 import logging
 import typing
 import re
-from pathlib import Path
 import gmsh
 
 logger = logging.getLogger(__name__)
@@ -2084,188 +2083,57 @@ def build_point_sets(boundary_groups: Dict[str, List[int]], n_nodes: int) -> Dic
 
     return point_sets
 
-def meshit_coordinate_transform(nodes, angle_deg):
+def meshit_coordinate_transform(
+    nodes,
+    angle_deg,
+    translate_to_model_center=False,
+    xt=None,
+    yt=None,
+    zt=None,
+):
+    """Apply one of the two supported coordinate transformations.
+
+    translate_to_model_center=False:
+        Pure XY rotation about the global origin (0, 0).
+        x and y are NOT shifted by the model centre and z is unchanged.
+
+    translate_to_model_center=True:
+        Rotate about the model centre and translate the model centre.
+        If xt, yt, zt are omitted, the model centre becomes (0, 0, 0).
+        If xt, yt, zt are supplied, the model centre becomes (xt, yt, zt).
+    """
     pts = np.asarray(nodes, dtype=np.float64).copy()
 
-    # origin of the new system = center of model
-    xc = 0.5 * (pts[:, 0].min() + pts[:, 0].max())
-    yc = 0.5 * (pts[:, 1].min() + pts[:, 1].max())
-
-    # coordinates relative to new origin
-    X = pts[:, 0] - xc
-    Y = pts[:, 1] - yc
-
-    theta = np.deg2rad(angle_deg)
+    theta = np.deg2rad(float(angle_deg))
     c = np.cos(theta)
     s = np.sin(theta)
 
-    local = pts.copy()
+    if translate_to_model_center:
+        xc = 0.5 * (pts[:, 0].min() + pts[:, 0].max())
+        yc = 0.5 * (pts[:, 1].min() + pts[:, 1].max())
+        X = pts[:, 0] - xc
+        Y = pts[:, 1] - yc
 
-    # coordinates measured along x' and y'
-    local[:, 0] = X * c - Y * s
-    local[:, 1] = X * s + Y * c
-
-    # z unchanged
-    local[:, 2] = pts[:, 2]
-
-    return local
-
-
-def _is_fault_csv(path: Path) -> bool:
-    """Identify reference/fault surfaces from their CSV filenames."""
-    stem = path.stem.lower()
-    return stem.startswith("fault") or "_fault_" in stem or stem.endswith("_fault")
-
-
-def _ordered_surface_csv_paths(surface_csv_dir: str) -> List[Path]:
-    """Keep reference fault surfaces first, matching the structural-model workflow."""
-    folder = Path(surface_csv_dir).expanduser()
-    if not folder.is_dir():
-        raise FileNotFoundError(f"Surface CSV directory not found: {folder}")
-    paths = sorted(folder.glob("*.csv"))
-    if not paths:
-        raise ValueError(f"No .csv surface files found in {folder}")
-    return sorted(paths, key=lambda path: (not _is_fault_csv(path), path.name.lower()))
-
-
-def load_surface_csvs(surface_csv_dir: str) -> Tuple[List[Tuple[int, NDArray[np.float64]]], Dict[int, int]]:
-    """Load x,y,z CSVs, placing fault coordinates in the reference surfaces.
-
-    Files named fault1.csv, fault2.csv, etc. are reference fault surfaces.
-    They are included in the returned surface list (first), and their list
-    positions are registered in ref_surface_indices for Gmsh 2D fault tagging.
-    No normals, structural model, point cutting, or extrusion are used.
-    """
-    paths = _ordered_surface_csv_paths(surface_csv_dir)
-    surfaces: List[Tuple[int, NDArray[np.float64]]] = []
-    ref_surfaces: List[Tuple[int, NDArray[np.float64]]] = []
-    ref_surface_indices: Dict[int, int] = {}
-    for path in paths:
-        # Accept both CSV styles:
-        #   1) x,y,z header followed by coordinates
-        #   2) headerless files containing exactly three coordinate columns
-        # Read once without a header so the first coordinate row can never be lost.
-        raw = pd.read_csv(path, header=None, comment="#", skip_blank_lines=True)
-        if raw.shape[1] < 3:
-            raise ValueError(f"{path.name}: expected at least three coordinate columns (x,y,z)")
-
-        first = [str(value).strip().lower() for value in raw.iloc[0, :3].tolist()]
-        if first == ["x", "y", "z"]:
-            coord_df = raw.iloc[1:, :3].copy()
-        else:
-            coord_df = raw.iloc[:, :3].copy()
-
-        # Convert explicitly so malformed/header-like rows produce a useful filename-specific error.
-        for column in coord_df.columns:
-            coord_df[column] = pd.to_numeric(coord_df[column], errors="coerce")
-        if coord_df.isna().any().any():
-            bad_rows = coord_df.index[coord_df.isna().any(axis=1)].tolist()[:5]
+        targets = (xt, yt, zt)
+        if any(v is not None for v in targets) and not all(v is not None for v in targets):
             raise ValueError(
-                f"{path.name}: non-numeric x,y,z values found at CSV row(s) {bad_rows}"
+                "xt, yt, and zt must be provided together."
             )
-        points = coord_df.to_numpy(dtype=np.float64)
-        if len(points) < 3 or not np.isfinite(points).all():
-            raise ValueError(f"{path.name}: requires at least 3 finite coordinate rows")
-        index = len(surfaces)
-        surface = (index, points)
-        surfaces.append(surface)
-        if _is_fault_csv(path):
-            ref_surfaces.append(surface)  # actual fault coordinates, not just a filename
-            ref_surface_indices[index] = index
-            logger.info("Reference fault %s: %d points, surface index %d", path.name, len(points), index)
-    logger.info("Loaded %d CSV surfaces (%d reference faults) from %s",
-                len(surfaces), len(ref_surfaces), Path(surface_csv_dir).expanduser())
-    return surfaces, ref_surface_indices
 
-
-
-def _prepare_existing_surface_grid(points: NDArray[np.float64], rtol: float = 1e-7) -> Optional[NDArray[np.float64]]:
-    """Return points in tensor-grid order when a CSV already contains a complete grid.
-
-    For ordinary geological surfaces the grid is detected in (x, y), i.e. z=f(x,y).
-    For nearly vertical fault/surface data it is detected in (y, z), i.e. x=f(y,z).
-    A complete Cartesian product is required; sparse/downsampled point clouds therefore
-    return None and continue through the existing RBF interpolation path.
-    """
-    pts = np.asarray(points, dtype=np.float64)
-    if pts.ndim != 2 or pts.shape[1] != 3 or len(pts) < 4:
-        return None
-
-    # Quantize only for grid detection, preserving the original coordinates in output.
-    spans = np.ptp(pts, axis=0)
-    scale = max(float(np.max(spans)), 1.0)
-    atol = max(scale * rtol, 1e-9)
-
-    def q(values):
-        return np.round(values / atol).astype(np.int64)
-
-    # Same orientation convention as create_surface_grid().
-    is_vertical_yz = spans[0] < max(1e-5, rtol * max(float(spans[1]), float(spans[2]), 1.0))
-    if is_vertical_yz:
-        u_col, v_col = 1, 2  # y,z grid; x is dependent
+        zc = 0.5 * (pts[:, 2].min() + pts[:, 2].max())
+        tx = 0.0 if xt is None else float(xt)
+        ty = 0.0 if yt is None else float(yt)
+        tz = 0.0 if zt is None else float(zt)
+        Z = pts[:, 2] - zc
     else:
-        u_col, v_col = 0, 1  # x,y grid; z is dependent
+        X, Y, Z = pts[:, 0], pts[:, 1], pts[:, 2]
+        tx = ty = tz = 0.0
 
-    qu, qv = q(pts[:, u_col]), q(pts[:, v_col])
-    uvals, vvals = np.unique(qu), np.unique(qv)
-    expected = len(uvals) * len(vvals)
-    if expected != len(pts):
-        return None
-
-    pairs = np.column_stack((qu, qv))
-    if len(np.unique(pairs, axis=0)) != expected:
-        return None
-
-    # import_surfaces() expects U outer / V inner ordering.
-    order = np.lexsort((qv, qu))
-    return pts[order].copy()
-
-
-def prepare_csv_surface_grids(cleaned_surfaces, smooth: float = 1e-5):
-    """Use already-gridded CSV surfaces directly; interpolate only scattered ones."""
-    result = []
-    for surf_id, points in cleaned_surfaces:
-        existing = _prepare_existing_surface_grid(points)
-        if existing is not None:
-            logger.info("CSV surface %s is already a complete grid (%d points): skipping interpolation",
-                        surf_id, len(existing))
-            result.append(existing)
-        else:
-            logger.info("CSV surface %s is scattered/incomplete (%d points): running interpolation",
-                        surf_id, len(points))
-            result.append(create_surface_grid([(surf_id, points)], smooth=smooth)[0])
-    return result
-
-def export_interpolated_surface_csvs(interpolated_surfaces, surface_names, output_dir):
-    """Export interpolated x,y,z points, merging pieces named surface_0_1, surface_0_2, etc.
-
-    A final numeric suffix is treated as a piece number only for names matching
-    surface_<group>_<piece>. Other names (including faults) are kept intact.
-    Files are written after interpolation and before Gmsh surface import.
-    """
-    if len(interpolated_surfaces) != len(surface_names):
-        raise ValueError("Interpolated surfaces and their names must have the same length")
-    folder = Path(output_dir).expanduser()
-    folder.mkdir(parents=True, exist_ok=True)
-    grouped = defaultdict(list)
-    for name, points in zip(surface_names, interpolated_surfaces):
-        name = str(name)
-        match = re.fullmatch(r"(surface_\d+)_\d+", name, flags=re.IGNORECASE)
-        group = match.group(1) if match else name
-        safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", group).strip("._")
-        if not safe:
-            raise ValueError(f"Invalid surface name: {name!r}")
-        xyz = np.asarray(points, dtype=np.float64)
-        if xyz.ndim != 2 or xyz.shape[1] != 3 or not np.isfinite(xyz).all():
-            raise ValueError(f"Interpolated surface {name!r} must contain finite (N,3) coordinates")
-        grouped[safe].append(xyz)
-    for group, pieces in grouped.items():
-        combined = np.concatenate(pieces, axis=0)
-        # Remove exact duplicate points shared by pieces without changing coordinates.
-        combined = pd.DataFrame(combined, columns=["x", "y", "z"]).drop_duplicates()
-        combined.to_csv(folder / f"{group}.csv", index=False)
-        logger.info("Saved %d interpolated coordinates to %s", len(combined), folder / f"{group}.csv")
-    return folder
+    transformed = pts.copy()
+    transformed[:, 0] = X * c - Y * s + tx
+    transformed[:, 1] = X * s + Y * c + ty
+    transformed[:, 2] = Z + tz
+    return transformed
 
 
 # Register this function as a component
@@ -2278,7 +2146,7 @@ def export_interpolated_surface_csvs(interpolated_surfaces, surface_names, outpu
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
-    geomodel_result: Optional[StructuralModelResults] = None,
+    geomodel_result: StructuralModelResults,
     wells: Optional[WellData] = None,
     sources: Optional[SourcesData] = None,
     shafts: Optional[ShaftData] = None,
@@ -2299,10 +2167,10 @@ def create_unstructured_mesh_data(
     merge_file: Optional[str] = None,
     refinement: Optional[Refinement] = None,
     rotation_angle: Optional[float] = None,
-    raw_surface_csv_dir: Optional[str] = None,
-    use_raw_surfaces: bool = False,
-    surface_csv_dir: Optional[str] = None,
-    interpolated_surface_csv_dir: Optional[str] = None,
+    rotation_angle_translate: Optional[float] = None,
+    xt: Optional[float] = None,
+    yt: Optional[float] = None,
+    zt: Optional[float] = None,
 
 ) -> MeshResults:
     """
@@ -2311,9 +2179,10 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        geomodel_result (StructuralModelResults, optional): Required only when surface_csv_dir is not provided.
-        surface_csv_dir (str, optional): Directory of one x,y,z CSV per surface. Name fault files with a fault prefix. Requires extent; disables lithology mapping.
-        interpolated_surface_csv_dir (str, optional): Export post-interpolation coordinates as CSV; merge surface_0_1, surface_0_2, etc. into surface_0.csv.
+        geomodel_result (StructuralModelResults): Result of a structural geological model, containing a StructuralFrame with the interpolated lithology block, grid, and surface meshes.
+        rotation_angle (float, optional): Pure x/y rotation in degrees about the global origin (0, 0); no translation is applied.
+        rotation_angle_translate (float, optional): Rotate about the model centre and translate it. If xt/yt/zt are omitted, the model centre is moved to (0, 0, 0).
+        xt, yt, zt (float, optional): Translation target used only with rotation_angle_translate. All three must be supplied together; after transformation, (xt, yt, zt) is the model centre.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
         shafts (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z), direction vectors (dx, dy, dz)
@@ -2358,24 +2227,6 @@ def create_unstructured_mesh_data(
         MeshResults: An instance of the MeshResults class.
     """
 
-    # CSV input replaces structural-model surface extraction entirely.
-    if surface_csv_dir is not None:
-        if use_raw_surfaces or raw_surface_csv_dir is not None:
-            raise ValueError("surface_csv_dir cannot be combined with structural-surface export options")
-        if mapping_litho not in (None, "none", LithoMappingMode.NONE,
-                                 LithoMappingMode.AUTOMATIC_CENTERS.value):
-            raise ValueError("CSV surface input requires mapping_litho='none'")
-        mapping_litho = LithoMappingMode.NONE
-        if extent is None:
-            raise ValueError("CSV surface input requires an explicit extent=(xmin,xmax,ymin,ymax,zmin,zmax)")
-    elif geomodel_result is None:
-        raise ValueError("Provide geomodel_result or surface_csv_dir")
-
-    # Direct structural-surface mode does not use grid-based lithology mapping.
-    if use_raw_surfaces:
-        if mapping_litho not in (None, "none", LithoMappingMode.NONE):
-            raise ValueError("use_raw_surfaces=True requires mapping_litho='none'")
-        mapping_litho = LithoMappingMode.NONE
     # normalize
     if isinstance(mapping_litho, str):
         try:
@@ -2475,36 +2326,14 @@ def create_unstructured_mesh_data(
         ref_surface_indices: Dict[int, int]
         grid_litho: pd.DataFrame
 
-        if surface_csv_dir is not None:
-            cleaned_surfaces, ref_surface_indices = load_surface_csvs(surface_csv_dir)
-            # No lithology grid is read or constructed in CSV mode.
-            grid_litho = pd.DataFrame(columns=["x", "y", "z", "lithology"])
-        else:
-            cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(geomodel_result, DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
-                PROJECTION_THRESHOLD=PROJECTION_THRESHOLD, EXTRUSION_FACTOR=EXTRUSION_FACTOR, z_threshold=z_threshold,
-                raw_surface_csv_dir=raw_surface_csv_dir, use_raw_surfaces=use_raw_surfaces,
-            )
+        cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(geomodel_result, DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
+            PROJECTION_THRESHOLD=PROJECTION_THRESHOLD, EXTRUSION_FACTOR=EXTRUSION_FACTOR, z_threshold=z_threshold,
+        )
 
         ########################
         # Surface interpolation
         ########################
-        if surface_csv_dir is not None:
-            interpolated_s: List[NDArray[np.float64]] = prepare_csv_surface_grids(
-                cleaned_surfaces, smooth=smooth
-            )
-        else:
-            interpolated_s: List[NDArray[np.float64]] = create_surface_grid(
-                cleaned_surfaces, smooth=smooth
-            )
-        if interpolated_surface_csv_dir is not None:
-            if surface_csv_dir is not None:
-                # Retain the input CSV stems for grouping/export.
-                surface_names = [path.stem for path in _ordered_surface_csv_paths(surface_csv_dir)]
-            else:
-                surface_names = [name for name, _ in cleaned_surfaces]
-            export_interpolated_surface_csvs(
-                interpolated_s, surface_names, interpolated_surface_csv_dir
-            )
+        interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth,)
 
         ##################
         # Import surfaces
@@ -2562,11 +2391,38 @@ def create_unstructured_mesh_data(
 
         # 3. Transform ALL node coordinates to the new coordinate system
 
+        if rotation_angle is not None and rotation_angle_translate is not None:
+            raise ValueError(
+                "Use either rotation_angle (pure rotation) or "
+                "rotation_angle_translate (rotation plus centre translation), not both."
+            )
+
         if rotation_angle is not None:
+            if any(v is not None for v in (xt, yt, zt)):
+                raise ValueError(
+                    "xt/yt/zt are only valid with "
+                    "rotation_angle_translate."
+                )
             nodes_local = meshit_coordinate_transform(
-            nodes_global,
-            angle_deg=rotation_angle
-        )
+                nodes_global,
+                angle_deg=rotation_angle,
+                translate_to_model_center=False,
+            )
+
+        elif rotation_angle_translate is not None:
+            nodes_local = meshit_coordinate_transform(
+                nodes_global,
+                angle_deg=rotation_angle_translate,
+                translate_to_model_center=True,
+                xt=xt,
+                yt=yt,
+                zt=zt,
+            )
+
+        elif any(v is not None for v in (xt, yt, zt)):
+            raise ValueError(
+                "xt/yt/zt require rotation_angle_translate."
+            )
 
     finally:
         gmsh.finalize()

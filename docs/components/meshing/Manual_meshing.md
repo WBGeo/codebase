@@ -446,14 +446,69 @@ sources, shafts, triangulated surfaces, ellipses, extra planes, faults,
 and user-defined general points or line segments. See [Mesh
 refinement](#mesh-refinement) below.
 
--   **`rotation_angle`** *(optional)*: A parameter that results in
-    rotation of the generated unstructured mesh about the z-axis. The
-    angle is specified in degrees. Before rotation, the x-y coordinates
-    are translated so that the centre of the generated mesh is at the
-    origin; the mesh is then rotated by `rotation_angle`, while z
-    coordinates remain unchanged. This parameter is useful when the
-    final mesh coordinate system should be aligned with a preferred
-    direction, for example principal stress directions.
+-   **`rotation_angle`** *(optional)*: Applies a **pure rotation only**
+    about the global origin `(0, 0, 0)`. The angle is specified in
+    degrees and the rotation is about the global z-axis. It rotates the
+    original coordinates:
+
+        x_new = x*cos(theta) - y*sin(theta)
+        y_new = x*sin(theta) + y*cos(theta)
+        z_new = z
+
+    The input `rotation_angle` is specified in **degrees** and is
+    converted internally to radians (`theta`) before evaluating
+    `sin(theta)` and `cos(theta)`. In this mode, the rotation centre is
+    the **global origin `(0, 0, 0)`**, not the centre of the model. No
+    translation is applied and the z coordinates remain unchanged.
+
+-   **`rotation_angle_translate`** *(optional)*: Rotates the mesh about
+    the **model centre `(xc, yc, zc)`**, rather than about the global
+    origin. To perform this rotation, the coordinates are first
+    expressed in a local coordinate system whose origin coincides with
+    the original model centre:
+
+        X = x - xc
+        Y = y - yc
+        Z = z - zc
+
+    Therefore, `(X, Y, Z) = (0, 0, 0)` corresponds to the centre of the
+    original model. The model is not conceptually being moved first;
+    instead, its coordinates are represented relative to its centre so
+    that the rotation is performed about that centre.
+
+    The centred x-y coordinates are then rotated about the local z-axis:
+
+        x_rot = X*cos(theta) - Y*sin(theta)
+        y_rot = X*sin(theta) + Y*cos(theta)
+        z_rot = Z
+
+    The input `rotation_angle_translate` is specified in **degrees** and
+    is converted internally to radians (`theta`) before evaluating the
+    trigonometric functions.
+
+    If `xt`, `yt`, and `zt` are omitted, the rotated local coordinates
+    are returned directly:
+
+        x_new = x_rot
+        y_new = y_rot
+        z_new = z_rot
+
+    In this case, the origin `(0, 0, 0)` of the transformed coordinate
+    system corresponds to the model centre.
+
+    If `xt`, `yt`, and `zt` are supplied, they specify the coordinates
+    assigned to the model centre in the transformed coordinate system:
+
+        x_new = x_rot + xt
+        y_new = y_rot + yt
+        z_new = z_rot + zt
+
+    Thus, `(xc, yc, zc)` is the **rotation centre in the original
+    coordinate system**, whereas `(xt, yt, zt)` specifies the **location
+    of that model centre in the transformed coordinate system**. 
+
+   The two modes are alternatives and should not be
+    supplied together.
 
 -   **`interpolated_surface_csv_dir`** *(optional)*: Directory in which
     the interpolated geological surfaces are saved as CSV files. This is
@@ -519,12 +574,62 @@ processing near faults, while `z_threshold` identifies surfaces for
 which a fault produces no meaningful vertical offset. `gmsh_flag=True`
 saves the original Gmsh `.msh` file, `mapping_litho="automatic_centers"`
 applies centroid-based automatic lithological mapping, and `refinement`
-applies the local refinement definitions. `rotation_angle=30.0` is an
-independent input parameter of the unstructured mesh generator. It
-recentres the x-y coordinates on the mesh centre and rotates the
-generated mesh by 30° about the z-axis. If
-`interpolated_surface_csv_dir` is provided, the interpolated geological
-surfaces are also saved in the specified directory.
+applies the local refinement definitions. In this example,
+`rotation_angle=30.0` applies only a 30° rotation about the global
+z-axis. It does **not** recenter or translate the mesh, and z remains
+unchanged. If `interpolated_surface_csv_dir` is provided, the
+interpolated geological surfaces are also saved in the specified
+directory.
+
+##### Rotation and translation examples in the codebase
+
+The following examples show the three supported coordinate-transform
+cases.
+
+**1. Pure rotation only**
+
+``` python
+mesh_rotated = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    mesh_size=30,
+    rotation_angle=30.0,
+)
+```
+
+This rotates the original x-y coordinates by 30° about the global origin
+`(0, 0)`. No model-centre subtraction or translation is applied, and the
+z coordinates are unchanged.
+
+**2. Rotation and translation to the origin**
+
+``` python
+mesh_rotated_centered = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    mesh_size=30,
+    rotation_angle_translate=30.0,
+)
+```
+
+Here the model centre `(xc, yc, zc)` is used as the rotation centre. The
+returned coordinates are expressed in the transformed coordinate system
+whose origin `(0, 0, 0)` corresponds to the model centre.
+
+**3. Rotation and translation to a user-defined model centre**
+
+``` python
+mesh_rotated_translated = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    mesh_size=30,
+    rotation_angle_translate=30.0,
+    xt=1000.0,
+    yt=2000.0,
+    zt=500.0,
+)
+```
+
+The mesh is rotated by 30° about its model centre and translated so that
+the centre of the resulting mesh is `(1000, 2000, 500)`. The three
+target coordinates `xt`, `yt`, and `zt` must be provided together.
 
 Example of creating an unstructured mesh from CSV files containing
 geological surfaces:

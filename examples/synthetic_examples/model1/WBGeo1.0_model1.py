@@ -908,22 +908,22 @@ hierarchical_triangulations = load_triangulations_planes_from_csv(
 # Refinement
 refinement = Refinement()
 refinement.wells = LinearWellRefinement(
-    SizeMin=10.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
+    SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
 )
 refinement.sources = LinearSourceRefinement(
-    SizeMin=10.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
+    SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
 )
 refinement.shafts = LinearShaftRefinement(
-    SizeMin=10.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
+    SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
 )
 refinement.ellipses = EllipseRefinement(
-    SizeMin=15.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0
+    SizeMin=20.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0
 )
 refinement.extraplanes = ExtraPlaneRefinement(
-    SizeMin=15.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0
+    SizeMin=20.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0
 )
 refinement.triangulations = TriangulationRefinement(
-    SizeMin=15.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0
+    SizeMin=20.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0
 )
 
 mesh1, mesh2, nodes_bcs = hierarchical_mesh(
@@ -950,14 +950,14 @@ mesh1, mesh2, nodes_bcs = hierarchical_mesh(
     #extra_planes=planes,
     #triangulations=triangulations,
     # unstructured
-    mesh_size1=30,
-    mesh_size2=20,
+    mesh_size1=40,
+    mesh_size2=30,
     unstructured_params={
         "curve_mesh_size": 5,
         "refinement": refinement,
     },
     unstructured_params2={
-        "rotation_angle": 45,
+        "rotation_angle":30,
     },
 )
 
