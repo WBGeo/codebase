@@ -6,7 +6,7 @@ Every mesh block is added as an independent actor so that it can
 be switched ON/OFF interactively, similar to ParaView's block list.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import numpy as np
 import pyvista as pv
@@ -386,6 +386,224 @@ def _add_block_panel(
 
 
 # =============================================================================
+# Interactive inspection helpers
+# =============================================================================
+
+def _mesh_global_node_id(mesh: MeshResults, point: np.ndarray) -> Optional[int]:
+    """Return the nearest WBGeo node index for a picked coordinate."""
+    try:
+        nodes = np.asarray(mesh.nodes, dtype=float)
+        if nodes.ndim == 2 and nodes.shape[1] >= 3 and len(nodes):
+            return int(np.argmin(np.linalg.norm(nodes[:, :3] - point[:3], axis=1)))
+    except (AttributeError, TypeError, ValueError):
+        pass
+    return None
+
+
+def _nearest_block_point(mesh: MeshResults, point: np.ndarray, omit_last_blocks: int = 6):
+    """Find the displayed block and local point closest to ``point``."""
+    multiblock = mesh.mesh
+    stop = max(0, multiblock.n_blocks - max(0, int(omit_last_blocks)))
+    best = None
+    for i in range(stop):
+        block = multiblock[i]
+        if block is None or block.n_points == 0:
+            continue
+        pts = np.asarray(block.points)
+        local_id = int(np.argmin(np.linalg.norm(pts - point[:3], axis=1)))
+        distance = float(np.linalg.norm(pts[local_id] - point[:3]))
+        if best is None or distance < best[0]:
+            best = (distance, i, local_id, block)
+    return best
+
+
+def _array_values_at(dataset, association: str, index: int) -> List[str]:
+    """Format point/cell arrays for the information panel."""
+    values = []
+    data = dataset.point_data if association == "point" else dataset.cell_data
+    for name in data.keys():
+        try:
+            value = np.asarray(data[name])[index]
+            if np.ndim(value) == 0:
+                rendered = f"{value}"
+            else:
+                rendered = np.array2string(np.asarray(value), precision=5, separator=", ")
+            values.append(f"{name}: {rendered}")
+        except (IndexError, TypeError, ValueError):
+            continue
+    return values
+
+
+def _set_info_text(plotter: pv.Plotter, subplot: Tuple[int, int], text: str):
+    """Update the persistent selection-information panel in one subplot."""
+    row, column = subplot
+    plotter.subplot(row, column)
+    plotter.add_text(
+        text,
+        position="lower_left",
+        font_size=9,
+        name=f"hierarchical_selection_info_{row}_{column}",
+    )
+
+
+def _make_point_callback(plotter, mesh, subplot, mesh_label, omit_last_blocks):
+    """Create a callback reporting node id, coordinates, block and point arrays."""
+    def callback(point):
+        if point is None:
+            return
+        point = np.asarray(point, dtype=float)
+        nearest = _nearest_block_point(mesh, point, omit_last_blocks)
+        if nearest is None:
+            return
+        _, block_index, local_id, block = nearest
+        xyz = np.asarray(block.points[local_id], dtype=float)
+        global_id = _mesh_global_node_id(mesh, xyz)
+        lines = [
+            f"{mesh_label} - POINT",
+            f"Block: {_block_name(mesh, block_index)} (index {block_index})",
+            f"Block point ID: {local_id}",
+            f"Node ID: {global_id if global_id is not None else 'n/a'}",
+            f"X: {xyz[0]:.6g}",
+            f"Y: {xyz[1]:.6g}",
+            f"Z: {xyz[2]:.6g}",
+        ]
+        lines.extend(_array_values_at(block, "point", local_id)[:6])
+        _set_info_text(plotter, subplot, "\n".join(lines))
+        plotter.render()
+    return callback
+
+
+def _make_cell_callback(plotter, mesh, subplot, mesh_label, omit_last_blocks):
+    """Create a callback reporting the closest original cell and its data."""
+    def callback(picked):
+        if picked is None or getattr(picked, "n_cells", 0) == 0:
+            return
+        try:
+            center = np.asarray(picked.cell_centers().points[0], dtype=float)
+        except (AttributeError, IndexError, ValueError):
+            return
+
+        multiblock = mesh.mesh
+        stop = max(0, multiblock.n_blocks - max(0, int(omit_last_blocks)))
+        best = None
+        for i in range(stop):
+            block = multiblock[i]
+            if block is None or block.n_cells == 0:
+                continue
+            centers = np.asarray(block.cell_centers().points)
+            cell_id = int(np.argmin(np.linalg.norm(centers - center, axis=1)))
+            distance = float(np.linalg.norm(centers[cell_id] - center))
+            if best is None or distance < best[0]:
+                best = (distance, i, cell_id, block, centers[cell_id])
+        if best is None:
+            return
+
+        _, block_index, cell_id, block, cell_center = best
+        cell = block.get_cell(cell_id)
+        point_ids = list(getattr(cell, "point_ids", []))
+        lines = [
+            f"{mesh_label} - CELL",
+            f"Block: {_block_name(mesh, block_index)} (index {block_index})",
+            f"Cell ID: {cell_id}",
+            f"Cell type: {getattr(cell, 'type', 'n/a')}",
+            f"Center: ({cell_center[0]:.6g}, {cell_center[1]:.6g}, {cell_center[2]:.6g})",
+            f"Point IDs: {point_ids[:12]}{' ...' if len(point_ids) > 12 else ''}",
+        ]
+        lines.extend(_array_values_at(block, "cell", cell_id)[:6])
+        _set_info_text(plotter, subplot, "\n".join(lines))
+        plotter.render()
+    return callback
+
+
+def _enable_hierarchical_point_mode(
+    plotter,
+    mesh1,
+    mesh2,
+    omit_last_blocks,
+):
+    """Enable one point picker shared by both hierarchical subplots.
+
+    PyVista maintains a single picking mode for a Plotter. Enabling picking
+    once for Mesh 1 and then again for Mesh 2 disables/replaces the first
+    picker. This shared callback determines which viewport was clicked and
+    dispatches the picked point to the correct mesh.
+    """
+
+    try:
+        plotter.disable_picking()
+    except (AttributeError, RuntimeError):
+        pass
+
+    cb1 = _make_point_callback(
+        plotter, mesh1, (0, 0), "Mesh 1", omit_last_blocks
+    )
+    cb2 = _make_point_callback(
+        plotter, mesh2, (0, 1), "Mesh 2", omit_last_blocks
+    )
+
+    def callback(point):
+        if point is None:
+            return
+
+        # For the 1x2 layout, use the mouse x-position to determine which
+        # renderer received the click. This avoids the second PyVista picker
+        # replacing the first one.
+        try:
+            x, _ = plotter.iren.get_event_position()
+            width, _ = plotter.window_size
+            if x < width / 2:
+                cb1(point)
+            else:
+                cb2(point)
+        except Exception:
+            # Safe fallback: choose the mesh whose displayed point is nearest.
+            p = np.asarray(point, dtype=float)
+            n1 = _nearest_block_point(mesh1, p, omit_last_blocks)
+            n2 = _nearest_block_point(mesh2, p, omit_last_blocks)
+            d1 = np.inf if n1 is None else n1[0]
+            d2 = np.inf if n2 is None else n2[0]
+            (cb1 if d1 <= d2 else cb2)(point)
+
+    # Enable picking only once. The clicked renderer is selected by VTK/PyVista.
+    plotter.subplot(0, 0)
+    plotter.enable_point_picking(
+        callback=callback,
+        show_message=False,
+        show_point=True,
+        point_size=14,
+        color="yellow",
+        left_clicking=True,
+        pickable_window=False,
+    )
+
+    _set_info_text(
+        plotter, (0, 0),
+        "Mesh 1\nPOINT mode: left-click a mesh point\nX/Y/Z appear here"
+    )
+    _set_info_text(
+        plotter, (0, 1),
+        "Mesh 2\nPOINT mode: left-click a mesh point\nX/Y/Z appear here"
+    )
+
+
+def _enable_cell_mode(plotter, mesh, subplot, mesh_label, omit_last_blocks):
+    """Enable cell inspection for the active subplot."""
+    plotter.subplot(*subplot)
+    try:
+        plotter.disable_picking()
+    except (AttributeError, RuntimeError):
+        pass
+    plotter.enable_cell_picking(
+        callback=_make_cell_callback(plotter, mesh, subplot, mesh_label, omit_last_blocks),
+        through=False,
+        show_message=False,
+        show=True,
+        style="wireframe",
+        color="yellow",
+    )
+    _set_info_text(plotter, subplot, f"{mesh_label}\nCELL mode: pick a cell\nPress P for point mode")
+
+# =============================================================================
 # Main visualization
 # =============================================================================
 
@@ -399,6 +617,7 @@ def plot_hierarchical_meshes_3d(
     volume_opacity: float = 1.0,
     show_block_controls: bool = True,
     omit_last_blocks: int = 6,
+    enable_inspection: bool = True,
 ) -> pv.Plotter:
     """
     Plot two hierarchical meshes with interactive block visibility.
@@ -433,6 +652,13 @@ def plot_hierarchical_meshes_3d(
     omit_last_blocks
         Number of trailing WBGeo auxiliary blocks to ignore completely.
         The hierarchical viewer defaults to 6.
+
+    enable_inspection
+        Add ParaView-like interactive inspection. Point mode is enabled by
+        default. Left-click a point to display node ID, XYZ coordinates, block
+        name and point arrays. Press ``P`` for point mode and ``C`` for cell
+        mode in the currently active subplot. Cell mode reports cell ID, cell
+        type, center, point IDs and cell arrays.
     """
 
     plotter = pv.Plotter(
@@ -505,6 +731,37 @@ def plot_hierarchical_meshes_3d(
         )
 
     # =================================================================
+    # ParaView-like inspection
+    # =================================================================
+
+    if enable_inspection:
+        # Point picking is the default inspection mode.  P/C switch the
+        # currently active renderer between point and cell inspection.
+        _enable_hierarchical_point_mode(
+            plotter,
+            mesh1,
+            mesh2,
+            omit_last_blocks,
+        )
+
+        def point_mode_active_subplot():
+            index = getattr(plotter, "_active_renderer_index", 0)
+            if index == 1:
+                _enable_point_mode(plotter, mesh2, (0, 1), "Mesh 2", omit_last_blocks)
+            else:
+                _enable_point_mode(plotter, mesh1, (0, 0), "Mesh 1", omit_last_blocks)
+
+        def cell_mode_active_subplot():
+            index = getattr(plotter, "_active_renderer_index", 0)
+            if index == 1:
+                _enable_cell_mode(plotter, mesh2, (0, 1), "Mesh 2", omit_last_blocks)
+            else:
+                _enable_cell_mode(plotter, mesh1, (0, 0), "Mesh 1", omit_last_blocks)
+
+        plotter.add_key_event("p", point_mode_active_subplot)
+        plotter.add_key_event("c", cell_mode_active_subplot)
+
+    # =================================================================
     # Camera
     # =================================================================
 
@@ -557,4 +814,5 @@ def inspect_hierarchical_meshes_3d(
         link_views=True,
         volume_opacity=1.0,
         show_block_controls=True,
+        enable_inspection=True,
     )

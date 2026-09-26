@@ -277,20 +277,20 @@ extent = [
     (404505.5390, 5862078.2464, -3754.44),
 ]
 
-#mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#    geomodel_result=structural_model_result,
-#    extent=extent,
-#    wells=wells,
-#    triangulations=triangulations,
-#    mesh_size=75,
-#    curve_mesh_size=5,
-#    gmsh_flag=True,
-#    rotation_angle=18,
-#    refinement=refinement,
-#)
-#buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
-#with open("filename_Gross_Schoenebeck_coor_rot.exo", "wb") as f:
-#    f.write(buf.getvalue())
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    extent=extent,
+    wells=wells,
+    triangulations=triangulations,
+    mesh_size=75,
+    curve_mesh_size=5,
+    gmsh_flag=True,
+    rotation_angle=18,
+    refinement=refinement,
+)
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
+with open("filename_Gross_Schoenebeck_SM.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 
 
@@ -307,7 +307,7 @@ mesh_unstructured_with_objects2 = create_unstructured_mesh_data(
     refinement=refinement,
 )
 buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects2 , type='unstr')
-with open("filename_Gross_Schoenebeck_coor_rot2.exo", "wb") as f:
+with open("filename_Gross_Schoenebeck_CSV.exo", "wb") as f:
     f.write(buf.getvalue())
 
 plot_mesh_3d(mesh_unstructured_with_objects2, structural_model_result, show_plotter=True)

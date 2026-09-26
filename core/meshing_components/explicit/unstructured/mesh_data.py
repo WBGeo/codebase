@@ -1,6 +1,7 @@
 import logging
 import typing
 import re
+from pathlib import Path
 import gmsh
 
 logger = logging.getLogger(__name__)
@@ -2146,7 +2147,8 @@ def meshit_coordinate_transform(
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
-    geomodel_result: StructuralModelResults,
+    geomodel_result: Optional[StructuralModelResults] = None,
+    surface_csv_dir: Optional[str] = None,
     wells: Optional[WellData] = None,
     sources: Optional[SourcesData] = None,
     shafts: Optional[ShaftData] = None,
@@ -2179,8 +2181,7 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        geomodel_result (StructuralModelResults): Result of a structural geological model, containing a StructuralFrame with the interpolated lithology block, grid, and surface meshes.
-        rotation_angle (float, optional): Pure x/y rotation in degrees about the global origin (0, 0); no translation is applied.
+        geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.\n        surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.\n        rotation_angle (float, optional): Pure x/y rotation in degrees about the global origin (0, 0); no translation is applied.
         rotation_angle_translate (float, optional): Rotate about the model centre and translate it. If xt/yt/zt are omitted, the model centre is moved to (0, 0, 0).
         xt, yt, zt (float, optional): Translation target used only with rotation_angle_translate. All three must be supplied together; after transformation, (xt, yt, zt) is the model centre.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
@@ -2235,6 +2236,32 @@ def create_unstructured_mesh_data(
             raise ValueError(
                 f"Invalid mapping_litho='{mapping_litho}'. "
                 f"Valid options are: {[m.value for m in LithoMappingMode]}"
+            )
+
+    # Input route validation.
+    csv_mode = surface_csv_dir is not None
+    if csv_mode and geomodel_result is not None:
+        raise ValueError(
+            "Use either geomodel_result or surface_csv_dir, not both."
+        )
+    if not csv_mode and geomodel_result is None:
+        raise ValueError(
+            "Either geomodel_result or surface_csv_dir must be supplied."
+        )
+
+    # CSV surfaces do not contain a structural lithology grid, so lithology
+    # mapping is intentionally disabled for this input route.
+    if csv_mode:
+        if mapping_litho != LithoMappingMode.NONE:
+            logger.info(
+                "surface_csv_dir mode forces mapping_litho='none' "
+                "(requested %r).", mapping_litho.value
+            )
+        mapping_litho = LithoMappingMode.NONE
+        if merge_file is not None:
+            raise ValueError(
+                "merge_file cannot be used with surface_csv_dir because "
+                "CSV-surface mode uses mapping_litho='none'."
             )
 
     # enforce merge_file rules
@@ -2294,7 +2321,14 @@ def create_unstructured_mesh_data(
     #   * 6 values -> legacy axis-aligned box
     #   * 8 (x,y,z) corners -> oriented parallelepiped
     if extent is None or len(extent) == 0:
-        domain_spec = np.asarray(geomodel_result.structural_frame.grid.extent, dtype=float)
+        if csv_mode:
+            raise ValueError(
+                "extent must be supplied when using surface_csv_dir because "
+                "there is no structural model from which to infer it."
+            )
+        domain_spec = np.asarray(
+            geomodel_result.structural_frame.grid.extent, dtype=float
+        )
     else:
         domain_spec = np.asarray(extent, dtype=float)
     normalize_domain(domain_spec)
@@ -2322,13 +2356,98 @@ def create_unstructured_mesh_data(
         ############################################
         # Get data from structural model and clean it
         ############################################
-        cleaned_surfaces: List[NDArray[np.float64]]
-        ref_surface_indices: Dict[int, int]
+        cleaned_surfaces: List[Tuple[str | int, NDArray[np.float64]]]
+        ref_surface_indices: Dict[str | int, int]
         grid_litho: pd.DataFrame
 
-        cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(geomodel_result, DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
-            PROJECTION_THRESHOLD=PROJECTION_THRESHOLD, EXTRUSION_FACTOR=EXTRUSION_FACTOR, z_threshold=z_threshold,
-        )
+        if csv_mode:
+            # CSV mode deliberately bypasses data_preparation(): no overlap
+            # removal, fault-side cleaning, projection, or surface extension.
+            csv_root = Path(surface_csv_dir).expanduser()
+            if not csv_root.is_dir():
+                raise ValueError(
+                    f"surface_csv_dir is not a directory: {surface_csv_dir}"
+                )
+
+            csv_files = sorted(
+                p for p in csv_root.iterdir()
+                if p.is_file()
+                and p.suffix.lower() == ".csv"
+                and not p.name.startswith(".")
+                and not p.name.startswith("._")
+            )
+            if not csv_files:
+                raise ValueError(
+                    f"No CSV surface files found in {surface_csv_dir}"
+                )
+
+            cleaned_surfaces = []
+            ref_surface_indices = {}
+
+            for csv_path in csv_files:
+                df = pd.read_csv(csv_path)
+                lower_to_original = {
+                    str(c).strip().lower(): c for c in df.columns
+                }
+                missing = [
+                    axis for axis in ("x", "y", "z")
+                    if axis not in lower_to_original
+                ]
+                if missing:
+                    raise ValueError(
+                        f"{csv_path.name} must contain x, y, z columns; "
+                        f"missing {missing}."
+                    )
+
+                xyz = df[
+                    [
+                        lower_to_original["x"],
+                        lower_to_original["y"],
+                        lower_to_original["z"],
+                    ]
+                ].to_numpy(dtype=float)
+
+                finite = np.all(np.isfinite(xyz), axis=1)
+                xyz = xyz[finite]
+                if len(xyz) < 3:
+                    raise ValueError(
+                        f"{csv_path.name} has fewer than 3 valid x,y,z points."
+                    )
+
+                # IMPORTANT: create_surface_grid() expects exactly
+                # (surface_id, points), not extra metadata.
+                surface_id = csv_path.name
+                surface_index = len(cleaned_surfaces)
+                cleaned_surfaces.append((surface_id, xyz))
+
+                # Match structural-model data_preparation(): reference/fault
+                # surfaces are stored separately as name -> cleaned-surface index.
+                if csv_path.stem.lower().startswith("fault"):
+                    ref_surface_indices[surface_id] = surface_index
+                    logger.info(
+                        "CSV fault reference surface %s added at index %d",
+                        surface_id, surface_index,
+                    )
+
+            # No structural lithology exists in CSV mode.
+            grid_litho = pd.DataFrame(
+                columns=["x", "y", "z", "lithology"]
+            )
+
+            logger.info(
+                "Loaded %d CSV surfaces (%d fault/reference surfaces): %s",
+                len(cleaned_surfaces),
+                len(ref_surface_indices),
+                list(ref_surface_indices.keys()),
+            )
+        else:
+            cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(
+                geomodel_result,
+                DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
+                PROJECTION_THRESHOLD=PROJECTION_THRESHOLD,
+                EXTRUSION_FACTOR=EXTRUSION_FACTOR,
+                z_threshold=z_threshold,
+            )
 
         ########################
         # Surface interpolation
