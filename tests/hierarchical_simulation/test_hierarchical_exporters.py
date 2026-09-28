@@ -31,11 +31,16 @@ def fake_mesh():
 
 class TestHierarchicalExporters(unittest.TestCase):
 
-    def test_all_exporters_write_two_meshes_and_boundary_csv(self):
-        boundary = {
+    def test_all_exporters_write_two_meshes_and_two_boundary_frames(self):
+        big = {
             "top": np.array([[0, 0., 0., 1.], [1, 1., 1., 1.]]),
             "bottom": np.array([[0, 0., 0., 0.]]),
         }
+        small = {
+            "top": np.array([[0, 10., 20., 30.], [1, 11., 21., 31.]]),
+            "bottom": np.array([[0, 10., 20., 29.]]),
+        }
+        boundary = {"big_frame": big, "small_frame": small}
 
         for module_suffix, function_name, low_level_name, extension, takes_type in EXPORTERS:
             with self.subTest(exporter=function_name), tempfile.TemporaryDirectory() as td:
@@ -48,19 +53,54 @@ class TestHierarchicalExporters(unittest.TestCase):
                 folder = Path(td) / "boundary"
 
                 fake_buffer = io.BytesIO(b"mesh-data")
-                low_level = getattr(module, low_level_name)
 
                 with patch.object(module, low_level_name, return_value=fake_buffer) as mocked:
-                    if takes_type:
-                        function(fake_mesh(), fake_mesh(), boundary, str(m1), str(m2), str(folder))
-                    else:
-                        function(fake_mesh(), fake_mesh(), boundary, str(m1), str(m2), str(folder))
+                    function(fake_mesh(), fake_mesh(), boundary, str(m1), str(m2), str(folder))
 
                 self.assertEqual(m1.read_bytes(), b"mesh-data")
                 self.assertEqual(m2.read_bytes(), b"mesh-data")
+                for frame in ("big_frame", "small_frame"):
+                    self.assertTrue((folder / frame / "top_boundary_nodes.csv").exists())
+                    self.assertTrue((folder / frame / "bottom_boundary_nodes.csv").exists())
+
+                # Same mesh1 node IDs must be preserved in both coordinate frames.
+                top_big = np.loadtxt(
+                    folder / "big_frame" / "top_boundary_nodes.csv",
+                    delimiter=",", skiprows=1,
+                )
+                top_small = np.loadtxt(
+                    folder / "small_frame" / "top_boundary_nodes.csv",
+                    delimiter=",", skiprows=1,
+                )
+                np.testing.assert_array_equal(
+                    np.atleast_2d(top_big)[:, 0],
+                    np.atleast_2d(top_small)[:, 0],
+                )
+                self.assertEqual(mocked.call_count, 2)
+
+    def test_all_exporters_keep_legacy_flat_boundary_format(self):
+        boundary = {
+            "top": np.array([[0, 0., 0., 1.], [1, 1., 1., 1.]]),
+            "bottom": np.array([[0, 0., 0., 0.]]),
+        }
+
+        for module_suffix, function_name, low_level_name, extension, takes_type in EXPORTERS:
+            with self.subTest(exporter=function_name), tempfile.TemporaryDirectory() as td:
+                module = importlib.import_module(
+                    "core.hierarchical_simulation.export_data." + module_suffix
+                )
+                function = getattr(module, function_name)
+                m1 = Path(td) / ("mesh1" + extension)
+                m2 = Path(td) / ("mesh2" + extension)
+                folder = Path(td) / "boundary"
+
+                with patch.object(
+                    module, low_level_name, return_value=io.BytesIO(b"mesh-data")
+                ):
+                    function(fake_mesh(), fake_mesh(), boundary, str(m1), str(m2), str(folder))
+
                 self.assertTrue((folder / "top_boundary_nodes.csv").exists())
                 self.assertTrue((folder / "bottom_boundary_nodes.csv").exists())
-                self.assertEqual(mocked.call_count, 2)
 
     def test_exodus_forwards_mesh_type(self):
         module = importlib.import_module(

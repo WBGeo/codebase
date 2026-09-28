@@ -2084,56 +2084,157 @@ def build_point_sets(boundary_groups: Dict[str, List[int]], n_nodes: int) -> Dic
 
     return point_sets
 
+
+
 def meshit_coordinate_transform(
     nodes,
     angle_deg,
-    translate_to_model_center=False,
+    translate=False,
     xt=None,
     yt=None,
     zt=None,
 ):
-    """Apply one of the two supported coordinate transformations.
+    """
+    Rotate mesh coordinates in the XY plane and optionally translate the
+    transformed mesh to a specified location.
 
-    translate_to_model_center=False:
-        Pure XY rotation about the global origin (0, 0).
-        x and y are NOT shifted by the model centre and z is unchanged.
+    The rotation is performed about the horizontal center of the mesh,
+    calculated from the X and Y coordinate bounds. Before rotation, this
+    center is shifted to (0, 0). The Z coordinates are not affected by
+    the rotation.
 
-    translate_to_model_center=True:
-        Rotate about the model centre and translate the model centre.
-        If xt, yt, zt are omitted, the model centre becomes (0, 0, 0).
-        If xt, yt, zt are supplied, the model centre becomes (xt, yt, zt).
+    When ``translate=False``, only the XY rotation is applied and the
+    original Z coordinates are preserved.
+
+    When ``translate=True``, the rotated mesh can additionally be
+    positioned using ``xt``, ``yt``, and ``zt``. The X and Y coordinates
+    are shifted by ``xt`` and ``yt``. In the Z direction, the mesh is
+    centered using its Z bounds and then shifted to ``zt``.
+
+    If translation is enabled but ``xt``, ``yt``, and ``zt`` are omitted,
+    they default to zero. In this case, the transformed mesh is centered
+    at (0, 0, 0). If any translation coordinate is provided, all three
+    coordinates must be provided.
+
+    Parameters
+    ----------
+    nodes : array_like
+        Mesh node coordinates with shape (N, 3), where the columns
+        represent X, Y, and Z coordinates.
+
+    angle_deg : float
+        Counterclockwise rotation angle in degrees about the Z axis.
+
+    translate : bool, optional
+        If False, apply rotation only and preserve the original Z
+        coordinates. If True, additionally reposition the transformed
+        mesh. Default is False.
+
+    xt : float, optional
+        Target X coordinate of the transformed mesh center.
+        Used only when ``translate=True``. Default is 0.0 when omitted.
+
+    yt : float, optional
+        Target Y coordinate of the transformed mesh center.
+        Used only when ``translate=True``. Default is 0.0 when omitted.
+
+    zt : float, optional
+        Target Z coordinate of the transformed mesh center.
+        Used only when ``translate=True``. Default is 0.0 when omitted.
+
+    Returns
+    -------
+    numpy.ndarray
+        Transformed mesh coordinates with shape (N, 3).
+
+    Raises
+    ------
+    ValueError
+        If only some of ``xt``, ``yt``, and ``zt`` are provided.
+        When translation coordinates are specified, all three must
+        be provided together.
+
+    Notes
+    -----
+    For rotation only, the transformation is:
+
+        X = x - xc
+        Y = y - yc
+
+        x' = X*cos(theta) - Y*sin(theta)
+        y' = X*sin(theta) + Y*cos(theta)
+        z' = z
+
+    where (xc, yc) is the center of the mesh XY bounding box.
+
+    For rotation with translation:
+
+        x' = X*cos(theta) - Y*sin(theta) + xt
+        y' = X*sin(theta) + Y*cos(theta) + yt
+        z' = z - zc + zt
+
+    where (xc, yc, zc) is the center of the mesh bounding box.
+
+    Examples
+    --------
+    Rotate the mesh by 30 degrees while preserving the original
+    Z coordinates:
+
+        transformed = meshit_coordinate_transform(
+            nodes,
+            angle_deg=30.0
+        )
+
+    Rotate the mesh and place its center at (100, 200, 50):
+
+        transformed = meshit_coordinate_transform(
+            nodes,
+            angle_deg=30.0,
+            translate=True,
+            xt=100.0,
+            yt=200.0,
+            zt=50.0
+        )
     """
     pts = np.asarray(nodes, dtype=np.float64).copy()
+
+    xc = 0.5 * (pts[:, 0].min() + pts[:, 0].max())
+    yc = 0.5 * (pts[:, 1].min() + pts[:, 1].max())
+
+    # This reproduces the ORIGINAL rotation behavior
+    X = pts[:, 0] - xc
+    Y = pts[:, 1] - yc
 
     theta = np.deg2rad(float(angle_deg))
     c = np.cos(theta)
     s = np.sin(theta)
 
-    if translate_to_model_center:
-        xc = 0.5 * (pts[:, 0].min() + pts[:, 0].max())
-        yc = 0.5 * (pts[:, 1].min() + pts[:, 1].max())
-        X = pts[:, 0] - xc
-        Y = pts[:, 1] - yc
+    transformed = pts.copy()
 
-        targets = (xt, yt, zt)
-        if any(v is not None for v in targets) and not all(v is not None for v in targets):
+    transformed[:, 0] = X * c - Y * s
+    transformed[:, 1] = X * s + Y * c
+
+    if translate:
+        if any(v is not None for v in (xt, yt, zt)) and \
+           not all(v is not None for v in (xt, yt, zt)):
             raise ValueError(
                 "xt, yt, and zt must be provided together."
             )
 
-        zc = 0.5 * (pts[:, 2].min() + pts[:, 2].max())
         tx = 0.0 if xt is None else float(xt)
         ty = 0.0 if yt is None else float(yt)
         tz = 0.0 if zt is None else float(zt)
-        Z = pts[:, 2] - zc
-    else:
-        X, Y, Z = pts[:, 0], pts[:, 1], pts[:, 2]
-        tx = ty = tz = 0.0
 
-    transformed = pts.copy()
-    transformed[:, 0] = X * c - Y * s + tx
-    transformed[:, 1] = X * s + Y * c + ty
-    transformed[:, 2] = Z + tz
+        zc = 0.5 * (pts[:, 2].min() + pts[:, 2].max())
+
+        transformed[:, 0] += tx
+        transformed[:, 1] += ty
+        transformed[:, 2] = pts[:, 2] - zc + tz
+
+    else:
+        # EXACTLY like original code
+        transformed[:, 2] = pts[:, 2]
+
     return transformed
 
 
@@ -2181,9 +2282,9 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.\n        surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.\n        rotation_angle (float, optional): Pure x/y rotation in degrees about the global origin (0, 0); no translation is applied.
-        rotation_angle_translate (float, optional): Rotate about the model centre and translate it. If xt/yt/zt are omitted, the model centre is moved to (0, 0, 0).
-        xt, yt, zt (float, optional): Translation target used only with rotation_angle_translate. All three must be supplied together; after transformation, (xt, yt, zt) is the model centre.
+        geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.\n        surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.\n        rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
+        rotation_angle_translate (float, optional): Rotation angle in degrees in the XY plane with additional translation. The mesh center is used as the reference point. If xt/yt/zt are omitted, the transformed mesh is centered at (0, 0, 0).
+        xt, yt, zt (float, optional): Target coordinates of the transformed mesh center, used only with rotation_angle_translate. If specified, all three values must be provided together.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
         shafts (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z), direction vectors (dx, dy, dz)
@@ -2525,14 +2626,14 @@ def create_unstructured_mesh_data(
             nodes_local = meshit_coordinate_transform(
                 nodes_global,
                 angle_deg=rotation_angle,
-                translate_to_model_center=False,
+                translate=False,
             )
 
         elif rotation_angle_translate is not None:
             nodes_local = meshit_coordinate_transform(
                 nodes_global,
                 angle_deg=rotation_angle_translate,
-                translate_to_model_center=True,
+                translate=True,
                 xt=xt,
                 yt=yt,
                 zt=zt,

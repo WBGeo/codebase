@@ -5,7 +5,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 
 from core.object_components import MeshResults, StructuralModelResults
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, meshit_coordinate_transform
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
 from core.meshing_components.explicit.unstructured.mesh_data import (
     WellData, SourcesData, ShaftData, PlaneData, EllipseData, TriangulationData
@@ -184,15 +184,77 @@ def hierarchical_mesh(
     # --------------------------------------------------
     # Check extent containment
     # --------------------------------------------------
+    # Both hierarchy extents may be either:
+    #   * legacy [xmin, xmax, ymin, ymax, zmin, zmax], or
+    #   * an oriented box given by 8 corner points (8, 3).
+    #
+    # IMPORTANT: this check does not replace/modify the original extents.
+    # The original 8-corner extent is still passed unchanged to the mesher.
 
-    if not all([
-        extent2_resolved[0] >= extent1_resolved[0],
-        extent2_resolved[1] <= extent1_resolved[1],
-        extent2_resolved[2] >= extent1_resolved[2],
-        extent2_resolved[3] <= extent1_resolved[3],
-        extent2_resolved[4] >= extent1_resolved[4],
-        extent2_resolved[5] <= extent1_resolved[5],
-    ]):
+    def _extent_corners(extent):
+        arr = np.asarray(extent, dtype=float)
+
+        if arr.ndim == 1 and arr.size == 6:
+            xmin, xmax, ymin, ymax, zmin, zmax = arr
+            return np.asarray([
+                [xmin, ymin, zmin],
+                [xmax, ymin, zmin],
+                [xmax, ymax, zmin],
+                [xmin, ymax, zmin],
+                [xmin, ymin, zmax],
+                [xmax, ymin, zmax],
+                [xmax, ymax, zmax],
+                [xmin, ymax, zmax],
+            ], dtype=float)
+
+        if arr.size == 24:
+            return arr.reshape(8, 3)
+
+        raise ValueError(
+            "Extent must be either 6 values "
+            "[xmin, xmax, ymin, ymax, zmin, zmax] "
+            "or 8 three-dimensional corner points."
+        )
+
+    def _extent_contains(outer_extent, inner_extent, tol=1e-8):
+        outer = np.asarray(outer_extent, dtype=float)
+        inner_corners = _extent_corners(inner_extent)
+
+        # Common case: the big model is an axis-aligned 6-value extent.
+        if outer.ndim == 1 and outer.size == 6:
+            xmin, xmax, ymin, ymax, zmin, zmax = outer
+            inside = (
+                (inner_corners[:, 0] >= xmin - tol)
+                & (inner_corners[:, 0] <= xmax + tol)
+                & (inner_corners[:, 1] >= ymin - tol)
+                & (inner_corners[:, 1] <= ymax + tol)
+                & (inner_corners[:, 2] >= zmin - tol)
+                & (inner_corners[:, 2] <= zmax + tol)
+            )
+            return bool(np.all(inside))
+
+        # Oriented 8-corner outer box.  Corner convention is the same one used
+        # by WBGeo's domain geometry: 0 is the origin and 1, 3, 4 define the
+        # three local box directions.
+        outer_corners = _extent_corners(outer)
+        origin = outer_corners[0]
+        basis = np.column_stack((
+            outer_corners[1] - origin,
+            outer_corners[3] - origin,
+            outer_corners[4] - origin,
+        ))
+
+        try:
+            local = np.linalg.solve(
+                basis,
+                (inner_corners - origin).T,
+            ).T
+        except np.linalg.LinAlgError as exc:
+            raise ValueError("extent1 defines a degenerate 8-corner box.") from exc
+
+        return bool(np.all((local >= -tol) & (local <= 1.0 + tol)))
+
+    if not _extent_contains(extent1_resolved, extent2_resolved):
         raise ValueError("extent2 must be fully inside extent1.")
 
     # --------------------------------------------------
@@ -218,35 +280,76 @@ def hierarchical_mesh(
     # Clip engineering objects to one mesh extent
     # --------------------------------------------------
 
+    def _domain_frame(extent):
+        """Return an affine frame for a 6-value AABB or an 8-corner box.
+
+        World points are represented as p = origin + basis @ q, where q is in
+        the unit cube [0, 1]^3.  For a legacy 6-value extent the basis is
+        diagonal.  For an 8-corner domain the corner ordering follows WBGeo's
+        domain convention: corner 0 is the origin and corners 1, 3, and 4
+        define the three box edges.
+        """
+        arr = np.asarray(extent, dtype=float)
+        if arr.ndim == 1 and arr.size == 6:
+            xmin, xmax, ymin, ymax, zmin, zmax = arr
+            origin = np.array([xmin, ymin, zmin], dtype=float)
+            basis = np.diag([xmax - xmin, ymax - ymin, zmax - zmin])
+        elif arr.size == 24:
+            corners = arr.reshape(8, 3)
+            origin = corners[0].copy()
+            basis = np.column_stack((
+                corners[1] - corners[0],
+                corners[3] - corners[0],
+                corners[4] - corners[0],
+            ))
+        else:
+            raise ValueError(
+                "Extent must be either 6 values "
+                "[xmin, xmax, ymin, ymax, zmin, zmax] or 8 corner points."
+            )
+        if abs(np.linalg.det(basis)) < 1e-15:
+            raise ValueError("Extent is degenerate and cannot define a 3-D domain.")
+        return origin, basis, np.linalg.inv(basis)
+
+    def _to_domain_local(points, extent):
+        origin, _, inv_basis = _domain_frame(extent)
+        pts = np.asarray(points, dtype=float)
+        return (pts - origin) @ inv_basis.T
+
+    def _from_domain_local(points, extent):
+        origin, basis, _ = _domain_frame(extent)
+        q = np.asarray(points, dtype=float)
+        return origin + q @ basis.T
+
     def _inside(point, extent, tol=1e-9):
-        x, y, z = map(float, point)
-        return (
-            extent[0] - tol <= x <= extent[1] + tol and
-            extent[2] - tol <= y <= extent[3] + tol and
-            extent[4] - tol <= z <= extent[5] + tol
-        )
+        q = _to_domain_local(np.asarray(point, dtype=float), extent)
+        return bool(np.all(q >= -tol) and np.all(q <= 1.0 + tol))
 
     def _clip_segment_to_extent(p0, p1, extent, tol=1e-12):
-        """Liang-Barsky style clipping of a 3-D line segment to an AABB."""
+        """Clip a world-coordinate segment to a 6-value or 8-corner domain."""
         p0 = np.asarray(p0, dtype=float)
         p1 = np.asarray(p1, dtype=float)
-        d = p1 - p0
-        lo = np.array([extent[0], extent[2], extent[4]], dtype=float)
-        hi = np.array([extent[1], extent[3], extent[5]], dtype=float)
+
+        # In domain-local coordinates every supported extent is the unit cube.
+        q0 = _to_domain_local(p0, extent)
+        q1 = _to_domain_local(p1, extent)
+        d = q1 - q0
         t0, t1 = 0.0, 1.0
+
         for axis in range(3):
             if abs(d[axis]) <= tol:
-                if p0[axis] < lo[axis] - tol or p0[axis] > hi[axis] + tol:
+                if q0[axis] < -tol or q0[axis] > 1.0 + tol:
                     return None
                 continue
-            a = (lo[axis] - p0[axis]) / d[axis]
-            b = (hi[axis] - p0[axis]) / d[axis]
-            enter, leave = min(a, b), max(a, b)
+            a = (0.0 - q0[axis]) / d[axis]
+            b = (1.0 - q0[axis]) / d[axis]
+            enter, leave = min(float(a), float(b)), max(float(a), float(b))
             t0 = max(t0, enter)
             t1 = min(t1, leave)
             if t0 > t1 + tol:
                 return None
-        return p0 + t0 * d, p0 + t1 * d
+
+        return p0 + t0 * (p1 - p0), p0 + t1 * (p1 - p0)
 
     def _clip_wells(data, extent):
         if not data:
@@ -276,7 +379,6 @@ def hierarchical_mesh(
             if len(current) >= 2:
                 pieces.append(current)
             for piece in pieces:
-                # Remove duplicate consecutive points before flattening.
                 clean = [piece[0]]
                 for pt in piece[1:]:
                     if not np.allclose(clean[-1], pt):
@@ -307,37 +409,32 @@ def hierarchical_mesh(
         return result
 
     def _clip_planes(data, extent):
-        """Keep the 4-corner format expected downstream and clamp to the AABB.
-
-        This mirrors the legacy coordinate-wise boundary clamping already used
-        by the normal unstructured extra-plane creation code.
-        """
+        """Clamp legacy 4-corner planes in domain-local coordinates."""
         result = []
-        lo = np.array([extent[0], extent[2], extent[4]], dtype=float)
-        hi = np.array([extent[1], extent[3], extent[5]], dtype=float)
         for plane in data or []:
             pts = np.asarray(plane, dtype=float).reshape(-1, 3)
             if pts.shape[0] != 4:
                 result.append(plane)
                 continue
-            clipped = np.minimum(np.maximum(pts, lo), hi)
-            # A collapsed quadrilateral cannot define a surface.
+            q = _to_domain_local(pts, extent)
+            q_clipped = np.clip(q, 0.0, 1.0)
+            clipped = _from_domain_local(q_clipped, extent)
             if np.unique(np.round(clipped, 10), axis=0).shape[0] >= 3:
                 result.append(tuple(clipped.reshape(-1).tolist()))
         return result
 
     def _clip_ellipses(data, extent):
-        """Keep ellipses that fit the extent. Partial ellipse clipping would
-        change the object type, so it is intentionally left to a future surface
-        clipping representation.
-        """
+        """Keep ellipses whose conservative bounding sphere fits the domain."""
         result = []
+        origin, basis, inv_basis = _domain_frame(extent)
         for ellipse in data or []:
             center = np.asarray(ellipse['center'], dtype=float)
             radius = float(max(ellipse['radii']))
-            lo = np.array([extent[0], extent[2], extent[4]], dtype=float)
-            hi = np.array([extent[1], extent[3], extent[5]], dtype=float)
-            if np.all(center - radius >= lo) and np.all(center + radius <= hi):
+            q = (center - origin) @ inv_basis.T
+            # A world-space radius-R sphere maps to these conservative local
+            # half-widths along each local coordinate axis.
+            dq = radius * np.linalg.norm(inv_basis, axis=1)
+            if np.all(q - dq >= -1e-9) and np.all(q + dq <= 1.0 + 1e-9):
                 result.append(ellipse)
         return result
 
@@ -347,12 +444,8 @@ def hierarchical_mesh(
         arr = np.asarray(data, dtype=float)
         if arr.size == 0:
             return arr.reshape((0, 4)) if arr.ndim != 2 else arr
-        xyz = arr[:, :3]
-        mask = (
-            (xyz[:, 0] >= extent[0]) & (xyz[:, 0] <= extent[1]) &
-            (xyz[:, 1] >= extent[2]) & (xyz[:, 1] <= extent[3]) &
-            (xyz[:, 2] >= extent[4]) & (xyz[:, 2] <= extent[5])
-        )
+        q = _to_domain_local(arr[:, :3], extent)
+        mask = np.all((q >= -1e-9) & (q <= 1.0 + 1e-9), axis=1)
         return arr[mask]
 
     def _clip_objects_for_extent(extent, wells_, sources_, shafts_, planes_, ellipses_, triangulations_):
@@ -405,9 +498,18 @@ def hierarchical_mesh(
                 mesh_triangulations,
             )
 
-            level_unstructured_params = (
+            level_unstructured_params = dict(
                 unstructured_params1 if mesh_id == 1 else unstructured_params2
             )
+
+            # IMPORTANT FOR HIERARCHICAL MATCHING:
+            # Generate both meshes in the original/world coordinate system.
+            # Output rotation/translation is applied only AFTER the small-mesh
+            # boundary nodes have been identified and matched to mesh1.
+            for key in (
+                "rotation_angle", "rotation_angle_translate", "xt", "yt", "zt"
+            ):
+                level_unstructured_params.pop(key, None)
 
             # Reuse create_unstructured_mesh_data() for both input modes:
             # structural-model surfaces or a directory of geological CSV surfaces.
@@ -470,114 +572,15 @@ def hierarchical_mesh(
     mesh2 = _create_mesh(extent2_resolved, 2)
 
     # --------------------------------------------------
-    # Get boundary nodes of the small mesh from point_sets
+    # Get boundary nodes and match them BEFORE output transforms
     # --------------------------------------------------
-    #
-    # The unstructured mesher already determines the physical boundary-node
-    # sets when MeshResults is created. Reuse those sets here instead of
-    # detecting faces again from min/max x, y and z. This is important for
-    # rotated/oriented domains, whose physical faces need not be parallel to
-    # the global coordinate axes.
-    #
-    # point_sets contains node IDs, e.g.
-    #   {"left": [...], "right": [...], "front": [...],
-    #    "back": [...], "bottom": [...], "top": [...]}
-    #
-    # The corresponding coordinates are obtained directly from mesh2.nodes.
+    # Both unstructured meshes were intentionally generated with rotation and
+    # translation disabled above. Therefore mesh2.point_sets, mesh2.nodes and
+    # mesh1.nodes are all in the same original/world coordinate system here.
+    # Boundary selection and nearest-node matching must happen in this frame.
 
-    nodes_small = np.asarray(mesh2.nodes, dtype=float)
-    nodes_big = np.asarray(mesh1.nodes, dtype=float)
-
-    def _extent_xy_center(extent):
-        # mesh_data.py rotates the output coordinates around the centre of the
-        # meshed domain. Support both the normal six-value extent and an
-        # eight-corner extent.
-        arr = np.asarray(extent, dtype=float)
-        if arr.ndim == 1 and arr.size == 6:
-            return np.array([
-                0.5 * (arr[0] + arr[1]),
-                0.5 * (arr[2] + arr[3]),
-            ])
-        arr = arr.reshape(-1, 3)
-        if arr.shape[0] != 8:
-            raise ValueError(
-                "Extent must contain six values or eight 3D corner points."
-            )
-        return arr[:, :2].mean(axis=0)
-
-    def _undo_unstructured_output_transform(nodes, extent, params):
-        """Return unstructured output nodes to the original/world frame.
-
-        rotation_angle is a pure rotation about (0, 0).
-        rotation_angle_translate rotates coordinates relative to the model centre
-        and optionally places that centre at a user-specified target coordinate.
-        """
-        result = np.asarray(nodes, dtype=float).copy()
-
-        pure_angle = params.get("rotation_angle", None)
-        translated_angle = params.get("rotation_angle_translate", None)
-
-        if pure_angle is not None and translated_angle is not None:
-            raise ValueError(
-                "Use either rotation_angle or rotation_angle_translate, not both."
-            )
-
-        if pure_angle is not None:
-            theta = np.deg2rad(float(pure_angle))
-            c = np.cos(theta)
-            s = np.sin(theta)
-            xr = result[:, 0].copy()
-            yr = result[:, 1].copy()
-            result[:, 0] = xr * c + yr * s
-            result[:, 1] = -xr * s + yr * c
-            return result
-
-        if translated_angle is None:
-            return result
-
-        tx = params.get("target_center_x", None)
-        ty = params.get("target_center_y", None)
-        tz = params.get("target_center_z", None)
-        targets = (tx, ty, tz)
-        if any(v is not None for v in targets) and not all(v is not None for v in targets):
-            raise ValueError(
-                "target_center_x, target_center_y, and target_center_z must be provided together."
-            )
-        tx = 0.0 if tx is None else float(tx)
-        ty = 0.0 if ty is None else float(ty)
-        tz = 0.0 if tz is None else float(tz)
-
-        xr = result[:, 0].copy() - tx
-        yr = result[:, 1].copy() - ty
-        zr = result[:, 2].copy() - tz
-
-        theta = np.deg2rad(float(translated_angle))
-        c = np.cos(theta)
-        s = np.sin(theta)
-        x = xr * c + yr * s
-        y = -xr * s + yr * c
-
-        cx, cy = _extent_xy_center(extent)
-        arr = np.asarray(extent, dtype=float)
-        cz = 0.5 * (arr[4] + arr[5]) if arr.ndim == 1 and arr.size == 6 else arr.reshape(-1, 3)[:, 2].mean()
-        result[:, 0] = x + cx
-        result[:, 1] = y + cy
-        result[:, 2] = zr + cz
-        return result
-
-    # point_sets identify WHICH mesh2 nodes are on each physical face.
-    # The KD-tree search must use a common coordinate frame when the two
-    # hierarchy levels have different rotations/translations.
-    if mesh_type == "un":
-        nodes_big_search = _undo_unstructured_output_transform(
-            nodes_big, extent1_resolved, unstructured_params1
-        )
-        nodes_small_search = _undo_unstructured_output_transform(
-            nodes_small, extent2_resolved, unstructured_params2
-        )
-    else:
-        nodes_big_search = nodes_big
-        nodes_small_search = nodes_small
+    nodes_small_world = np.asarray(mesh2.nodes, dtype=float).copy()
+    nodes_big_world = np.asarray(mesh1.nodes, dtype=float).copy()
 
     face_names = ("left", "right", "front", "back", "bottom", "top")
 
@@ -588,49 +591,206 @@ def hierarchical_mesh(
             "created by the mesh generator."
         )
 
-    boundary_faces = {}
+    boundary_faces_world = {}
     for face in face_names:
         node_ids = np.asarray(mesh2.point_sets.get(face, []), dtype=int)
 
         if node_ids.size == 0:
-            boundary_faces[face] = np.empty((0, 3), dtype=float)
+            boundary_faces_world[face] = np.empty((0, 3), dtype=float)
             continue
 
-        if np.any(node_ids < 0) or np.any(node_ids >= len(nodes_small)):
+        if np.any(node_ids < 0) or np.any(node_ids >= len(nodes_small_world)):
             raise ValueError(
                 f"mesh2.point_sets['{face}'] contains invalid node IDs."
             )
 
-        boundary_faces[face] = nodes_small_search[node_ids]
+        boundary_faces_world[face] = nodes_small_world[node_ids]
 
+    # Match the small-mesh physical boundary to mesh1 while BOTH meshes are
+    # still unrotated/untranslated. The resulting indices are therefore
+    # independent of any output coordinate transform.
+    tree = cKDTree(nodes_big_world)
+    boundary_node_ids_big = {}
 
-    # --------------------------------------------------
-    # Find closest nodes in big mesh for each face
-    # --------------------------------------------------
-    #
-    # Search only uses the already identified physical boundary nodes from
-    # mesh2. No boundary geometry is reconstructed from extent2.
-
-    tree = cKDTree(nodes_big_search)
-    boundary_nodes_big = {}
-
-    for face, face_nodes in boundary_faces.items():
-
+    for face, face_nodes in boundary_faces_world.items():
         if face_nodes.size == 0:
-            boundary_nodes_big[face] = np.empty((0, 4), dtype=float)
+            boundary_node_ids_big[face] = np.empty((0,), dtype=int)
             continue
 
         _, idx_closest = tree.query(face_nodes)
-        idx_closest = np.asarray(idx_closest, dtype=int)
+        boundary_node_ids_big[face] = np.asarray(idx_closest, dtype=int)
 
-        closest_nodes_big = nodes_big[idx_closest]
+    # --------------------------------------------------
+    # Apply requested output transforms AFTER boundary matching
+    # --------------------------------------------------
+    def _apply_output_transform(mesh, params):
+        if mesh_type != "un":
+            return
+
+        rotation_angle = params.get("rotation_angle", None)
+        rotation_angle_translate = params.get("rotation_angle_translate", None)
+        xt = params.get("xt", None)
+        yt = params.get("yt", None)
+        zt = params.get("zt", None)
+
+        if rotation_angle is not None and rotation_angle_translate is not None:
+            raise ValueError(
+                "Use either rotation_angle or rotation_angle_translate, not both."
+            )
+
+        if rotation_angle is not None:
+            if any(v is not None for v in (xt, yt, zt)):
+                raise ValueError(
+                    "xt/yt/zt are only valid with rotation_angle_translate."
+                )
+            mesh.nodes = meshit_coordinate_transform(
+                mesh.nodes,
+                angle_deg=rotation_angle,
+                translate=False,
+            )
+
+        elif rotation_angle_translate is not None:
+            mesh.nodes = meshit_coordinate_transform(
+                mesh.nodes,
+                angle_deg=rotation_angle_translate,
+                translate=True,
+                xt=xt,
+                yt=yt,
+                zt=zt,
+            )
+
+        elif any(v is not None for v in (xt, yt, zt)):
+            raise ValueError(
+                "xt/yt/zt require rotation_angle_translate."
+            )
+
+    _apply_output_transform(mesh1, unstructured_params1)
+    _apply_output_transform(mesh2, unstructured_params2)
+
+    # --------------------------------------------------
+    # Build the two boundary-node coordinate datasets
+    # --------------------------------------------------
+    # The node IDs always belong to mesh1 (the big mesh) and were selected
+    # while both meshes were still in the original/world coordinate frame.
+    #
+    # 1) boundary_nodes_big:
+    #       [big_node_id, x_big_final, y_big_final, z_big_final]
+    #    Coordinates are those of the final big mesh, including any transform
+    #    requested for mesh1.
+    #
+    # 2) boundary_nodes_small_frame:
+    #       [big_node_id, x_small_frame, y_small_frame, z_small_frame]
+    #    The SAME selected big-mesh world coordinates are transformed with the
+    #    small mesh transform, using the centre of the FULL untransformed small
+    #    mesh.  This puts the selected big nodes in exactly the coordinate frame
+    #    used by the final small mesh.
+
+    nodes_big_final = np.asarray(mesh1.nodes, dtype=float)
+
+    def _transform_points_to_mesh_frame(points_world, reference_world, params):
+        """Apply an unstructured output transform using reference mesh centre.
+
+        meshit_coordinate_transform() computes its centre from the array passed
+        to it.  For a boundary subset that would be wrong, so this helper uses
+        the full untransformed reference mesh to define xc/yc/(zc).
+        """
+        points = np.asarray(points_world, dtype=float).copy()
+        reference = np.asarray(reference_world, dtype=float)
+
+        rotation_angle = params.get("rotation_angle", None)
+        rotation_angle_translate = params.get("rotation_angle_translate", None)
+        xt = params.get("xt", None)
+        yt = params.get("yt", None)
+        zt = params.get("zt", None)
+
+        if rotation_angle is not None and rotation_angle_translate is not None:
+            raise ValueError(
+                "Use either rotation_angle or rotation_angle_translate, not both."
+            )
+
+        if rotation_angle is None and rotation_angle_translate is None:
+            if any(v is not None for v in (xt, yt, zt)):
+                raise ValueError("xt/yt/zt require rotation_angle_translate.")
+            return points
+
+        if rotation_angle is not None and any(v is not None for v in (xt, yt, zt)):
+            raise ValueError(
+                "xt/yt/zt are only valid with rotation_angle_translate."
+            )
+
+        xc = 0.5 * (reference[:, 0].min() + reference[:, 0].max())
+        yc = 0.5 * (reference[:, 1].min() + reference[:, 1].max())
+
+        angle = rotation_angle if rotation_angle is not None else rotation_angle_translate
+        theta = np.deg2rad(float(angle))
+        c = np.cos(theta)
+        s = np.sin(theta)
+
+        X = points[:, 0] - xc
+        Y = points[:, 1] - yc
+
+        result = points.copy()
+        result[:, 0] = X * c - Y * s
+        result[:, 1] = X * s + Y * c
+
+        if rotation_angle_translate is None:
+            # Same semantics as rotation_angle in mesh_data.py: XY is centred
+            # and rotated, while the original Z coordinate is preserved.
+            result[:, 2] = points[:, 2]
+            return result
+
+        if any(v is not None for v in (xt, yt, zt)) and not all(
+            v is not None for v in (xt, yt, zt)
+        ):
+            raise ValueError("xt, yt, and zt must be provided together.")
+
+        tx = 0.0 if xt is None else float(xt)
+        ty = 0.0 if yt is None else float(yt)
+        tz = 0.0 if zt is None else float(zt)
+        zc = 0.5 * (reference[:, 2].min() + reference[:, 2].max())
+
+        result[:, 0] += tx
+        result[:, 1] += ty
+        result[:, 2] = points[:, 2] - zc + tz
+        return result
+
+    boundary_nodes_big = {}
+    boundary_nodes_small_frame = {}
+
+    for face, idx_closest in boundary_node_ids_big.items():
+        if idx_closest.size == 0:
+            boundary_nodes_big[face] = np.empty((0, 4), dtype=float)
+            boundary_nodes_small_frame[face] = np.empty((0, 4), dtype=float)
+            continue
+
+        selected_big_world = nodes_big_world[idx_closest]
+        selected_big_small_frame = _transform_points_to_mesh_frame(
+            selected_big_world,
+            nodes_small_world,
+            unstructured_params2,
+        )
 
         boundary_nodes_big[face] = np.hstack(
             [
                 idx_closest.reshape(-1, 1),
-                closest_nodes_big
+                nodes_big_final[idx_closest],
             ]
         )
 
+        boundary_nodes_small_frame[face] = np.hstack(
+            [
+                idx_closest.reshape(-1, 1),
+                selected_big_small_frame,
+            ]
+        )
 
-    return mesh1, mesh2, boundary_nodes_big
+    # Keep the public API backward-compatible: hierarchical_mesh() returns
+    # exactly three values as before.  The third value contains both coordinate
+    # representations of the SAME mesh1 node IDs.  Export code can therefore
+    # write them into separate subdirectories without changing mesh generation.
+    boundary_nodes = {
+        "big_frame": boundary_nodes_big,
+        "small_frame": boundary_nodes_small_frame,
+    }
+
+    return mesh1, mesh2, boundary_nodes

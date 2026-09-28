@@ -446,69 +446,85 @@ sources, shafts, triangulated surfaces, ellipses, extra planes, faults,
 and user-defined general points or line segments. See [Mesh
 refinement](#mesh-refinement) below.
 
--   **`rotation_angle`** *(optional)*: Applies a **pure rotation only**
-    about the global origin `(0, 0, 0)`. The angle is specified in
-    degrees and the rotation is about the global z-axis. It rotates the
-    original coordinates:
+-   **`rotation_angle`** *(optional)*: Rotates the mesh coordinates in
+    the x-y plane while preserving the original z coordinates. Before
+    rotation, the centre of the mesh in x and y is calculated from the
+    coordinate bounds:
 
-        x_new = x*cos(theta) - y*sin(theta)
-        y_new = x*sin(theta) + y*cos(theta)
+        xc = 0.5 * (xmin + xmax)
+        yc = 0.5 * (ymin + ymax)
+
+    The x-y coordinates are then expressed relative to this centre:
+
+        X = x - xc
+        Y = y - yc
+
+    and rotated by the specified angle:
+
+        x_new = X*cos(theta) - Y*sin(theta)
+        y_new = X*sin(theta) + Y*cos(theta)
         z_new = z
 
     The input `rotation_angle` is specified in **degrees** and is
     converted internally to radians (`theta`) before evaluating
-    `sin(theta)` and `cos(theta)`. In this mode, the rotation centre is
-    the **global origin `(0, 0, 0)`**, not the centre of the model. No
-    translation is applied and the z coordinates remain unchanged.
+    `sin(theta)` and `cos(theta)`.
 
--   **`rotation_angle_translate`** *(optional)*: Rotates the mesh about
-    the **model centre `(xc, yc, zc)`**, rather than about the global
-    origin. To perform this rotation, the coordinates are first
-    expressed in a local coordinate system whose origin coincides with
-    the original model centre:
+    Therefore, `rotation_angle` does **not** rotate the original
+    coordinates about the global origin. Instead, the centre of the mesh
+    in the x-y plane becomes `(0, 0)` in the transformed coordinate
+    system before the rotation is applied. The original z coordinates
+    are preserved and no z translation is performed.
+
+-   **`rotation_angle_translate`** *(optional)*: Uses the same centred
+    x-y rotation as `rotation_angle`, but additionally allows the
+    transformed mesh to be positioned at a specified centre.
+
+    First, the centre of the mesh in x and y is calculated from its
+    bounds:
+
+        xc = 0.5 * (xmin + xmax)
+        yc = 0.5 * (ymin + ymax)
+
+    and the centred coordinates are:
 
         X = x - xc
         Y = y - yc
-        Z = z - zc
 
-    Therefore, `(X, Y, Z) = (0, 0, 0)` corresponds to the centre of the
-    original model. The model is not conceptually being moved first;
-    instead, its coordinates are represented relative to its centre so
-    that the rotation is performed about that centre.
-
-    The centred x-y coordinates are then rotated about the local z-axis:
+    The centred x-y coordinates are rotated:
 
         x_rot = X*cos(theta) - Y*sin(theta)
         y_rot = X*sin(theta) + Y*cos(theta)
-        z_rot = Z
 
-    The input `rotation_angle_translate` is specified in **degrees** and
-    is converted internally to radians (`theta`) before evaluating the
-    trigonometric functions.
+    For this mode, the centre in z is also calculated from the mesh
+    bounds:
 
-    If `xt`, `yt`, and `zt` are omitted, the rotated local coordinates
-    are returned directly:
+        zc = 0.5 * (zmin + zmax)
+
+    If `xt`, `yt`, and `zt` are omitted, they default to zero and the
+    transformation is:
 
         x_new = x_rot
         y_new = y_rot
-        z_new = z_rot
+        z_new = z - zc
 
-    In this case, the origin `(0, 0, 0)` of the transformed coordinate
-    system corresponds to the model centre.
+    In this case, the centre of the transformed mesh is located at
+    `(0, 0, 0)`.
 
-    If `xt`, `yt`, and `zt` are supplied, they specify the coordinates
-    assigned to the model centre in the transformed coordinate system:
+    If `xt`, `yt`, and `zt` are supplied, all three values must be
+    provided together. They define the target coordinates of the
+    transformed mesh centre:
 
         x_new = x_rot + xt
         y_new = y_rot + yt
-        z_new = z_rot + zt
+        z_new = z - zc + zt
 
-    Thus, `(xc, yc, zc)` is the **rotation centre in the original
-    coordinate system**, whereas `(xt, yt, zt)` specifies the **location
-    of that model centre in the transformed coordinate system**. 
+    Thus, `(xc, yc, zc)` is the centre calculated from the original mesh
+    bounding box, while `(xt, yt, zt)` specifies where that centre is
+    placed in the transformed coordinate system.
 
-   The two modes are alternatives and should not be
-    supplied together.
+    `rotation_angle` and `rotation_angle_translate` are alternative
+    modes and must not be supplied together. The translation coordinates
+    `xt`, `yt`, and `zt` are only valid with `rotation_angle_translate`.
 
 -   **`interpolated_surface_csv_dir`** *(optional)*: Directory in which
     the interpolated geological surfaces are saved as CSV files. This is
@@ -575,8 +591,9 @@ which a fault produces no meaningful vertical offset. `gmsh_flag=True`
 saves the original Gmsh `.msh` file, `mapping_litho="automatic_centers"`
 applies centroid-based automatic lithological mapping, and `refinement`
 applies the local refinement definitions. In this example,
-`rotation_angle=30.0` applies only a 30° rotation about the global
-z-axis. It does **not** recenter or translate the mesh, and z remains
+`rotation_angle=30.0` first expresses the x-y coordinates relative to
+the centre of the mesh bounding box and then applies a 30° rotation
+about the resulting local z-axis. The original z coordinates remain
 unchanged. If `interpolated_surface_csv_dir` is provided, the
 interpolated geological surfaces are also saved in the specified
 directory.
@@ -586,7 +603,7 @@ directory.
 The following examples show the three supported coordinate-transform
 cases.
 
-**1. Pure rotation only**
+**1. Rotation only**
 
 ``` python
 mesh_rotated = create_unstructured_mesh_data(
@@ -596,9 +613,16 @@ mesh_rotated = create_unstructured_mesh_data(
 )
 ```
 
-This rotates the original x-y coordinates by 30° about the global origin
-`(0, 0)`. No model-centre subtraction or translation is applied, and the
-z coordinates are unchanged.
+The centre of the mesh in x and y is first calculated from the
+coordinate bounds and shifted to `(0, 0)`. The centred x-y coordinates
+are then rotated by 30°. The original z coordinates are preserved:
+
+    X = x - xc
+    Y = y - yc
+
+    x_new = X*cos(theta) - Y*sin(theta)
+    y_new = X*sin(theta) + Y*cos(theta)
+    z_new = z
 
 **2. Rotation and translation to the origin**
 
@@ -610,9 +634,14 @@ mesh_rotated_centered = create_unstructured_mesh_data(
 )
 ```
 
-Here the model centre `(xc, yc, zc)` is used as the rotation centre. The
-returned coordinates are expressed in the transformed coordinate system
-whose origin `(0, 0, 0)` corresponds to the model centre.
+Here the same centred x-y rotation is applied, and the z coordinate is
+also expressed relative to the centre of the mesh bounding box. Because
+`xt`, `yt`, and `zt` are omitted, they default to zero. The centre of
+the transformed mesh is therefore located at `(0, 0, 0)`:
+
+    x_new = X*cos(theta) - Y*sin(theta)
+    y_new = X*sin(theta) + Y*cos(theta)
+    z_new = z - zc
 
 **3. Rotation and translation to a user-defined model centre**
 
@@ -627,9 +656,16 @@ mesh_rotated_translated = create_unstructured_mesh_data(
 )
 ```
 
-The mesh is rotated by 30° about its model centre and translated so that
-the centre of the resulting mesh is `(1000, 2000, 500)`. The three
-target coordinates `xt`, `yt`, and `zt` must be provided together.
+The mesh is rotated using the same centred x-y coordinates and
+translated so that the centre of the resulting mesh is
+`(1000, 2000, 500)`:
+
+    x_new = X*cos(theta) - Y*sin(theta) + 1000
+    y_new = X*sin(theta) + Y*cos(theta) + 2000
+    z_new = z - zc + 500
+
+The three target coordinates `xt`, `yt`, and `zt` must be provided
+together.
 
 Example of creating an unstructured mesh from CSV files containing
 geological surfaces:

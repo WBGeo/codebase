@@ -155,6 +155,26 @@ class TestHierarchicalMeshValidation(unittest.TestCase):
             )
 
 
+    def test_both_extents_accept_eight_corner_boxes(self):
+        outer = [
+            [0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0],
+            [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10],
+        ]
+        inner = [
+            [2, 2, 2], [8, 2, 2], [8, 8, 2], [2, 8, 2],
+            [2, 2, 8], [8, 2, 8], [8, 8, 8], [2, 8, 8],
+        ]
+        # Validation should accept the domains; mesh_size1 is deliberately
+        # omitted so execution stops immediately after extent validation.
+        with self.assertRaisesRegex(ValueError, "mesh_size1"):
+            hierarchical_mesh(
+                geomodel(),
+                mesh_type="Un",
+                extent1=outer,
+                extent2=inner,
+            )
+
+
 class TestHierarchicalUnstructured(unittest.TestCase):
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
@@ -360,8 +380,9 @@ class TestHierarchicalUnstructured(unittest.TestCase):
         self.assertEqual(second["surface_csv_dir"], "surfaces")
         self.assertEqual(first["curve_mesh_size"], 5)
         self.assertEqual(second["curve_mesh_size"], 5)
-        self.assertEqual(first["rotation_angle"], 20)
-        self.assertEqual(second["rotation_angle"], 45)
+        # Hierarchical matching is performed in the untransformed/world frame.
+        self.assertNotIn("rotation_angle", first)
+        self.assertNotIn("rotation_angle", second)
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_level_specific_unstructured_params_override_common_values(self, create):
@@ -381,8 +402,8 @@ class TestHierarchicalUnstructured(unittest.TestCase):
         second = create.call_args_list[1].kwargs
         self.assertEqual(first["curve_mesh_size"], 5)
         self.assertEqual(second["curve_mesh_size"], 5)
-        self.assertEqual(first["rotation_angle"], 20)
-        self.assertEqual(second["rotation_angle"], 45)
+        self.assertNotIn("rotation_angle", first)
+        self.assertNotIn("rotation_angle", second)
 
 
 class TestStructuredAndImplicit(unittest.TestCase):
@@ -440,14 +461,24 @@ class TestBoundaryMatching(unittest.TestCase):
             mesh_size1=2,
         )
 
-        self.assertEqual(
-            set(boundary),
-            {"left", "right", "front", "back", "bottom", "top"},
-        )
-        for values in boundary.values():
-            self.assertEqual(values.shape[1], 4)
-            self.assertTrue(np.all(values[:, 0] >= 0))
-            self.assertTrue(np.all(values[:, 0] < len(BIG_NODES)))
+        self.assertEqual(set(boundary), {"big_frame", "small_frame"})
+        for frame_name in ("big_frame", "small_frame"):
+            frame = boundary[frame_name]
+            self.assertEqual(
+                set(frame),
+                {"left", "right", "front", "back", "bottom", "top"},
+            )
+            for values in frame.values():
+                self.assertEqual(values.shape[1], 4)
+                self.assertTrue(np.all(values[:, 0] >= 0))
+                self.assertTrue(np.all(values[:, 0] < len(BIG_NODES)))
+
+        # Both coordinate-frame datasets must refer to the same mesh1 node IDs.
+        for face in ("left", "right", "front", "back", "bottom", "top"):
+            np.testing.assert_array_equal(
+                boundary["big_frame"][face][:, 0],
+                boundary["small_frame"][face][:, 0],
+            )
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_boundary_nodes_are_taken_from_mesh2_point_sets(self, create):
@@ -464,8 +495,22 @@ class TestBoundaryMatching(unittest.TestCase):
             mesh_size1=2,
         )
 
-        self.assertEqual(len(boundary["left"]), len(SMALL_POINT_SETS["left"]))
-        self.assertEqual(len(boundary["right"]), len(SMALL_POINT_SETS["right"]))
+        self.assertEqual(
+            len(boundary["big_frame"]["left"]),
+            len(SMALL_POINT_SETS["left"]),
+        )
+        self.assertEqual(
+            len(boundary["big_frame"]["right"]),
+            len(SMALL_POINT_SETS["right"]),
+        )
+        self.assertEqual(
+            len(boundary["small_frame"]["left"]),
+            len(SMALL_POINT_SETS["left"]),
+        )
+        self.assertEqual(
+            len(boundary["small_frame"]["right"]),
+            len(SMALL_POINT_SETS["right"]),
+        )
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_missing_point_sets_raise_clear_error(self, create):
@@ -504,16 +549,17 @@ class TestBoundaryMatching(unittest.TestCase):
 
         first = create.call_args_list[0].kwargs
         second = create.call_args_list[1].kwargs
-        self.assertEqual(first["rotation_angle_translate"], 20)
-        self.assertEqual((first["xt"], first["yt"], first["zt"]), (100, 200, 300))
-        self.assertEqual(second["rotation_angle_translate"], 45)
-        self.assertEqual((second["xt"], second["yt"], second["zt"]), (400, 500, 600))
-        self.assertNotIn("target_center_x", first)
-        self.assertNotIn("target_center_y", first)
-        self.assertNotIn("target_center_z", first)
-        self.assertNotIn("target_center_x", second)
-        self.assertNotIn("target_center_y", second)
-        self.assertNotIn("target_center_z", second)
+
+        # Rotation/translation must NOT be used during meshing; it is applied
+        # only after zero-transform boundary matching.
+        for kwargs in (first, second):
+            self.assertNotIn("rotation_angle_translate", kwargs)
+            self.assertNotIn("xt", kwargs)
+            self.assertNotIn("yt", kwargs)
+            self.assertNotIn("zt", kwargs)
+            self.assertNotIn("target_center_x", kwargs)
+            self.assertNotIn("target_center_y", kwargs)
+            self.assertNotIn("target_center_z", kwargs)
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
     def test_rotation_angle_does_not_add_translation_arguments(self, create):
@@ -550,8 +596,8 @@ class TestBoundaryMatching(unittest.TestCase):
             unstructured_params2={"rotation_angle": 45},
         )
 
-        self.assertEqual(create.call_args_list[0].kwargs["rotation_angle"], 20)
-        self.assertEqual(create.call_args_list[1].kwargs["rotation_angle"], 45)
+        self.assertNotIn("rotation_angle", create.call_args_list[0].kwargs)
+        self.assertNotIn("rotation_angle", create.call_args_list[1].kwargs)
 
 
 if __name__ == "__main__":

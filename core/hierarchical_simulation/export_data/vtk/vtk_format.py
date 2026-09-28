@@ -77,18 +77,76 @@ def export_meshes_vtk(mesh1: MeshResults, mesh2: MeshResults, boundary_nodes: di
     fmt = ['%d', '%.6f', '%.6f', '%.6f']
     header = "NodeID,X,Y,Z"
 
+    def _validate_face_array(nodes, label):
+        arr = np.asarray(nodes)
+        if arr.ndim != 2 or arr.shape[1] != 4:
+            raise ValueError(
+                f"Boundary node array '{label}' must have shape (N, 4) "
+                "with columns [NodeID, X, Y, Z]. "
+                f"Got shape {arr.shape}."
+            )
+        return arr
 
-    for face, nodes in boundary_nodes.items():
+    def _write_boundary_frame(frame_nodes, folder, frame_name=None):
+        os.makedirs(folder, exist_ok=True)
+        for face, nodes in frame_nodes.items():
+            arr = _validate_face_array(
+                nodes,
+                f"{frame_name}/{face}" if frame_name else str(face),
+            )
+            filename = os.path.join(folder, f"{face}_boundary_nodes.csv")
+            np.savetxt(
+                filename, arr, delimiter=",",
+                header=header, comments="", fmt=fmt
+            )
+            prefix = f"{frame_name} / " if frame_name else ""
+            print(
+                f"{prefix}{str(face).capitalize()} boundary nodes saved: "
+                f"{filename} ({arr.shape[0]} points)"
+            )
 
-        filename = os.path.join(
-            boundary_folder,
-            f"{face}_boundary_nodes.csv"
+    # New hierarchical format:
+    # {
+    #     "big_frame":   {face: Nx4, ...},
+    #     "small_frame": {face: Nx4, ...},
+    # }
+    # Both frames contain the same mesh1 node IDs, but coordinates are expressed
+    # in the final big-mesh and small-mesh coordinate systems respectively.
+    if (
+        isinstance(boundary_nodes, dict)
+        and "big_frame" in boundary_nodes
+        and "small_frame" in boundary_nodes
+    ):
+        big_frame = boundary_nodes["big_frame"]
+        small_frame = boundary_nodes["small_frame"]
+
+        if not isinstance(big_frame, dict) or not isinstance(small_frame, dict):
+            raise ValueError(
+                "boundary_nodes['big_frame'] and boundary_nodes['small_frame'] "
+                "must both be dictionaries of face arrays."
+            )
+
+        # Verify that corresponding faces carry the same mesh1 node IDs.
+        common_faces = set(big_frame).intersection(small_frame)
+        for face in common_faces:
+            big_arr = _validate_face_array(big_frame[face], f"big_frame/{face}")
+            small_arr = _validate_face_array(small_frame[face], f"small_frame/{face}")
+            if big_arr.shape[0] != small_arr.shape[0] or not np.array_equal(
+                big_arr[:, 0].astype(np.int64),
+                small_arr[:, 0].astype(np.int64),
+            ):
+                raise ValueError(
+                    f"Boundary node IDs differ between big_frame and "
+                    f"small_frame for face '{face}'."
+                )
+
+        _write_boundary_frame(
+            big_frame, os.path.join(boundary_folder, "big_frame"), "big_frame"
+        )
+        _write_boundary_frame(
+            small_frame, os.path.join(boundary_folder, "small_frame"), "small_frame"
         )
 
-        np.savetxt(filename, nodes, delimiter=",",
-            header=header, comments="", fmt=fmt)
-
-        print(
-            f"{face.capitalize()} boundary nodes saved: "
-            f"{filename} ({nodes.shape[0]} points)"
-        )
+    else:
+        # Backward-compatible legacy format: {face: Nx4, ...}
+        _write_boundary_frame(boundary_nodes, boundary_folder)
