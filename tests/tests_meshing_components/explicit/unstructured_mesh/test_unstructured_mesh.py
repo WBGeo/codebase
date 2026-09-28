@@ -186,28 +186,34 @@ class CoordinateTransformTestCase(unittest.TestCase):
             [14.0, 26.0, 38.0],
         ])
 
-    def test_rotation_angle_is_pure_rotation_about_global_origin(self):
+    def test_rotation_angle_rotates_about_xy_model_center(self):
         result = meshit_coordinate_transform(
-            self.nodes, angle_deg=90.0, translate_to_model_center=False
+            self.nodes,
+            angle_deg=90.0,
+            translate=False,
         )
-        expected = np.column_stack((
-            -self.nodes[:, 1],
-            self.nodes[:, 0],
-            self.nodes[:, 2],
-        ))
+
+        xc = 0.5 * (self.nodes[:, 0].min() + self.nodes[:, 0].max())
+        yc = 0.5 * (self.nodes[:, 1].min() + self.nodes[:, 1].max())
+        X = self.nodes[:, 0] - xc
+        Y = self.nodes[:, 1] - yc
+
+        expected = self.nodes.copy()
+        expected[:, 0] = -Y
+        expected[:, 1] = X
+        expected[:, 2] = self.nodes[:, 2]
+
         np.testing.assert_allclose(result, expected, atol=1e-12)
-        # In particular, pure rotation must not recenter the model.
-        self.assertFalse(np.allclose(result.mean(axis=0)[:2], [0.0, 0.0]))
 
     def test_rotation_angle_keeps_z_unchanged(self):
         result = meshit_coordinate_transform(
-            self.nodes, angle_deg=37.0, translate_to_model_center=False
+            self.nodes, angle_deg=37.0, translate=False
         )
         np.testing.assert_allclose(result[:, 2], self.nodes[:, 2])
 
     def test_rotation_angle_translate_defaults_model_center_to_origin(self):
         result = meshit_coordinate_transform(
-            self.nodes, angle_deg=90.0, translate_to_model_center=True
+            self.nodes, angle_deg=90.0, translate=True
         )
         center = 0.5 * (result.min(axis=0) + result.max(axis=0))
         np.testing.assert_allclose(center, [0.0, 0.0, 0.0], atol=1e-12)
@@ -217,7 +223,7 @@ class CoordinateTransformTestCase(unittest.TestCase):
         result = meshit_coordinate_transform(
             self.nodes,
             angle_deg=90.0,
-            translate_to_model_center=True,
+            translate=True,
             xt=target[0], yt=target[1], zt=target[2],
         )
         center = 0.5 * (result.min(axis=0) + result.max(axis=0))
@@ -228,7 +234,7 @@ class CoordinateTransformTestCase(unittest.TestCase):
             meshit_coordinate_transform(
                 self.nodes,
                 angle_deg=20.0,
-                translate_to_model_center=True,
+                translate=True,
                 xt=100.0,
                 yt=200.0,
             )
