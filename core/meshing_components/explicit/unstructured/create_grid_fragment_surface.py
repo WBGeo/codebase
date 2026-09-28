@@ -1987,7 +1987,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
         # Create physical groups
         boundary_tags = []
-        BOUNDARY_START = 9000
+        BOUNDARY_START = 9091
 
         for i, (name, surfaces) in enumerate(boundary_groups.items()):
 
