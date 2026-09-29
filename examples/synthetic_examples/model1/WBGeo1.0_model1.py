@@ -37,7 +37,7 @@ from core.simulation_components.simulation_packages.golem.golem_model_builder im
 
 from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
 from core.simulation_components.simulation_visualization.simulation_visualization import (
-    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
+    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials, plot_variable_time_series)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,ExtraPlaneRefinement,
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement, LinearShaftRefinement, FunctionShaftRefinement, GeneralRefinement)
@@ -169,11 +169,11 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Explicit unstructured mesh
-##mesh_explicit_unstructured = create_unstructured_mesh_data(
-##    geomodel_result=structural_model_result,
-##    mesh_size=30,
-##    curve_mesh_size=5
-##)
+mesh_explicit_unstructured = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    mesh_size=30,
+    curve_mesh_size=5
+)
 
 # Explicit structured mesh
 mesh_explicit_structured = create_structured_mesh_data(
@@ -196,10 +196,17 @@ mesh_explicit_structured = create_structured_mesh_data(
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
 # In addition, some export formats support only specific mesh types.
 # See the meshing manual/documentation for details.
-#buf = export_mesh_results_to_exodus(mesh_explicit_structured, type='str')
-#with open("filename_example_mesh.exo", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_explicit_structured, type='str')
+with open("filename_st1.exo", "wb") as f:
+    f.write(buf.getvalue())
 
+buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
+with open("filename_unst1.exo", "wb") as f:
+    f.write(buf.getvalue())
+
+buf = export_mesh_results_to_exodus(mesh_implicit_structured, type='imp')
+with open("filename_imp1.exo", "wb") as f:
+    f.write(buf.getvalue())
 #%%
 
 # Optional: Example of how to include objects (only works for unstructured mesh)
@@ -340,34 +347,34 @@ fluid = FluidProperties(
     heat_capacity=1200,
 )
 
-##builder = HydrothermalProblemBuilder(
-##    mesh_results=mesh_explicit_unstructured,
-##    geomodel_result=structural_model_result,
-##    print_linear_residuals=True,
-##    rock_properties=rock_properties,
-##    fluid=fluid,
-##    include_flow=True,
-##    t1=5e11,
-##    num_steps=3,
-##)
+builder = HydrothermalProblemBuilder(
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    print_linear_residuals=True,
+    rock_properties=rock_properties,
+    fluid=fluid,
+    include_flow=True,
+    t1=5e11,
+    num_steps=3,
+)
 #%%
 
 # Pre-flight check: confirms rock_properties landed on the right cells.
-##plot_builder_materials(builder)
+plot_builder_materials(builder)
 
 #%%
 
-##data_by_time = run_simulation_sfepy(builder)
+data_by_time = run_simulation_sfepy(builder)
 
 #%%
 
 # Visualize simulation results
-##final_time = max(data_by_time.nodes_by_time.keys())
-##plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
-##plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
-##plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
-##plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
-
+final_time = max(data_by_time.nodes_by_time.keys())
+plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
+plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+plot_variable_time_series(data_by_time, "T", point=(500,500,500))
 #%%
 
 #%%
@@ -410,34 +417,34 @@ fluid = FluidProperties(
 #
 # See each file's own docstring for the full technical explanation.
 
-#custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
-#                      "custom_hydrothermal.py")
+custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
+                      "custom_hydrothermal.py")
 
-#with open(custom_input_path) as f:
-#    custom_input_file_contents = f.read()
+with open(custom_input_path) as f:
+    custom_input_file_contents = f.read()
 
-#custom_builder = CustomSfepyBuilder(
-#    input_file_contents=custom_input_file_contents,
-#    mesh_results=mesh_explicit_unstructured,
-#    geomodel_result=structural_model_result,
-#    print_linear_residuals=True,
+custom_builder = CustomSfepyBuilder(
+    input_file_contents=custom_input_file_contents,
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    print_linear_residuals=True,
 
-#)
+)
 
 #%%
 
-#custom_data_by_time = run_simulation_sfepy(custom_builder)
+custom_data_by_time = run_simulation_sfepy(custom_builder)
 
 #%%
 
 # Confirms the custom-builder result matches HydrothermalProblemBuilder's above.
-#custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
-#print("HydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
-#print("CustomSfepyBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())
+custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
+print("HydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
+print("CustomSfepyBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())
 # Visualize results.
-#plot_variable_at_a_time(custom_data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
-#plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=True)
-#plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+plot_variable_at_a_time(custom_data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=True)
+plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
 
 
 

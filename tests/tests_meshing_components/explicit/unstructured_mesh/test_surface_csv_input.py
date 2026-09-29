@@ -30,7 +30,7 @@ def _write_surface(path: Path, z: float = 5.0):
 class SurfaceCsvInputTestCase(unittest.TestCase):
     """Regression tests for direct x/y/z CSV geological-surface input."""
 
-    def _run_csv_route(self, csv_dir, mapping_litho="none"):
+    def _run_csv_route(self, csv_dir, mapping_litho="none", extent=EXTENT, extent_z=None):
         cube_nodes = np.array(
             [
                 [0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0],
@@ -56,11 +56,15 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             patch(f"{MODULE}.gmsh.finalize"),
             patch(f"{MODULE}.gmsh.model.occ.synchronize"),
         ):
-            result = create_unstructured_mesh_data(
-                surface_csv_dir=str(csv_dir),
-                extent=EXTENT,
-                mapping_litho=mapping_litho,
-            )
+            kwargs = {
+                "surface_csv_dir": str(csv_dir),
+                "mapping_litho": mapping_litho,
+            }
+            if extent is not None:
+                kwargs["extent"] = extent
+            if extent_z is not None:
+                kwargs["extent_z"] = extent_z
+            result = create_unstructured_mesh_data(**kwargs)
 
         return result, data_preparation, create_grid, fragment, mesh_generator
 
@@ -129,13 +133,131 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
                 LithoMappingMode.NONE,
             )
 
-    def test_csv_mode_requires_extent(self):
+    def test_csv_mode_infers_extent_from_all_surface_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pd.DataFrame(
+                {
+                    "x": [-5.0, 2.0, 8.0],
+                    "y": [3.0, -4.0, 6.0],
+                    "z": [100.0, 120.0, 110.0],
+                }
+            ).to_csv(root / "surface1.csv", index=False)
+            pd.DataFrame(
+                {
+                    "x": [1.0, 20.0],
+                    "y": [-10.0, 12.0],
+                    "z": [90.0, 150.0],
+                }
+            ).to_csv(root / "surface2.csv", index=False)
+
+            _, _, _, fragment, _ = self._run_csv_route(root, extent=None)
+
+            expected = np.array(
+                [-5.0, 20.0, -10.0, 12.0, 90.0, 150.0],
+                dtype=float,
+            )
+            np.testing.assert_allclose(fragment.call_args.args[1], expected)
+
+    def test_csv_mode_explicit_extent_takes_precedence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_surface(root / "surface1.csv", 5.0)
+            explicit = (-2.0, 12.0, -3.0, 13.0, -4.0, 14.0)
+
+            _, _, _, fragment, _ = self._run_csv_route(
+                root, extent=explicit
+            )
+
+            np.testing.assert_allclose(
+                fragment.call_args.args[1],
+                np.asarray(explicit, dtype=float),
+            )
+
+
+    def test_csv_inferred_extent_uses_absolute_extent_z(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pd.DataFrame(
+                {
+                    "x": [0.0, 10.0],
+                    "y": [1.0, 9.0],
+                    "z": [-7.0, 10.0],
+                }
+            ).to_csv(root / "surface1.csv", index=False)
+
+            _, _, _, fragment, _ = self._run_csv_route(
+                root,
+                extent=None,
+                extent_z=[-9.0, 5.0],
+            )
+
+            np.testing.assert_allclose(
+                fragment.call_args.args[1],
+                np.array([0.0, 10.0, 1.0, 9.0, -9.0, 5.0]),
+            )
+
+    def test_csv_extent_z_replaces_only_inferred_z_limits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pd.DataFrame(
+                {
+                    "x": [-5.0, 20.0],
+                    "y": [-10.0, 12.0],
+                    "z": [90.0, 150.0],
+                }
+            ).to_csv(root / "surface1.csv", index=False)
+
+            _, _, _, fragment, _ = self._run_csv_route(
+                root,
+                extent=None,
+                extent_z=[-20.0, 30.0],
+            )
+
+            np.testing.assert_allclose(
+                fragment.call_args.args[1],
+                np.array([-5.0, 20.0, -10.0, 12.0, -20.0, 30.0]),
+            )
+
+    def test_csv_explicit_extent_takes_precedence_over_extent_z(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_surface(root / "surface1.csv")
-            with self.assertRaisesRegex(ValueError, "extent must be supplied"):
+            explicit = (-2.0, 12.0, -3.0, 13.0, -4.0, 14.0)
+
+            _, _, _, fragment, _ = self._run_csv_route(
+                root,
+                extent=explicit,
+                extent_z=[-100.0, 200.0],
+            )
+
+            np.testing.assert_allclose(
+                fragment.call_args.args[1],
+                np.asarray(explicit, dtype=float),
+            )
+
+    def test_extent_z_requires_z_min_less_than_z_max(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_surface(root / "surface1.csv")
+
+            with self.assertRaisesRegex(ValueError, "z_min < z_max"):
                 create_unstructured_mesh_data(
-                    surface_csv_dir=str(root), mapping_litho="none"
+                    surface_csv_dir=str(root),
+                    extent_z=[5.0, -9.0],
+                    mapping_litho="none",
+                )
+
+    def test_extent_z_requires_two_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_surface(root / "surface1.csv")
+
+            with self.assertRaisesRegex(ValueError, "exactly two"):
+                create_unstructured_mesh_data(
+                    surface_csv_dir=str(root),
+                    extent_z=[-9.0],
+                    mapping_litho="none",
                 )
 
     def test_geomodel_and_csv_directory_are_mutually_exclusive(self):

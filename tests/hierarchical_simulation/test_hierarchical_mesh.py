@@ -1,9 +1,12 @@
 
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 
 from core.hierarchical_simulation.generate_mesh.hierarchical_mesh import hierarchical_mesh
 
@@ -124,12 +127,156 @@ class TestHierarchicalMeshValidation(unittest.TestCase):
                 mesh_size1=2,
             )
 
-    def test_csv_only_requires_explicit_outer_extent(self):
-        with self.assertRaisesRegex(ValueError, "explicit extent"):
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_csv_whole_outer_extent_uses_surface_min_max(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pd.DataFrame(
+                {
+                    "x": [-5.0, 4.0, 12.0],
+                    "y": [-3.0, 6.0, 11.0],
+                    "z": [-2.0, 5.0, 14.0],
+                }
+            ).to_csv(root / "surface1.csv", index=False)
+            pd.DataFrame(
+                {
+                    "x": [0.0, 20.0],
+                    "y": [-10.0, 8.0],
+                    "z": [-8.0, 18.0],
+                }
+            ).to_csv(root / "surface2.csv", index=False)
+
             hierarchical_mesh(
                 mesh_type="Un",
-                surface_csv_dir="surfaces",
+                surface_csv_dir=str(root),
                 extent1="whole",
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+            )
+
+        expected = np.array(
+            [-5.0, 20.0, -10.0, 11.0, -8.0, 18.0],
+            dtype=float,
+        )
+        np.testing.assert_allclose(
+            create.call_args_list[0].kwargs["extent"],
+            expected,
+        )
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_csv_explicit_outer_extent_takes_precedence(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+        explicit = [-1, 11, -2, 12, -3, 13]
+
+        hierarchical_mesh(
+            mesh_type="Un",
+            surface_csv_dir="surfaces",
+            extent1=explicit,
+            extent2=[2, 8, 2, 8, 2, 8],
+            mesh_size1=2,
+        )
+
+        np.testing.assert_allclose(
+            create.call_args_list[0].kwargs["extent"],
+            np.asarray(explicit, dtype=float),
+        )
+
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_csv_whole_extent_uses_absolute_extent_z(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pd.DataFrame(
+                {
+                    "x": [0.0, 20.0],
+                    "y": [0.0, 20.0],
+                    "z": [-7.0, 10.0],
+                }
+            ).to_csv(root / "surface1.csv", index=False)
+
+            hierarchical_mesh(
+                mesh_type="Un",
+                surface_csv_dir=str(root),
+                extent1="whole",
+                extent_z=[-9.0, 5.0],
+                extent2=[2, 8, 2, 8, -8, 4],
+                mesh_size1=2,
+            )
+
+        np.testing.assert_allclose(
+            create.call_args_list[0].kwargs["extent"],
+            np.array([0.0, 20.0, 0.0, 20.0, -9.0, 5.0]),
+        )
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_csv_whole_extent_z_can_define_outer_z_for_extent2(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pd.DataFrame(
+                {
+                    "x": [0.0, 20.0],
+                    "y": [0.0, 20.0],
+                    "z": [-7.0, 10.0],
+                }
+            ).to_csv(root / "surface1.csv", index=False)
+
+            hierarchical_mesh(
+                mesh_type="Un",
+                surface_csv_dir=str(root),
+                extent1="whole",
+                extent_z=[-20.0, 30.0],
+                extent2=[2, 8, 2, 8, -15, 25],
+                mesh_size1=2,
+            )
+
+        np.testing.assert_allclose(
+            create.call_args_list[0].kwargs["extent"],
+            np.array([0.0, 20.0, 0.0, 20.0, -20.0, 30.0]),
+        )
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")
+    def test_explicit_extent1_takes_precedence_over_extent_z(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+        explicit = [0, 20, 0, 20, -10, 20]
+
+        hierarchical_mesh(
+            mesh_type="Un",
+            surface_csv_dir="surfaces",
+            extent1=explicit,
+            extent_z=[-100.0, 200.0],
+            extent2=[2, 8, 2, 8, -5, 10],
+            mesh_size1=2,
+        )
+
+        np.testing.assert_allclose(
+            create.call_args_list[0].kwargs["extent"],
+            np.asarray(explicit, dtype=float),
+        )
+
+    def test_extent_z_requires_z_min_less_than_z_max(self):
+        with self.assertRaisesRegex(ValueError, "z_min < z_max"):
+            hierarchical_mesh(
+                geomodel_result=geomodel(),
+                mesh_type="Un",
+                extent1="whole",
+                extent_z=[5.0, -9.0],
+                extent2=[2, 8, 2, 8, 2, 8],
+                mesh_size1=2,
+            )
+
+    def test_extent_z_requires_two_values(self):
+        with self.assertRaisesRegex(ValueError, "exactly two"):
+            hierarchical_mesh(
+                geomodel_result=geomodel(),
+                mesh_type="Un",
+                extent1="whole",
+                extent_z=[-9.0],
                 extent2=[2, 8, 2, 8, 2, 8],
                 mesh_size1=2,
             )
@@ -522,6 +669,63 @@ class TestBoundaryMatching(unittest.TestCase):
                 mesh_type="Un",
                 extent2=[2, 8, 2, 8, 2, 8],
                 mesh_size1=2,
+            )
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_structured_mesh_data")
+    def test_structured_uses_same_boundary_matching_and_two_frames(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        _, _, boundary = hierarchical_mesh(
+            geomodel(),
+            mesh_type="Str",
+            extent2=[2, 8, 2, 8, 2, 8],
+            refinement1=[2, 2, 2],
+            mesh_devision1=(4, 4),
+        )
+
+        self.assertEqual(set(boundary), {"big_frame", "small_frame"})
+        for face in ("left", "right", "front", "back", "bottom", "top"):
+            self.assertIn(face, boundary["big_frame"])
+            self.assertIn(face, boundary["small_frame"])
+            self.assertEqual(boundary["big_frame"][face].shape[1], 4)
+            self.assertEqual(boundary["small_frame"][face].shape[1], 4)
+            np.testing.assert_array_equal(
+                boundary["big_frame"][face][:, 0],
+                boundary["small_frame"][face][:, 0],
+            )
+            # Structured meshes currently have no hierarchy-level output
+            # transform, so both frames use the same world coordinates.
+            np.testing.assert_allclose(
+                boundary["big_frame"][face][:, 1:],
+                boundary["small_frame"][face][:, 1:],
+            )
+
+    @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_implicit_structured_mesh")
+    def test_implicit_uses_same_boundary_matching_and_two_frames(self, create):
+        create.side_effect = [big_mesh(), small_mesh()]
+
+        _, _, boundary = hierarchical_mesh(
+            geomodel(),
+            mesh_type="Im",
+            extent1="whole",
+            extent2=[2, 8, 2, 8, 2, 8],
+        )
+
+        self.assertEqual(set(boundary), {"big_frame", "small_frame"})
+        for face in ("left", "right", "front", "back", "bottom", "top"):
+            self.assertIn(face, boundary["big_frame"])
+            self.assertIn(face, boundary["small_frame"])
+            self.assertEqual(boundary["big_frame"][face].shape[1], 4)
+            self.assertEqual(boundary["small_frame"][face].shape[1], 4)
+            np.testing.assert_array_equal(
+                boundary["big_frame"][face][:, 0],
+                boundary["small_frame"][face][:, 0],
+            )
+            # Implicit structured meshes currently have no hierarchy-level
+            # output transform, so both frames use the same world coordinates.
+            np.testing.assert_allclose(
+                boundary["big_frame"][face][:, 1:],
+                boundary["small_frame"][face][:, 1:],
             )
 
     @patch("core.hierarchical_simulation.generate_mesh.hierarchical_mesh.create_unstructured_mesh_data")

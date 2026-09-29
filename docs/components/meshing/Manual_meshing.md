@@ -383,8 +383,23 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
         itself to be defined by a box whose boundaries are not
         necessarily parallel to the global coordinate axes.
 
-    If `extent` is not supplied, the extent from `geomodel_result` is
-    used.
+    If `extent` is not supplied, the domain is inferred from the geological
+    input. With `geomodel_result`, the structural-model extent is used. With
+    `surface_csv_dir`, the combined minimum and maximum X, Y, and Z
+    coordinates from all geological surface CSV files are used.
+
+-   **`extent_z`** *(optional)*: Defines absolute Z limits
+    `[z_min, z_max]` for an automatically inferred extent. It does not
+    enlarge the inferred Z range by a distance; instead, it replaces the
+    inferred `zmin` and `zmax` values exactly while keeping the inferred
+    X and Y limits unchanged. For example, if the inferred domain is
+    `(xmin, xmax, ymin, ymax, -7, 10)`, then `extent_z=[-9, 5]` produces
+    `(xmin, xmax, ymin, ymax, -9, 5)`. The two values must be finite and
+    satisfy `z_min < z_max`.
+
+    `extent_z` is used only when `extent` is omitted. If a complete
+    explicit `extent` is supplied, that extent takes precedence and is
+    used unchanged.
 
 -   **`smooth`**: The smoothing parameter for the Radial Basis Function
     (RBF) interpolation used to rebuild surfaces. Larger values produce
@@ -674,7 +689,8 @@ geological surfaces:
 mesh_explicit_unst_from_file = create_unstructured_mesh_data(
     surface_csv_dir=cwd + "/examples/synthetic_examples/model2/input_data/surfaces",
 
-    extent=(0, 2500, 0, 1000, 0, 1000),
+    # X/Y are inferred from all CSV surfaces; use these absolute Z limits.
+    extent_z=[-1000, 500],
 
     mesh_size=50,
     curve_mesh_size=5,
@@ -685,7 +701,15 @@ mesh_explicit_unst_from_file = create_unstructured_mesh_data(
 ```
 
 This generates an unstructured tetrahedral mesh from the CSV files
-stored in the directory specified by `surface_csv_dir`.
+stored in the directory specified by `surface_csv_dir`. Because no full
+`extent` is supplied, X and Y limits are inferred from the combined CSV
+surface coordinates. `extent_z=[-1000, 500]` replaces only the inferred Z
+limits with the absolute values `zmin=-1000` and `zmax=500`.
+
+If neither `extent` nor `extent_z` is supplied, X, Y, and Z are all
+inferred from the combined CSV surface coordinates. If a complete
+`extent=(xmin, xmax, ymin, ymax, zmin, zmax)` is supplied, it takes
+precedence and `extent_z` is not applied.
 
 #### Mesh refinement
 

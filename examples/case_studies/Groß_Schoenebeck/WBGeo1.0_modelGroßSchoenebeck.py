@@ -424,77 +424,25 @@ export_meshes_exodus(
 # -------------------------------------------------------------------------------
 # 3B. Hierarchical mesh directly from CSV surfaces
 # -------------------------------------------------------------------------------
-# Determine the large-model extent from the union of all surface CSV files.
-# Column matching is case-insensitive, so X/Y/Z and x/y/z are both accepted.
 
 surface_csv_dir = (
     cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/surfaces"
 )
 
-surface_csv_files = sorted(
-    os.path.join(surface_csv_dir, filename)
-    for filename in os.listdir(surface_csv_dir)
-    if filename.lower().endswith(".csv")
-)
-
-if not surface_csv_files:
-    raise ValueError(f"No surface CSV files found in: {surface_csv_dir}")
-
-csv_xmin = float("inf")
-csv_xmax = float("-inf")
-csv_ymin = float("inf")
-csv_ymax = float("-inf")
-csv_zmin = float("inf")
-csv_zmax = float("-inf")
-
-for csv_path in surface_csv_files:
-    csv_surface = pd.read_csv(csv_path)
-    csv_columns = {str(column).strip().lower(): column for column in csv_surface.columns}
-
-    missing = [axis for axis in ("x", "y", "z") if axis not in csv_columns]
-    if missing:
-        raise ValueError(
-            f"Surface CSV '{csv_path}' is missing coordinate columns: {missing}"
-        )
-
-    xyz = csv_surface[
-        [csv_columns["x"], csv_columns["y"], csv_columns["z"]]
-    ].apply(pd.to_numeric, errors="coerce").dropna()
-
-    if xyz.empty:
-        raise ValueError(f"Surface CSV '{csv_path}' contains no valid XYZ rows.")
-
-    csv_xmin = min(csv_xmin, float(xyz.iloc[:, 0].min()))
-    csv_xmax = max(csv_xmax, float(xyz.iloc[:, 0].max()))
-    csv_ymin = min(csv_ymin, float(xyz.iloc[:, 1].min()))
-    csv_ymax = max(csv_ymax, float(xyz.iloc[:, 1].max()))
-    csv_zmin = min(csv_zmin, float(xyz.iloc[:, 2].min()))
-    csv_zmax = max(csv_zmax, float(xyz.iloc[:, 2].max()))
-
-# The outer hierarchical domain must fully contain the inner domain.
-# Preserve the full CSV-data extent and expand it only where the fixed
-# eight-corner small domain reaches farther.
-small_extent_array = np.asarray(hierarchical_small_extent, dtype=float)
-
-csv_big_extent = [
-    min(csv_xmin, float(small_extent_array[:, 0].min())),
-    max(csv_xmax, float(small_extent_array[:, 0].max())),
-    min(csv_ymin, float(small_extent_array[:, 1].min())),
-    max(csv_ymax, float(small_extent_array[:, 1].max())),
-    min(csv_zmin, float(small_extent_array[:, 2].min())),
-    max(csv_zmax, float(small_extent_array[:, 2].max())),
-]
-
-print("Hierarchical CSV large extent:", csv_big_extent)
-
 # CSV mode is selected with the top-level surface_csv_dir argument.
+# extent1="whole" derives xmin/xmax/ymin/ymax/zmin/zmax from all CSV surfaces.
+# extent_z_enlarged contains positive extension lengths [below_zmin, above_zmax].
+# Here the inferred CSV domain is extended 10 m downward and 10 m upward in Z.
+# If an explicit extent1 is supplied instead, that explicit extent takes
+# precedence and extent_z_enlarged is not applied.
 # No structural model is used to generate the geological surfaces in this
 # hierarchy. Common unstructured parameters still apply to both mesh levels.
 mesh1_csv, mesh2_csv, nodes_bcs_csv = hierarchical_mesh(
     geomodel_result=None,
     mesh_type="Un",
     surface_csv_dir=surface_csv_dir,
-    extent1=csv_big_extent,
+    extent1="whole",
+    extent_z=[-4385.59, -3754.44],
     extent2=hierarchical_small_extent,
     wells=wells,
     triangulations=triangulations,

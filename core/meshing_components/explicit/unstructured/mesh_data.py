@@ -2264,6 +2264,7 @@ def create_unstructured_mesh_data(
     EXTRUSION_FACTOR: float = 100,
     z_threshold: float = 10,
     extent: Optional[ExtentData] = None,
+    extent_z: Optional[Tuple[float, float]] = None,
     smooth: float = 1e-5,
     gmsh_flag: bool = False,
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
@@ -2306,7 +2307,8 @@ def create_unstructured_mesh_data(
         PROJECTION_THRESHOLD (float): Distance threshold for projecting points when calculating extrusion.
         EXTRUSION_FACTOR (float): Factor that scales extrusion distance.
         z_threshold (float): Threshold for determining whether two surfaces on either side of a fault are close in elevation.
-        extent: Either [xmin, xmax, ymin, ymax, zmin, zmax] for the legacy axis-aligned box, or 8 ordered (x, y, z) corners for an oriented box.
+        extent: Optional domain. Either [xmin, xmax, ymin, ymax, zmin, zmax] for the legacy axis-aligned box, or 8 ordered (x, y, z) corners for an oriented box. If omitted, structural-model mode uses the structural-model extent and CSV-surface mode uses the combined min/max x, y, z values of all CSV surfaces.
+        extent_z: Optional absolute Z limits [z_min, z_max] applied only when extent is omitted. For example [-9, 5] replaces the inferred Z limits with zmin=-9 and zmax=5 while preserving the inferred X/Y limits. An explicit extent always takes precedence.
         smooth (float): smoothness factor for interpolation of surfaces
         gmsh_flag (bool):  If True, enables writing the GMSH original mesh to the disk (default=False)
         mapping_litho (str): Controls lithological processing mode.
@@ -2418,19 +2420,105 @@ def create_unstructured_mesh_data(
     ########################
     # extract extent of model
     ########################
+    if extent_z is not None:
+        if len(extent_z) != 2:
+            raise ValueError(
+                "extent_z must contain exactly two values: [z_min, z_max]."
+            )
+        extent_z_min, extent_z_max = (float(v) for v in extent_z)
+        if not np.isfinite(extent_z_min) or not np.isfinite(extent_z_max):
+            raise ValueError("extent_z values must be finite.")
+        if extent_z_min >= extent_z_max:
+            raise ValueError("extent_z requires z_min < z_max.")
+    else:
+        extent_z_min = extent_z_max = None
+
     # ``extent`` is backward compatible:
     #   * 6 values -> legacy axis-aligned box
     #   * 8 (x,y,z) corners -> oriented parallelepiped
     if extent is None or len(extent) == 0:
         if csv_mode:
-            raise ValueError(
-                "extent must be supplied when using surface_csv_dir because "
-                "there is no structural model from which to infer it."
+            # Same default pattern as structural-model mode: infer the domain
+            # from the geological input when no explicit extent is supplied.
+            # For CSV surfaces this is the combined x/y/z min/max of all files.
+            csv_root = Path(surface_csv_dir).expanduser()
+            if not csv_root.is_dir():
+                raise ValueError(
+                    f"surface_csv_dir is not a directory: {surface_csv_dir}"
+                )
+
+            csv_files = sorted(
+                p for p in csv_root.iterdir()
+                if p.is_file()
+                and p.suffix.lower() == ".csv"
+                and not p.name.startswith(".")
+                and not p.name.startswith("._")
             )
-        domain_spec = np.asarray(
-            geomodel_result.structural_frame.grid.extent, dtype=float
-        )
+            if not csv_files:
+                raise ValueError(
+                    f"No CSV surface files found in {surface_csv_dir}"
+                )
+
+            xyz_min = np.array([np.inf, np.inf, np.inf], dtype=float)
+            xyz_max = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
+            n_valid_points = 0
+
+            for csv_path in csv_files:
+                df = pd.read_csv(csv_path)
+                lower_to_original = {
+                    str(c).strip().lower(): c for c in df.columns
+                }
+                missing = [
+                    axis for axis in ("x", "y", "z")
+                    if axis not in lower_to_original
+                ]
+                if missing:
+                    raise ValueError(
+                        f"{csv_path.name} must contain x, y, z columns; "
+                        f"missing {missing}."
+                    )
+
+                xyz = df[
+                    [
+                        lower_to_original["x"],
+                        lower_to_original["y"],
+                        lower_to_original["z"],
+                    ]
+                ].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+
+                xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+                if xyz.size == 0:
+                    continue
+
+                xyz_min = np.minimum(xyz_min, xyz.min(axis=0))
+                xyz_max = np.maximum(xyz_max, xyz.max(axis=0))
+                n_valid_points += xyz.shape[0]
+
+            if n_valid_points == 0:
+                raise ValueError(
+                    "No finite x, y, z surface coordinates were found in "
+                    f"{surface_csv_dir}."
+                )
+
+            domain_spec = np.array(
+                [
+                    xyz_min[0], xyz_max[0],
+                    xyz_min[1], xyz_max[1],
+                    xyz_min[2], xyz_max[2],
+                ],
+                dtype=float,
+            )
+        else:
+            domain_spec = np.asarray(
+                geomodel_result.structural_frame.grid.extent, dtype=float
+            )
+
+        if extent_z is not None:
+            domain_spec = np.asarray(domain_spec, dtype=float).copy()
+            domain_spec[4] = extent_z_min
+            domain_spec[5] = extent_z_max
     else:
+        # An explicitly supplied extent has priority and is never enlarged.
         domain_spec = np.asarray(extent, dtype=float)
     normalize_domain(domain_spec)
     # Some legacy surface interpolation/import code still needs an axis-aligned

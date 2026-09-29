@@ -1,4 +1,7 @@
 from typing import Tuple, Optional, Dict, Any, Union, List
+from pathlib import Path
+
+import pandas as pd
 import numpy as np
 from scipy.spatial import cKDTree
 from py_api_wbgeo.nodesapi import wbgeo_component
@@ -19,6 +22,7 @@ def hierarchical_mesh(
 
     extent1: Union[List[float], str] = "whole",
     extent2: Union[List[float], str] = None,
+    extent_z: Optional[Tuple[float, float]] = None,
 
     # unstructured
     mesh_size1: Optional[float] = None,
@@ -142,11 +146,97 @@ def hierarchical_mesh(
             f"Invalid mesh_type '{mesh_type}'. Use 'Un', 'Str', or 'Im'."
         )
 
+    # ``extent_z`` optionally replaces the Z limits of an inferred/"whole"
+    # outer extent: [z_min, z_max]. Values are absolute model coordinates.
+    # An explicitly supplied extent1 always takes precedence.
+    if extent_z is not None:
+        if len(extent_z) != 2:
+            raise ValueError(
+                "extent_z must contain exactly two values: [z_min, z_max]."
+            )
+        extent_z_min, extent_z_max = (float(v) for v in extent_z)
+        if not np.isfinite(extent_z_min) or not np.isfinite(extent_z_max):
+            raise ValueError("extent_z values must be finite.")
+        if extent_z_min >= extent_z_max:
+            raise ValueError("extent_z requires z_min < z_max.")
+    else:
+        extent_z_min = extent_z_max = None
+
     # --------------------------------------------------
     # Resolve extent helper
     # --------------------------------------------------
 
-    def _resolve_extent(extent):
+    def _csv_surface_extent():
+        """Return combined [xmin, xmax, ymin, ymax, zmin, zmax] of CSV surfaces."""
+        csv_root = Path(surface_csv_dir).expanduser()
+        if not csv_root.is_dir():
+            raise ValueError(
+                f"surface_csv_dir is not a directory: {surface_csv_dir}"
+            )
+
+        csv_files = sorted(
+            p for p in csv_root.iterdir()
+            if p.is_file()
+            and p.suffix.lower() == ".csv"
+            and not p.name.startswith(".")
+            and not p.name.startswith("._")
+        )
+        if not csv_files:
+            raise ValueError(
+                f"No CSV surface files found in {surface_csv_dir}"
+            )
+
+        xyz_min = np.array([np.inf, np.inf, np.inf], dtype=float)
+        xyz_max = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
+        n_valid_points = 0
+
+        for csv_path in csv_files:
+            df = pd.read_csv(csv_path)
+            lower_to_original = {
+                str(c).strip().lower(): c for c in df.columns
+            }
+            missing = [
+                axis for axis in ("x", "y", "z")
+                if axis not in lower_to_original
+            ]
+            if missing:
+                raise ValueError(
+                    f"{csv_path.name} must contain x, y, z columns; "
+                    f"missing {missing}."
+                )
+
+            xyz = df[
+                [
+                    lower_to_original["x"],
+                    lower_to_original["y"],
+                    lower_to_original["z"],
+                ]
+            ].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+
+            xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+            if xyz.size == 0:
+                continue
+
+            xyz_min = np.minimum(xyz_min, xyz.min(axis=0))
+            xyz_max = np.maximum(xyz_max, xyz.max(axis=0))
+            n_valid_points += xyz.shape[0]
+
+        if n_valid_points == 0:
+            raise ValueError(
+                "No finite x, y, z surface coordinates were found in "
+                f"{surface_csv_dir}."
+            )
+
+        return np.array(
+            [
+                xyz_min[0], xyz_max[0],
+                xyz_min[1], xyz_max[1],
+                xyz_min[2], xyz_max[2],
+            ],
+            dtype=float,
+        )
+
+    def _resolve_extent(extent, apply_extent_z=False):
 
         model_extent = None
         if geomodel_result is not None:
@@ -155,24 +245,44 @@ def hierarchical_mesh(
                 dtype=float
             )
 
+        inferred = False
         if isinstance(extent, str) and extent.lower() == "whole":
-            if model_extent is None:
+            if model_extent is not None:
+                resolved = model_extent.copy()
+            elif surface_csv_dir is not None:
+                resolved = _csv_surface_extent()
+            else:
                 raise ValueError(
-                    "extent='whole' requires geomodel_result. "
-                    "For CSV surface input, provide an explicit extent."
+                    "extent='whole' requires geomodel_result or surface_csv_dir."
                 )
-            return model_extent
+            inferred = True
 
-        if extent is None or (not isinstance(extent, str) and len(extent) == 0):
-            if model_extent is None:
+        elif extent is None or (
+            not isinstance(extent, str) and len(extent) == 0
+        ):
+            if model_extent is not None:
+                resolved = model_extent.copy()
+            elif surface_csv_dir is not None:
+                resolved = _csv_surface_extent()
+            else:
                 raise ValueError(
-                    "CSV surface input requires an explicit extent."
+                    "An extent requires geomodel_result or surface_csv_dir."
                 )
-            return model_extent
+            inferred = True
+        else:
+            # Explicit extents always take precedence and are not enlarged.
+            return np.asarray(extent, dtype=float)
 
-        return np.asarray(extent, dtype=float)
+        if inferred and apply_extent_z and extent_z is not None:
+            resolved = np.asarray(resolved, dtype=float).copy()
+            resolved[4] = extent_z_min
+            resolved[5] = extent_z_max
 
-    extent1_resolved = _resolve_extent(extent1)
+        return resolved
+
+    extent1_resolved = _resolve_extent(
+        extent1, apply_extent_z=True
+    )
 
     if extent2 is None:
         raise ValueError(
@@ -574,10 +684,13 @@ def hierarchical_mesh(
     # --------------------------------------------------
     # Get boundary nodes and match them BEFORE output transforms
     # --------------------------------------------------
-    # Both unstructured meshes were intentionally generated with rotation and
-    # translation disabled above. Therefore mesh2.point_sets, mesh2.nodes and
-    # mesh1.nodes are all in the same original/world coordinate system here.
-    # Boundary selection and nearest-node matching must happen in this frame.
+    # Boundary matching is common to all hierarchical mesh types (Un, Str, Im).
+    # mesh2.point_sets identifies the six physical faces of the inner mesh.
+    # For unstructured meshes, output rotation/translation was intentionally
+    # disabled during mesh creation, so both meshes are still in the common
+    # original/world frame here. Structured and implicit meshes are generated
+    # directly in that common frame as well. Boundary selection and nearest-node
+    # matching therefore use the same procedure for all three mesh types.
 
     nodes_small_world = np.asarray(mesh2.nodes, dtype=float).copy()
     nodes_big_world = np.asarray(mesh1.nodes, dtype=float).copy()
@@ -688,12 +801,16 @@ def hierarchical_mesh(
     nodes_big_final = np.asarray(mesh1.nodes, dtype=float)
 
     def _transform_points_to_mesh_frame(points_world, reference_world, params):
-        """Apply an unstructured output transform using reference mesh centre.
+        """Express selected mesh1 points in the final mesh2 coordinate frame.
 
-        meshit_coordinate_transform() computes its centre from the array passed
-        to it.  For a boundary subset that would be wrong, so this helper uses
-        the full untransformed reference mesh to define xc/yc/(zc).
+        Structured and implicit meshes currently have no hierarchical output
+        rotation/translation, so this is the identity transform for those mesh
+        types. For unstructured meshes, use the full untransformed mesh2 to
+        define xc/yc/(zc); using only the boundary subset would give a different
+        centre from the transform applied to the complete mesh2.
         """
+        if mesh_type != "un":
+            return np.asarray(points_world, dtype=float).copy()
         points = np.asarray(points_world, dtype=float).copy()
         reference = np.asarray(reference_world, dtype=float)
 
@@ -764,6 +881,9 @@ def hierarchical_mesh(
             continue
 
         selected_big_world = nodes_big_world[idx_closest]
+        # Express the SAME selected mesh1 nodes in mesh2's final coordinate
+        # frame. For Str/Im this is currently the same world coordinate frame;
+        # for Un it includes mesh2's requested output transform.
         selected_big_small_frame = _transform_points_to_mesh_frame(
             selected_big_world,
             nodes_small_world,
