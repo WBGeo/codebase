@@ -1684,6 +1684,8 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
     return nodes, cells, cell_data
 
 
+ExtentZData = typing.Annotated[List[float], AnnotatedScriptType(name='extent_z', color='aqua', identifier='mesh::ExtentZData', controlled='Table|2|ZMin|ZMax')]
+
 WellData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData', controlled='Table|x3')]
 
 SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData', controlled='Table|3|X|Y|Z')]
@@ -2264,7 +2266,7 @@ def create_unstructured_mesh_data(
     EXTRUSION_FACTOR: float = 100,
     z_threshold: float = 10,
     extent: Optional[ExtentData] = None,
-    extent_z: Optional[Tuple[float, float]] = None,
+    extent_z: Optional[ExtentZData] = None,
     smooth: float = 1e-5,
     gmsh_flag: bool = False,
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
@@ -2670,7 +2672,10 @@ def create_unstructured_mesh_data(
         source_tag: List[int]
         boundary_tags: List[int]
 
-        fragment_domain = bounds if normalize_domain(domain_spec)[0] == "extent" else domain_spec
+        # The resolved domain is authoritative. import_surfaces() may return
+        # adjusted surface bounds, but those must not replace an explicit extent
+        # or the inferred extent after extent_z has been applied.
+        fragment_domain = domain_spec
         ov, well_tags, shaft_tags, tri_group_tags, tri_surface_tags, source_tag, boundary_tags = fragment_surfaces(surfaces,
             fragment_domain, ref_surface_indices, wells, extra_planes, sources, mine_shafts, ellipses=ellipses,
             triangulations=triangulations, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,refinement=refinement,

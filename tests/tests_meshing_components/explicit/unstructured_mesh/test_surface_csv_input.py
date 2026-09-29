@@ -180,9 +180,9 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             root = Path(tmp)
             pd.DataFrame(
                 {
-                    "x": [0.0, 10.0],
-                    "y": [1.0, 9.0],
-                    "z": [-7.0, 10.0],
+                    "x": [0.0, 5.0, 10.0],
+                    "y": [1.0, 5.0, 9.0],
+                    "z": [-7.0, 0.0, 10.0],
                 }
             ).to_csv(root / "surface1.csv", index=False)
 
@@ -202,9 +202,9 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             root = Path(tmp)
             pd.DataFrame(
                 {
-                    "x": [-5.0, 20.0],
-                    "y": [-10.0, 12.0],
-                    "z": [90.0, 150.0],
+                    "x": [-5.0, 7.0, 20.0],
+                    "y": [-10.0, 1.0, 12.0],
+                    "z": [90.0, 120.0, 150.0],
                 }
             ).to_csv(root / "surface1.csv", index=False)
 
