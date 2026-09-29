@@ -145,9 +145,9 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             ).to_csv(root / "surface1.csv", index=False)
             pd.DataFrame(
                 {
-                    "x": [1.0, 20.0],
-                    "y": [-10.0, 12.0],
-                    "z": [90.0, 150.0],
+                    "x": [1.0, 20.0, 10.0],
+                    "y": [-10.0, 12.0, 1.0],
+                    "z": [90.0, 150.0, 120.0],
                 }
             ).to_csv(root / "surface2.csv", index=False)
 
