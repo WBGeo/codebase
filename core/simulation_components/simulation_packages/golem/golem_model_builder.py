@@ -74,28 +74,57 @@ class CustomGolemBuilder:
     """
 
     input_file_contents: str
-    mesh_results: MeshResults
+    mesh_results: Optional[MeshResults] = None
+    mesh1: Optional[MeshResults] = None
+    mesh2: Optional[MeshResults] = None
     geomodel_result: Optional[StructuralModelResults] = None
     print_linear_residuals: bool = True
 
     def __post_init__(self) -> None:
         if not self.input_file_contents.strip():
             raise ValueError("input_file_contents must not be empty")
-        if "${GOLEM_MESH_FILE}" not in self.input_file_contents:
+        placeholders = {
+            "${GOLEM_MESH_FILE}": self.mesh_results,
+            "${GOLEM_MESH1_FILE}": self.mesh1,
+            "${GOLEM_MESH2_FILE}": self.mesh2,
+        }
+        referenced = [token for token in placeholders if token in self.input_file_contents]
+        if not referenced:
             raise ValueError(
-                "Custom GOLEM input must contain ${GOLEM_MESH_FILE} in its "
+                "Custom GOLEM input must contain ${GOLEM_MESH_FILE}, "
+                "${GOLEM_MESH1_FILE}, or ${GOLEM_MESH2_FILE} in a "
                 "FileMeshGenerator block."
+            )
+        missing = [token for token in referenced if placeholders[token] is None]
+        if missing:
+            raise ValueError(
+                "Custom GOLEM input references mesh placeholder(s) without a "
+                "connected mesh: " + ", ".join(missing)
             )
         supported_mesh_types = {
             MeshType.IMPLICIT,
             MeshType.STRUCTURED,
             MeshType.UNSTRUCTURED,
         }
-        if self.mesh_results.mesh_type not in supported_mesh_types:
-            raise ValueError(
-                "Custom GOLEM input requires an implicit, structured, or "
-                f"unstructured WBGeo mesh; got {self.mesh_results.mesh_type!r}."
-            )
+        for token in referenced:
+            mesh = placeholders[token]
+            if mesh.mesh_type not in supported_mesh_types:
+                raise ValueError(
+                    "Custom GOLEM input requires implicit, structured, or "
+                    f"unstructured WBGeo meshes; {token} has {mesh.mesh_type!r}."
+                )
+
+    def referenced_meshes(self):
+        """Return placeholder -> MeshResults for meshes used by the custom input."""
+        candidates = {
+            "${GOLEM_MESH_FILE}": self.mesh_results,
+            "${GOLEM_MESH1_FILE}": self.mesh1,
+            "${GOLEM_MESH2_FILE}": self.mesh2,
+        }
+        return {
+            token: mesh for token, mesh in candidates.items()
+            if mesh is not None and token in self.input_file_contents
+        }
 
     def build_input_file(self, output_path: str) -> str:
         content = self.input_file_contents

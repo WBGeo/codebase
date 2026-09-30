@@ -65,14 +65,14 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
         .*?
         ^\s*type\s*=\s*FileMeshGenerator\s*$
         .*?
-        ^\s*file\s*=\s*\$\{GOLEM_MESH_FILE\}\s*$
+        ^\s*file\s*=\s*\$\{GOLEM_MESH(?:1|2)?_FILE\}\s*$
         """,
         re.DOTALL | re.MULTILINE | re.VERBOSE,
     )
     if not mesh_pattern.search(content):
         raise ValueError(
             "Mesh block must contain type = FileMeshGenerator and "
-            "file = ${GOLEM_MESH_FILE}"
+            "file = ${GOLEM_MESH_FILE}, ${GOLEM_MESH1_FILE}, or ${GOLEM_MESH2_FILE}"
         )
 
     def extract_parent_block(text: str, parent_block: str) -> str:
@@ -133,12 +133,31 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
                     depth -= 1
                 continue
 
-            match = re.match(
-                r"^\[(?:\./)?([A-Za-z_][A-Za-z0-9_]*)\]$", stripped
+            # Legacy [./name] is always a subsection.  Modern [name] is a
+            # direct child only while we are inside the parent; once a direct
+            # child has closed and another known top-level block starts, the
+            # parent has ended (some custom MOOSE inputs omit the parent's []).
+            legacy_match = re.match(
+                r"^\[\./([A-Za-z_][A-Za-z0-9_]*)\]$", stripped
             )
-            if match:
+            if legacy_match:
                 if depth == 0:
-                    children.append(match.group(1))
+                    children.append(legacy_match.group(1))
+                depth += 1
+                continue
+
+            match = re.match(r"^\[([A-Za-z_][A-Za-z0-9_]*)\]$", stripped)
+            if match:
+                name = match.group(1)
+                if depth == 0 and name in {
+                    "Mesh", "Variables", "AuxVariables", "Problem", "Kernels",
+                    "AuxKernels", "Materials", "BCs", "Executioner", "Outputs",
+                    "UserObjects", "Functions", "Postprocessors", "VectorPostprocessors",
+                    "Preconditioning", "Controls", "Debug",
+                }:
+                    break
+                if depth == 0:
+                    children.append(name)
                 depth += 1
 
         return children
@@ -163,6 +182,48 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
     # block.  GolemSimpleReservoirProblemBuilder intentionally groups several
     # mesh blocks into sections such as [uniform_rock], [fractures], and [well].
     # Validate the actual block assignments instead of counting subsections.
+    # Material assignments may use either numeric Exodus block IDs or names
+    # introduced by a MOOSE RenameBlockGenerator.  Resolve renamed blocks back
+    # to their original numeric Exodus IDs so the coverage check below remains
+    # valid for both forms.
+    rename_name_to_id = {}
+    rename_sections = re.finditer(
+        r"type\s*=\s*RenameBlockGenerator(?P<body>.*?)(?=^\s*\[\]\s*$)",
+        content,
+        re.MULTILINE | re.DOTALL,
+    )
+    for section in rename_sections:
+        body = section.group("body")
+        old_match = re.search(
+            r"old_block\s*=\s*(['\"])(.*?)\1", body, re.DOTALL
+        )
+        new_match = re.search(
+            r"new_block\s*=\s*(['\"])(.*?)\1", body, re.DOTALL
+        )
+        if not old_match or not new_match:
+            continue
+        old_tokens = old_match.group(2).split()
+        new_tokens = new_match.group(2).split()
+        if len(old_tokens) != len(new_tokens):
+            raise ValueError(
+                "RenameBlockGenerator must contain the same number of "
+                f"old_block and new_block entries ({len(old_tokens)} != "
+                f"{len(new_tokens)})"
+            )
+        for old_token, new_name in zip(old_tokens, new_tokens):
+            try:
+                old_id = int(old_token)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid old_block id {old_token!r} in RenameBlockGenerator"
+                ) from exc
+            if new_name in rename_name_to_id and rename_name_to_id[new_name] != old_id:
+                raise ValueError(
+                    f"RenameBlockGenerator assigns duplicate new block name "
+                    f"{new_name!r} to multiple block IDs"
+                )
+            rename_name_to_id[new_name] = old_id
+
     material_block_ids = set()
     for match in re.finditer(
         r"^\s*block\s*=\s*['\"]?([^'\"#\n]+)['\"]?\s*(?:#.*)?$",
@@ -172,10 +233,14 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
         for token in match.group(1).split():
             try:
                 material_block_ids.add(int(token))
-            except ValueError as exc:
-                raise ValueError(
-                    f"Invalid material block id {token!r} in [Materials]"
-                ) from exc
+            except ValueError:
+                if token not in rename_name_to_id:
+                    raise ValueError(
+                        f"Unknown material block name {token!r} in [Materials]; "
+                        "it is neither a numeric Exodus block ID nor a name "
+                        "defined by RenameBlockGenerator"
+                    )
+                material_block_ids.add(rename_name_to_id[token])
 
     if not material_block_ids:
         raise ValueError(
@@ -332,28 +397,46 @@ def run_simulation_golem(
     container_name = f"wbgeo_golem_{uuid.uuid4().hex[:12]}"
     container_created = False
     try:
-        mesh_path = run_dir / "wbgeo_mesh.exo"
         input_path = run_dir / "wbgeo.i"
-        mesh_type_code = MESH_TYPE_CODES[problem.mesh_results.mesh_type]
-        exo = export_mesh_results_to_exodus(problem.mesh_results, type=mesh_type_code)
-        mesh_path.write_bytes(exo.getbuffer())
         problem.build_input_file(str(input_path))
 
         container_run = "/tmp/wbgeo_golem_run"
-        container_mesh = f"{container_run}/wbgeo_mesh.exo"
         container_input = f"{container_run}/wbgeo.i"
-
         generated = input_path.read_text(encoding="utf-8")
-        validate_golem_input(
-            generated,
-            problem.mesh_results,
-            problem.mesh_results.mesh_type,
-        )
-        if "${GOLEM_MESH_FILE}" not in generated:
-            raise ValueError("Generated GOLEM input has no ${GOLEM_MESH_FILE} placeholder")
-        input_path.write_text(
-            generated.replace("${GOLEM_MESH_FILE}", container_mesh), encoding="utf-8"
-        )
+
+        if isinstance(problem, CustomGolemBuilder):
+            referenced_meshes = problem.referenced_meshes()
+        else:
+            referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
+
+        mesh_specs = {
+            "${GOLEM_MESH_FILE}": ("wbgeo_mesh.exo", f"{container_run}/wbgeo_mesh.exo"),
+            "${GOLEM_MESH1_FILE}": ("wbgeo_mesh1.exo", f"{container_run}/wbgeo_mesh1.exo"),
+            "${GOLEM_MESH2_FILE}": ("wbgeo_mesh2.exo", f"{container_run}/wbgeo_mesh2.exo"),
+        }
+        mesh_paths = {}
+        for placeholder, mesh in referenced_meshes.items():
+            filename, container_mesh = mesh_specs[placeholder]
+            mesh_path = run_dir / filename
+            mesh_type_code = MESH_TYPE_CODES[mesh.mesh_type]
+            exo = export_mesh_results_to_exodus(mesh, type=mesh_type_code)
+            mesh_path.write_bytes(exo.getbuffer())
+            mesh_paths[placeholder] = mesh_path
+            generated = generated.replace(placeholder, container_mesh)
+
+        # validate against any referenced mesh; structural validation of the
+        # Mesh block is independent of which hierarchy level it represents.
+        validation_mesh = next(iter(referenced_meshes.values()))
+        validate_golem_input(generated if False else input_path.read_text(encoding="utf-8"),
+                             validation_mesh, validation_mesh.mesh_type)
+        input_path.write_text(generated, encoding="utf-8")
+
+        # Legacy variable retained for the rest of the runner and run_info.
+        # For hierarchical-only custom inputs it points to mesh1 when present,
+        # otherwise mesh2.
+        mesh_path = (mesh_paths.get("${GOLEM_MESH_FILE}")
+                     or mesh_paths.get("${GOLEM_MESH1_FILE}")
+                     or mesh_paths.get("${GOLEM_MESH2_FILE}"))
 
         print(f"GOLEM host staging directory: {run_dir}", flush=True)
         print(f"Input to copy: {input_path}", flush=True)
@@ -425,7 +508,9 @@ def run_simulation_golem(
         # GOLEM working directory. Do not re-copy the staged input/mesh or the
         # output directory itself; those inputs are saved below with stable
         # WBGeo names.
-        excluded_root_names = {"wbgeo.i", "wbgeo_mesh.exo", "output"}
+        excluded_root_names = {
+            "wbgeo.i", "wbgeo_mesh.exo", "wbgeo_mesh1.exo", "wbgeo_mesh2.exo", "output"
+        }
         for item in container_snapshot.iterdir():
             if item.name in excluded_root_names:
                 continue
@@ -488,15 +573,25 @@ def run_simulation_golem(
         if temporary:
             # Preserve the generated inputs beside results before cleanup.
             saved_input = output / "wbgeo_generated.i"
-            saved_mesh = output / "wbgeo_mesh.exo"
             shutil.copy2(input_path, saved_input)
-            shutil.copy2(mesh_path, saved_mesh)
+            saved_mesh_paths = {}
+            for placeholder, source_path in mesh_paths.items():
+                destination = output / source_path.name
+                shutil.copy2(source_path, destination)
+                saved_mesh_paths[placeholder] = destination
+            saved_mesh = (saved_mesh_paths.get("${GOLEM_MESH_FILE}")
+                          or saved_mesh_paths.get("${GOLEM_MESH1_FILE}")
+                          or saved_mesh_paths.get("${GOLEM_MESH2_FILE}"))
         else:
-            saved_input, saved_mesh = input_path, mesh_path
+            saved_input = input_path
+            saved_mesh_paths = dict(mesh_paths)
+            saved_mesh = mesh_path
 
         run_info = {
             "input_file": str(saved_input),
             "mesh_file": str(saved_mesh),
+            "mesh1_file": str(saved_mesh_paths["${GOLEM_MESH1_FILE}"]) if "${GOLEM_MESH1_FILE}" in saved_mesh_paths else None,
+            "mesh2_file": str(saved_mesh_paths["${GOLEM_MESH2_FILE}"]) if "${GOLEM_MESH2_FILE}" in saved_mesh_paths else None,
             "output_file": str(result_file),
             "output_dir": str(output),
             "stdout_file": str(transcript_path),

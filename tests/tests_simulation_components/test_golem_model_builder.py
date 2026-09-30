@@ -414,3 +414,69 @@ def test_simple_reservoir_rejects_nonpositive_physical_input(
             geomodel_result=model1_structural_result,
             rock_permeability=0.0,
         )
+
+# -----------------------------------------------------------------------------
+# CustomGolemBuilder -- hierarchical mesh placeholders
+# -----------------------------------------------------------------------------
+
+def _custom_golem_input(mesh_placeholder):
+    return (
+        "[Mesh]\n"
+        "  type = FileMeshGenerator\n"
+        f"  file = {mesh_placeholder}\n"
+        "[]\n"
+        "[Variables]\n  [pore_pressure]\n  []\n[]\n"
+        "[Kernels]\n  [k]\n    variable = pore_pressure\n  []\n[]\n"
+        "[Executioner]\n  type = Transient\n[]\n"
+        "[Outputs]\n[]\n"
+        "[BCs]\n  [dummy]\n    variable = pore_pressure\n    boundary = top\n    value = 0\n  []\n[]\n"
+        "[Materials]\n  [m]\n    block = '1 2 3'\n  []\n[]\n"
+    )
+
+
+def test_custom_golem_builder_accepts_hierarchical_mesh1(model1_implicit_mesh):
+    builder = CustomGolemBuilder(
+        input_file_contents=_custom_golem_input("${GOLEM_MESH1_FILE}"),
+        mesh1=model1_implicit_mesh,
+    )
+    assert builder.referenced_meshes() == {
+        "${GOLEM_MESH1_FILE}": model1_implicit_mesh
+    }
+
+
+def test_custom_golem_builder_accepts_hierarchical_mesh2(model1_implicit_mesh):
+    builder = CustomGolemBuilder(
+        input_file_contents=_custom_golem_input("${GOLEM_MESH2_FILE}"),
+        mesh2=model1_implicit_mesh,
+    )
+    assert builder.referenced_meshes() == {
+        "${GOLEM_MESH2_FILE}": model1_implicit_mesh
+    }
+
+
+def test_custom_golem_builder_rejects_unconnected_hierarchical_mesh(
+    model1_implicit_mesh,
+):
+    with pytest.raises(ValueError, match=r"GOLEM_MESH2_FILE.*connected mesh"):
+        CustomGolemBuilder(
+            input_file_contents=_custom_golem_input("${GOLEM_MESH2_FILE}"),
+            mesh1=model1_implicit_mesh,
+        )
+
+
+def test_custom_golem_builder_returns_both_referenced_hierarchical_meshes(
+    model1_implicit_mesh,
+):
+    content = (
+        _custom_golem_input("${GOLEM_MESH1_FILE}")
+        + "\n# Secondary hierarchy mesh: ${GOLEM_MESH2_FILE}\n"
+    )
+    builder = CustomGolemBuilder(
+        input_file_contents=content,
+        mesh1=model1_implicit_mesh,
+        mesh2=model1_implicit_mesh,
+    )
+    assert set(builder.referenced_meshes()) == {
+        "${GOLEM_MESH1_FILE}",
+        "${GOLEM_MESH2_FILE}",
+    }

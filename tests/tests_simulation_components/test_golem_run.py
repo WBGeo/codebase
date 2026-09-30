@@ -102,6 +102,105 @@ def test_validate_golem_input_rejects_variable_without_kernel(
         )
 
 
+
+def test_validate_golem_input_does_not_treat_following_top_level_blocks_as_variables(
+    model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    """Regression test for custom MOOSE files where [Variables] is followed by
+    top-level action/configuration blocks before [Kernels].
+
+    Only direct children of [Variables] are variables. Top-level blocks such as
+    [Problem], [GolemMapStressAction], [Kernels], [Materials], and [BCs] must
+    never be reported as variables without kernels.
+    """
+    builder, content = _generated_hydro_input(
+        model1_implicit_mesh, model1_structural_result, tmp_path
+    )
+
+    # Insert representative top-level GOLEM/MOOSE blocks immediately after the
+    # Variables parent. The corrected parser must stop at the Variables closing
+    # [] and must not collect these names as variable subsections.
+    variables_end = content.find("\n[]", content.find("[Variables]"))
+    assert variables_end != -1
+    insert_at = variables_end + len("\n[]")
+
+    extra_top_level_blocks = """
+[Problem]
+  type = FEProblem
+  kernel_coverage_check = false
+[]
+
+[GolemMapStressAction]
+[]
+
+"""
+    content = content[:insert_at] + "\n" + extra_top_level_blocks + content[insert_at:]
+
+    # Must not raise:
+    # "The following variables do not have at least one kernel:
+    #  Problem, Kernels, GolemMapStressAction, Materials, BCs"
+    golem_run.validate_golem_input(
+        content, builder.mesh_results, builder.mesh_results.mesh_type
+    )
+
+
+def test_validate_golem_input_accepts_renamed_material_blocks(
+    model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    builder, content = _generated_hydro_input(
+        model1_implicit_mesh, model1_structural_result, tmp_path
+    )
+    n_blocks = len(model1_implicit_mesh.elements)
+    names = [f"unit_{i}" for i in range(1, n_blocks + 1)]
+    rename = (
+        "  [rename_blocks]\n"
+        "    type = RenameBlockGenerator\n"
+        "    input = input_mesh\n"
+        f"    old_block = '{' '.join(map(str, range(1, n_blocks + 1)))}'\n"
+        f"    new_block = '{' '.join(names)}'\n"
+        "  []\n"
+    )
+    content = content.replace("[Mesh]\n", "[Mesh]\n" + rename, 1)
+    for i, name in enumerate(names, start=1):
+        content = content.replace(f"block = {i}\n", f"block = '{name}'\n")
+    golem_run.validate_golem_input(
+        content, model1_implicit_mesh, model1_implicit_mesh.mesh_type
+    )
+
+
+def test_validate_golem_input_rejects_unknown_renamed_material_block(
+    model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    builder, content = _generated_hydro_input(
+        model1_implicit_mesh, model1_structural_result, tmp_path
+    )
+    content = content.replace("block = 1\n", "block = 'hannover1'\n", 1)
+    with pytest.raises(ValueError, match="Unknown material block name 'hannover1'"):
+        golem_run.validate_golem_input(
+            content, model1_implicit_mesh, model1_implicit_mesh.mesh_type
+        )
+
+
+def test_validate_golem_input_rejects_mismatched_rename_vectors(
+    model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    builder, content = _generated_hydro_input(
+        model1_implicit_mesh, model1_structural_result, tmp_path
+    )
+    rename = (
+        "  [rename_blocks]\n"
+        "    type = RenameBlockGenerator\n"
+        "    input = input_mesh\n"
+        "    old_block = '1 2'\n"
+        "    new_block = 'hannover1'\n"
+        "  []\n"
+    )
+    content = content.replace("[Mesh]\n", "[Mesh]\n" + rename, 1)
+    with pytest.raises(ValueError, match="same number of old_block and new_block"):
+        golem_run.validate_golem_input(
+            content, model1_implicit_mesh, model1_implicit_mesh.mesh_type
+        )
+
 # -----------------------------------------------------------------------------
 # _stream_process -- subprocess behaviour mocked; no GOLEM executable
 # -----------------------------------------------------------------------------
@@ -431,3 +530,123 @@ def test_run_simulation_golem_custom_problem_removes_checkpoint_directory(
         path.is_dir() and path.name.endswith("_cp")
         for path in output_dir.rglob("*")
     )
+
+# -----------------------------------------------------------------------------
+# run_simulation_golem -- custom hierarchical mesh staging
+# -----------------------------------------------------------------------------
+
+def _custom_hierarchical_input(mesh_placeholder):
+    return f"""[Mesh]
+  type = FileMeshGenerator
+  file = {mesh_placeholder}
+[]
+[Variables]
+  [pore_pressure]
+  []
+[]
+[Kernels]
+  [k]
+    variable = pore_pressure
+  []
+[]
+[Executioner]
+  type = Transient
+[]
+[Outputs]
+  [exo]
+    type = Exodus
+    file_base = 'output/wbgeo'
+  []
+[]
+[BCs]
+  [dummy]
+    variable = pore_pressure
+    boundary = top
+    value = 0
+  []
+[]
+[Materials]
+  [m]
+    block = '1 2 3'
+  []
+[]
+"""
+
+
+@pytest.mark.parametrize(
+    "placeholder,builder_kw,expected_filename",
+    [
+        ("${GOLEM_MESH1_FILE}", "mesh1", "wbgeo_mesh1.exo"),
+        ("${GOLEM_MESH2_FILE}", "mesh2", "wbgeo_mesh2.exo"),
+    ],
+)
+def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
+    monkeypatch,
+    model1_implicit_mesh,
+    tmp_path,
+    placeholder,
+    builder_kw,
+    expected_filename,
+):
+    builder = CustomGolemBuilder(
+        input_file_contents=_custom_hierarchical_input(placeholder),
+        **{builder_kw: model1_implicit_mesh},
+    )
+
+    exported_meshes = []
+
+    def fake_export(mesh, type):
+        exported_meshes.append(mesh)
+        return io.BytesIO(b"hierarchical-exodus")
+
+    monkeypatch.setattr(golem_run, "export_mesh_results_to_exodus", fake_export)
+    monkeypatch.setattr(
+        golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n"
+    )
+
+    def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        if (
+            len(command) >= 4
+            and command[:2] == ["docker", "cp"]
+            and ":" in command[2]
+        ):
+            destination = Path(command[3])
+            destination.mkdir(parents=True, exist_ok=True)
+            out_dir = destination / "output"
+            out_dir.mkdir(exist_ok=True)
+            (out_dir / "wbgeo.e").write_bytes(b"result")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(golem_run.subprocess, "run", fake_subprocess_run)
+
+    run_info_seen = {}
+    result = SimulationResults()
+    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
+
+    def fake_load(run_info):
+        run_info_seen.update(run_info)
+        return result
+
+    monkeypatch.setattr(golem_run, "load_exodus_results", fake_load)
+
+    output_dir = tmp_path / f"results_{builder_kw}"
+    returned = golem_run.run_simulation_golem(
+        builder,
+        image_name="registry.example/golem:test",
+        project_dir=str(tmp_path / f"project_{builder_kw}"),
+        output_dir=str(output_dir),
+    )
+
+    assert returned is result
+    assert exported_meshes == [model1_implicit_mesh]
+    assert (output_dir / expected_filename).read_bytes() == b"hierarchical-exodus"
+
+    generated = (output_dir / "wbgeo_generated.i").read_text()
+    assert placeholder not in generated
+    assert f"/tmp/wbgeo_golem_run/{expected_filename}" in generated
+
+    expected_key = f"{builder_kw}_file"
+    assert run_info_seen[expected_key].endswith(expected_filename)
+    other_key = "mesh2_file" if builder_kw == "mesh1" else "mesh1_file"
+    assert run_info_seen[other_key] is None
+    assert run_info_seen["mesh_file"].endswith(expected_filename)

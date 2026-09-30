@@ -28,6 +28,13 @@ from core.hierarchical_simulation.generate_mesh.hierarchical_mesh import hierarc
 from core.hierarchical_simulation.export_data.exodus.exo_format import export_meshes_exodus
 from core.hierarchical_simulation.visualization.hierarchical_meshing_visualization import plot_hierarchical_meshes_3d
 from core.hierarchical_simulation.visualization.hierarchical_paraview_visualization import open_hierarchical_exodus_in_paraview
+from core.simulation_components.simulation_packages.golem.golem_model_builder import (
+    CustomGolemBuilder,
+)
+
+from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
+from core.simulation_components.simulation_visualization.simulation_visualization import (
+    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials, plot_variable_time_series)
 #%%
 
 cwd = os.getcwd()
@@ -230,15 +237,16 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 # # Load engineering objects
 wells = load_wells_from_csv(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/wells.csv")
 csv_files=(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/seismic.csv",
-           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/well.csv")
+           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/well.csv",
+           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/multi.csv")
 triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
 refinement = Refinement()
-refinement.wells = LinearWellRefinement(SizeMin=25.0, SizeMax=110.0, DistMin=30.0, DistMax=100.0)
-refinement.triangulations = TriangulationRefinement(SizeMin=25.0, SizeMax=110.0, DistMin=30.0, DistMax=100.0)
+refinement.wells = LinearWellRefinement(SizeMin=10.0, SizeMax=110.0, DistMin=30.0, DistMax=100.0)
+refinement.triangulations = TriangulationRefinement(SizeMin=10.0, SizeMax=110.0, DistMin=30.0, DistMax=100.0)
 #
 # Available refinement types per object:
 #
@@ -359,20 +367,19 @@ refinement.triangulations = TriangulationRefinement(SizeMin=25.0, SizeMax=110.0,
 # its output coordinates are rotated by 18 degrees. The large model covers the
 # complete available geological domain.
 # -------------------------------------------------------------------------------
-
 # Small hierarchical domain: the same eight corner coordinates used above.
 hierarchical_small_extent = [
     # Bottom face
-    (405000.0353, 5863600.0626, -4385.59),
-    (406521.6994, 5863105.5584, -4385.59),
-    (406027.2389, 5861583.8632, -4385.59),
-    (404505.5390, 5862078.2464, -4385.59),
+    (405000.0353, 5863600.0626, -4470.23),
+    (406521.6994, 5863105.5584, -4470.23),
+    (406027.2389, 5861583.8632, -4470.23),
+    (404505.5390, 5862078.2464, -4470.23),
 
     # Top face
-    (405000.0353, 5863600.0626, -3754.44),
-    (406521.6994, 5863105.5584, -3754.44),
-    (406027.2389, 5861583.8632, -3754.44),
-    (404505.5390, 5862078.2464, -3754.44),
+    (405000.0353, 5863600.0626, -3678.26),
+    (406521.6994, 5863105.5584, -3678.26),
+    (406027.2389, 5861583.8632, -3678.26),
+    (404505.5390, 5862078.2464, -3678.26),
 ]
 
 # -------------------------------------------------------------------------------
@@ -388,12 +395,13 @@ mesh1_structural, mesh2_structural, nodes_bcs_structural = hierarchical_mesh(
     extent2=hierarchical_small_extent,
     wells=wells,
     triangulations=triangulations,
-    mesh_size1=75,
-    mesh_size2=75,
+    mesh_size1=85,
+    mesh_size2=35,
     unstructured_params={
         "curve_mesh_size": 5,
         "refinement": refinement,
     },
+
     unstructured_params2={
         "curve_mesh_size": 5,
         "refinement": refinement,
@@ -401,14 +409,14 @@ mesh1_structural, mesh2_structural, nodes_bcs_structural = hierarchical_mesh(
     },
 )
 
-export_meshes_exodus(
-    mesh1_structural,
-    mesh2_structural,
-    nodes_bcs_structural,
-    "GSB_hierarchical_structural_big.exo",
-    "GSB_hierarchical_structural_small.exo",
-    "GSB_hierarchical_structural_boundary_nodes",
-)
+#export_meshes_exodus(
+#    mesh1_structural,
+#    mesh2_structural,
+#    nodes_bcs_structural,
+#    "GSB_hierarchical_structural_big.exo",
+#    "GSB_hierarchical_structural_small.exo",
+#    "GSB_hierarchical_structural_boundary_nodes",
+#)
 
 # Optional visualization.
 # plot_hierarchical_meshes_3d(
@@ -425,9 +433,9 @@ export_meshes_exodus(
 # 3B. Hierarchical mesh directly from CSV surfaces
 # -------------------------------------------------------------------------------
 
-surface_csv_dir = (
-    cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/surfaces"
-)
+#surface_csv_dir = (
+#    cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/surfaces"
+#)
 
 # CSV mode is selected with the top-level surface_csv_dir argument.
 # extent1="whole" derives xmin/xmax/ymin/ymax/zmin/zmax from all CSV surfaces.
@@ -437,34 +445,38 @@ surface_csv_dir = (
 # precedence and extent_z_enlarged is not applied.
 # No structural model is used to generate the geological surfaces in this
 # hierarchy. Common unstructured parameters still apply to both mesh levels.
-mesh1_csv, mesh2_csv, nodes_bcs_csv = hierarchical_mesh(
-    geomodel_result=None,
-    mesh_type="Un",
-    surface_csv_dir=surface_csv_dir,
-    extent1="whole",
-    extent_z=[-4385.59, -3754.44],
-    extent2=hierarchical_small_extent,
-    wells=wells,
-    triangulations=triangulations,
-    mesh_size1=75,
-    mesh_size2=75,
-    unstructured_params={
-        "curve_mesh_size": 5,
-        "refinement": refinement,
-    },
-    unstructured_params2={
-        "rotation_angle": 18,
-    },
-)
+#mesh1_csv, mesh2_csv, nodes_bcs_csv = hierarchical_mesh(
+#    geomodel_result=None,
+#    mesh_type="Un",
+#    surface_csv_dir=surface_csv_dir,
+#    extent1="whole",
+#    extent_z=[-4470.23, -3678.26],
+#    extent2=hierarchical_small_extent,
+#    wells=wells,
+#    triangulations=triangulations,
+#    mesh_size1=75,
+#    mesh_size2=35,
+#    unstructured_params={
+#        "curve_mesh_size": 5,
+#        "refinement": refinement,
+#        "smooth": 0.5,
 
-export_meshes_exodus(
-    mesh1_csv,
-    mesh2_csv,
-    nodes_bcs_csv,
-    "GSB_hierarchical_csv_big.exo",
-    "GSB_hierarchical_csv_small.exo",
-    "GSB_hierarchical_csv_boundary_nodes",
-)
+#    },
+#    unstructured_params2={
+#        "rotation_angle": 18,
+#        "smooth": 0.5,
+
+#    },
+#)
+
+#export_meshes_exodus(
+#    mesh1_csv,
+#    mesh2_csv,
+#    nodes_bcs_csv,
+#    "GSB_hierarchical_csv_big.exo",
+#    "GSB_hierarchical_csv_small.exo",
+#    "GSB_hierarchical_csv_boundary_nodes",
+#)
 
 # Optional visualization. structural_model_result is supplied here only as
 # visualization context; the CSV meshes themselves are generated from CSV data.
@@ -484,3 +496,32 @@ export_meshes_exodus(
 # END SECTION 3: HIERARCHICAL MESH GENERATION AND EXPORT
 # ===============================================================================
 
+
+# Solve Steady state
+
+
+# Solving the problem using custom golem input file. The GOLEM input file contains the Exodus material-block
+model_input_path = (cwd
+        + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady.i"
+    )
+with open(model_input_path, encoding="utf-8") as stream:
+        reservoir_input = stream.read()
+
+# Solving the problem with Golem
+model1_simple_reservoir_results = run_simulation_golem(
+        problem=CustomGolemBuilder(
+            input_file_contents=reservoir_input,
+            mesh1=mesh1_structural,
+            geomodel_result=structural_model_result,
+            print_linear_residuals=True,
+        ),
+        image_name="moose-dev:fixed",
+        project_dir="/Users/marziehbaes/Documents/projects",
+        docker_dir="/projects",
+        output_dir=(
+            cwd
+            + "/examples/case_studies/Groß_Schoenebeck/"
+              "golem_custom_simple_reservoir_output"
+        ),
+        nproc=1,
+    )
