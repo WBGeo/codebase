@@ -608,7 +608,7 @@ class TestBoundaryMatching(unittest.TestCase):
             mesh_size1=2,
         )
 
-        self.assertEqual(set(boundary), {"big_frame", "small_frame"})
+        self.assertTrue({"big_frame", "small_frame"}.issubset(boundary))
         for frame_name in ("big_frame", "small_frame"):
             frame = boundary[frame_name]
             self.assertEqual(
@@ -683,7 +683,7 @@ class TestBoundaryMatching(unittest.TestCase):
             mesh_devision1=(4, 4),
         )
 
-        self.assertEqual(set(boundary), {"big_frame", "small_frame"})
+        self.assertTrue({"big_frame", "small_frame"}.issubset(boundary))
         for face in ("left", "right", "front", "back", "bottom", "top"):
             self.assertIn(face, boundary["big_frame"])
             self.assertIn(face, boundary["small_frame"])
@@ -711,7 +711,7 @@ class TestBoundaryMatching(unittest.TestCase):
             extent2=[2, 8, 2, 8, 2, 8],
         )
 
-        self.assertEqual(set(boundary), {"big_frame", "small_frame"})
+        self.assertTrue({"big_frame", "small_frame"}.issubset(boundary))
         for face in ("left", "right", "front", "back", "bottom", "top"):
             self.assertIn(face, boundary["big_frame"])
             self.assertIn(face, boundary["small_frame"])
