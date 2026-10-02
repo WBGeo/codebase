@@ -457,7 +457,7 @@ def test_custom_golem_builder_accepts_hierarchical_mesh2(model1_implicit_mesh):
 def test_custom_golem_builder_rejects_unconnected_hierarchical_mesh(
     model1_implicit_mesh,
 ):
-    with pytest.raises(ValueError, match=r"GOLEM_MESH2_FILE.*connected mesh"):
+    with pytest.raises(ValueError, match=r"connected mesh.*GOLEM_MESH2_FILE"):
         CustomGolemBuilder(
             input_file_contents=_custom_golem_input("${GOLEM_MESH2_FILE}"),
             mesh1=model1_implicit_mesh,
