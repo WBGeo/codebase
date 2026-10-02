@@ -40,7 +40,7 @@ simplified single-phase Darcy flow followed by advective-conductive heat
 transport.
 
 **Custom SfePy Problem** --- wraps a complete user-supplied SfePy `.py`
-input file. The custom file specifies a user defined probem with its
+input file. The custom file specifies a user-defined problem with its
 variables, materials, equations and solvers. WBGeo validates the input
 file against the mesh (known mesh type, known lithology mapping, and
 that every region the file references actually exists).
@@ -60,8 +60,11 @@ model for GOLEM, including the reservoir mesh and support for synthetic
 fractures, a well, and injection/extraction source behaviour.
 
 **Custom GOLEM Problem** --- wraps a complete user-supplied GOLEM/MOOSE
-`.i` input file. The file is validated against the WBGeo mesh before
-execution and must use `${GOLEM_MESH_FILE}` as the mesh placeholder.
+`.i` input file. A custom run can use a WBGeo mesh already held in Python,
+one level of a hierarchical WBGeo mesh, or an existing mesh file supplied
+by path. The `.i` file selects the corresponding mesh source through one
+of `${GOLEM_MESH_FILE}`, `${GOLEM_MESH1_FILE}`, or
+`${GOLEM_MESH2_FILE}`.
 
 All three GOLEM routes produce a `GolemProblem` and connect to the same
 `Run GOLEM Simulation` component.
@@ -107,6 +110,8 @@ execution defined by the supplied Python input.
 stages the mesh and input file, validates their compatibility, executes
 GOLEM/MOOSE through Docker and MPI, collects the Exodus output, and
 converts it back to WBGeo's common result representation.
+
+> **Cluster execution:** The runner documented here currently implements the Docker/MPI backend only. A GOLEM installation available directly on an HPC cluster is not yet selected automatically by `run_simulation_golem()`. Native SLURM execution (for example, launching GOLEM with `srun` across allocated nodes) requires a separate SLURM/native backend in the runner. The WBGeo problem builders and custom-input staging concepts can be reused by that backend.
 
 ------------------------------------------------------------------------
 
@@ -340,9 +345,7 @@ built-in damage-zone representation.
 
 > **Workbench component:** `Build GOLEM Simple Reservoir Problem`
 
-The simple-reservoir builder creates both the dedicated unstructured
-reservoir mesh and the corresponding GOLEM/MOOSE problem definition. It
-supports two synthetic fractures, a well, an injection source,
+The simple-reservoir builder supports two synthetic fractures, a well, an injection source,
 geological faults already present in the structural model, local mesh
 refinement, material/fluid properties, transient controls, and low-level
 PETSc solver settings.
@@ -637,45 +640,218 @@ reservoir_problem_model2 = GolemSimpleReservoirProblemBuilder(
 > **Workbench component:** `Build Custom GOLEM Problem`
 
 A complete user-provided GOLEM/MOOSE `.i` file can be used through
-`CustomGolemBuilder`.
+`CustomGolemBuilder`. A custom problem uses **exactly one mesh source per
+run**. This can be a WBGeo mesh object, one level of a hierarchical mesh,
+or an already existing mesh file on disk.
 
--   **`input_file`**: Path to the custom `.i` file.
--   **`mesh_results`**: WBGeo mesh.
--   **`geomodel_result`** *(optional)*: Structural model for consistency
-    checks.
+The supported mesh inputs are:
+
+| Builder input | Placeholder in the `.i` file | Behaviour |
+| --- | --- | --- |
+| `mesh_results=...` | `${GOLEM_MESH_FILE}` | Export the WBGeo mesh to Exodus and run a normal custom simulation. |
+| `mesh1=...` | `${GOLEM_MESH1_FILE}` | Export and solve the outer/big hierarchical mesh. Hierarchy sampling can be injected for this mode. |
+| `mesh2=...` | `${GOLEM_MESH2_FILE}` | Export and solve the inner/small hierarchical mesh as a normal custom simulation. |
+| `mesh_file="/path/to/mesh.exo"` | `${GOLEM_MESH_FILE}` | Use an existing mesh file directly. The runner copies/stages the file and does not export it again. |
+
+Other relevant inputs are:
+
+-   **`input_file_contents`**: Complete text of the custom GOLEM/MOOSE
+    `.i` file.
+-   **`input_file_path`** *(optional)*: Path of the original `.i` file.
+    For a mesh1 hierarchy run, WBGeo can save the hierarchy-augmented
+    input beside it using the suffix `_hierarchy_sampling`. This path is
+    not used to discover or stage auxiliary input files.
+-   **`auxiliary_files_dir`** *(optional)*: Directory containing auxiliary
+    files required by a custom GOLEM/MOOSE input, for example time-series
+    CSV files. The directory must already exist. The runner copies its
+    complete contents into a `files/` directory in the GOLEM working
+    directory. The custom `.i` file should therefore reference these files
+    with relative paths such as `files/injection_flowrate.csv` or
+    `files/frac_aperture.csv`.
+-   **`mesh_file_name`** *(optional)*: Staging name to use inside the GOLEM
+    run when `mesh_file` is supplied. It must be a file name, not a path.
+    If omitted, the source mesh file name is retained.
+-   **`geomodel_result`** *(optional)*: Structural model when required by
+    the surrounding workflow.
 -   **`print_linear_residuals`**: Controls residual output.
+-   **`hierarchy_sample_nodes`** *(mesh1 only)*: Hierarchical node/coordinate
+    information returned by `hierarchical_mesh()` and used to construct
+    GOLEM point samplers.
+-   **`sample_variables`** *(optional, mesh1 hierarchy sampling)*: Variables
+    written by the hierarchy samplers. The default is
+    `['pore_pressure', 'temp']`.
 
-The custom file must refer to the WBGeo mesh using:
+The mesh argument and placeholder must match. For example,
+`mesh1=mesh1_structural` requires `${GOLEM_MESH1_FILE}` in the `.i` file;
+it must not reference `${GOLEM_MESH2_FILE}`. Likewise,
+`mesh_file=...` uses `${GOLEM_MESH_FILE}`.
+
+#### Auxiliary files for a custom GOLEM input
+
+A custom `.i` file may depend on additional files besides its mesh, such as
+CSV files defining a transient injection rate or fracture aperture. Pass
+the directory containing those files explicitly with `auxiliary_files_dir`.
+WBGeo does not infer this directory from `input_file_path`.
+
+For example, with the host layout:
 
 ``` text
-${GOLEM_MESH_FILE}
+simulation_files/
+├── transient.i
+└── files/
+    ├── injection_flowrate.csv
+    └── frac_aperture.csv
 ```
 
-The runner replaces this placeholder with the staged Exodus mesh path
-before execution.
-
-Before Docker/MPI is started, WBGeo validates the custom GOLEM input
-against the exported mesh. The validation checks the required
-GOLEM/MOOSE structure and verifies that material block assignments cover
-the mesh blocks expected by WBGeo. This catches common mesh/input
-mismatches before the external solver starts.
-
-Example call in the codebase:
+build the problem as follows:
 
 ``` python
-with open(
-    "examples/synthetic_examples/model2/input_data/"
-    "simulation_files/custom_reservoir.i",
-    encoding="utf-8",
-) as f:
+with open("/path/to/simulation_files/transient.i", encoding="utf-8") as f:
+    transient_input = f.read()
+
+problem = CustomGolemBuilder(
+    input_file_contents=transient_input,
+    input_file_path="/path/to/simulation_files/transient.i",
+    auxiliary_files_dir="/path/to/simulation_files/files",
+    mesh_file="/path/to/existing/GSB_mesh.exo",
+    print_linear_residuals=True,
+)
+```
+
+The `.i` file can then use paths relative to the GOLEM working directory:
+
+``` text
+files/injection_flowrate.csv
+files/frac_aperture.csv
+```
+
+
+#### Existing mesh file by address
+
+An existing mesh does not need to be present as a `MeshResults` object in
+Python. Give its address directly with `mesh_file`:
+
+``` python
+with open("/path/to/custom_reservoir.i", encoding="utf-8") as f:
     custom_golem_input = f.read()
 
-custom_reservoir_problem = CustomGolemBuilder(
+problem = CustomGolemBuilder(
+    input_file_contents=custom_golem_input,
+    input_file_path="/path/to/custom_reservoir.i",
+    mesh_file="/path/to/existing/GSB_mesh.exo",
+    # Optional name used when staging the mesh for GOLEM:
+    mesh_file_name="reservoir.exo",
+    print_linear_residuals=True,
+)
+```
+
+The corresponding mesh entry in the `.i` file is:
+
+``` text
+[Mesh]
+  [original_mesh]
+    type = FileMeshGenerator
+    file = ${GOLEM_MESH_FILE}
+  []
+[]
+```
+
+The runner copies the existing file into the GOLEM staging directory and
+replaces `${GOLEM_MESH_FILE}` with its container path. It does **not**
+call the WBGeo Exodus exporter for this mode. Because an external file
+does not carry WBGeo `MeshResults` metadata, WBGeo performs the generic
+required-block validation and GOLEM/MOOSE performs the detailed
+mesh/block/material compatibility checks during execution.
+
+For the normal in-memory WBGeo case, use `mesh_results` instead:
+
+``` python
+problem = CustomGolemBuilder(
     input_file_contents=custom_golem_input,
     mesh_results=mesh_explicit_unstructured,
     geomodel_result=structural_model_result,
     print_linear_residuals=True,
 )
+```
+
+In this case the runner exports the `MeshResults` object to Exodus and
+performs WBGeo's detailed material/block validation before Docker/MPI is
+started.
+
+#### Hierarchical custom GOLEM simulation
+
+Hierarchical simulations are executed one mesh level at a time. A single
+`CustomGolemBuilder` call does not solve `mesh1` and `mesh2` together.
+The intended sequence is:
+
+1.  Solve the outer/big mesh with `mesh1=...` and
+    `${GOLEM_MESH1_FILE}`.
+2.  During the mesh1 run, optionally sample the solution at boundaries or inside of the small mesh using `hierarchy_sample_nodes`. These data are considered post-processing data and the solutions are obtained on these data are saved in CSV files.
+3.  Use the generated hierarchy CSV data as boundary or initial conditions in small mesh.
+4.  Solve the inner/small mesh separately with `mesh2=...` and
+    `${GOLEM_MESH2_FILE}`. The mesh2 run is otherwise a normal custom
+    GOLEM run and does not automatically inject the mesh1 hierarchy
+    samplers.
+
+Example mesh1 solve:
+
+``` python
+problem_mesh1 = CustomGolemBuilder(
+    input_file_contents=reservoir_input,
+    input_file_path=reservoir_input_path,
+    mesh1=mesh1_structural,
+    geomodel_result=structural_model_result,
+    hierarchy_sample_nodes=nodes_bcs_structural,
+    sample_variables=["pore_pressure", "temp"],
+    print_linear_residuals=True,
+)
+
+mesh1_results = run_simulation_golem(
+    problem=problem_mesh1,
+    image_name="moose-dev:fixed",
+    project_dir="/path/to/projects",
+    docker_dir="/projects",
+    output_dir="/path/to/mesh1_output",
+    nproc=4,
+)
+```
+
+The mesh1 `.i` file must contain:
+
+``` text
+file = ${GOLEM_MESH1_FILE}
+```
+
+When `hierarchy_sample_nodes` is supplied, WBGeo adds GOLEM
+`PointValueSampler` entries for the available hierarchy groups. These
+include the `inside_nodes` group and the available boundary-face groups
+from the big-mesh frame. The samplers use 
+`execute_on = TIMESTEP_END`. CSV output is enabled if the input does not
+already provide a CSV output.
+
+The raw sampler `id` column is the identifier written by GOLEM's
+`PointValueSampler` (the containing element id); it should not be treated
+as the WBGeo hierarchy `NodeID`. The transfer locations themselves come
+from the hierarchy coordinate arrays supplied to the builder. The retained hierarchy data are written in both the big-mesh and small-mesh coordinate systems.
+
+
+
+A separate mesh2 run uses:
+
+``` python
+problem_mesh2 = CustomGolemBuilder(
+    input_file_contents=small_input,
+    input_file_path=small_input_path,
+    mesh2=mesh2_structural,
+    geomodel_result=structural_model_result,
+    print_linear_residuals=True,
+)
+```
+
+and the corresponding `.i` file contains:
+
+``` text
+file = ${GOLEM_MESH2_FILE}
 ```
 
 ### 2. Run the simulation
@@ -703,7 +879,7 @@ execution follows the supplied input.
 All three GOLEM builders connect to the same runner through the common
 `GolemProblem` type.
 
-Important runner inputs are:
+Important runner inputs for the current **Docker backend** are:
 
 -   **`problem`**: GOLEM problem produced by one of the GOLEM builders.
 -   **`image_name`**: Docker image containing GOLEM.
@@ -714,6 +890,8 @@ Important runner inputs are:
 -   **`nproc`**: Number of MPI processes.
 -   **`keep_files_dir`** *(optional)*: Directory in which
     staged/generated files can be retained for debugging.
+
+The current function signature is Docker-specific: `image_name`, `project_dir`, and `docker_dir` are required by this backend. Native SLURM execution is not yet an alternative backend in the runner. When such a backend is added, WBGeo should be started once by the batch job and only the GOLEM executable should be launched with `srun`/MPI across the allocated tasks.
 
 Example call in the codebase:
 
@@ -730,16 +908,64 @@ problem_golem_results = run_simulation_golem(
 
 The GOLEM runner performs the following operations:
 
-1.  Exports and stages the WBGeo mesh as Exodus.
-2.  Generates or stages the GOLEM/MOOSE `.i` input.
-3.  Validates the input against the mesh and expected material/block
-    structure.
-4.  Replaces `${GOLEM_MESH_FILE}` with the staged mesh path.
-5.  Executes GOLEM in the configured Docker environment using MPI.
-6.  Collects the Exodus results.
-7.  Loads the numerical result into `SimulationResults`.
-8.  Cleans temporary resources while preserving explicitly requested
-    output/debug files.
+1.  Selects the single configured mesh source. WBGeo `mesh_results`,
+    `mesh1`, and `mesh2` objects are exported to Exodus; `mesh_file` is
+    copied directly without re-export.
+2.  Generates or stages the GOLEM/MOOSE `.i` input. For a custom problem
+    with `auxiliary_files_dir`, copies the contents of that directory into
+    `files/` in the GOLEM working directory.
+3.  For a custom `mesh1` run with hierarchy sampling data, injects the
+    hierarchy `PointValueSampler` definitions and ensures CSV output is
+    available.
+4.  Validates the input. WBGeo meshes receive detailed material/block
+    validation; external mesh files receive generic input-structure
+    validation because no `MeshResults` metadata is available.
+5.  Replaces the matching mesh placeholder (`${GOLEM_MESH_FILE}`,
+    `${GOLEM_MESH1_FILE}`, or `${GOLEM_MESH2_FILE}`) with the staged
+    container path.
+6.  Executes GOLEM in the configured Docker environment using MPI.
+7.  Copies the complete GOLEM working output back to `output_dir`, while
+    removing internal `*_cp` checkpoint directories.
+8.  Post-processes hierarchy sampler CSV files when hierarchy sampling is
+    active (described below).
+9.  Loads the resulting Exodus database into `SimulationResults` and
+    preserves the native Exodus/output-directory paths for later export.
+10. Cleans temporary host/container resources while retaining the
+    user-facing outputs.
+
+#### Hierarchical GOLEM CSV output and post-processing
+
+For a mesh1 hierarchy run, GOLEM/MOOSE writes one sampler
+CSV per hierarchy group **for each written time step**. Typical names are:
+
+``` text
+hierarchy_inside_0001.csv
+hierarchy_top_0001.csv
+...
+```
+
+The runner keeps only the highest-numbered hierarchy CSV for each sampling group, so the retained file represents the last written sampler time step. The hierarchy groups come from the available transfer
+points: `inside` plus boundary groups such as `top`, `bottom`, `left`,
+`right`, `front`, and `back` when present. These data are provided in the coordinate systems of both the big and small meshes in separate directories.
+
+The resulting hierarchy part of `output_dir` therefore has the form:
+
+``` text
+output_dir/
+├── big_frame/
+│   ├── hierarchy_inside_....csv
+│   ├── hierarchy_top_....csv
+│   └── ...
+└── small_frame/
+    ├── hierarchy_inside_....csv
+    ├── hierarchy_top_....csv
+    └── ...
+```
+
+`big_frame` and `small_frame` contain the **same sampled solution rows**
+expressed in the two coordinate frames.
+
+
 
 ### 3. Export the results
 
@@ -794,9 +1020,12 @@ problem_golem_results = run_simulation_golem(
 
 When `output_dir` is supplied, `run_simulation_golem()` copies the
 preserved user-facing GOLEM outputs directly into that directory. This
-normally includes `wbgeo.e`, `golem_stdout.txt`, `wbgeo_generated.i`,
-`wbgeo_mesh.exo`, and any additional GOLEM/MOOSE outputs such as CSV
-files when they are specified in the input model file.
+normally includes the native Exodus result, `golem_stdout.txt`,
+`wbgeo_generated.i`, the staged mesh file (`wbgeo_mesh.exo`,
+`wbgeo_mesh1.exo`, `wbgeo_mesh2.exo`, or the chosen external
+`mesh_file_name`), and additional GOLEM/MOOSE outputs such as CSV files.
+For hierarchy sampling, the final retained sampler CSVs are additionally
+organized under `big_frame/` and `small_frame/` as described above.
 
 **Option 2 - export the complete GOLEM output directory as a ZIP.**
 
@@ -834,8 +1063,7 @@ file.
 > **Note:** For GOLEM, choose either saving the outputs by defining
 > output directory in `run_simulation_golem` (`output_dir`) or use
 > `export_simulation_results`. If
-> `export_simulation_results' is used, use`format="golem"`to save the whole preserved output directory as a ZIP. Use`format="exodus"`only when the single native Exodus result is specifically desired. For SfePy, only use`export_simulation_results'
-> with `format="vtk"` for saving the zipped VTK time series.
+> `export_simulation_results' is used, use`format="golem"`to save the whole preserved output directory as a ZIP. Use`format="exodus"`only when the single native Exodus result is specifically desired. For SfePy, use `export_simulation_results` with `format="vtk"` to save the zipped VTK time series.
 
 ------------------------------------------------------------------------
 
@@ -905,7 +1133,7 @@ plot_cross_section_2D(
 )
 ```
 
-### View solver output (Only for Spefy)
+### View solver output (SfePy only)
 
 > **Workbench component:** `View Solver Output`
 
@@ -1066,8 +1294,6 @@ topology, and numerical fields. It includes:
 
 The important architectural distinction is therefore at the **build and
 run stages**. SfePy executes natively in the WBGeo Python environment,
-while GOLEM is staged and executed externally through Docker/MPI. After
-execution, both are represented as `SimulationResults` and can use the
-common WBGeo visualisation and export layer.
+while the current GOLEM runner stages and executes GOLEM externally through Docker/MPI. Native SLURM execution is a planned/alternative runner backend rather than functionality provided by the current implementation. After execution, both solver pipelines are represented as `SimulationResults` and can use the common WBGeo visualisation and export layer.
 
 \`\`\`

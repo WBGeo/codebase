@@ -1,6 +1,7 @@
 """Run a generated GOLEM problem in Docker and return its output paths."""
 from __future__ import annotations
 
+import csv
 import logging
 import queue
 import re
@@ -11,6 +12,8 @@ import tempfile
 import threading
 import time
 import uuid
+
+import numpy as np
 from pathlib import Path
 from typing import Optional, Union
 
@@ -400,14 +403,51 @@ def run_simulation_golem(
         input_path = run_dir / "wbgeo.i"
         problem.build_input_file(str(input_path))
 
+        # Stage only explicitly supplied auxiliary GOLEM input files.
+        # The directory is copied as `files/` so relative references such as
+        # `files/injection_flowrate.csv` resolve from the Docker run directory.
+        if isinstance(problem, CustomGolemBuilder) and problem.auxiliary_files_dir:
+            source_aux_dir = Path(problem.auxiliary_files_dir).expanduser().resolve()
+            if not source_aux_dir.is_dir():
+                raise ValueError(
+                    "GOLEM auxiliary_files_dir does not exist or is not a directory: "
+                    f"{source_aux_dir}"
+                )
+            target_aux_dir = run_dir / "files"
+            shutil.copytree(source_aux_dir, target_aux_dir, dirs_exist_ok=True)
+            print(
+                f"Staged GOLEM auxiliary files: {source_aux_dir} -> {target_aux_dir}",
+                flush=True,
+            )
+
         container_run = "/tmp/wbgeo_golem_run"
         container_input = f"{container_run}/wbgeo.i"
         generated = input_path.read_text(encoding="utf-8")
 
+        external_mesh_mode = False
         if isinstance(problem, CustomGolemBuilder):
             referenced_meshes = problem.referenced_meshes()
+            external_mesh = problem.referenced_mesh_file()
+
+            # Hierarchical sampling belongs only to mesh1. mesh2 and mesh_file
+            # execute the caller-supplied custom input unchanged.
+            if "${GOLEM_MESH1_FILE}" in referenced_meshes:
+                generated = problem._inject_hierarchy_samplers(generated)
+
+                if problem.input_file_path:
+                    original_input = Path(problem.input_file_path).expanduser().resolve()
+                    augmented_input = original_input.with_name(
+                        original_input.stem + "_hierarchy_sampling" + original_input.suffix
+                    )
+                    augmented_input.write_text(generated, encoding="utf-8")
+                    print(
+                        f"Saved hierarchy-augmented GOLEM input: {augmented_input}",
+                        flush=True,
+                    )
+                input_path.write_text(generated, encoding="utf-8")
         else:
             referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
+            external_mesh = None
 
         mesh_specs = {
             "${GOLEM_MESH_FILE}": ("wbgeo_mesh.exo", f"{container_run}/wbgeo_mesh.exo"),
@@ -415,20 +455,47 @@ def run_simulation_golem(
             "${GOLEM_MESH2_FILE}": ("wbgeo_mesh2.exo", f"{container_run}/wbgeo_mesh2.exo"),
         }
         mesh_paths = {}
+
+        # WBGeo MeshResults modes: export to Exodus exactly as before.
         for placeholder, mesh in referenced_meshes.items():
             filename, container_mesh = mesh_specs[placeholder]
-            mesh_path = run_dir / filename
+            mesh_path_item = run_dir / filename
             mesh_type_code = MESH_TYPE_CODES[mesh.mesh_type]
             exo = export_mesh_results_to_exodus(mesh, type=mesh_type_code)
-            mesh_path.write_bytes(exo.getbuffer())
-            mesh_paths[placeholder] = mesh_path
+            mesh_path_item.write_bytes(exo.getbuffer())
+            mesh_paths[placeholder] = mesh_path_item
             generated = generated.replace(placeholder, container_mesh)
 
-        # validate against any referenced mesh; structural validation of the
-        # Mesh block is independent of which hierarchy level it represents.
-        validation_mesh = next(iter(referenced_meshes.values()))
-        validate_golem_input(generated if False else input_path.read_text(encoding="utf-8"),
-                             validation_mesh, validation_mesh.mesh_type)
+        # External mesh-file mode: copy the existing file; do not re-export it.
+        if external_mesh is not None:
+            external_mesh_mode = True
+            placeholder, source_mesh, requested_name = external_mesh
+            staged_name = Path(requested_name).name
+            staged_mesh = run_dir / staged_name
+            shutil.copy2(source_mesh, staged_mesh)
+            container_mesh = f"{container_run}/{staged_name}"
+            mesh_paths[placeholder] = staged_mesh
+            generated = generated.replace(placeholder, container_mesh)
+
+        # WBGeo meshes retain the detailed material/block validation. An external
+        # mesh has no MeshResults metadata, so validate the input structure and
+        # let GOLEM/MOOSE validate block/material compatibility against the file.
+        if referenced_meshes:
+            validation_mesh = next(iter(referenced_meshes.values()))
+            validate_golem_input(
+                input_path.read_text(encoding="utf-8"),
+                validation_mesh,
+                validation_mesh.mesh_type,
+            )
+        elif external_mesh_mode:
+            required_blocks = ["Mesh", "Variables", "Kernels", "Executioner", "Outputs", "BCs", "Materials"]
+            missing = [
+                block for block in required_blocks
+                if not re.search(rf"^\s*\[{re.escape(block)}\]\s*$", generated, re.MULTILINE)
+            ]
+            if missing:
+                raise ValueError("Missing required blocks: " + ", ".join(missing))
+
         input_path.write_text(generated, encoding="utf-8")
 
         # Legacy variable retained for the rest of the runner and run_info.
@@ -511,6 +578,7 @@ def run_simulation_golem(
         excluded_root_names = {
             "wbgeo.i", "wbgeo_mesh.exo", "wbgeo_mesh1.exo", "wbgeo_mesh2.exo", "output"
         }
+        excluded_root_names.update(path.name for path in mesh_paths.values())
         for item in container_snapshot.iterdir():
             if item.name in excluded_root_names:
                 continue
@@ -542,6 +610,96 @@ def run_simulation_golem(
         # filtered out). Remove the temporary host-side snapshot immediately
         # instead of keeping a duplicate until the end of the run.
         shutil.rmtree(container_snapshot, ignore_errors=True)
+
+        # Hierarchy samplers execute at TIMESTEP_END so their vectors are
+        # populated before CSV output.  MOOSE writes one CSV per timestep
+        # (for example hierarchy_inside_0000.csv, ..._0001.csv).  Keep only
+        # the highest timestep for each hierarchy sampling group so the final
+        # WBGeo output directory contains the last solved state only.
+        hierarchy_csv_re = re.compile(
+            r"^(?P<prefix>.*hierarchy_(?P<group>.+))_(?P<step>\d+)\.csv$"
+        )
+        hierarchy_csv_groups = {}
+        for csv_path in output.rglob("*.csv"):
+            match = hierarchy_csv_re.match(csv_path.name)
+            if match:
+                key = (csv_path.parent, match.group("prefix"))
+                hierarchy_csv_groups.setdefault(key, []).append(
+                    (int(match.group("step")), csv_path)
+                )
+
+        for entries in hierarchy_csv_groups.values():
+            last_step = max(step for step, _ in entries)
+            for step, csv_path in entries:
+                if step != last_step:
+                    csv_path.unlink(missing_ok=True)
+
+        # Organize final hierarchy sampler CSVs exactly like the hierarchy BC
+        # coordinate outputs: big_frame contains the coordinates sampled
+        # directly by GOLEM on mesh1, while small_frame contains the same rows
+        # and solution values with only x/y/z transformed into mesh2's final
+        # coordinate frame.  The affine matrix is generated by
+        # hierarchical_mesh(), so no transformation is estimated from CSVs.
+        if isinstance(problem, CustomGolemBuilder) and problem.hierarchy_sample_nodes:
+            transform_meta = problem.hierarchy_sample_nodes.get(
+                "transformation_parameters", {}
+            )
+            matrix_data = transform_meta.get("big_to_small_matrix")
+            if matrix_data is not None:
+                big_to_small = np.asarray(matrix_data, dtype=float)
+                if big_to_small.shape != (4, 4):
+                    raise ValueError(
+                        "hierarchy transformation big_to_small_matrix must be 4x4"
+                    )
+
+                final_hierarchy_csvs = [
+                    path for path in output.rglob("*.csv")
+                    if "hierarchy_" in path.name
+                    and path.parent.name not in {"big_frame", "small_frame"}
+                ]
+                if final_hierarchy_csvs:
+                    big_dir = output / "big_frame"
+                    small_dir = output / "small_frame"
+                    big_dir.mkdir(parents=True, exist_ok=True)
+                    small_dir.mkdir(parents=True, exist_ok=True)
+
+                for source_csv in final_hierarchy_csvs:
+                    big_csv = big_dir / source_csv.name
+                    shutil.move(str(source_csv), str(big_csv))
+                    small_csv = small_dir / source_csv.name
+
+                    with big_csv.open("r", encoding="utf-8", newline="") as src:
+                        reader = csv.DictReader(src)
+                        fieldnames = reader.fieldnames or []
+                        coordinate_names = None
+                        for candidate in (("x", "y", "z"), ("X", "Y", "Z")):
+                            if all(name in fieldnames for name in candidate):
+                                coordinate_names = candidate
+                                break
+                        if coordinate_names is None:
+                            raise ValueError(
+                                f"Hierarchy sampler CSV {big_csv.name!r} has no "
+                                "x/y/z coordinate columns."
+                            )
+                        rows = list(reader)
+
+                    x_name, y_name, z_name = coordinate_names
+                    for row in rows:
+                        point = np.array([
+                            float(row[x_name]),
+                            float(row[y_name]),
+                            float(row[z_name]),
+                            1.0,
+                        ])
+                        transformed = big_to_small @ point
+                        row[x_name] = f"{transformed[0]:.17g}"
+                        row[y_name] = f"{transformed[1]:.17g}"
+                        row[z_name] = f"{transformed[2]:.17g}"
+
+                    with small_csv.open("w", encoding="utf-8", newline="") as dst:
+                        writer = csv.DictWriter(dst, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(rows)
 
         copied_files = sorted(
             (path for path in output.rglob("*") if path.is_file()),

@@ -245,8 +245,8 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
 refinement = Refinement()
-refinement.wells = LinearWellRefinement(SizeMin=10.0, SizeMax=110.0, DistMin=30.0, DistMax=100.0)
-refinement.triangulations = TriangulationRefinement(SizeMin=10.0, SizeMax=110.0, DistMin=30.0, DistMax=100.0)
+refinement.wells = LinearWellRefinement(SizeMin=15.0, SizeMax=65.0, DistMin=30.0, DistMax=150.0)
+refinement.triangulations = TriangulationRefinement(SizeMin=15.0, SizeMax=65.0, DistMin=30.0, DistMax=150.0)
 #
 # Available refinement types per object:
 #
@@ -298,34 +298,34 @@ refinement.triangulations = TriangulationRefinement(SizeMin=10.0, SizeMax=110.0,
 
 
 # ceate small model with rotation
-#extent = [
-#    # Bottom face: z = -4400
-#    (405000.0353, 5863600.0626, -4385.59),
-#    (406521.6994, 5863105.5584, -4385.59),
-#    (406027.2389, 5861583.8632, -4385.59),
-#    (404505.5390, 5862078.2464, -4385.59),
+extent = [
+    # Bottom face: z = -4400
+    (405000.0353, 5863600.0626, -4470.23),
+    (406521.6994, 5863105.5584, -4470.23),
+    (406027.2389, 5861583.8632, -4470.23),
+    (404505.5390, 5862078.2464, -4470.23),
 
-    # Top face: z = -3700
-#    (405000.0353, 5863600.0626, -3754.44),
-#    (406521.6994, 5863105.5584, -3754.44),
-#    (406027.2389, 5861583.8632, -3754.44),
-#    (404505.5390, 5862078.2464, -3754.44),
-#]
+    # Top face
+    (405000.0353, 5863600.0626, -3678.26),
+    (406521.6994, 5863105.5584, -3678.26),
+    (406027.2389, 5861583.8632, -3678.26),
+    (404505.5390, 5862078.2464, -3678.26),
+]
 
-#mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#    geomodel_result=structural_model_result,
-#    extent=extent,
-#    wells=wells,
-#    triangulations=triangulations,
-#    mesh_size=75,
-#    curve_mesh_size=5,
-#    gmsh_flag=True,
-#    rotation_angle=18,
-#    refinement=refinement,
-#)
-#buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
-#with open("filename_Gross_Schoenebeck_SM.exo", "wb") as f:
-#    f.write(buf.getvalue())
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    extent=extent,
+    wells=wells,
+    triangulations=triangulations,
+    mesh_size=65,
+    curve_mesh_size=5,
+    gmsh_flag=True,
+    rotation_angle=18,
+    refinement=refinement,
+)
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
+with open("filename_Gross_Schoenebeck_SM.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 
 
@@ -335,7 +335,7 @@ refinement.triangulations = TriangulationRefinement(SizeMin=10.0, SizeMax=110.0,
 #    extent=extent,
 #    wells=wells,
 #    triangulations=triangulations,
-#    mesh_size=75,
+#    mesh_size=65,
 #    curve_mesh_size=5,
 #    gmsh_flag=True,
 #    rotation_angle=18,
@@ -354,6 +354,76 @@ refinement.triangulations = TriangulationRefinement(SizeMin=10.0, SizeMax=110.0,
 # END SECTION 2: MESH GENERATION AND MESH UTILITIES
 # ===============================================================================
 
+# Solving steady state of the problem using custom golem input file.
+reservoir_input_path = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_full.i"
+)
+
+with open(reservoir_input_path, "r") as f:
+    reservoir_input = f.read()
+
+# Solving the problem with Golem
+model_GS_Xindyu_transient_results = run_simulation_golem(
+    problem=CustomGolemBuilder(
+        input_file_contents=reservoir_input,
+        mesh_results=mesh_unstructured_with_objects,
+        geomodel_result=structural_model_result,
+        print_linear_residuals=True,
+    ),
+    image_name="moose-dev:fixed",
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
+    output_dir=(
+        cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "golem_GS_steady_output_Xinye"
+    ),
+    nproc=2,
+)
+
+# Solving transient state of the problem using custom golem input file.
+
+#reservoir_input_trans_path = (
+#    cwd
+#    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/transient_circ.i"
+#)
+
+#with open(reservoir_input_trans_path, "r") as f:
+#    reservoir_input_trans = f.read()
+
+# Auxiliary CSV/TXT files referenced by transient_circ.i as files/<name>.
+#reservoir_auxiliary_files_dir = (
+#    cwd
+#    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
+#)
+
+# Solving the problem with Golem
+#model_GS_Xindyu_sready_results = run_simulation_golem(
+#    problem=CustomGolemBuilder(
+#        input_file_contents=reservoir_input_trans,
+#        input_file_path=reservoir_input_trans_path,
+#        auxiliary_files_dir=reservoir_auxiliary_files_dir,
+#        mesh_file=cwd
+#        + "/examples/case_studies/Groß_Schoenebeck/"
+#          "golem_GS_steady_output_Xinye/wbgeo_out.e",
+#        geomodel_result=structural_model_result,
+#        print_linear_residuals=True,
+#    ),
+#    image_name="moose-dev:fixed",
+#    project_dir="/Users/marziehbaes/Documents/projects",
+#    docker_dir="/projects",
+#    output_dir=(
+#        cwd
+#        + "/examples/case_studies/Groß_Schoenebeck/"
+#          "golem_GS_transient_output_Xinye"
+#    ),
+#    nproc=1,
+#)
+
+
+
+
 #%%
 
 # ===============================================================================
@@ -368,19 +438,19 @@ refinement.triangulations = TriangulationRefinement(SizeMin=10.0, SizeMax=110.0,
 # complete available geological domain.
 # -------------------------------------------------------------------------------
 # Small hierarchical domain: the same eight corner coordinates used above.
-hierarchical_small_extent = [
+#hierarchical_small_extent = [
     # Bottom face
-    (405000.0353, 5863600.0626, -4470.23),
-    (406521.6994, 5863105.5584, -4470.23),
-    (406027.2389, 5861583.8632, -4470.23),
-    (404505.5390, 5862078.2464, -4470.23),
+#    (405000.0353, 5863600.0626, -4470.23),
+#    (406521.6994, 5863105.5584, -4470.23),
+#    (406027.2389, 5861583.8632, -4470.23),
+#    (404505.5390, 5862078.2464, -4470.23),
 
     # Top face
-    (405000.0353, 5863600.0626, -3678.26),
-    (406521.6994, 5863105.5584, -3678.26),
-    (406027.2389, 5861583.8632, -3678.26),
-    (404505.5390, 5862078.2464, -3678.26),
-]
+#    (405000.0353, 5863600.0626, -3678.26),
+#    (406521.6994, 5863105.5584, -3678.26),
+#    (406027.2389, 5861583.8632, -3678.26),
+#    (404505.5390, 5862078.2464, -3678.26),
+#]
 
 # -------------------------------------------------------------------------------
 # 3A. Hierarchical mesh from the structural model
@@ -388,26 +458,28 @@ hierarchical_small_extent = [
 # extent1="whole" uses the complete structural-model domain for the large mesh.
 # The small mesh is clipped to the eight-point domain and rotated by 18 degrees.
 
-mesh1_structural, mesh2_structural, nodes_bcs_structural = hierarchical_mesh(
-    geomodel_result=structural_model_result,
-    mesh_type="Un",
-    extent1="whole",
-    extent2=hierarchical_small_extent,
-    wells=wells,
-    triangulations=triangulations,
-    mesh_size1=85,
-    mesh_size2=35,
-    unstructured_params={
-        "curve_mesh_size": 5,
-        "refinement": refinement,
-    },
+#mesh1_structural, mesh2_structural, nodes_bcs_structural , = hierarchical_mesh(
+#    geomodel_result=structural_model_result,
+#    mesh_type="Un",
+#    extent1="whole",
+#    extent2=hierarchical_small_extent,
+#    wells=wells,
+#    triangulations=triangulations,
+#    mesh_size1=85,
+#    mesh_size2=35,
+#    inside_nodes_csv_dir=cwd +"inside_nodes",
 
-    unstructured_params2={
-        "curve_mesh_size": 5,
-        "refinement": refinement,
-        "rotation_angle": 18,
-    },
-)
+#    unstructured_params={
+#        "curve_mesh_size": 5,
+#        "refinement": refinement,
+#    },
+
+#    unstructured_params2={
+#        "curve_mesh_size": 5,
+#        "refinement": refinement,
+#        "rotation_angle": 18,
+#    },
+#)
 
 #export_meshes_exodus(
 #    mesh1_structural,
@@ -455,7 +527,7 @@ mesh1_structural, mesh2_structural, nodes_bcs_structural = hierarchical_mesh(
 #    wells=wells,
 #    triangulations=triangulations,
 #    mesh_size1=75,
-#    mesh_size2=35,
+#    mesh_size2=65,
 #    unstructured_params={
 #        "curve_mesh_size": 5,
 #        "refinement": refinement,
@@ -497,31 +569,52 @@ mesh1_structural, mesh2_structural, nodes_bcs_structural = hierarchical_mesh(
 # ===============================================================================
 
 
+# Solving Gross Schonebeck steady and transient i hierarchical manner
 # Solve Steady state
 
-
 # Solving the problem using custom golem input file. The GOLEM input file contains the Exodus material-block
-model_input_path = (cwd
-        + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady.i"
-    )
-with open(model_input_path, encoding="utf-8") as stream:
-        reservoir_input = stream.read()
+#reservoir_input_path = (
+#    cwd
+#    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_th.i"
+#)
+
+#with open(reservoir_input_path, "r") as f:
+#    reservoir_input = f.read()
 
 # Solving the problem with Golem
-model1_simple_reservoir_results = run_simulation_golem(
-        problem=CustomGolemBuilder(
-            input_file_contents=reservoir_input,
-            mesh1=mesh1_structural,
-            geomodel_result=structural_model_result,
-            print_linear_residuals=True,
-        ),
-        image_name="moose-dev:fixed",
-        project_dir="/Users/marziehbaes/Documents/projects",
-        docker_dir="/projects",
-        output_dir=(
-            cwd
-            + "/examples/case_studies/Groß_Schoenebeck/"
-              "golem_custom_simple_reservoir_output"
-        ),
-        nproc=1,
-    )
+#model1_simple_reservoir_results = run_simulation_golem(
+#    problem=CustomGolemBuilder(
+#       input_file_contents=reservoir_input,
+
+        # Original .i file location.
+        # Used to save steady_hierarchy_sampling.i beside steady.i.
+#        input_file_path=reservoir_input_path,
+
+#        mesh1=mesh1_structural,
+#        geomodel_result=structural_model_result,
+#        print_linear_residuals=True,
+
+        # Hierarchical GOLEM sampling
+#        hierarchy_sample_nodes=nodes_bcs_structural,
+#        sample_variables=[
+#            "pore_pressure",
+#            "temp",
+#        ],
+        #        sample_variables=[
+        #    "pore_pressure",
+        #    "temp",
+        #    "stress_xx", "stress_yy", "stress_zz",
+        #],
+#    ),
+#    image_name="moose-dev:fixed",
+#    project_dir="/Users/marziehbaes/Documents/projects",
+#    docker_dir="/projects",
+#    output_dir=(
+#        cwd
+#        + "/examples/case_studies/Groß_Schoenebeck/"
+#          "golem_GR_hie_steady_big_output"
+#    ),
+#    nproc=2,
+#)
+
+

@@ -650,3 +650,59 @@ def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
     other_key = "mesh2_file" if builder_kw == "mesh1" else "mesh1_file"
     assert run_info_seen[other_key] is None
     assert run_info_seen["mesh_file"].endswith(expected_filename)
+
+
+# -----------------------------------------------------------------------------
+# run_simulation_golem -- external mesh-file staging
+# -----------------------------------------------------------------------------
+
+def test_run_simulation_golem_stages_external_mesh_file_without_export(
+    monkeypatch, model1_implicit_mesh, tmp_path
+):
+    source_mesh = tmp_path / "source_mesh.exo"
+    source_mesh.write_bytes(b"external-exodus")
+    builder = CustomGolemBuilder(
+        input_file_contents=_custom_hierarchical_input("${GOLEM_MESH_FILE}"),
+        mesh_file=str(source_mesh),
+        mesh_file_name="reservoir.exo",
+    )
+
+    def must_not_export(*args, **kwargs):
+        raise AssertionError("external mesh_file must not be re-exported")
+    monkeypatch.setattr(golem_run, "export_mesh_results_to_exodus", must_not_export)
+    monkeypatch.setattr(golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n")
+
+    def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        if len(command) >= 4 and command[:2] == ["docker", "cp"] and ":" in command[2]:
+            destination = Path(command[3])
+            destination.mkdir(parents=True, exist_ok=True)
+            out_dir = destination / "output"
+            out_dir.mkdir(exist_ok=True)
+            (out_dir / "wbgeo.e").write_bytes(b"result")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(golem_run.subprocess, "run", fake_subprocess_run)
+    result = SimulationResults()
+    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
+    run_info_seen = {}
+    def fake_load(run_info):
+        run_info_seen.update(run_info)
+        return result
+    monkeypatch.setattr(golem_run, "load_exodus_results", fake_load)
+
+    output_dir = tmp_path / "external_results"
+    returned = golem_run.run_simulation_golem(
+        builder,
+        image_name="registry.example/golem:test",
+        project_dir=str(tmp_path / "project_external"),
+        output_dir=str(output_dir),
+    )
+
+    assert returned is result
+    assert (output_dir / "reservoir.exo").read_bytes() == b"external-exodus"
+    generated = (output_dir / "wbgeo_generated.i").read_text()
+    assert "${GOLEM_MESH_FILE}" not in generated
+    assert "/tmp/wbgeo_golem_run/reservoir.exo" in generated
+    assert run_info_seen["mesh_file"].endswith("reservoir.exo")
+    assert run_info_seen["mesh1_file"] is None
+    assert run_info_seen["mesh2_file"] is None
