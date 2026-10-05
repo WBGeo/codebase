@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import re
 import shlex
@@ -362,9 +363,9 @@ def run_simulation_golem(
         GolemSimpleReservoirProblemBuilder,
         CustomGolemBuilder,
     ],
-    image_name: str,
     project_dir: str,
     docker_dir: str = "/project",
+    image_name: Optional[str] = None,
     output_dir: Optional[str] = None,
     nproc: int = 4,
     keep_files_dir: Optional[str] = None,
@@ -378,15 +379,34 @@ def run_simulation_golem(
     ``problem`` may be an automatically generated hydrothermal/simple-reservoir
     problem or a ``CustomGolemBuilder`` containing complete caller-supplied
     GOLEM input.
+    Environment variables:
+    `$GOLEM_WORKSPACE` the directory we work in, shared as a docker volume
+    `$GOLEM_BINARY`: the golem binary, if preinstalled
     """
     if nproc < 1:
         raise ValueError("nproc must be >= 1")
+
+    # is golem installed or do we create a docker container to run in?
+    create_docker = "GOLEM_BINARY" in os.environ
+
+    # we could move this into an env variable as it should not change during execution
+    docker_dir: str = "/project"
+
     project = Path(project_dir).resolve()
     project.mkdir(parents=True, exist_ok=True)
     output = Path(output_dir).resolve() if output_dir else project / "golem_output"
     output.mkdir(parents=True, exist_ok=True)
 
-    if keep_files_dir:
+
+
+    if 'GOLEM_WORKSPACE' in os.environ:
+        # the directory we work in, shared as a docker volume/copied into the docker
+        workspace_dir = os.getenv('GOLEM_WORKSPACE', '.')
+        workspace_dir = workspace_dir + "/" + str(uuid.uuid4())
+        run_dir = Path(workspace_dir).resolve()
+        run_dir.mkdir(parents=True, exist_ok=True)
+        temporary = keep_files_dir is None
+    elif keep_files_dir:
         run_dir = Path(keep_files_dir).resolve()
         run_dir.mkdir(parents=True, exist_ok=True)
         temporary = False
@@ -401,7 +421,6 @@ def run_simulation_golem(
         problem.build_input_file(str(input_path))
 
         container_run = "/tmp/wbgeo_golem_run"
-        container_input = f"{container_run}/wbgeo.i"
         generated = input_path.read_text(encoding="utf-8")
 
         if isinstance(problem, CustomGolemBuilder):
@@ -410,9 +429,9 @@ def run_simulation_golem(
             referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
 
         mesh_specs = {
-            "${GOLEM_MESH_FILE}": ("wbgeo_mesh.exo", f"{container_run}/wbgeo_mesh.exo"),
-            "${GOLEM_MESH1_FILE}": ("wbgeo_mesh1.exo", f"{container_run}/wbgeo_mesh1.exo"),
-            "${GOLEM_MESH2_FILE}": ("wbgeo_mesh2.exo", f"{container_run}/wbgeo_mesh2.exo"),
+            "${GOLEM_MESH_FILE}": ("wbgeo_mesh.exo", f"{run_dir}/wbgeo_mesh.exo"),
+            "${GOLEM_MESH1_FILE}": ("wbgeo_mesh1.exo", f"{run_dir}/wbgeo_mesh1.exo"),
+            "${GOLEM_MESH2_FILE}": ("wbgeo_mesh2.exo", f"{run_dir}/wbgeo_mesh2.exo"),
         }
         mesh_paths = {}
         for placeholder, mesh in referenced_meshes.items():
@@ -444,115 +463,147 @@ def run_simulation_golem(
         print(f"Docker container: {container_name}", flush=True)
         print(f"MPI processes: {nproc}", flush=True)
 
+        # where is the golem binary located?
+        if create_docker: # run in newly created docker
+            golem_binary = f'{docker_dir.rstrip("/")}/golem/golem-opt'
+        else:
+            golem_binary = os.getenv('GOLEM_BINARY')
+
         golem_command = (
-            f'set -e; mkdir -p "{container_run}/output"; '
-            f'cd "{container_run}"; '
-            f'mpiexec --allow-run-as-root -n {nproc} '
-            f'{docker_dir.rstrip("/")}/golem/golem-opt -i "{container_input}"'
+            "mpiexec",
+            "-n", str(nproc),
+            "--allow-run-as-root",
+            golem_binary,
+            "-i", input_path,
         )
-        create_command = [
-            "docker", "create", "--name", container_name, "-i",
-            "-v", f"{project}:{docker_dir}",
-            image_name,
-            "-c", golem_command,
-        ]
-        created = subprocess.run(
-            create_command, text=True, capture_output=True, check=False
-        )
-        if created.returncode:
-            raise RuntimeError(
-                "Could not create the GOLEM Docker container:\n"
-                + created.stdout + created.stderr
-            )
-        container_created = True
 
-        # Copy the complete staging directory so the input and mesh exist in
-        # the container independently of the host bind mount.
-        copied = subprocess.run(
-            ["docker", "cp", str(run_dir) + "/.",
-             f"{container_name}:{container_run}"],
-            text=True, capture_output=True, check=False,
-        )
-        if copied.returncode:
-            raise RuntimeError(
-                "Could not copy GOLEM input files into the container:\n"
-                + copied.stdout + copied.stderr
+        if create_docker: # run via docker create/run
+            import shlex
+            docker_command = (
+                f'set -e; mkdir -p "{run_dir}/output"; '
+                f'cd "{run_dir}"; '
+                f'{shlex.join(golem_command)} '
             )
 
-        transcript = _stream_process(["docker", "start", "-a", container_name])
+            if image_name is None:
+                image_name = 'moose-dev:fixed'
 
-        # Copy the ENTIRE GOLEM working directory back from the container.
-        # Some MOOSE outputs (especially CSV when no file_base is given) are
-        # written directly beside wbgeo.i rather than inside output/.
-        container_snapshot = run_dir / "container_run"
-        container_snapshot.mkdir(exist_ok=True)
-
-        copied_back = subprocess.run(
-            ["docker", "cp", f"{container_name}:{container_run}/.",
-             str(container_snapshot)],
-            text=True, capture_output=True, check=False,
-        )
-        if copied_back.returncode:
-            raise RuntimeError(
-                "GOLEM completed but its working directory could not be copied "
-                "from Docker:\n" + copied_back.stdout + copied_back.stderr
+            create_command = [
+                "docker", "create", "--name", container_name, "-i",
+                "-v", f"{project}:{docker_dir}",
+                image_name,
+                "-c", docker_command,
+            ]
+            created = subprocess.run(
+                create_command, text=True, capture_output=True, check=False
             )
+            if created.returncode:
+                raise RuntimeError(
+                    "Could not create the GOLEM Docker container:\n"
+                    + created.stdout + created.stderr
+                )
+            container_created = True
 
-        # First preserve everything explicitly written under output/ at the
-        # root of the caller's output_dir.
-        staged_output = container_snapshot / "output"
-        if staged_output.is_dir():
-            shutil.copytree(staged_output, output, dirs_exist_ok=True)
+            # Copy the complete staging directory so the input and mesh exist in
+            # the container independently of the host bind mount.
+            copied = subprocess.run(
+                ["docker", "cp", str(run_dir) + "/.",
+                 f"{container_name}:{container_run}"],
+                text=True, capture_output=True, check=False,
+            )
+            if copied.returncode:
+                raise RuntimeError(
+                    "Could not copy GOLEM input files into the container:\n"
+                    + copied.stdout + copied.stderr
+                )
 
-        # Then preserve generated files/directories written directly in the
-        # GOLEM working directory. Do not re-copy the staged input/mesh or the
-        # output directory itself; those inputs are saved below with stable
-        # WBGeo names.
-        excluded_root_names = {
-            "wbgeo.i", "wbgeo_mesh.exo", "wbgeo_mesh1.exo", "wbgeo_mesh2.exo", "output"
-        }
-        for item in container_snapshot.iterdir():
-            if item.name in excluded_root_names:
-                continue
-            destination = output / item.name
-            if item.is_dir():
-                shutil.copytree(item, destination, dirs_exist_ok=True)
-            elif item.is_file():
-                shutil.copy2(item, destination)
+            transcript = _stream_process(["docker", "start", "-a", container_name])
 
-        # GOLEM/MOOSE may create recovery/checkpoint directories such as
-        # ``wbgeo_out_cp`` during long runs. These are internal restart data,
-        # not user-facing WBGeo simulation results, so remove them from the
-        # final output directory for all GOLEM problem types (hydrothermal,
-        # simple reservoir, and custom).
-        checkpoint_dirs = sorted(
-            (
-                path
-                for path in output.rglob("*")
-                if path.is_dir() and path.name.endswith("_cp")
-            ),
-            key=lambda path: len(path.parts),
-            reverse=True,
-        )
-        for checkpoint_dir in checkpoint_dirs:
-            shutil.rmtree(checkpoint_dir, ignore_errors=True)
+            # Copy the ENTIRE GOLEM working directory back from the container.
+            # Some MOOSE outputs (especially CSV when no file_base is given) are
+            # written directly beside wbgeo.i rather than inside output/.
+            container_snapshot = run_dir / "container_run"
+            container_snapshot.mkdir(exist_ok=True)
 
-        # The Docker working directory has now been fully copied into the
-        # caller's output directory (with internal *_cp checkpoint folders
-        # filtered out). Remove the temporary host-side snapshot immediately
-        # instead of keeping a duplicate until the end of the run.
-        shutil.rmtree(container_snapshot, ignore_errors=True)
+            copied_back = subprocess.run(
+                ["docker", "cp", f"{container_name}:{container_run}/.",
+                 str(container_snapshot)],
+                text=True, capture_output=True, check=False,
+            )
+            if copied_back.returncode:
+                raise RuntimeError(
+                    "GOLEM completed but its working directory could not be copied "
+                    "from Docker:\n" + copied_back.stdout + copied_back.stderr
+                )
 
-        copied_files = sorted(
-            (path for path in output.rglob("*") if path.is_file()),
-            key=lambda path: str(path),
-        )
-        print(
-            f"Copied {len(copied_files)} GOLEM output file(s) to {output}",
-            flush=True,
-        )
-        for path in copied_files:
-            print(f"  {path.relative_to(output)}", flush=True)
+            # First preserve everything explicitly written under output/ at the
+            # root of the caller's output_dir.
+            staged_output = container_snapshot / "output"
+            if staged_output.is_dir():
+                shutil.copytree(staged_output, output, dirs_exist_ok=True)
+
+
+            # Then preserve generated files/directories written directly in the
+            # GOLEM working directory. Do not re-copy the staged input/mesh or the
+            # output directory itself; those inputs are saved below with stable
+            # WBGeo names.
+            excluded_root_names = {
+                "wbgeo.i", "wbgeo_mesh.exo", "wbgeo_mesh1.exo", "wbgeo_mesh2.exo", "output"
+            }
+            for item in container_snapshot.iterdir():
+                if item.name in excluded_root_names:
+                    continue
+                destination = output / item.name
+                if item.is_dir():
+                    shutil.copytree(item, destination, dirs_exist_ok=True)
+                elif item.is_file():
+                    shutil.copy2(item, destination)
+
+                    # GOLEM/MOOSE may create recovery/checkpoint directories such as
+                    # ``wbgeo_out_cp`` during long runs. These are internal restart data,
+                    # not user-facing WBGeo simulation results, so remove them from the
+                    # final output directory for all GOLEM problem types (hydrothermal,
+                    # simple reservoir, and custom).
+                checkpoint_dirs = sorted(
+                    (
+                        path
+                        for path in output.rglob("*")
+                        if path.is_dir() and path.name.endswith("_cp")
+                    ),
+                    key=lambda path: len(path.parts),
+                    reverse=True,
+                )
+                for checkpoint_dir in checkpoint_dirs:
+                    shutil.rmtree(checkpoint_dir, ignore_errors=True)
+
+            # The Docker working directory has now been fully copied into the
+            # caller's output directory (with internal *_cp checkpoint folders
+            # filtered out). Remove the temporary host-side snapshot immediately
+            # instead of keeping a duplicate until the end of the run.
+            shutil.rmtree(container_snapshot, ignore_errors=True)
+
+            copied_files = sorted(
+                (path for path in output.rglob("*") if path.is_file()),
+                key=lambda path: str(path),
+            )
+            print(
+                f"Copied {len(copied_files)} GOLEM output file(s) to {output}",
+                flush=True,
+            )
+            for path in copied_files:
+                print(f"  {path.relative_to(output)}", flush=True)
+        else:
+            # if golem is installed locally: Run the golem command directly
+            res = subprocess.run(golem_command, cwd=run_dir, capture_output=True, text=True)
+            if res.returncode != 0:
+                import sys
+                print(res.stdout)
+                print(res.stderr, file=sys.stderr)
+                raise ValueError("Failed to execute golem with ", golem_command, workspace_dir, res.stdout,
+                                 res.stderr)
+            transcript = res.stdout
+            copied_files = []
+
 
         # Exodus is still required to load the numerical result into WBGeo,
         # but the search below does not restrict which files are preserved.
