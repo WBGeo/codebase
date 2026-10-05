@@ -704,7 +704,7 @@ This generates an unstructured tetrahedral mesh from the CSV files
 stored in the directory specified by `surface_csv_dir`. Because no full
 `extent` is supplied, X and Y limits are inferred from the combined CSV
 surface coordinates. `extent_z=[-1000, 500]` replaces only the inferred Z
-limits with the absolute values `zmin=-1000` and `zmax=500`.
+limits with the absolute values `zmin=-1000` and `zmax=500`. When using CSV files, `mapping_litho` should be set to `"none"` to skip lithological mapping.
 
 If neither `extent` nor `extent_z` is supplied, X, Y, and Z are all
 inferred from the combined CSV surface coordinates. If a complete

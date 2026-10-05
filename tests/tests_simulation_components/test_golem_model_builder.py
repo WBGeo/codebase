@@ -457,26 +457,61 @@ def test_custom_golem_builder_accepts_hierarchical_mesh2(model1_implicit_mesh):
 def test_custom_golem_builder_rejects_unconnected_hierarchical_mesh(
     model1_implicit_mesh,
 ):
-    with pytest.raises(ValueError, match=r"GOLEM_MESH2_FILE.*connected mesh"):
+    with pytest.raises(ValueError, match=r"connected mesh.*GOLEM_MESH2_FILE"):
         CustomGolemBuilder(
             input_file_contents=_custom_golem_input("${GOLEM_MESH2_FILE}"),
             mesh1=model1_implicit_mesh,
         )
 
 
-def test_custom_golem_builder_returns_both_referenced_hierarchical_meshes(
-    model1_implicit_mesh,
-):
-    content = (
-        _custom_golem_input("${GOLEM_MESH1_FILE}")
-        + "\n# Secondary hierarchy mesh: ${GOLEM_MESH2_FILE}\n"
-    )
+def test_custom_golem_builder_rejects_multiple_mesh_sources(model1_implicit_mesh):
+    content = _custom_golem_input("${GOLEM_MESH1_FILE}")
+    with pytest.raises(ValueError, match="exactly one of mesh_results, mesh1, mesh2, or mesh_file"):
+        CustomGolemBuilder(
+            input_file_contents=content,
+            mesh1=model1_implicit_mesh,
+            mesh2=model1_implicit_mesh,
+        )
+
+
+def test_custom_golem_builder_accepts_external_mesh_file(tmp_path):
+    mesh_path = tmp_path / "existing_mesh.exo"
+    mesh_path.write_bytes(b"existing-exodus")
     builder = CustomGolemBuilder(
-        input_file_contents=content,
-        mesh1=model1_implicit_mesh,
-        mesh2=model1_implicit_mesh,
+        input_file_contents=_custom_golem_input("${GOLEM_MESH_FILE}"),
+        mesh_file=str(mesh_path),
     )
-    assert set(builder.referenced_meshes()) == {
-        "${GOLEM_MESH1_FILE}",
-        "${GOLEM_MESH2_FILE}",
-    }
+    assert builder.referenced_meshes() == {}
+    placeholder, source, staged_name = builder.referenced_mesh_file()
+    assert placeholder == "${GOLEM_MESH_FILE}"
+    assert source == mesh_path.resolve()
+    assert staged_name == "existing_mesh.exo"
+
+
+def test_custom_golem_builder_accepts_external_mesh_file_name(tmp_path):
+    mesh_path = tmp_path / "existing_mesh.exo"
+    mesh_path.write_bytes(b"existing-exodus")
+    builder = CustomGolemBuilder(
+        input_file_contents=_custom_golem_input("${GOLEM_MESH_FILE}"),
+        mesh_file=str(mesh_path),
+        mesh_file_name="reservoir.exo",
+    )
+    assert builder.referenced_mesh_file()[2] == "reservoir.exo"
+
+
+def test_custom_golem_builder_rejects_missing_external_mesh_file(tmp_path):
+    with pytest.raises(ValueError, match="mesh_file does not exist"):
+        CustomGolemBuilder(
+            input_file_contents=_custom_golem_input("${GOLEM_MESH_FILE}"),
+            mesh_file=str(tmp_path / "missing.exo"),
+        )
+
+
+def test_custom_golem_builder_rejects_external_mesh_with_hierarchy_placeholder(tmp_path):
+    mesh_path = tmp_path / "existing_mesh.exo"
+    mesh_path.write_bytes(b"existing-exodus")
+    with pytest.raises(ValueError, match="without a connected mesh"):
+        CustomGolemBuilder(
+            input_file_contents=_custom_golem_input("${GOLEM_MESH1_FILE}"),
+            mesh_file=str(mesh_path),
+        )

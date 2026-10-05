@@ -74,17 +74,52 @@ class CustomGolemBuilder:
     """
 
     input_file_contents: str
+    # Optional path of the caller's original .i file. When hierarchy sampling
+    # is injected, the runner saves a readable augmented copy beside this file.
+    input_file_path: Optional[str] = None
+    # Optional directory containing auxiliary files referenced by the GOLEM input.
+    # The runner stages this directory as `files/` beside wbgeo.i in Docker.
+    auxiliary_files_dir: Optional[str] = None
     mesh_results: Optional[MeshResults] = None
     mesh1: Optional[MeshResults] = None
     mesh2: Optional[MeshResults] = None
+    # Existing mesh file mode: use an already-created mesh file directly.
+    mesh_file: Optional[str] = None
+    mesh_file_name: Optional[str] = None
     geomodel_result: Optional[StructuralModelResults] = None
     print_linear_residuals: bool = True
+    hierarchy_sample_nodes: Optional[Dict[str, Any]] = None
+    sample_variables: Optional[List[str]] = None
 
     def __post_init__(self) -> None:
         if not self.input_file_contents.strip():
             raise ValueError("input_file_contents must not be empty")
+
+        if self.auxiliary_files_dir is not None:
+            from pathlib import Path
+            auxiliary_dir = Path(self.auxiliary_files_dir).expanduser()
+            if not auxiliary_dir.is_dir():
+                raise ValueError(
+                    "auxiliary_files_dir does not exist or is not a directory: "
+                    f"{auxiliary_dir}"
+                )
+
+        # A custom run has exactly one mesh source. mesh_file is the file-based
+        # counterpart of mesh_results and therefore uses GOLEM_MESH_FILE.
+        supplied = [
+            self.mesh_results is not None,
+            self.mesh1 is not None,
+            self.mesh2 is not None,
+            self.mesh_file is not None,
+        ]
+        if sum(supplied) != 1:
+            raise ValueError(
+                "CustomGolemBuilder requires exactly one of mesh_results, mesh1, "
+                "mesh2, or mesh_file."
+            )
+
         placeholders = {
-            "${GOLEM_MESH_FILE}": self.mesh_results,
+            "${GOLEM_MESH_FILE}": self.mesh_results if self.mesh_results is not None else self.mesh_file,
             "${GOLEM_MESH1_FILE}": self.mesh1,
             "${GOLEM_MESH2_FILE}": self.mesh2,
         }
@@ -95,23 +130,38 @@ class CustomGolemBuilder:
                 "${GOLEM_MESH1_FILE}, or ${GOLEM_MESH2_FILE} in a "
                 "FileMeshGenerator block."
             )
+        if len(referenced) != 1:
+            raise ValueError("Custom GOLEM input must reference exactly one mesh placeholder.")
+
         missing = [token for token in referenced if placeholders[token] is None]
         if missing:
             raise ValueError(
                 "Custom GOLEM input references mesh placeholder(s) without a "
                 "connected mesh: " + ", ".join(missing)
             )
+
+        if self.mesh_file is not None:
+            from pathlib import Path
+            mesh_path = Path(self.mesh_file).expanduser()
+            if not mesh_path.is_file():
+                raise ValueError(f"mesh_file does not exist or is not a file: {mesh_path}")
+            if referenced != ["${GOLEM_MESH_FILE}"]:
+                raise ValueError("mesh_file must be used with ${GOLEM_MESH_FILE}.")
+            if self.mesh_file_name is not None:
+                name = Path(self.mesh_file_name).name
+                if not name or name != self.mesh_file_name:
+                    raise ValueError("mesh_file_name must be a file name, not a path.")
+
         supported_mesh_types = {
             MeshType.IMPLICIT,
             MeshType.STRUCTURED,
             MeshType.UNSTRUCTURED,
         }
-        for token in referenced:
-            mesh = placeholders[token]
-            if mesh.mesh_type not in supported_mesh_types:
+        for mesh in (self.mesh_results, self.mesh1, self.mesh2):
+            if mesh is not None and mesh.mesh_type not in supported_mesh_types:
                 raise ValueError(
                     "Custom GOLEM input requires implicit, structured, or "
-                    f"unstructured WBGeo meshes; {token} has {mesh.mesh_type!r}."
+                    f"unstructured WBGeo meshes; got {mesh.mesh_type!r}."
                 )
 
     def referenced_meshes(self):
@@ -126,7 +176,132 @@ class CustomGolemBuilder:
             if mesh is not None and token in self.input_file_contents
         }
 
+    def referenced_mesh_file(self):
+        """Return (placeholder, path, staging name) for external-file mode."""
+        if self.mesh_file is None or "${GOLEM_MESH_FILE}" not in self.input_file_contents:
+            return None
+        from pathlib import Path
+        source = Path(self.mesh_file).expanduser().resolve()
+        name = self.mesh_file_name or source.name
+        return "${GOLEM_MESH_FILE}", source, name
+
+    def _hierarchy_sampling_groups(self) -> Dict[str, np.ndarray]:
+        """Return ordered mesh1-frame point groups for GOLEM sampling."""
+        data = self.hierarchy_sample_nodes
+        if not data:
+            return {}
+        groups: Dict[str, np.ndarray] = {}
+        inside = data.get("inside_nodes", {}).get("big_frame")
+        if inside is not None:
+            groups["inside"] = np.asarray(inside, dtype=float)
+        for face, values in data.get("big_frame", {}).items():
+            groups[str(face)] = np.asarray(values, dtype=float)
+        for name, arr in groups.items():
+            if arr.ndim != 2 or arr.shape[1] != 4:
+                raise ValueError(
+                    f"Hierarchy sampling group {name!r} must have columns "
+                    "[NodeID, X, Y, Z]."
+                )
+        return groups
+
+    def _inject_hierarchy_samplers(self, content: str) -> str:
+        groups = self._hierarchy_sampling_groups()
+        if not groups:
+            return content
+        variables = self.sample_variables or ["pore_pressure", "temp"]
+        children = []
+        for name, arr in groups.items():
+            if arr.shape[0] == 0:
+                continue
+            points = "\n".join(
+                f"      {x:.17g} {y:.17g} {z:.17g}"
+                for x, y, z in arr[:, 1:4]
+            )
+            children.append(
+                f"  [hierarchy_{name}]\n"
+                f"    type = PointValueSampler\n"
+                f"    variable = '{' '.join(variables)}'\n"
+                f"    points = '\n{points}\n    '\n"
+                # Required by PointValueSampler in the GOLEM/MOOSE build.
+                f"    sort_by = id\n"
+                f"    execute_on = TIMESTEP_END\n"
+                f"  []"
+            )
+        if not children:
+            return content
+        child_text = "\n".join(children)
+        # Add children to an existing top-level VectorPostprocessors block when
+        # present; otherwise create the block before Executioner.
+        lines = content.splitlines(keepends=True)
+        start = next((i for i, line in enumerate(lines)
+                      if line.strip() == "[VectorPostprocessors]"), None)
+        if start is not None:
+            depth = 1
+            end = None
+            for i in range(start + 1, len(lines)):
+                token = lines[i].strip()
+                if re.fullmatch(r"\[(?:\./)?[^\]]+\]", token):
+                    depth += 1
+                elif token in {"[]", "[../]"}:
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+            if end is None:
+                raise ValueError("Unterminated [VectorPostprocessors] block")
+            lines.insert(end, child_text + "\n")
+            content = "".join(lines)
+        else:
+            block = "[VectorPostprocessors]\n" + child_text + "\n[]\n\n"
+            m = re.search(r"^\[Executioner\]\s*$", content, re.MULTILINE)
+            if m:
+                content = content[:m.start()] + block + content[m.start():]
+            else:
+                content += "\n" + block
+        # Ensure CSV output is enabled, but never create a duplicate output.
+        # MOOSE accepts either the shortcut `csv = true` or an explicit child
+        # output such as `[csv] type = CSV`.  If the custom input already has
+        # any CSV Output object, reuse it for the injected VectorPostprocessors.
+        out = re.search(r"^\[Outputs\]\s*$", content, re.MULTILINE)
+        if out:
+            lines = content.splitlines(keepends=True)
+            start = next((i for i, line in enumerate(lines)
+                          if line.strip() == "[Outputs]"), None)
+            if start is not None:
+                depth = 1
+                end = None
+                for i in range(start + 1, len(lines)):
+                    token = lines[i].strip()
+                    if re.fullmatch(r"\[(?:\./)?[^\]]+\]", token):
+                        depth += 1
+                    elif token in {"[]", "[../]"}:
+                        depth -= 1
+                        if depth == 0:
+                            end = i
+                            break
+                if end is None:
+                    raise ValueError("Unterminated [Outputs] block")
+                outputs_text = "".join(lines[start + 1:end])
+                has_csv_shortcut = re.search(
+                    r"^\s*csv\s*=\s*(?:true|1)\s*$",
+                    outputs_text, re.MULTILINE | re.IGNORECASE
+                ) is not None
+                has_csv_object = re.search(
+                    r"^\s*type\s*=\s*CSV\s*$",
+                    outputs_text, re.MULTILINE | re.IGNORECASE
+                ) is not None
+                if not (has_csv_shortcut or has_csv_object):
+                    lines.insert(start + 1, "  csv = true\n")
+                    content = "".join(lines)
+        else:
+            # No Outputs block at all: create a minimal CSV output block.
+            content += "\n[Outputs]\n  csv = true\n[]\n"
+        return content
+
     def build_input_file(self, output_path: str) -> str:
+        # Hierarchy samplers are injected by the GOLEM runner after it reads
+        # the completed custom input file. This keeps input-file generation
+        # unchanged and lets the runner decide from the referenced mesh level.
         content = self.input_file_contents
         residual_value = str(self.print_linear_residuals).lower()
         residual_pattern = re.compile(

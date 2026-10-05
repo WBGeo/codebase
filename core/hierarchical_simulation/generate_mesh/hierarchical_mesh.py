@@ -44,6 +44,7 @@ def hierarchical_mesh(
     unstructured_params2: dict = None,
     structured_params: dict = None,
     implicit_params: dict = None,
+    inside_nodes_csv_dir: Optional[str] = None,
 
 ) -> tuple:
 
@@ -908,9 +909,124 @@ def hierarchical_mesh(
     # exactly three values as before.  The third value contains both coordinate
     # representations of the SAME mesh1 node IDs.  Export code can therefore
     # write them into separate subdirectories without changing mesh generation.
+    # --------------------------------------------------
+    # Select ALL mesh1 nodes physically inside mesh2's extent
+    # --------------------------------------------------
+    # Selection is deliberately performed in the original/world frame, before
+    # considering either mesh's output transform. This makes the selected node
+    # IDs independent of rotation/translation. The same mesh1 node IDs are then
+    # represented in two coordinate frames:
+    #
+    #   inside_nodes["big_frame"]   -> mesh1 final coordinates
+    #   inside_nodes["small_frame"] -> those SAME physical mesh1 points
+    #                                  expressed in mesh2 final coordinates
+    #
+    # This works for both 6-value and oriented 8-corner extent2 definitions.
+    q_big_in_small = _to_domain_local(nodes_big_world, extent2_resolved)
+    inside_mask = np.all(
+        (q_big_in_small >= -1e-9) & (q_big_in_small <= 1.0 + 1e-9),
+        axis=1,
+    )
+    inside_node_ids = np.flatnonzero(inside_mask).astype(int)
+    selected_inside_world = nodes_big_world[inside_node_ids]
+
+    selected_inside_small_frame = _transform_points_to_mesh_frame(
+        selected_inside_world,
+        nodes_small_world,
+        unstructured_params2,
+    )
+
+    inside_nodes_big = np.hstack([
+        inside_node_ids.reshape(-1, 1),
+        nodes_big_final[inside_node_ids],
+    ])
+    inside_nodes_small_frame = np.hstack([
+        inside_node_ids.reshape(-1, 1),
+        selected_inside_small_frame,
+    ])
+
+    # Optional direct CSV output. Node IDs are mesh1's zero-based node indices,
+    # matching the existing hierarchical boundary-node convention.
+    if inside_nodes_csv_dir is not None:
+        output_dir = Path(inside_nodes_csv_dir).expanduser()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        columns = ["NodeID", "X", "Y", "Z"]
+        pd.DataFrame(inside_nodes_big, columns=columns).to_csv(
+            output_dir / "mesh1_nodes_inside_mesh2_big_frame.csv",
+            index=False,
+        )
+        pd.DataFrame(inside_nodes_small_frame, columns=columns).to_csv(
+            output_dir / "mesh1_nodes_inside_mesh2_small_frame.csv",
+            index=False,
+        )
+
+    # Keep the public API backward-compatible: hierarchical_mesh() still returns
+    # exactly three values. Existing boundary exporters continue to use the
+    # big_frame/small_frame entries. The additional inside_nodes entry contains
+    # the two coordinate representations for every mesh1 node inside mesh2.
+    # Store the exact resolved affine transformation between the two FINAL
+    # mesh coordinate frames.  This is intentionally derived from the same
+    # full untransformed mesh references used above, rather than estimated
+    # later from boundary CSVs.  Homogeneous 4x4 matrices make the metadata
+    # sufficient to transform arbitrary GOLEM sample coordinates.
+    def _world_to_frame_matrix(reference_world, params):
+        matrix = np.eye(4, dtype=float)
+        if mesh_type != "un":
+            return matrix
+
+        reference = np.asarray(reference_world, dtype=float)
+        rotation_angle = params.get("rotation_angle", None)
+        rotation_angle_translate = params.get("rotation_angle_translate", None)
+        xt = params.get("xt", None)
+        yt = params.get("yt", None)
+        zt = params.get("zt", None)
+
+        if rotation_angle is not None and rotation_angle_translate is not None:
+            raise ValueError(
+                "Use either rotation_angle or rotation_angle_translate, not both."
+            )
+        if rotation_angle is None and rotation_angle_translate is None:
+            return matrix
+
+        angle = rotation_angle if rotation_angle is not None else rotation_angle_translate
+        theta = np.deg2rad(float(angle))
+        c, s = np.cos(theta), np.sin(theta)
+        xc = 0.5 * (reference[:, 0].min() + reference[:, 0].max())
+        yc = 0.5 * (reference[:, 1].min() + reference[:, 1].max())
+
+        matrix[0, :] = [c, -s, 0.0, -c * xc + s * yc]
+        matrix[1, :] = [s,  c, 0.0, -s * xc - c * yc]
+
+        if rotation_angle_translate is not None:
+            if any(v is not None for v in (xt, yt, zt)) and not all(
+                v is not None for v in (xt, yt, zt)
+            ):
+                raise ValueError("xt, yt, and zt must be provided together.")
+            tx = 0.0 if xt is None else float(xt)
+            ty = 0.0 if yt is None else float(yt)
+            tz = 0.0 if zt is None else float(zt)
+            zc = 0.5 * (reference[:, 2].min() + reference[:, 2].max())
+            matrix[0, 3] += tx
+            matrix[1, 3] += ty
+            matrix[2, :] = [0.0, 0.0, 1.0, -zc + tz]
+        return matrix
+
+    world_to_big = _world_to_frame_matrix(nodes_big_world, unstructured_params1)
+    world_to_small = _world_to_frame_matrix(nodes_small_world, unstructured_params2)
+    big_to_small = world_to_small @ np.linalg.inv(world_to_big)
+
     boundary_nodes = {
         "big_frame": boundary_nodes_big,
         "small_frame": boundary_nodes_small_frame,
+        "inside_nodes": {
+            "big_frame": inside_nodes_big,
+            "small_frame": inside_nodes_small_frame,
+        },
+        "transformation_parameters": {
+            "world_to_big_matrix": world_to_big.tolist(),
+            "world_to_small_matrix": world_to_small.tolist(),
+            "big_to_small_matrix": big_to_small.tolist(),
+        },
     }
 
     return mesh1, mesh2, boundary_nodes
