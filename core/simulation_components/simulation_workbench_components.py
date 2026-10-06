@@ -634,22 +634,17 @@ def build_custom_golem_problem(
 )
 def run_golem_simulation(
     problem: GolemProblem,
-    image_name: str,
-    project_dir: str,
-    docker_dir: str = "/project",
-    output_dir: Optional[str] = None,
     nproc: int = 4,
-    keep_files_dir: Optional[str] = None,
 ) -> SimulationResults:
     """Run a prepared GOLEM problem through the existing Docker runner."""
     return _run_simulation_golem(
         problem=problem.inner(),
-        image_name=image_name,
-        project_dir=project_dir,
-        docker_dir=docker_dir,
-        output_dir=output_dir,
+        image_name=None,
+        project_dir='',
+        docker_dir='',
+        output_dir=None,
         nproc=nproc,
-        keep_files_dir=keep_files_dir,
+        keep_files_dir=None,
     )
 
 

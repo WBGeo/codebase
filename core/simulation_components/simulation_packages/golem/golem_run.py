@@ -391,7 +391,7 @@ def run_simulation_golem(
         raise ValueError("nproc must be >= 1")
 
     # is golem installed or do we create a docker container to run in?
-    create_docker = "GOLEM_BINARY" in os.environ
+    create_docker = "GOLEM_BINARY" not in os.environ
 
     # we could move this into an env variable as it should not change during execution
     docker_dir: str = "/project"
@@ -536,6 +536,9 @@ def run_simulation_golem(
             golem_binary = f'{docker_dir.rstrip("/")}/golem/golem-opt'
         else:
             golem_binary = os.getenv('GOLEM_BINARY')
+
+        print(f"Using GOLEM binary: {golem_binary} {"in docker" if create_docker else "on host"}", flush=True)
+
 
         golem_command = (
             "mpiexec",
