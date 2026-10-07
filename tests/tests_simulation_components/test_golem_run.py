@@ -524,11 +524,8 @@ def test_run_simulation_golem_custom_problem_keeps_checkpoint_directory(
 
     assert returned is result
     assert (output_dir / "wbgeo.e").exists()
-    assert not (output_dir / "wbgeo_out_cp").exists()
-    assert not any(
-        path.is_dir() and path.name.endswith("_cp")
-        for path in output_dir.rglob("*")
-    )
+    assert (output_dir / "wbgeo_out_cp").is_dir()
+    assert (output_dir / "wbgeo_out_cp" / "restart.cpr").exists()
 
 # -----------------------------------------------------------------------------
 # run_simulation_golem -- custom hierarchical mesh staging
