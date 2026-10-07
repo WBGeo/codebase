@@ -245,8 +245,8 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
 refinement = Refinement()
-refinement.wells = LinearWellRefinement(SizeMin=15.0, SizeMax=65.0, DistMin=30.0, DistMax=150.0)
-refinement.triangulations = TriangulationRefinement(SizeMin=15.0, SizeMax=65.0, DistMin=30.0, DistMax=150.0)
+refinement.wells = LinearWellRefinement(SizeMin=15.0, SizeMax=105.0, DistMin=30.0, DistMax=150.0)
+refinement.triangulations = TriangulationRefinement(SizeMin=15.0, SizeMax=105.0, DistMin=30.0, DistMax=150.0)
 #
 # Available refinement types per object:
 #
@@ -300,17 +300,18 @@ refinement.triangulations = TriangulationRefinement(SizeMin=15.0, SizeMax=65.0, 
 # ceate small model with rotation
 extent = [
     # Bottom face: z = -4400
-    (405000.0353, 5863600.0626, -4470.23),
-    (406521.6994, 5863105.5584, -4470.23),
-    (406027.2389, 5861583.8632, -4470.23),
-    (404505.5390, 5862078.2464, -4470.23),
+    (405000.0353, 5863600.0626, -4320.23),
+    (406521.6994, 5863105.5584, -4320.23),
+    (406027.2389, 5861583.8632, -4320.23),
+    (404505.5390, 5862078.2464, -4320.23),
 
     # Top face
-    (405000.0353, 5863600.0626, -3678.26),
-    (406521.6994, 5863105.5584, -3678.26),
-    (406027.2389, 5861583.8632, -3678.26),
-    (404505.5390, 5862078.2464, -3678.26),
+    (405000.0353, 5863600.0626, -3750.26),
+    (406521.6994, 5863105.5584, -3750.26),
+    (406027.2389, 5861583.8632, -3750.26),
+    (404505.5390, 5862078.2464, -3750.26),
 ]
+
 
 mesh_unstructured_with_objects = create_unstructured_mesh_data(
     geomodel_result=structural_model_result,
@@ -324,7 +325,7 @@ mesh_unstructured_with_objects = create_unstructured_mesh_data(
     refinement=refinement,
 )
 buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
-with open("filename_Gross_Schoenebeck_SM.exo", "wb") as f:
+with open("filename_Gross_Schoenebeck_SM_n.exo", "wb") as f:
     f.write(buf.getvalue())
 
 
@@ -357,7 +358,7 @@ with open("filename_Gross_Schoenebeck_SM.exo", "wb") as f:
 # Solving steady state of the problem using custom golem input file.
 reservoir_input_path = (
     cwd
-    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_full.i"
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_full_t.i"
 )
 
 with open(reservoir_input_path, "r") as f:
@@ -377,49 +378,49 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
     output_dir=(
         cwd
         + "/examples/case_studies/Groß_Schoenebeck/"
-          "golem_GS_steady_output_Xinye"
+          "golem_GS_steady_output_t_Xinye"
     ),
-    nproc=2,
+    nproc=4,
 )
 
 # Solving transient state of the problem using custom golem input file.
 
-#reservoir_input_trans_path = (
-#    cwd
-#    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/transient_circ.i"
-#)
+reservoir_input_trans_path = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/transient_circ_t.i"
+)
 
-#with open(reservoir_input_trans_path, "r") as f:
-#    reservoir_input_trans = f.read()
+with open(reservoir_input_trans_path, "r") as f:
+    reservoir_input_trans = f.read()
 
 # Auxiliary CSV/TXT files referenced by transient_circ.i as files/<name>.
-#reservoir_auxiliary_files_dir = (
-#    cwd
-#    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
-#)
+reservoir_auxiliary_files_dir = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
+)
 
 # Solving the problem with Golem
-#model_GS_Xindyu_sready_results = run_simulation_golem(
-#    problem=CustomGolemBuilder(
-#        input_file_contents=reservoir_input_trans,
-#        input_file_path=reservoir_input_trans_path,
-#        auxiliary_files_dir=reservoir_auxiliary_files_dir,
-#        mesh_file=cwd
-#        + "/examples/case_studies/Groß_Schoenebeck/"
-#          "golem_GS_steady_output_Xinye/wbgeo_out.e",
-#        geomodel_result=structural_model_result,
-#        print_linear_residuals=True,
-#    ),
-#    image_name="moose-dev:fixed",
-#    project_dir="/Users/marziehbaes/Documents/projects",
-#    docker_dir="/projects",
-#    output_dir=(
-#        cwd
-#        + "/examples/case_studies/Groß_Schoenebeck/"
-#          "golem_GS_transient_output_Xinye"
-#    ),
-#    nproc=1,
-#)
+model_GS_Xindyu_sready_results = run_simulation_golem(
+    problem=CustomGolemBuilder(
+        input_file_contents=reservoir_input_trans,
+        input_file_path=reservoir_input_trans_path,
+        auxiliary_files_dir=reservoir_auxiliary_files_dir,
+        mesh_file=cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "golem_GS_steady_output_Xinye/wbgeo_out.e",
+        geomodel_result=structural_model_result,
+        print_linear_residuals=True,
+    ),
+    image_name="moose-dev:fixed",
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
+    output_dir=(
+        cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "golem_GS_transient_output_t_Xinye"
+    ),
+    nproc=3,
+)
 
 
 
@@ -438,19 +439,19 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
 # complete available geological domain.
 # -------------------------------------------------------------------------------
 # Small hierarchical domain: the same eight corner coordinates used above.
-#hierarchical_small_extent = [
+hierarchical_small_extent = [
     # Bottom face
-#    (405000.0353, 5863600.0626, -4470.23),
-#    (406521.6994, 5863105.5584, -4470.23),
-#    (406027.2389, 5861583.8632, -4470.23),
-#    (404505.5390, 5862078.2464, -4470.23),
+    (405000.0353, 5863600.0626, -4470.23),
+    (406521.6994, 5863105.5584, -4470.23),
+    (406027.2389, 5861583.8632, -4470.23),
+    (404505.5390, 5862078.2464, -4470.23),
 
     # Top face
-#    (405000.0353, 5863600.0626, -3678.26),
-#    (406521.6994, 5863105.5584, -3678.26),
-#    (406027.2389, 5861583.8632, -3678.26),
-#    (404505.5390, 5862078.2464, -3678.26),
-#]
+    (405000.0353, 5863600.0626, -3678.26),
+    (406521.6994, 5863105.5584, -3678.26),
+    (406027.2389, 5861583.8632, -3678.26),
+    (404505.5390, 5862078.2464, -3678.26),
+]
 
 # -------------------------------------------------------------------------------
 # 3A. Hierarchical mesh from the structural model
@@ -458,37 +459,37 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
 # extent1="whole" uses the complete structural-model domain for the large mesh.
 # The small mesh is clipped to the eight-point domain and rotated by 18 degrees.
 
-#mesh1_structural, mesh2_structural, nodes_bcs_structural , = hierarchical_mesh(
-#    geomodel_result=structural_model_result,
-#    mesh_type="Un",
-#    extent1="whole",
-#    extent2=hierarchical_small_extent,
-#    wells=wells,
-#    triangulations=triangulations,
-#    mesh_size1=85,
-#    mesh_size2=35,
-#    inside_nodes_csv_dir=cwd +"inside_nodes",
+mesh1_structural, mesh2_structural, nodes_bcs_structural , = hierarchical_mesh(
+    geomodel_result=structural_model_result,
+    mesh_type="Un",
+    extent1="whole",
+    extent2=hierarchical_small_extent,
+    wells=wells,
+    triangulations=triangulations,
+    mesh_size1=95,
+    mesh_size2=65,
+    inside_nodes_csv_dir=cwd +"inside_nodes",
 
-#    unstructured_params={
-#        "curve_mesh_size": 5,
-#        "refinement": refinement,
-#    },
+    unstructured_params={
+        "curve_mesh_size": 5,
+        "refinement": refinement,
+    },
 
-#    unstructured_params2={
-#        "curve_mesh_size": 5,
-#        "refinement": refinement,
-#        "rotation_angle": 18,
-#    },
-#)
+    unstructured_params2={
+        "curve_mesh_size": 5,
+        "refinement": refinement,
+        "rotation_angle": 18,
+    },
+)
 
-#export_meshes_exodus(
-#    mesh1_structural,
-#    mesh2_structural,
-#    nodes_bcs_structural,
-#    "GSB_hierarchical_structural_big.exo",
-#    "GSB_hierarchical_structural_small.exo",
-#    "GSB_hierarchical_structural_boundary_nodes",
-#)
+export_meshes_exodus(
+    mesh1_structural,
+    mesh2_structural,
+    nodes_bcs_structural,
+    "GSB_hierarchical_structural_big.exo",
+    "GSB_hierarchical_structural_small.exo",
+    "GSB_hierarchical_structural_boundary_nodes",
+)
 
 # Optional visualization.
 # plot_hierarchical_meshes_3d(
@@ -569,52 +570,169 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
 # ===============================================================================
 
 
-# Solving Gross Schonebeck steady and transient i hierarchical manner
+# Solving Gross Schonebeck steady and transient in hierarchical manner
 # Solve Steady state
 
 # Solving the problem using custom golem input file. The GOLEM input file contains the Exodus material-block
-#reservoir_input_path = (
-#    cwd
-#    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_th.i"
-#)
+reservoir_input_path = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_th.i"
+)
 
-#with open(reservoir_input_path, "r") as f:
-#    reservoir_input = f.read()
+with open(reservoir_input_path, "r") as f:
+    reservoir_input = f.read()
 
 # Solving the problem with Golem
-#model1_simple_reservoir_results = run_simulation_golem(
-#    problem=CustomGolemBuilder(
-#       input_file_contents=reservoir_input,
+model1_simple_reservoir_results = run_simulation_golem(
+    problem=CustomGolemBuilder(
+       input_file_contents=reservoir_input,
 
         # Original .i file location.
         # Used to save steady_hierarchy_sampling.i beside steady.i.
-#        input_file_path=reservoir_input_path,
+        input_file_path=reservoir_input_path,
 
-#        mesh1=mesh1_structural,
-#        geomodel_result=structural_model_result,
-#        print_linear_residuals=True,
+        mesh1=mesh1_structural,
+        geomodel_result=structural_model_result,
+        print_linear_residuals=True,
 
         # Hierarchical GOLEM sampling
-#        hierarchy_sample_nodes=nodes_bcs_structural,
-#        sample_variables=[
-#            "pore_pressure",
-#            "temp",
-#        ],
-        #        sample_variables=[
-        #    "pore_pressure",
-        #    "temp",
-        #    "stress_xx", "stress_yy", "stress_zz",
-        #],
-#    ),
-#    image_name="moose-dev:fixed",
-#    project_dir="/Users/marziehbaes/Documents/projects",
-#    docker_dir="/projects",
-#    output_dir=(
-#        cwd
-#        + "/examples/case_studies/Groß_Schoenebeck/"
-#          "golem_GR_hie_steady_big_output"
-#    ),
-#    nproc=2,
-#)
+        hierarchy_sample_nodes=nodes_bcs_structural,
+        sample_variables=[
+            "pore_pressure",
+            "temp",
+        ],
 
+    ),
+    image_name="moose-dev:fixed",
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
+    output_dir=(
+        cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "golem_GR_hie_steady_big_output_t"
+    ),
+    nproc=4,
+)
+
+
+
+# ============================================================
+# SMALL MODEL: steady THM
+# ============================================================
+
+small_steady_input_path = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/"
+      "input_data/simulation_files/"
+      "steady_full_small_from_big_auto_t.i"
+)
+
+# Hierarchy CSVs generated automatically by the BIG model.
+# golem_run.py prepares the staged PropertyReadFile copies and resolves
+# __N_*__/__NPROP_*__ before MOOSE sees the input.
+
+hierarchy_csv_dir = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/"
+      "golem_GR_hie_steady_big_output_t/"
+      "small_frame"
+)
+
+# Read the small steady THM GOLEM input
+with open(small_steady_input_path, "r") as f:
+    small_steady_input = f.read()
+
+
+# ------------------------------------------------------------
+# Solve SMALL steady THM model
+# ------------------------------------------------------------
+
+model2_steady_thm_results = run_simulation_golem(
+    problem=CustomGolemBuilder(
+        input_file_contents=small_steady_input,
+
+        # Original small-model .i file
+        input_file_path=small_steady_input_path,
+
+        # SMALL hierarchical mesh
+        mesh2=mesh2_structural,
+
+        auxiliary_files_dir=hierarchy_csv_dir,
+
+        geomodel_result=structural_model_result,
+
+        print_linear_residuals=True,
+    ),
+
+    image_name="moose-dev:fixed",
+
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
+
+    # Output of the SMALL steady THM calculation
+    output_dir=(
+        cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "golem_GR_hie_steady_small_output_t"
+    ),
+
+    nproc=4,
+)
+
+
+
+small_transient_input_path = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/"
+      "input_data/simulation_files/"
+      "transient_circ_hierarchical_t.i"
+)
+
+# Read the small transient THM GOLEM input
+with open(small_transient_input_path, "r") as f:
+    small_transient_input = f.read()
+
+
+# Auxiliary CSV/TXT files referenced by transient_circ.i as files/<name>.
+reservoir_auxiliary_files_dir = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
+)
+
+
+# solve transient
+
+model2_transient_thm_results = run_simulation_golem(
+    problem=CustomGolemBuilder(
+        input_file_contents=small_transient_input,
+
+        # Original small-model .i file
+        input_file_path=small_transient_input_path,
+
+        # SMALL hierarchical mesh
+        mesh_file=cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "golem_GR_hie_steady_small_output_t/wbgeo_out.e",
+
+        auxiliary_files_dir=reservoir_auxiliary_files_dir,
+
+        geomodel_result=structural_model_result,
+
+        print_linear_residuals=True,
+    ),
+
+    image_name="moose-dev:fixed",
+
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
+
+    # Output of the SMALL steady THM calculation
+    output_dir=(
+        cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "golem_GR_hie_transient_small_output_t"
+    ),
+
+    nproc=4,
+)
 

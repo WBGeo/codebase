@@ -1686,18 +1686,18 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
 
 ExtentZData = typing.Annotated[List[float], AnnotatedScriptType(name='extent_z', color='aqua', identifier='mesh::ExtentZData', controlled='Table|2|ZMin|ZMax')]
 
-WellData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData', controlled='Table|x3')]
+WellData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData')]
 
-SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData', controlled='Table|3|X|Y|Z')]
+SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData')]
 
-ShaftData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='shaft_list', color='aqua', identifier='mesh::ShaftListData', controlled='Table|x7')]
+ShaftData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='shaft_list', color='aqua', identifier='mesh::ShaftListData')]
 
-PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData', controlled='Table|x12')]
+PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData')]
 
 EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
 
 TriangulationData = typing.Annotated[typing.Union[NDArray[np.float64], Dict[int, NDArray[np.float64]]], AnnotatedScriptType( name='triangulation', color='aqua',
-        identifier='mesh::TriangulationData',controlled='Table|3|X|Y|Z')]
+        identifier='mesh::TriangulationData')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
 WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]

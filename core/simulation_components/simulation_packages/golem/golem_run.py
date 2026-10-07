@@ -361,6 +361,109 @@ def _stream_process(command, heartbeat_seconds: float = 10.0) -> str:
     return output
 
 
+
+def _prepare_hierarchy_transfer_files(target_aux_dir: Path, generated: str) -> str:
+    """Prepare hierarchy CSVs for PropertyReadFile and resolve row-count tokens.
+
+    Big-model hierarchy output remains human-readable (headered) in small_frame/.
+    For a downstream mesh2 run, only the staged Docker copy is converted to the
+    headerless numeric format required by PropertyReadFile.  Stable filenames
+    hierarchy_<group>.csv are created and __N_<GROUP>__ /
+    __NPROP_<GROUP>__ placeholders in the input are replaced automatically.
+    """
+    groups = ("inside", "top", "bottom", "right", "left", "back", "front")
+
+    for group in groups:
+        stable = target_aux_dir / f"hierarchy_{group}.csv"
+
+        # Prefer the stable file written by the current hierarchy postprocessor.
+        # Also accept older *_0001.csv-style outputs for backward compatibility.
+        candidates = []
+        if stable.is_file():
+            candidates.append((10**18, stable))
+        step_re = re.compile(
+            rf"^(?:.*)?hierarchy_{re.escape(group)}_(?P<step>\d+)\.csv$"
+        )
+        for path in target_aux_dir.glob("*.csv"):
+            match = step_re.match(path.name)
+            if match:
+                candidates.append((int(match.group("step")), path))
+
+        token = f"__N_{group.upper()}__"
+        nprop_token = f"__NPROP_{group.upper()}__"
+        needs_file = token in generated or nprop_token in generated or stable.is_file()
+        if not candidates:
+            if needs_file:
+                raise ValueError(
+                    f"Hierarchy transfer file for group {group!r} was not found in "
+                    f"{target_aux_dir}. Expected hierarchy_{group}.csv or a "
+                    f"hierarchy_{group}_<step>.csv file."
+                )
+            continue
+
+        _, source = max(candidates, key=lambda item: item[0])
+        with source.open("r", encoding="utf-8", newline="") as stream:
+            reader = csv.reader(stream)
+            all_rows = list(reader)
+        if not all_rows:
+            raise ValueError(f"Hierarchy transfer file is empty: {source}")
+
+        # Big-model transfer output is headered: x,y,z,<sampled variables...>.
+        # Detect that header rather than blindly discarding the first row so an
+        # already-headerless file remains valid too.
+        first = [value.strip() for value in all_rows[0]]
+        has_header = len(first) >= 3 and [v.lower() for v in first[:3]] == ["x", "y", "z"]
+        data_rows = all_rows[1:] if has_header else all_rows
+        if not data_rows:
+            raise ValueError(f"Hierarchy transfer file has no data rows: {source}")
+
+        nprop = len(data_rows[0])
+        if nprop < 4:
+            raise ValueError(
+                f"Hierarchy transfer file {source.name!r} must contain at least "
+                "x,y,z and one sampled variable."
+            )
+        for row_number, row in enumerate(data_rows, start=2 if has_header else 1):
+            if len(row) != nprop:
+                raise ValueError(
+                    f"Hierarchy transfer file {source.name!r} has {len(row)} columns "
+                    f"on row {row_number}; expected {nprop}."
+                )
+            try:
+                [float(value) for value in row]
+            except ValueError as exc:
+                raise ValueError(
+                    f"Hierarchy transfer file {source.name!r} contains non-numeric "
+                    f"data on row {row_number}."
+                ) from exc
+
+        # PropertyReadFile expects numeric rows without a header.  Rewrite only
+        # the staged copy, never the original big-model output directory.
+        with stable.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerows(data_rows)
+
+        # Remove old timestep-named hierarchy copies from the staged directory so
+        # there is exactly one canonical file per group.
+        for _, candidate in candidates:
+            if candidate != stable:
+                candidate.unlink(missing_ok=True)
+
+        generated = generated.replace(token, str(len(data_rows)))
+        generated = generated.replace(nprop_token, str(nprop))
+        print(
+            f"Prepared hierarchy transfer {stable.name}: "
+            f"nvoronoi={len(data_rows)}, nprop={nprop}",
+            flush=True,
+        )
+
+    unresolved = sorted(set(re.findall(r"__(?:N|NPROP)_[A-Z0-9_]+__", generated)))
+    if unresolved:
+        raise ValueError(
+            "Unresolved hierarchy transfer placeholder(s): " + ", ".join(unresolved)
+        )
+    return generated
+
 def run_simulation_golem(
     problem: Union[
         GolemHydrothermalProblemBuilder,
@@ -373,6 +476,7 @@ def run_simulation_golem(
     output_dir: Optional[str] = None,
     nproc: int = 4,
     keep_files_dir: Optional[str] = None,
+    docker_library_paths: Optional[typing.Sequence[str]] = None,
 ) -> SimulationResults:
     """Build or copy, validate and execute a GOLEM input against a WBGeo mesh.
 
@@ -393,8 +497,21 @@ def run_simulation_golem(
     # is golem installed or do we create a docker container to run in?
     create_docker = "GOLEM_BINARY" not in os.environ
 
-    # we could move this into an env variable as it should not change during execution
-    docker_dir: str = "/project"
+    # Shared-library locations used by GOLEM inside Docker.  The defaults are
+    # derived from docker_dir so installations mounted somewhere other than
+    # /project work without changing this runner.  Callers with a non-standard
+    # GOLEM/MOOSE layout can override the complete list.
+    if docker_library_paths is None:
+        docker_root = docker_dir.rstrip("/")
+        docker_library_paths = [
+            f"{docker_root}/golem/lib",
+            f"{docker_root}/golem/test/lib",
+            f"{docker_root}/moose/framework",
+            f"{docker_root}/moose/framework/contrib/pcre",
+            f"{docker_root}/moose/framework/contrib/hit",
+            f"{docker_root}/moose/modules/module_loader/lib",
+        ]
+    golem_library_path = ":".join(str(path) for path in docker_library_paths)
 
     project = Path(project_dir).resolve()
     project.mkdir(parents=True, exist_ok=True)
@@ -440,9 +557,17 @@ def run_simulation_golem(
                 f"Staged GOLEM auxiliary files: {source_aux_dir} -> {target_aux_dir}",
                 flush=True,
             )
+        else:
+            target_aux_dir = None
 
         container_run = "/tmp/wbgeo_golem_run"
         generated = input_path.read_text(encoding="utf-8")
+
+        # mesh2 consumes hierarchy CSVs produced by mesh1. Convert only the
+        # staged copies to PropertyReadFile format and resolve row-count tokens.
+        if isinstance(problem, CustomGolemBuilder) and problem.mesh2 is not None and target_aux_dir is not None:
+            generated = _prepare_hierarchy_transfer_files(target_aux_dir, generated)
+            input_path.write_text(generated, encoding="utf-8")
 
         external_mesh_mode = False
         if isinstance(problem, CustomGolemBuilder):
@@ -469,10 +594,28 @@ def run_simulation_golem(
             referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
             external_mesh = None
 
+        # Paths embedded in wbgeo.i must belong to the namespace where GOLEM
+        # actually executes.  Host paths (for example /Users/... on macOS) are
+        # not visible inside Docker; the complete staging directory is copied
+        # to container_run before the container starts.
+        if create_docker:
+            execution_run_dir = container_run
+        else:
+            execution_run_dir = str(run_dir)
+
         mesh_specs = {
-            "${GOLEM_MESH_FILE}": ("wbgeo_mesh.exo", f"{run_dir}/wbgeo_mesh.exo"),
-            "${GOLEM_MESH1_FILE}": ("wbgeo_mesh1.exo", f"{run_dir}/wbgeo_mesh1.exo"),
-            "${GOLEM_MESH2_FILE}": ("wbgeo_mesh2.exo", f"{run_dir}/wbgeo_mesh2.exo"),
+            "${GOLEM_MESH_FILE}": (
+                "wbgeo_mesh.exo",
+                f"{execution_run_dir}/wbgeo_mesh.exo",
+            ),
+            "${GOLEM_MESH1_FILE}": (
+                "wbgeo_mesh1.exo",
+                f"{execution_run_dir}/wbgeo_mesh1.exo",
+            ),
+            "${GOLEM_MESH2_FILE}": (
+                "wbgeo_mesh2.exo",
+                f"{execution_run_dir}/wbgeo_mesh2.exo",
+            ),
         }
         mesh_paths = {}
 
@@ -531,29 +674,31 @@ def run_simulation_golem(
         print(f"Docker container: {container_name}", flush=True)
         print(f"MPI processes: {nproc}", flush=True)
 
-        # where is the golem binary located?
-        if create_docker: # run in newly created docker
+        # Resolve executable and input paths in the namespace where GOLEM runs.
+        # Host paths (for example /Users/... on macOS) are not valid inside
+        # Docker, because the staged run directory is copied to container_run.
+        if create_docker:
             golem_binary = f'{docker_dir.rstrip("/")}/golem/golem-opt'
+            golem_input_path = f"{container_run}/wbgeo.i"
         else:
-            golem_binary = os.getenv('GOLEM_BINARY')
-
-        print(f"Using GOLEM binary: {golem_binary} {"in docker" if create_docker else "on host"}", flush=True)
-
+            golem_binary = os.getenv("GOLEM_BINARY")
+            golem_input_path = str(input_path)
 
         golem_command = (
             "mpiexec",
             "-n", str(nproc),
             "--allow-run-as-root",
             str(golem_binary),
-            "-i", str(input_path),
+            "-i", golem_input_path,
         )
 
-        if create_docker: # run via docker create/run
+        if create_docker:  # run via docker create/run
             import shlex
             docker_command = (
-                f'set -e; mkdir -p "{run_dir}/output"; '
-                f'cd "{run_dir}"; '
-                f'{shlex.join(golem_command)} '
+                f'export LD_LIBRARY_PATH="{golem_library_path}:$LD_LIBRARY_PATH"; '
+                f'set -e; mkdir -p "{container_run}/output"; '
+                f'cd "{container_run}"; '
+                f'{shlex.join(golem_command)}'
             )
 
             if image_name is None:
@@ -670,7 +815,7 @@ def run_simulation_golem(
                 import sys
                 print(res.stdout)
                 print(res.stderr, file=sys.stderr)
-                raise ValueError("Failed to execute golem with ", golem_command, workspace_dir, res.stdout,
+                raise ValueError("Failed to execute golem with ", golem_command, run_dir, res.stdout,
                                  res.stderr)
             transcript = res.stdout
             copied_files = []
@@ -728,42 +873,77 @@ def run_simulation_golem(
                     small_dir.mkdir(parents=True, exist_ok=True)
 
                 for source_csv in final_hierarchy_csvs:
-                    big_csv = big_dir / source_csv.name
-                    shutil.move(str(source_csv), str(big_csv))
-                    small_csv = small_dir / source_csv.name
+                    name_match = hierarchy_csv_re.match(source_csv.name)
+                    if name_match is None:
+                        continue
+                    group = name_match.group("group")
+                    stable_name = f"hierarchy_{group}.csv"
+                    big_csv = big_dir / stable_name
+                    small_csv = small_dir / stable_name
 
-                    with big_csv.open("r", encoding="utf-8", newline="") as src:
+                    # Convert the raw PointValueSampler CSV to a transfer-file
+                    # format that is independent of whether the outer problem is
+                    # TH, THM, or samples any other variables.  Coordinates are
+                    # always written first; all sampled solution variables are
+                    # retained in their original order.  PointValueSampler
+                    # bookkeeping columns (time/id) are intentionally omitted.
+                    with source_csv.open("r", encoding="utf-8", newline="") as src:
                         reader = csv.DictReader(src)
-                        fieldnames = reader.fieldnames or []
+                        raw_fieldnames = reader.fieldnames or []
                         coordinate_names = None
                         for candidate in (("x", "y", "z"), ("X", "Y", "Z")):
-                            if all(name in fieldnames for name in candidate):
+                            if all(name in raw_fieldnames for name in candidate):
                                 coordinate_names = candidate
                                 break
                         if coordinate_names is None:
                             raise ValueError(
-                                f"Hierarchy sampler CSV {big_csv.name!r} has no "
+                                f"Hierarchy sampler CSV {source_csv.name!r} has no "
                                 "x/y/z coordinate columns."
                             )
                         rows = list(reader)
 
                     x_name, y_name, z_name = coordinate_names
-                    for row in rows:
-                        point = np.array([
-                            float(row[x_name]),
-                            float(row[y_name]),
-                            float(row[z_name]),
-                            1.0,
-                        ])
-                        transformed = big_to_small @ point
-                        row[x_name] = f"{transformed[0]:.17g}"
-                        row[y_name] = f"{transformed[1]:.17g}"
-                        row[z_name] = f"{transformed[2]:.17g}"
+                    metadata_names = {"time", "id", x_name, y_name, z_name}
+                    variable_names = [
+                        name for name in raw_fieldnames
+                        if name not in metadata_names
+                    ]
+                    transfer_fieldnames = ["x", "y", "z", *variable_names]
 
-                    with small_csv.open("w", encoding="utf-8", newline="") as dst:
-                        writer = csv.DictWriter(dst, fieldnames=fieldnames)
+                    # Write the big-frame transfer CSV in the same clean format.
+                    with big_csv.open("w", encoding="utf-8", newline="") as dst:
+                        writer = csv.DictWriter(dst, fieldnames=transfer_fieldnames)
                         writer.writeheader()
-                        writer.writerows(rows)
+                        for row in rows:
+                            writer.writerow({
+                                "x": row[x_name],
+                                "y": row[y_name],
+                                "z": row[z_name],
+                                **{name: row[name] for name in variable_names},
+                            })
+
+                    # Write the corresponding small-frame CSV.  Only coordinates
+                    # are transformed; every sampled TH/THM variable is copied
+                    # unchanged.
+                    with small_csv.open("w", encoding="utf-8", newline="") as dst:
+                        writer = csv.DictWriter(dst, fieldnames=transfer_fieldnames)
+                        writer.writeheader()
+                        for row in rows:
+                            point = np.array([
+                                float(row[x_name]),
+                                float(row[y_name]),
+                                float(row[z_name]),
+                                1.0,
+                            ])
+                            transformed = big_to_small @ point
+                            writer.writerow({
+                                "x": f"{transformed[0]:.17g}",
+                                "y": f"{transformed[1]:.17g}",
+                                "z": f"{transformed[2]:.17g}",
+                                **{name: row[name] for name in variable_names},
+                            })
+
+                    source_csv.unlink(missing_ok=True)
 
 
         # Exodus is still required to load the numerical result into WBGeo,

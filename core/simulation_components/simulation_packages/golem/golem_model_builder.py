@@ -79,6 +79,9 @@ class CustomGolemBuilder:
     input_file_path: Optional[str] = None
     # Optional directory containing auxiliary files referenced by the GOLEM input.
     # The runner stages this directory as `files/` beside wbgeo.i in Docker.
+    # For mesh2 hierarchy-consumer runs, golem_run automatically prepares
+    # hierarchy_<group>.csv for PropertyReadFile and resolves __N_<GROUP>__
+    # (and optional __NPROP_<GROUP>__) placeholders in the staged input.
     auxiliary_files_dir: Optional[str] = None
     mesh_results: Optional[MeshResults] = None
     mesh1: Optional[MeshResults] = None

@@ -359,10 +359,9 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
     assert len(create_commands) == 1
     create = create_commands[0]
     assert "registry.example/golem:test" in create
-    assert any(
-        isinstance(part, str) and "mpiexec --allow-run-as-root -n 3" in part
-        for part in create
-    )
+    docker_shell = create[create.index("-c") + 1]
+    assert "mpiexec -n 3 --allow-run-as-root" in docker_shell
+    assert "/project/golem/golem-opt -i /tmp/wbgeo_golem_run/wbgeo.i" in docker_shell
 
     assert streamed["command"][0:3] == ["docker", "start", "-a"]
     assert any(cmd[:3] == ["docker", "rm", "-f"] for cmd in commands)
@@ -650,6 +649,101 @@ def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
     other_key = "mesh2_file" if builder_kw == "mesh1" else "mesh1_file"
     assert run_info_seen[other_key] is None
     assert run_info_seen["mesh_file"].endswith(expected_filename)
+
+
+# -----------------------------------------------------------------------------
+# run_simulation_golem -- auxiliary hierarchy CSV staging
+# -----------------------------------------------------------------------------
+
+def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
+    monkeypatch, model1_implicit_mesh, tmp_path
+):
+    """CSV transfer files from a big hierarchy run are staged under files/.
+
+    The small-model GOLEM input refers to the files with paths such as
+    ``files/hierarchy_inside.csv``.  ``auxiliary_files_dir`` may therefore
+    point directly at the big run's ``small_frame`` directory.
+    """
+    auxiliary_dir = tmp_path / "big_output" / "small_frame"
+    auxiliary_dir.mkdir(parents=True)
+    (auxiliary_dir / "hierarchy_inside.csv").write_text(
+        "x,y,z,pore_pressure,temp\n0,0,-4000,44.0,140.0\n"
+    )
+    (auxiliary_dir / "hierarchy_top.csv").write_text(
+        "x,y,z,pore_pressure,temp\n0,0,-3678,40.0,130.0\n"
+    )
+    (auxiliary_dir / "hierarchy_bottom.csv").write_text(
+        "x,y,z,pore_pressure,temp\n0,0,-4470,48.0,152.0\n"
+    )
+
+    builder = CustomGolemBuilder(
+        input_file_contents=_custom_hierarchical_input("${GOLEM_MESH2_FILE}"),
+        mesh2=model1_implicit_mesh,
+        auxiliary_files_dir=str(auxiliary_dir),
+    )
+
+    monkeypatch.setattr(
+        golem_run,
+        "export_mesh_results_to_exodus",
+        lambda mesh, type: io.BytesIO(b"small-hierarchy-exodus"),
+    )
+    monkeypatch.setattr(
+        golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n"
+    )
+
+    def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        if (
+            len(command) >= 4
+            and command[:2] == ["docker", "cp"]
+            and ":" in command[2]
+        ):
+            destination = Path(command[3])
+            destination.mkdir(parents=True, exist_ok=True)
+            out_dir = destination / "output"
+            out_dir.mkdir(exist_ok=True)
+            (out_dir / "wbgeo.e").write_bytes(b"result")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(golem_run.subprocess, "run", fake_subprocess_run)
+
+    result = SimulationResults()
+    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
+    monkeypatch.setattr(golem_run, "load_exodus_results", lambda run_info: result)
+
+    # Keep the staged working directory so the test can inspect exactly what
+    # would be copied into /tmp/wbgeo_golem_run inside the container.
+    keep_dir = tmp_path / "kept_run"
+    output_dir = tmp_path / "small_results"
+    returned = golem_run.run_simulation_golem(
+        builder,
+        image_name="registry.example/golem:test",
+        project_dir=str(tmp_path / "project_aux"),
+        output_dir=str(output_dir),
+        keep_files_dir=str(keep_dir),
+    )
+
+    assert returned is result
+    staged_files = keep_dir / "files"
+    # mesh2 consumes hierarchy transfer files through PropertyReadFile.  The
+    # runner converts only the staged copies to headerless numeric CSV; the
+    # original big-model output remains human-readable and headered.
+    assert (staged_files / "hierarchy_inside.csv").read_text().strip() == (
+        "0,0,-4000,44.0,140.0"
+    )
+    assert (staged_files / "hierarchy_top.csv").read_text().strip() == (
+        "0,0,-3678,40.0,130.0"
+    )
+    assert (staged_files / "hierarchy_bottom.csv").read_text().strip() == (
+        "0,0,-4470,48.0,152.0"
+    )
+
+    # Preparing the staged transfer must never mutate the source directory.
+    assert (auxiliary_dir / "hierarchy_inside.csv").read_text().startswith(
+        "x,y,z,pore_pressure,temp\n"
+    )
+
+    # The small hierarchical mesh is staged independently of the CSV directory.
+    assert (keep_dir / "wbgeo_mesh2.exo").read_bytes() == b"small-hierarchy-exodus"
 
 
 # -----------------------------------------------------------------------------
