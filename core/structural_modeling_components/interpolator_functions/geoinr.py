@@ -5,7 +5,8 @@ This module contains:
 - `interpolate_group_geo_inr`: framework-facing interpolator (pure function)
 - `ConcatMLP`: small PyTorch MLP used for implicit neural representation
 - `stratigraphic_ConcatMLP`: training loop producing scalar field predictions and iso-values
-- Helper functions: `normalize`, `loss_intf`, `loss_grad`, `predict_to_mesh_stratigraphic`
+- Helper functions: `normalize`, `loss_intf`, `compute_gradients`, `loss_grad`, `loss_eikonal`,
+  `predict_to_mesh_stratigraphic`
 
 Known differences from the reference implementation (https://github.com/MichaelHillier/GeoINR)
 ------------------------------------------------------------------------------------------------
@@ -23,9 +24,15 @@ This was adapted from a colleague's port of the reference code. Remaining differ
   when horizontal and vertical extents are extremely different and z becomes near-constant under
   the isometric scaling `normalize()` uses here. Not implemented - would need a new user-facing
   parameter on `GeoINRParams` (`interpolator_parameters.py`), out of scope for this module.
-- No eikonal/gradient-norm regularization term. The reference has one, but its weight (`lambda_g`)
-  defaults to 0.0 there too, so this matches reference default behavior rather than diverging from
-  it - noted here only because it's an available option this module doesn't expose.
+- [FIXED, default now nonzero] Reference's eikonal/gradient-norm regularization term
+  (`loss_eikonal` here, `norm_loss` there) defaults its weight (`lambda_g`) to 0.0 in the
+  reference. This module enables it with a nonzero default weight instead: on real wbgeo data
+  (model2's `Strat_Series1` group, which has a sharp local fold), the unregularized field would
+  occasionally (~1 in 5 random seeds tested) fold back on itself far below the data and overwrite
+  basement with younger units - in the worst observed case, 90% of grid columns were affected and
+  87% of the deepest 10% of the model (which should be pure basement) was overwritten. RBF on the
+  identical data showed none of this. See `loss_eikonal` and `stratigraphic_ConcatMLP` for the
+  mechanism and how the default weight/sample count were chosen.
 """
 
 from __future__ import annotations
@@ -353,44 +360,95 @@ def loss_intf(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
     return criterion(y_pred, y_true)
 
 
-# loss function for the orientation points
-def loss_grad(
-    train_x: torch.Tensor,
-    y_pred: torch.Tensor,
-    y_true: torch.Tensor,
-    n_orien: int,
-) -> torch.Tensor:
+def compute_gradients(train_x: torch.Tensor, y_pred: torch.Tensor) -> torch.Tensor:
     """
-    Orientation-gradient loss using autograd.
+    Gradient of the predicted scalar field w.r.t. the (normalized) input coordinates, for
+    every row in the batch, in a single autograd call.
 
     Parameters
     ----------
     train_x : torch.Tensor
         Input tensor used for autograd (requires_grad True).
-        Contains interface + orientation points (orientation points at the end).
     y_pred : torch.Tensor
-        Predicted scalar value at all training points.
+        Predicted scalar value at all points in `train_x`.
+
+    Returns
+    -------
+    torch.Tensor
+        Gradients, shape (N, 3), same row order as `train_x`.
+    """
+    return autograd.grad(
+        outputs=y_pred,
+        inputs=train_x,
+        grad_outputs=torch.ones_like(y_pred),
+        create_graph=True,
+    )[0]
+
+
+# loss function for the orientation points
+def loss_grad(gradients_orie: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+    """
+    Orientation-gradient loss: cosine distance between the predicted gradient direction and
+    the provided orientation vectors.
+
+    Parameters
+    ----------
+    gradients_orie : torch.Tensor
+        Predicted scalar field gradient at orientation point locations, shape (n_orien, 3).
     y_true : torch.Tensor
-        True orientation vectors for the orientation points (shape (n_orien, 3)).
-    n_orien : int
-        Number of orientation points (last rows in `train_x` and `y_pred`).
+        True orientation vectors for the orientation points, shape (n_orien, 3).
 
     Returns
     -------
     torch.Tensor
         Mean (1 - cosine similarity) over orientation points.
     """
-    gradients = autograd.grad(
-        outputs=y_pred,
-        inputs=train_x,
-        grad_outputs=torch.ones_like(y_pred),
-        create_graph=True,
-    )[0]
-    grad_norm_pred = torch.norm(gradients[-n_orien:, :], p=2, dim=1)
-    grad_inner_product = torch.einsum("ij, ij->i", y_true, gradients[-n_orien:, :])
+    grad_norm_pred = torch.norm(gradients_orie, p=2, dim=1)
+    grad_inner_product = torch.einsum("ij, ij->i", y_true, gradients_orie)
     cosine = grad_inner_product / grad_norm_pred  # normal orientation
-    loss_grad_val = torch.mean(1 - cosine)
-    return loss_grad_val
+    return torch.mean(1 - cosine)
+
+
+# eikonal regularization, sampled across the full domain (not just at data points)
+def loss_eikonal(gradients_domain: torch.Tensor, target_norm: torch.Tensor) -> torch.Tensor:
+    """
+    Eikonal regularization: encourages the scalar field's gradient norm to stay close to
+    `target_norm` everywhere in the domain, not just near interface/orientation points.
+
+    Without this, nothing constrains the field's behavior far from any data point. In testing
+    on real wbgeo data (a group with a sharp local fold), the unregularized field occasionally
+    folded back on itself deep below the data and overwrote basement with younger units - see
+    module docstring for measured severity. This is present in the reference GeoINR
+    implementation as `norm_loss`, but defaulted off there (`lambda_g=0.0`) and, when enabled
+    there, compared against a fixed `target_norm=1.0`.
+
+    That fixed value of 1.0 does NOT transfer to this module: the reference's own label
+    convention keeps gradient magnitudes near 1 by construction, but this module regresses to
+    fixed labels spanning exactly [-1, 1] across the *entire* normalized domain regardless of
+    how much physical space the data actually occupies, so the gradient magnitude the network
+    actually needs varies per group/model (empirically ~13-15 on one real wbgeo model, not ~1).
+    Using a fixed target_norm=1.0 was tried and made the eikonal term dominate and actively fight
+    the data fit, producing a far worse failure than having no regularization at all. Instead,
+    `target_norm` is computed each epoch from the gradient norm the network is *actually*
+    achieving at the real interface data (see `stratigraphic_ConcatMLP`) - keeping the domain
+    sample's gradient consistent with what the data itself already implies, rather than an
+    arbitrary constant.
+
+    Parameters
+    ----------
+    gradients_domain : torch.Tensor
+        Predicted scalar field gradient at domain sample locations, shape (N, 3).
+    target_norm : torch.Tensor
+        Target gradient norm (0-dim tensor), typically the (detached) mean gradient norm
+        observed at the real interface points this epoch.
+
+    Returns
+    -------
+    torch.Tensor
+        Mean absolute deviation of the gradient norm from `target_norm`.
+    """
+    grad_norm = torch.norm(gradients_domain, p=2, dim=1)
+    return torch.mean(torch.abs(grad_norm - target_norm))
 
 
 def predict_to_mesh_stratigraphic(
@@ -451,6 +509,8 @@ def stratigraphic_ConcatMLP(
     epochs: int = 2000,
     lr: float = 0.001,
     alpha: float = 0.1,
+    lambda_g: float = 0.05,
+    n_eikonal_samples: int = 2000,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Train a ConcatMLP to represent stratigraphic scalar field, then infer on meshgrid points.
@@ -475,6 +535,13 @@ def stratigraphic_ConcatMLP(
         Learning rate.
     alpha
         Weight for orientation loss.
+    lambda_g
+        Weight for the eikonal regularization term (`loss_eikonal`), sampled across the full
+        domain each epoch. See module docstring for why this defaults to a nonzero value here
+        (the reference implementation defaults it to 0.0).
+    n_eikonal_samples
+        Number of domain points (drawn once, from `meshgrid_data`, and reused every epoch -
+        matching the reference's own static-sample approach) used for the eikonal term.
 
     Returns
     -------
@@ -496,8 +563,15 @@ def stratigraphic_ConcatMLP(
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # concatenate the interface points and orientation points for training
-    train_x_dx = np.vstack((normalized_train_data_x, normalized_train_orie_x))
+    # static domain sample for the eikonal term (drawn once, reused every epoch - see
+    # `loss_eikonal` and module docstring)
+    n_eik = min(n_eikonal_samples, normalized_meshgrid_data.shape[0])
+    eik_idx = np.random.choice(normalized_meshgrid_data.shape[0], size=n_eik, replace=False)
+    normalized_domain_x = normalized_meshgrid_data[eik_idx]
+
+    # concatenate interface + orientation + eikonal-domain points into one training batch,
+    # so a single autograd call (in the epoch loop below) covers all three
+    train_x_dx = np.vstack((normalized_train_data_x, normalized_train_orie_x, normalized_domain_x))
 
     # convert to torch tensor and send to GPU
     x_dx_tensor = torch.tensor(train_x_dx, dtype=torch.float32).to(device).requires_grad_(True)
@@ -505,7 +579,7 @@ def stratigraphic_ConcatMLP(
     dy_tensor = torch.tensor(train_orie_y, dtype=torch.float32).to(device)
     test_x_tensor = torch.tensor(normalized_meshgrid_data, dtype=torch.float32).to(device)
 
-    # the number of interface points and orientation points for dividing the input tensor
+    # the number of interface/orientation/domain points, for dividing the stacked tensor
     n_intf = normalized_train_data_x.shape[0]
     n_orie = normalized_train_orie_x.shape[0]
 
@@ -535,18 +609,30 @@ def stratigraphic_ConcatMLP(
     for epoch in range(epochs):
         y_pred = model(x_dx_tensor)
 
+        # single autograd call covers interface, orientation, and eikonal-domain points
+        gradients = compute_gradients(x_dx_tensor, y_pred)
+
         # calculate the interface loss
         loss_i = loss_intf(y_pred[:n_intf, :].squeeze(), y_tensor)
 
         # calculate the orientation loss
-        loss_o = loss_grad(x_dx_tensor, y_pred, dy_tensor, n_orie)
+        loss_o = loss_grad(gradients[n_intf:n_intf + n_orie, :], dy_tensor)
 
-        loss = loss_i + alpha * loss_o
+        # calculate the eikonal regularization loss (full-domain, not just at data points),
+        # against a target gradient norm taken from what the network is actually achieving at
+        # the real interface data this epoch (detached - it's an anchor, not something this
+        # term should itself be allowed to optimize away from) - see `loss_eikonal` for why a
+        # fixed target doesn't work for this module's label convention
+        target_norm = torch.norm(gradients[:n_intf, :], p=2, dim=1).mean().detach()
+        loss_eik = loss_eikonal(gradients[n_intf + n_orie:, :], target_norm)
+
+        loss = loss_i + alpha * loss_o + lambda_g * loss_eik
         if loss < min_loss:
             min_loss = loss
             best_params = model.state_dict()
             min_loss_i = loss_i
             min_loss_o = loss_o
+            min_loss_eik = loss_eik
 
         optimizer.zero_grad()
         loss.backward(retain_graph=True)
@@ -555,7 +641,10 @@ def stratigraphic_ConcatMLP(
 
     t2_train = time.time()
 
-    logger.info("Training losses | Loss_i: %s, Loss_o: %s", min_loss_i.item(), min_loss_o.item())
+    logger.info(
+        "Training losses | Loss_i: %s, Loss_o: %s, Loss_eikonal: %s",
+        min_loss_i.item(), min_loss_o.item(), min_loss_eik.item(),
+    )
     logger.info("Mean epoch training time: %.4f s", (t2_train - t1_train) / epochs)
 
     # model for inference
