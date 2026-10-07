@@ -479,6 +479,24 @@
     point = '-184.387799 -16.646398 -4035'
     variable = stress_zz
   []
+  [sandstone_xy]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_xy
+  []
+  [sandstone_yz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_yz
+  []
+  [sandstone_xz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_xz
+  []
   [sandstone_pp]
     type = PointValue
     outputs = 'csv'
@@ -502,6 +520,24 @@
     outputs = 'csv'
     point = '-184.387799 -16.646398 -4135'
     variable = stress_zz
+  []
+  [volcanics_xy]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_xy
+  []
+  [volcanics_yz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_yz
+  []
+  [volcanics_xz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_xz
   []
   [volcanics_pp]
     type = PointValue

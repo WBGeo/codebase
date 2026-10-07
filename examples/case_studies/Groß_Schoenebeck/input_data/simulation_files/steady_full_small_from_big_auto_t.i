@@ -369,9 +369,6 @@
 []
 
 [BCs]
-  # TH boundary values transferred from the big steady TH solution.
-  # The small-domain face mapping follows this input's RenameBoundaryGenerator:
-  # right->east, back->south, front->north, left->west.
   [pressure_top_from_big]
     type = FunctionDirichletBC
     function = pore_pressure_top_from_big
@@ -445,9 +442,6 @@
     boundary = 'north'
     variable = temp
   []
-
-  # Mechanical BCs are intentionally unchanged: mechanics is solved fresh
-  # on the small model using the transferred TH state.
   [load_z_top]
     type = FunctionNeumannBC
     function = lithostatic_load
@@ -658,7 +652,92 @@
   []
 []
 
-
+[Postprocessors]
+  [sandstone_xx]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_xx
+  []
+  [sandstone_yy]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_yy
+  []
+  [sandstone_zz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_zz
+  []
+  [sandstone_xy]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_xy
+  []
+  [sandstone_yz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_yz
+  []
+  [sandstone_xz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = stress_xz
+  []
+  [sandstone_pp]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4035'
+    variable = pore_pressure
+  []
+  [volcanics_xx]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_xx
+  []
+  [volcanics_yy]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_yy
+  []
+  [volcanics_zz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_zz
+  []
+  [volcanics_xy]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_xy
+  []
+  [volcanics_yz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_yz
+  []
+  [volcanics_xz]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = stress_xz
+  []
+  [volcanics_pp]
+    type = PointValue
+    outputs = 'csv'
+    point = '-184.387799 -16.646398 -4135'
+    variable = pore_pressure
+  []
+[]
 
 [Preconditioning]
   active = 'fieldsplit'
