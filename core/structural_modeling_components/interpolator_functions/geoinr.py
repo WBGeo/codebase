@@ -6,6 +6,26 @@ This module contains:
 - `ConcatMLP`: small PyTorch MLP used for implicit neural representation
 - `stratigraphic_ConcatMLP`: training loop producing scalar field predictions and iso-values
 - Helper functions: `normalize`, `loss_intf`, `loss_grad`, `predict_to_mesh_stratigraphic`
+
+Known differences from the reference implementation (https://github.com/MichaelHillier/GeoINR)
+------------------------------------------------------------------------------------------------
+This was adapted from a colleague's port of the reference code. Remaining differences:
+
+- Interface points are regressed to a fixed per-horizon label (`linspace(1, -1)`, see
+  `interpolate_group_geo_inr`) rather than letting the network find its own per-horizon value via
+  the reference's self-consistency + above/below ordering scheme. Tried the reference's approach
+  and reverted it: validated against real wbgeo models, it was measurably worse than the fixed
+  labels and got worse with more training, because nothing in that scheme anchors the scalar
+  field's absolute scale. Revisiting it would need a proper scale anchor (e.g. the reference's
+  eikonal/polarity terms), not just the self-consistency/ordering pieces alone.
+- No anisotropic z-scaling option. The reference's `custom2`/`custom3` scalers scale z
+  independently from x/y (with a compensating rescale of the orientation vectors), which can help
+  when horizontal and vertical extents are extremely different and z becomes near-constant under
+  the isometric scaling `normalize()` uses here. Not implemented - would need a new user-facing
+  parameter on `GeoINRParams` (`interpolator_parameters.py`), out of scope for this module.
+- No eikonal/gradient-norm regularization term. The reference has one, but its weight (`lambda_g`)
+  defaults to 0.0 there too, so this matches reference default behavior rather than diverging from
+  it - noted here only because it's an available option this module doesn't expose.
 """
 
 from __future__ import annotations
@@ -244,6 +264,13 @@ class ConcatMLP(nn.Module):
             # output layer
             self.layers.append(nn.Linear(hidden_dim, out_dim))
 
+        # Kaiming-uniform init on every layer, matching the reference implementation
+        # (PyTorch's own default Linear init is also Kaiming-uniform, but with a different
+        # mode/nonlinearity tuned for its default leaky-ReLU assumption rather than this
+        # network's actual activation).
+        for layer in self.layers:
+            nn.init.kaiming_uniform_(layer.weight, mode="fan_in", nonlinearity="relu")
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass.
@@ -266,16 +293,30 @@ class ConcatMLP(nn.Module):
             # Only apply activation and concatenation to hidden layers (not the last layer)
             if i < len(self.layers) - 1:
                 if self.concat:
-                    # Concatenate the input with the hidden layer output
-                    x = torch.cat((x_target, x), dim=1)
-                x = self.activation(x)
+                    # Activate the linear output first, then concatenate the raw input
+                    # features back in (matching the reference implementation) - the raw
+                    # input features themselves should not pass through the activation.
+                    x = torch.cat((x_target, self.activation(x)), dim=1)
+                else:
+                    x = self.activation(x)
 
         return x
 
 
 def normalize(data: np.ndarray, bounds: Tuple[float, float, float, float, float, float]) -> np.ndarray:
     """
-    Normalize coordinates to [-1, 1] using the provided model bounds.
+    Normalize coordinates into [-1, 1] using the provided model bounds, scaling all three
+    axes by the same (largest) extent so the transform is isometric.
+
+    Using a single shared scale for x/y/z (rather than normalizing each axis independently
+    to exactly [-1, 1]) preserves true distances/angles between axes. This matters here
+    because the orientation loss (`loss_grad`) compares the network's gradient direction
+    (computed in this normalized space) against real-world orientation vectors via cosine
+    similarity - an anisotropic per-axis scaling would distort that comparison whenever the
+    model's horizontal and vertical extents differ (the common case for geological models).
+    This matches the default behavior of the reference GeoINR implementation
+    (https://github.com/MichaelHillier/GeoINR), which uses the same isometric scaling for
+    exactly this reason.
 
     Parameters
     ----------
@@ -287,7 +328,8 @@ def normalize(data: np.ndarray, bounds: Tuple[float, float, float, float, float,
     Returns
     -------
     np.ndarray
-        Normalized coordinates in [-1, 1], dtype float32.
+        Normalized coordinates, dtype float32. The axis with the largest extent spans
+        [-1, 1]; other axes are scaled by the same factor and so may span a narrower range.
     """
     data = data.astype(np.float32)
     mean_x = (bounds[0] + bounds[1]) / 2
@@ -296,9 +338,10 @@ def normalize(data: np.ndarray, bounds: Tuple[float, float, float, float, float,
     delta_x = bounds[1] - bounds[0]
     delta_y = bounds[3] - bounds[2]
     delta_z = bounds[5] - bounds[4]
-    data[:, 0] = (data[:, 0] - mean_x) / delta_x * 2
-    data[:, 1] = (data[:, 1] - mean_y) / delta_y * 2
-    data[:, 2] = (data[:, 2] - mean_z) / delta_z * 2
+    range_max = max(delta_x, delta_y, delta_z)
+    data[:, 0] = (data[:, 0] - mean_x) / range_max * 2
+    data[:, 1] = (data[:, 1] - mean_y) / range_max * 2
+    data[:, 2] = (data[:, 2] - mean_z) / range_max * 2
 
     return data
 
@@ -477,8 +520,12 @@ def stratigraphic_ConcatMLP(
         concat=concat,
     ).to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    # amsgrad=True matches the reference implementation's optimizer (more stable updates via
+    # a running max of past squared gradients). weight_decay is omitted - the reference's own
+    # default for it is 0.0, so there is nothing to port there.
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, amsgrad=True)
+    # Cosine LR decay over the full training run, matching the reference implementation.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0)
 
     # Track minimum loss and corresponding parameters
     min_loss = float("inf")
@@ -504,6 +551,7 @@ def stratigraphic_ConcatMLP(
         optimizer.zero_grad()
         loss.backward(retain_graph=True)
         optimizer.step()
+        scheduler.step()
 
     t2_train = time.time()
 

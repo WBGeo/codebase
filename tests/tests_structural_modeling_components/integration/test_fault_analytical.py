@@ -146,7 +146,6 @@ def _majority_domain(domain_map: np.ndarray, mask: np.ndarray) -> int:
 ALL_GROUP_METHODS = [
     m for m in InterpolationMethod
     if m not in {
-        InterpolationMethod.GEOINR,            # non-deterministic
         InterpolationMethod.ORDINARY_KRIGING,  # singular matrix with small cropped fault domains
     }
 ]
@@ -160,6 +159,10 @@ _MIN_INTERIOR_MATCH: dict[InterpolationMethod, float] = {
     InterpolationMethod.UNIVERSAL_KRIGING:     0.90,
 
     InterpolationMethod.ORDINARY_KRIGING:      0.75,
+    # GeoINR is non-deterministic (unseeded random init); 0.90 gives a safe margin below
+    # the 1.000 interior match observed on this scenario across 15 unseeded trials, so a
+    # normal run-to-run variation doesn't make this test flaky.
+    InterpolationMethod.GEOINR:                0.90,
 }
 
 
