@@ -407,7 +407,7 @@ model_GS_Xindyu_sready_results = run_simulation_golem(
         auxiliary_files_dir=reservoir_auxiliary_files_dir,
         mesh_file=cwd
         + "/examples/case_studies/Groß_Schoenebeck/"
-          "golem_GS_steady_output_Xinye/wbgeo_out.e",
+          "golem_GS_steady_output_t_Xinye/wbgeo_out.e",
         geomodel_result=structural_model_result,
         print_linear_residuals=True,
     ),

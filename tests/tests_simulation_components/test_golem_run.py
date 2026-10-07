@@ -369,11 +369,8 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
     # Real staging/output-preservation code still ran.
     assert (output_dir / "golem_stdout.txt").read_text() == "fake GOLEM stdout\n"
     assert (output_dir / "diagnostic.csv").exists()
-    assert not (output_dir / "wbgeo_out_cp").exists()
-    assert not any(
-        path.is_dir() and path.name.endswith("_cp")
-        for path in output_dir.rglob("*")
-    )
+    assert (output_dir / "wbgeo_out_cp").is_dir()
+    assert (output_dir / "wbgeo_out_cp" / "restart.cpr").read_bytes() == b"checkpoint"
     assert (output_dir / "wbgeo_generated.i").exists()
     assert (output_dir / "wbgeo_mesh.exo").read_bytes() == b"fake-exodus"
 
@@ -423,10 +420,10 @@ def test_run_simulation_golem_create_failure_is_reported_without_starting_golem(
         )
 
 
-def test_run_simulation_golem_custom_problem_removes_checkpoint_directory(
+def test_run_simulation_golem_custom_problem_keeps_checkpoint_directory(
     monkeypatch, model1_implicit_mesh, tmp_path
 ):
-    """Custom GOLEM output must not expose MOOSE *_cp checkpoint directories."""
+    """Custom GOLEM output keeps MOOSE *_cp checkpoint directories."""
     custom_input = """[Mesh]
   type = FileMeshGenerator
   file = ${GOLEM_MESH_FILE}
@@ -524,11 +521,8 @@ def test_run_simulation_golem_custom_problem_removes_checkpoint_directory(
 
     assert returned is result
     assert (output_dir / "wbgeo.e").exists()
-    assert not (output_dir / "wbgeo_out_cp").exists()
-    assert not any(
-        path.is_dir() and path.name.endswith("_cp")
-        for path in output_dir.rglob("*")
-    )
+    assert (output_dir / "wbgeo_out_cp").is_dir()
+    assert (output_dir / "wbgeo_out_cp" / "restart.cpr").read_bytes() == b"checkpoint"
 
 # -----------------------------------------------------------------------------
 # run_simulation_golem -- custom hierarchical mesh staging

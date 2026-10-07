@@ -587,22 +587,17 @@ def test_run_golem_simulation_unwraps_all_problem_types_without_running_docker(
 
     result = run_golem_simulation(
         problem=problem,
-        image_name="registry.example/golem:test",
-        project_dir="/host/project",
-        docker_dir="/project",
-        output_dir="/host/output",
         nproc=6,
-        keep_files_dir="/host/keep",
     )
 
     assert result is sentinel_result
     assert received["problem"] is fake_inner
-    assert received["image_name"] == "registry.example/golem:test"
-    assert received["project_dir"] == "/host/project"
-    assert received["docker_dir"] == "/project"
-    assert received["output_dir"] == "/host/output"
+    assert received["image_name"] is None
+    assert received["project_dir"] == ""
+    assert received["docker_dir"] == ""
+    assert received["output_dir"] is None
     assert received["nproc"] == 6
-    assert received["keep_files_dir"] == "/host/keep"
+    assert received["keep_files_dir"] is None
 
 
 def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkeypatch):
@@ -620,15 +615,13 @@ def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkey
     )
     problem = GolemProblem(simple_reservoir=fake_inner)
 
-    result = run_golem_simulation(
-        problem=problem,
-        image_name="golem:test",
-        project_dir="/tmp/project",
-    )
+    result = run_golem_simulation(problem=problem)
 
     assert result is sentinel_result
     assert received["problem"] is fake_inner
-    assert received["docker_dir"] == "/project"
+    assert received["image_name"] is None
+    assert received["project_dir"] == ""
+    assert received["docker_dir"] == ""
     assert received["output_dir"] is None
     assert received["nproc"] == 4
     assert received["keep_files_dir"] is None
