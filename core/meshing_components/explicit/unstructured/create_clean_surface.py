@@ -622,7 +622,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
     Returns:
         cleaned_surfaces (list of tuples): Each tuple is (surface ID, cleaned surface points),representing the processed and de-overlapped surfaces.
-        ref_surface_indices (list): List of surface indices (or IDs) identifying the reference fault surfaces within the `cleaned_surfaces` list.
+        reference_surface_id_to_cleaned_index (list): List of surface indices (or IDs) identifying the reference fault surfaces within the `cleaned_surfaces` list.
         grid_litho (np.ndarray): Structured lithology grid that represents the geological model domain — used for assigning physical groups in meshing.
     """
 
@@ -697,7 +697,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
     ref_surfaces = [surfaces[i] for i, is_fault in enumerate(result) if is_fault]
 
      # Dictionary to store reference surface - fault surfaces- in cleaned_surfaces
-    ref_surface_indices: Dict[str | int, int]  = {}
+    reference_surface_id_to_cleaned_index: Dict[str | int, int]  = {}
     # Call the plotting function
     ## plot_surfaces_excluding_ref(surfaces, result)
     # Remove overlapped points and store the surfaces in cleaned_surfaces and their normals in cleaned_normals
@@ -713,18 +713,18 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
             logger.debug("Using %s as reference", ref_file)
             # Append reference surface and their normal vectors to cleaned_surfaces and cleaned_normals
 
-            ref_surface_indices[ref_file] = len(cleaned_surfaces)
+            reference_surface_id_to_cleaned_index[ref_file] = len(cleaned_surfaces)
             cleaned_surfaces.append((ref_file, ref_points))
 
             normal_subset: NDArray[np.float64] = normal_surfaces[ref_file]  # Extract the corresponding normals
 
             cleaned_normals.append((ref_file, normal_subset))
-            logger.debug("Reference surface %s added at index %d", ref_file, ref_surface_indices[ref_file])
+            logger.debug("Reference surface %s added at index %d", ref_file, reference_surface_id_to_cleaned_index[ref_file])
 
         # Process other surfaces to remove overlapping points
         for idx, (file, points) in enumerate(surfaces):
 
-            if file not in ref_surface_indices:  # Skip if it's already a reference surface
+            if file not in reference_surface_id_to_cleaned_index:  # Skip if it's already a reference surface
                 logger.debug("Processing %s against reference surfaces", file)
                 # Plot current surface + current reference surface
 
@@ -885,7 +885,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
                         # Also store the corresponding normals in cleaned_normals
                             cleaned_normals.append((cluster_file, cluster_normals))
-        logger.debug("Reference surfaces at indices: %s, total surfaces: %d", ref_surface_indices, len(cleaned_surfaces))
+        logger.debug("Reference surfaces at indices: %s, total surfaces: %d", reference_surface_id_to_cleaned_index, len(cleaned_surfaces))
         # Optional
         # plot_cleaned_surfaces(cleaned_surfaces)
         # Find intersection points, add them to surfaces, and extrude them
@@ -898,9 +898,9 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
             # 1. reference/fault surfaces
             # 2. surfaces for which filtered == 0
             # Fault/reference
-                if file in ref_surface_indices:
-                    continue                    #print(f"SKIP {file}: reference surface")
-
+                if file in reference_surface_id_to_cleaned_index.values():
+                    #print(f"SKIP {file}: reference surface")
+                    continue
 
                 # Surface marked as unchanged
                 if file in skip_extrusion_files:
@@ -1032,4 +1032,4 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
       cleaned_surfaces =surfaces
 
-    return cleaned_surfaces, ref_surface_indices, grid_litho
+    return cleaned_surfaces, reference_surface_id_to_cleaned_index, grid_litho

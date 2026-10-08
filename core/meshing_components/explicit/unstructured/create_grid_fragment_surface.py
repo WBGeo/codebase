@@ -1435,35 +1435,37 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             flat_mine_shaft_volumes.extend(shaft if isinstance(shaft, list) else [shaft])
 
         zip_inputs += [(3, tag) for tag in flat_mine_shaft_volumes]
+    # Reference lookup contains list positions for planes/ellipses and
+    # Gmsh tags for triangulated surfaces; preserve each original convention.
     ##########################
     # FIND FAULT SURFACES
     #########################
     counter=0
     if ref_surface_indices:
 
-        for _, ref_index in ref_surface_indices.items():
+        for _, reference_position_or_tag in ref_surface_indices.items():
                 # SKIP TRIANGULATED SURFACES HERE
 
                 if triangulations is not None and len(triangulations) > 0:
 
-                    if ref_index in tri_surface_indices:
+                    if reference_position_or_tag in tri_surface_indices:
                         continue
 
                 if ellipses:
 
-                    if ref_index in  ellipse_surface_indices:
+                    if reference_position_or_tag in  ellipse_surface_indices:
                         continue
 
                 if extra_planes:
 
-                    if ref_index in  extra_planes_surface_indices:
+                    if reference_position_or_tag in  extra_planes_surface_indices:
                         continue
 
                 counter=1
                 # Now zip with ovv
                 zip_info = list(zip(zip_inputs, ovv))
 
-                logger.debug("before/after fragment relations: %s", ref_index)
+                logger.debug("before/after fragment relations: %s", reference_position_or_tag)
 
                 for e in zip_info:
                     logger.debug("parent %s -> child %s", e[0], e[1])
@@ -1472,7 +1474,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
                 for i in range(1, len(zipped_list)):
 
-                    if i == ref_index + 1:
+                    if i == reference_position_or_tag + 1:
                         values = list(zipped_list[i][1])
                         fault_surf = values
 
@@ -1615,17 +1617,17 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
         # Loop through fault surfaces
 
-        for _, ref_index in ref_surface_indices.items():
+        for _, reference_position_or_tag in ref_surface_indices.items():
             # SKIP TRIANGULATED SURFACES HERE
 
             if triangulations is not None and len(triangulations) > 0:
 
-                if ref_index in tri_surface_indices:
+                if reference_position_or_tag in tri_surface_indices:
                     continue
 
             # Now zip with ovv
             zip_info = list(zip(zip_inputs, ovv))
-            logger.debug("before/after fragment relations: %s", ref_index)
+            logger.debug("before/after fragment relations: %s", reference_position_or_tag)
 
             for e in zip_info:
                 logger.debug("parent %s -> child %s", e[0], e[1])
@@ -1634,7 +1636,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
             for i in range(1, len(zipped_list)):
 
-                if i == ref_index + 1:
+                if i == reference_position_or_tag + 1:
                     values = [item[1] for item in zipped_list[i][1]]
                     # Filter surfaces outside the box
                     filtered_surfaces = []
