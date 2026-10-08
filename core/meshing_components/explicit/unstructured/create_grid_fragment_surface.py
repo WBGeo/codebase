@@ -1255,13 +1255,8 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
         # =================================================
         # MESH SETTINGS
-        #
-        # IMPORTANT:
-        #
-        # Do NOT enable Mesh.OptimizeNetgen here.
-        #
-        # Your log shows that Netgen is trying to optimize
-        # the 3D volume and eventually segfaults.
+        # Netgen 3D volume optimization has caused segmentation faults
+        # for some geometries; leave Mesh.OptimizeNetgen disabled.
         # =================================================
 
         try:
@@ -1316,13 +1311,6 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                 1
             )
 
-            # -------------------------------------------------
-            # Do NOT use:
-            #
-            # Mesh.OptimizeNetgen = 1
-            #
-            # It was causing your volume optimization crash.
-            # -------------------------------------------------
 
         except Exception as e:
 
@@ -1411,11 +1399,6 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     )
 
     gmsh.model.occ.synchronize()
-# ============================================================
-# SAVE GMSH GEOMETRY AFTER FRAGMENTATION, BEFORE MESHING
-# ============================================================
-    #gmsh.write("Kleinzeche_after_fragment.geo_unrolled")
-    #print("Saved: Kleinzeche_after_fragment.geo_unrolled")
     ####################################
     # INPUT FOR ZOP (PARENT ---> CHILD)
     ####################################
