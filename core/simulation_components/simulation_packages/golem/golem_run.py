@@ -553,10 +553,7 @@ def run_simulation_golem(
                 )
             target_aux_dir = run_dir / "files"
             shutil.copytree(source_aux_dir, target_aux_dir, dirs_exist_ok=True)
-            print(
-                f"Staged GOLEM auxiliary files: {source_aux_dir} -> {target_aux_dir}",
-                flush=True,
-            )
+            print( f"Staged GOLEM auxiliary files: {source_aux_dir} -> {target_aux_dir}", flush=True, )
         else:
             target_aux_dir = None
 
@@ -585,10 +582,7 @@ def run_simulation_golem(
                         original_input.stem + "_hierarchy_sampling" + original_input.suffix
                     )
                     augmented_input.write_text(generated, encoding="utf-8")
-                    print(
-                        f"Saved hierarchy-augmented GOLEM input: {augmented_input}",
-                        flush=True,
-                    )
+                    print( f"Saved hierarchy-augmented GOLEM input: {augmented_input}", flush=True, )
                 input_path.write_text(generated, encoding="utf-8")
         else:
             referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
@@ -802,10 +796,7 @@ def run_simulation_golem(
                 (path for path in output.rglob("*") if path.is_file()),
                 key=lambda path: str(path),
             )
-            print(
-                f"Copied {len(copied_files)} GOLEM output file(s) to {output}",
-                flush=True,
-            )
+            print( f"Copied {len(copied_files)} GOLEM output file(s) to {output}", flush=True, )
             for path in copied_files:
                 print(f"  {path.relative_to(output)}", flush=True)
         else:
@@ -833,9 +824,7 @@ def run_simulation_golem(
             match = hierarchy_csv_re.match(csv_path.name)
             if match:
                 key = (csv_path.parent, match.group("prefix"))
-                hierarchy_csv_groups.setdefault(key, []).append(
-                    (int(match.group("step")), csv_path)
-                )
+                hierarchy_csv_groups.setdefault(key, []).append( (int(match.group("step")), csv_path) )
 
         for entries in hierarchy_csv_groups.values():
             last_step = max(step for step, _ in entries)
@@ -1002,10 +991,7 @@ def run_simulation_golem(
             raise RuntimeError(
                 f"The GOLEM Exodus file at {result_file} contained no readable time steps."
             )
-        print(
-            f"Loaded {len(simulation_results.nodes_by_time)} GOLEM time step(s).",
-            flush=True,
-        )
+        print( f"Loaded {len(simulation_results.nodes_by_time)} GOLEM time step(s).", flush=True, )
         return simulation_results
     finally:
         if container_created:

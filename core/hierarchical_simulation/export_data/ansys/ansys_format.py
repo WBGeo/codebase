@@ -93,10 +93,7 @@ def export_meshes_ansys(mesh1: MeshResults, mesh2: MeshResults, boundary_nodes: 
                 f"{frame_name}/{face}" if frame_name else str(face),
             )
             filename = os.path.join(folder, f"{face}_boundary_nodes.csv")
-            np.savetxt(
-                filename, arr, delimiter=",",
-                header=header, comments="", fmt=fmt
-            )
+            np.savetxt( filename, arr, delimiter=",", header=header, comments="", fmt=fmt )
             prefix = f"{frame_name} / " if frame_name else ""
             print(
                 f"{prefix}{str(face).capitalize()} boundary nodes saved: "
@@ -138,12 +135,8 @@ def export_meshes_ansys(mesh1: MeshResults, mesh2: MeshResults, boundary_nodes: 
                     f"small_frame for face '{face}'."
                 )
 
-        _write_boundary_frame(
-            big_frame, os.path.join(boundary_folder, "big_frame"), "big_frame"
-        )
-        _write_boundary_frame(
-            small_frame, os.path.join(boundary_folder, "small_frame"), "small_frame"
-        )
+        _write_boundary_frame( big_frame, os.path.join(boundary_folder, "big_frame"), "big_frame" )
+        _write_boundary_frame( small_frame, os.path.join(boundary_folder, "small_frame"), "small_frame" )
 
     else:
         # Backward-compatible legacy format: {face: Nx4, ...}

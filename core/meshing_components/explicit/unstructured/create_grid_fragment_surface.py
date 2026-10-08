@@ -747,12 +747,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
                 pid = int(pid)
 
-                tri_groups.setdefault(
-                    pid,
-                    []
-                ).append(
-                    [x, y, z]
-                )
+                tri_groups.setdefault( pid, [] ).append( [x, y, z] )
 
             for pid in tri_groups:
 
@@ -903,9 +898,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
                     mesh_size
                 )
 
-                point_tags.append(
-                    tag
-                )
+                point_tags.append( tag )
 
             # -------------------------------------------------
             # Create boundary lines
@@ -928,9 +921,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
                     b
                 )
 
-                line_tags.append(
-                    line
-                )
+                line_tags.append( line )
 
             # -------------------------------------------------
             # Closed wire
@@ -984,11 +975,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
             except Exception as e:
 
-                logger.warning(
-                    "Delaunay failed for triangulation %s: %s",
-                    pid,
-                    e
-                )
+                logger.warning( "Delaunay failed for triangulation %s: %s", pid, e )
 
                 return
 
@@ -1019,9 +1006,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
                     for a, b in edges:
 
                         key = tuple(
-                            sorted(
-                                (a, b)
-                            )
+                            sorted( (a, b) )
                         )
 
                         if key in edge_map:
@@ -1037,9 +1022,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
                             edge_map[key] = line
 
-                        line_tags.append(
-                            line
-                        )
+                        line_tags.append( line )
 
                     # -------------------------------------------------
                     # Triangle surface
@@ -1057,21 +1040,15 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
                     # Bookkeeping
                     # -------------------------------------------------
 
-                    surfaces.append(
-                        surf
-                    )
+                    surfaces.append( surf )
 
                     reference_surface_positions_or_tags[
                         surf
                     ] = surf
 
-                    triangulated_surface_tags.append(
-                        surf
-                    )
+                    triangulated_surface_tags.append( surf )
 
-                    tri_surface_indices.add(
-                        surf
-                    )
+                    tri_surface_indices.add( surf )
 
                     tri_surface_to_child_fragments[
                         pid
@@ -1081,12 +1058,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
                 except Exception as e:
 
-                    logger.warning(
-                        "Triangle creation failed for "
-                        "triangulation %s: %s",
-                        pid,
-                        e
-                    )
+                    logger.warning( "Triangle creation failed for " "triangulation %s: %s", pid, e )
 
         # =================================================
         # PROCESS EACH TRIANGULATION GROUP
@@ -1096,11 +1068,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
             if len(points) < 3:
 
-                logger.warning(
-                    "Skipping triangulation %s: "
-                    "fewer than 3 points",
-                    pid
-                )
+                logger.warning( "Skipping triangulation %s: " "fewer than 3 points", pid )
 
                 continue
 
@@ -1120,19 +1088,13 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
             if is_closed_boundary(points):
 
-                logger.info(
-                    "Triangulation %s is a closed boundary; "
-                    "creating a Gmsh surface",
-                    pid
-                )
+                logger.info( "Triangulation %s is a closed boundary; " "creating a Gmsh surface", pid )
 
                 try:
 
                     # Remove duplicated last point
                     boundary_points = (
-                        remove_duplicate_closing_point(
-                            points
-                        )
+                        remove_duplicate_closing_point( points )
                     )
 
                     # -------------------------------------------------
@@ -1147,21 +1109,15 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
                     # Bookkeeping
                     # -------------------------------------------------
 
-                    surfaces.append(
-                        surf
-                    )
+                    surfaces.append( surf )
 
                     reference_surface_positions_or_tags[
                         surf
                     ] = surf
 
-                    triangulated_surface_tags.append(
-                        surf
-                    )
+                    triangulated_surface_tags.append( surf )
 
-                    tri_surface_indices.add(
-                        surf
-                    )
+                    tri_surface_indices.add( surf )
 
                     tri_surface_to_child_fragments[
                         pid
@@ -1194,15 +1150,9 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
                             mesh_size
                         )
 
-                        pt_tags.append(
-                            tag
-                        )
+                        pt_tags.append( tag )
 
-                    create_delaunay_surfaces(
-                        points,
-                        pid,
-                        pt_tags
-                    )
+                    create_delaunay_surfaces( points, pid, pt_tags )
 
             # =================================================
             # NORMAL / OPEN POINT CLOUD
@@ -1212,11 +1162,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
             else:
 
-                logger.info(
-                    "Triangulation %s is an open point set; "
-                    "using Delaunay",
-                    pid
-                )
+                logger.info( "Triangulation %s is an open point set; " "using Delaunay", pid )
 
                 # -------------------------------------------------
                 # Create Gmsh points
@@ -1233,19 +1179,13 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
                         mesh_size
                     )
 
-                    pt_tags.append(
-                        tag
-                    )
+                    pt_tags.append( tag )
 
                 # -------------------------------------------------
                 # Delaunay surfaces
                 # -------------------------------------------------
 
-                create_delaunay_surfaces(
-                    points,
-                    pid,
-                    pt_tags
-                )
+                create_delaunay_surfaces( points, pid, pt_tags )
 
         # =================================================
         # Synchronize OCC
@@ -1265,28 +1205,19 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
             # 2D Delaunay surface algorithm
             # -------------------------------------------------
 
-            gmsh.option.setNumber(
-                "Mesh.Algorithm",
-                6
-            )
+            gmsh.option.setNumber( "Mesh.Algorithm", 6 )
 
             # -------------------------------------------------
             # Allow Gmsh to switch algorithm if necessary
             # -------------------------------------------------
 
-            gmsh.option.setNumber(
-                "Mesh.AlgorithmSwitchOnFailure",
-                1
-            )
+            gmsh.option.setNumber( "Mesh.AlgorithmSwitchOnFailure", 1 )
 
             # -------------------------------------------------
             # Use point characteristic lengths
             # -------------------------------------------------
 
-            gmsh.option.setNumber(
-                "Mesh.MeshSizeFromPoints",
-                1
-            )
+            gmsh.option.setNumber( "Mesh.MeshSizeFromPoints", 1 )
 
             # -------------------------------------------------
             # Do not derive mesh size from curvature.
@@ -1295,10 +1226,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
             # explicit line segments.
             # -------------------------------------------------
 
-            gmsh.option.setNumber(
-                "Mesh.MeshSizeFromCurvature",
-                0
-            )
+            gmsh.option.setNumber( "Mesh.MeshSizeFromCurvature", 0 )
 
             # -------------------------------------------------
             # Enable optimization.
@@ -1306,18 +1234,12 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
             # This is safe for the 2D surface mesh.
             # -------------------------------------------------
 
-            gmsh.option.setNumber(
-                "Mesh.Optimize",
-                1
-            )
+            gmsh.option.setNumber( "Mesh.Optimize", 1 )
 
 
         except Exception as e:
 
-            logger.warning(
-                "Could not configure Gmsh mesh options: %s",
-                e
-            )
+            logger.warning( "Could not configure Gmsh mesh options: %s", e )
 
     gmsh.model.occ.synchronize()
 

@@ -220,10 +220,7 @@ def _run_sfepy_input_file(
 
         if len(volume_elements) != len(mesh_results.elements):
             empty_boundary_blocks = [
-                CellBlock(
-                    cell_type="triangle",
-                    data=np.empty((0, 3), dtype=int),
-                )
+                CellBlock( cell_type="triangle", data=np.empty((0, 3), dtype=int), )
                 for _ in range(6)
             ]
 

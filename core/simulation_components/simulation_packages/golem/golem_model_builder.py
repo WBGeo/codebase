@@ -633,9 +633,7 @@ class GolemHydrothermalProblemBuilder:
                 props.name, mesh_block_id, props, self.fluid,
                 use_supg=has_faults,
             ))
-            property_user_objects.append(
-                self._property_user_objects(mesh_block_id, props, self.fluid)
-            )
+            property_user_objects.append( self._property_user_objects(mesh_block_id, props, self.fluid) )
         for ordinal, block_index in enumerate(self.fault_blocks):
             mesh_block_id = block_index + 1
             props = self._fault_property(ordinal)
@@ -646,9 +644,7 @@ class GolemHydrothermalProblemBuilder:
                 )
             )
             property_user_objects.append(
-                self._property_user_objects(
-                    mesh_block_id, props, self.fluid, fracture=True
-                )
+                self._property_user_objects( mesh_block_id, props, self.fluid, fracture=True )
             )
 
         function_definitions = []

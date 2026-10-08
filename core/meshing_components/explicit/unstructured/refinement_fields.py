@@ -225,10 +225,7 @@ def build_shaft_refinement(
             distance_expression = make_axis_distance_expression(shaft)
 
             if distance_expression is None:
-                logger.warning(
-                    "Skipping degenerate shaft %d during refinement.",
-                    shaft_index,
-                )
+                logger.warning( "Skipping degenerate shaft %d during refinement.", shaft_index, )
                 continue
 
             # Embed the distance expression directly. Do not create
@@ -240,18 +237,9 @@ def build_shaft_refinement(
 
             fid = field_gen.next()
             gmsh.model.mesh.field.add("MathEval", fid)
-            gmsh.model.mesh.field.setString(
-                fid,
-                "F",
-                expression,
-            )
+            gmsh.model.mesh.field.setString( fid, "F", expression, )
 
-            logger.info(
-                "Shaft %d function field %d: %s",
-                shaft_index,
-                fid,
-                expression,
-            )
+            logger.info( "Shaft %d function field %d: %s", shaft_index, fid, expression, )
 
             shaft_size_fields.append(fid)
 
@@ -264,11 +252,7 @@ def build_shaft_refinement(
         # The closest shaft normally requests the smallest mesh size.
         fid_min = field_gen.next()
         gmsh.model.mesh.field.add("Min", fid_min)
-        gmsh.model.mesh.field.setNumbers(
-            fid_min,
-            "FieldsList",
-            shaft_size_fields,
-        )
+        gmsh.model.mesh.field.setNumbers( fid_min, "FieldsList", shaft_size_fields, )
 
         return fid_min
 
@@ -282,22 +266,12 @@ def build_shaft_refinement(
             distance_expression = make_axis_distance_expression(shaft)
 
             if distance_expression is None:
-                logger.warning(
-                    "Skipping degenerate shaft %d during refinement.",
-                    shaft_index,
-                )
+                logger.warning( "Skipping degenerate shaft %d during refinement.", shaft_index, )
                 continue
 
             fid_distance = field_gen.next()
-            gmsh.model.mesh.field.add(
-                "MathEval",
-                fid_distance,
-            )
-            gmsh.model.mesh.field.setString(
-                fid_distance,
-                "F",
-                distance_expression,
-            )
+            gmsh.model.mesh.field.add( "MathEval", fid_distance, )
+            gmsh.model.mesh.field.setString( fid_distance, "F", distance_expression, )
 
             distance_fields.append(fid_distance)
 
@@ -308,44 +282,17 @@ def build_shaft_refinement(
             fid_nearest_distance = distance_fields[0]
         else:
             fid_nearest_distance = field_gen.next()
-            gmsh.model.mesh.field.add(
-                "Min",
-                fid_nearest_distance,
-            )
-            gmsh.model.mesh.field.setNumbers(
-                fid_nearest_distance,
-                "FieldsList",
-                distance_fields,
-            )
+            gmsh.model.mesh.field.add( "Min", fid_nearest_distance, )
+            gmsh.model.mesh.field.setNumbers( fid_nearest_distance, "FieldsList", distance_fields, )
 
         fid = field_gen.next()
         gmsh.model.mesh.field.add("Threshold", fid)
 
-        gmsh.model.mesh.field.setNumber(
-            fid,
-            "InField",
-            fid_nearest_distance,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid,
-            "SizeMin",
-            shaft_cfg.SizeMin,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid,
-            "SizeMax",
-            shaft_cfg.SizeMax,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid,
-            "DistMin",
-            shaft_cfg.DistMin,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid,
-            "DistMax",
-            shaft_cfg.DistMax,
-        )
+        gmsh.model.mesh.field.setNumber( fid, "InField", fid_nearest_distance, )
+        gmsh.model.mesh.field.setNumber( fid, "SizeMin", shaft_cfg.SizeMin, )
+        gmsh.model.mesh.field.setNumber( fid, "SizeMax", shaft_cfg.SizeMax, )
+        gmsh.model.mesh.field.setNumber( fid, "DistMin", shaft_cfg.DistMin, )
+        gmsh.model.mesh.field.setNumber( fid, "DistMax", shaft_cfg.DistMax, )
 
         return fid
 
@@ -535,10 +482,7 @@ def build_fault_mesh_callback_from_fragments(
             surface_pts = np.asarray(surface_pts, dtype=float)
 
             if surface_pts.shape[0] < 3:
-                logger.warning(
-                    "Not enough sample points for fault surface %s",
-                    tag,
-                )
+                logger.warning( "Not enough sample points for fault surface %s", tag, )
                 continue
 
             # ---------------------------------------------------------
@@ -571,16 +515,10 @@ def build_fault_mesh_callback_from_fragments(
                 [XY, ZZ]
             )
 
-            fault_points.extend(
-                sampled_fault_points.tolist()
-            )
+            fault_points.extend( sampled_fault_points.tolist() )
 
         except Exception as e:
-            logger.warning(
-                "Skipping fault surface %s: %s",
-                tag,
-                e,
-            )
+            logger.warning( "Skipping fault surface %s: %s", tag, e, )
             continue
 
     # -------------------------------------------------------------
@@ -667,10 +605,7 @@ def build_extra_plane_mesh_callback(
 
     for plane in extra_planes:
         if len(plane) != 12:
-            logger.warning(
-                "Skipping extra plane: expected 12 coordinates, got %d",
-                len(plane),
-            )
+            logger.warning( "Skipping extra plane: expected 12 coordinates, got %d", len(plane), )
             continue
 
         p = np.asarray(plane, dtype=float).reshape(4, 3)
@@ -902,15 +837,8 @@ def build_general_refinement(
             gmsh.model.occ.synchronize()
 
             fid_distance = field_gen.next()
-            gmsh.model.mesh.field.add(
-                "Distance",
-                fid_distance,
-            )
-            gmsh.model.mesh.field.setNumbers(
-                fid_distance,
-                "NodesList",
-                [point_tag],
-            )
+            gmsh.model.mesh.field.add( "Distance", fid_distance, )
+            gmsh.model.mesh.field.setNumbers( fid_distance, "NodesList", [point_tag], )
 
         else:
             x1, y1, z1 = map(float, coordinates[0])
@@ -948,47 +876,25 @@ def build_general_refinement(
             gmsh.model.occ.synchronize()
 
             fid_distance = field_gen.next()
-            gmsh.model.mesh.field.add(
-                "Distance",
-                fid_distance,
-            )
-            gmsh.model.mesh.field.setNumbers(
-                fid_distance,
-                "CurvesList",
-                [line_tag],
-            )
-            gmsh.model.mesh.field.setNumber(
-                fid_distance,
-                "Sampling",
-                100,
-            )
+            gmsh.model.mesh.field.add( "Distance", fid_distance, )
+            gmsh.model.mesh.field.setNumbers( fid_distance, "CurvesList", [line_tag], )
+            gmsh.model.mesh.field.setNumber( fid_distance, "Sampling", 100, )
 
         # -----------------------------------------------------
         # Function refinement
         # -----------------------------------------------------
         if uses_expression:
             fid_result = field_gen.next()
-            gmsh.model.mesh.field.add(
-                "MathEval",
-                fid_result,
-            )
+            gmsh.model.mesh.field.add( "MathEval", fid_result, )
 
             expression = config.expression.replace(
                 "DIST",
                 f"F{fid_distance}",
             )
 
-            gmsh.model.mesh.field.setString(
-                fid_result,
-                "F",
-                expression,
-            )
+            gmsh.model.mesh.field.setString( fid_result, "F", expression, )
 
-            logger.info(
-                "General refinement %d expression: %s",
-                config_index,
-                expression,
-            )
+            logger.info( "General refinement %d expression: %s", config_index, expression, )
 
             completed_fields.append(fid_result)
             continue
@@ -997,35 +903,12 @@ def build_general_refinement(
         # Linear refinement
         # -----------------------------------------------------
         fid_result = field_gen.next()
-        gmsh.model.mesh.field.add(
-            "Threshold",
-            fid_result,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid_result,
-            "InField",
-            fid_distance,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid_result,
-            "SizeMin",
-            config.SizeMin,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid_result,
-            "SizeMax",
-            mesh_size,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid_result,
-            "DistMin",
-            0.0,
-        )
-        gmsh.model.mesh.field.setNumber(
-            fid_result,
-            "DistMax",
-            config.DistMax,
-        )
+        gmsh.model.mesh.field.add( "Threshold", fid_result, )
+        gmsh.model.mesh.field.setNumber( fid_result, "InField", fid_distance, )
+        gmsh.model.mesh.field.setNumber( fid_result, "SizeMin", config.SizeMin, )
+        gmsh.model.mesh.field.setNumber( fid_result, "SizeMax", mesh_size, )
+        gmsh.model.mesh.field.setNumber( fid_result, "DistMin", 0.0, )
+        gmsh.model.mesh.field.setNumber( fid_result, "DistMax", config.DistMax, )
 
         completed_fields.append(fid_result)
 
@@ -1149,9 +1032,7 @@ def build_combined_mesh_callback(
 
         for callback in callbacks:
             if callback is not None:
-                values.append(
-                    callback(dim, tag, x, y, z, lc)
-                )
+                values.append( callback(dim, tag, x, y, z, lc) )
 
         return min(values)
 

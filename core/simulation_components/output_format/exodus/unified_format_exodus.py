@@ -85,10 +85,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
   if os.path.isdir(file_path):
 
-    logger.info(
-      "Searching Exodus file inside directory: %s",
-      file_path
-    )
+    logger.info( "Searching Exodus file inside directory: %s", file_path )
 
     exodus_files = [
       f for f in os.listdir(file_path)
@@ -103,11 +100,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
       )
 
     if len(exodus_files) > 1:
-      logger.warning(
-        "Multiple Exodus files found. "
-        "Using first one: %s",
-        exodus_files[0]
-      )
+      logger.warning( "Multiple Exodus files found. " "Using first one: %s", exodus_files[0] )
 
     file_path = os.path.join(
       file_path,
@@ -123,10 +116,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
       f"Exodus file not found: {file_path}"
     )
 
-  logger.info(
-    "Reading Exodus file: %s",
-    file_path
-  )
+  logger.info( "Reading Exodus file: %s", file_path )
 
   # =====================================================
   # EXODUS READER SETUP
@@ -134,9 +124,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
   reader = vtkExodusIIReader()
 
-  reader.SetFileName(
-    file_path
-  )
+  reader.SetFileName( file_path )
 
   reader.UpdateInformation()
 
@@ -145,18 +133,12 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
   for i in range(
       reader.GetNumberOfPointResultArrays()
   ):
-    reader.SetPointResultArrayStatus(
-      reader.GetPointResultArrayName(i),
-      1
-    )
+    reader.SetPointResultArrayStatus( reader.GetPointResultArrayName(i), 1 )
 
   for i in range(
       reader.GetNumberOfElementResultArrays()
   ):
-    reader.SetElementResultArrayStatus(
-      reader.GetElementResultArrayName(i),
-      1
-    )
+    reader.SetElementResultArrayStatus( reader.GetElementResultArrayName(i), 1 )
 
   reader.SetGenerateGlobalNodeIdArray(True)
 
@@ -171,15 +153,10 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
   info = reader.GetOutputInformation(0)
 
   time_steps = list(
-    info.Get(
-      vtkStreamingDemandDrivenPipeline.TIME_STEPS()
-    )
+    info.Get( vtkStreamingDemandDrivenPipeline.TIME_STEPS() )
   )
 
-  logger.info(
-    "Found %d time steps",
-    len(time_steps)
-  )
+  logger.info( "Found %d time steps", len(time_steps) )
 
   results = SimulationResults()
 
@@ -189,15 +166,9 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
   for t in time_steps:
 
-    logger.debug(
-      "Processing time %s",
-      t
-    )
+    logger.debug( "Processing time %s", t )
 
-    info.Set(
-      vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(),
-      t
-    )
+    info.Set( vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), t )
 
     reader.Update()
 
@@ -216,10 +187,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
     ]
 
     if len(leaf_meshes) == 0:
-      logger.warning(
-        "No valid leaf meshes at time %s",
-        t
-      )
+      logger.warning( "No valid leaf meshes at time %s", t )
 
       continue
 
@@ -231,10 +199,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
         combined_mesh,
         "points"
     ):
-      logger.warning(
-        "Skipping empty mesh at time %s",
-        t
-      )
+      logger.warning( "Skipping empty mesh at time %s", t )
 
       continue
 
@@ -271,9 +236,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
       list(combined_mesh.cell_data.keys())
     )
 
-  logger.info(
-    "Exodus file loaded successfully."
-  )
+  logger.info( "Exodus file loaded successfully." )
 
   # =====================================================
   # CLEANUP
@@ -283,27 +246,17 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
     try:
 
-      shutil.rmtree(
-        os.path.dirname(file_path)
-      )
+      shutil.rmtree( os.path.dirname(file_path) )
 
-      logger.info(
-        "Removed temp directory"
-      )
+      logger.info( "Removed temp directory" )
 
     except Exception as e:
 
-      logger.warning(
-        "Cleanup failed: %s",
-        e
-      )
+      logger.warning( "Cleanup failed: %s", e )
 
   else:
 
-    logger.info(
-      "Kept user file: %s",
-      file_path
-    )
+    logger.info( "Kept user file: %s", file_path )
 
   return results
 

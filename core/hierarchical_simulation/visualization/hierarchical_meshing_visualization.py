@@ -330,11 +330,7 @@ def _add_block_panel(
     for label, dimension in groups:
 
         plotter.add_checkbox_button_widget(
-            _group_visibility_callback(
-                plotter,
-                actors,
-                dimension,
-            ),
+            _group_visibility_callback( plotter, actors, dimension, ),
             value=True,
             position=(start_x, y),
             size=18,
@@ -360,10 +356,7 @@ def _add_block_panel(
         dimension = data["dimension"]
 
         plotter.add_checkbox_button_widget(
-            _visibility_callback(
-                plotter,
-                data["actor"],
-            ),
+            _visibility_callback( plotter, data["actor"], ),
             value=True,
             position=(start_x, y),
             size=16,
@@ -576,14 +569,8 @@ def _enable_hierarchical_point_mode(
         pickable_window=False,
     )
 
-    _set_info_text(
-        plotter, (0, 0),
-        "Mesh 1\nPOINT mode: left-click a mesh point\nX/Y/Z appear here"
-    )
-    _set_info_text(
-        plotter, (0, 1),
-        "Mesh 2\nPOINT mode: left-click a mesh point\nX/Y/Z appear here"
-    )
+    _set_info_text( plotter, (0, 0), "Mesh 1\nPOINT mode: left-click a mesh point\nX/Y/Z appear here" )
+    _set_info_text( plotter, (0, 1), "Mesh 2\nPOINT mode: left-click a mesh point\nX/Y/Z appear here" )
 
 
 def _enable_cell_mode(plotter, mesh, subplot, mesh_label, omit_last_blocks):
@@ -680,23 +667,13 @@ def plot_hierarchical_meshes_3d(
         omit_last_blocks=omit_last_blocks,
     )
 
-    plotter.add_text(
-        "Hierarchical mesh 1 (bigger)",
-        position="upper_edge",
-        font_size=14,
-    )
+    plotter.add_text( "Hierarchical mesh 1 (bigger)", position="upper_edge", font_size=14, )
 
     plotter.show_axes()
 
     if show_block_controls:
 
-        _add_block_panel(
-            plotter,
-            actors1,
-            subplot=(0, 0),
-            start_x=10,
-            start_y=700,
-        )
+        _add_block_panel( plotter, actors1, subplot=(0, 0), start_x=10, start_y=700, )
 
     # =================================================================
     # Mesh 2
@@ -712,23 +689,13 @@ def plot_hierarchical_meshes_3d(
         omit_last_blocks=omit_last_blocks,
     )
 
-    plotter.add_text(
-        "Hierarchical mesh 2 (smaller)",
-        position="upper_edge",
-        font_size=14,
-    )
+    plotter.add_text( "Hierarchical mesh 2 (smaller)", position="upper_edge", font_size=14, )
 
     plotter.show_axes()
 
     if show_block_controls:
 
-        _add_block_panel(
-            plotter,
-            actors2,
-            subplot=(0, 1),
-            start_x=10,
-            start_y=700,
-        )
+        _add_block_panel( plotter, actors2, subplot=(0, 1), start_x=10, start_y=700, )
 
     # =================================================================
     # ParaView-like inspection
@@ -737,12 +704,7 @@ def plot_hierarchical_meshes_3d(
     if enable_inspection:
         # Point picking is the default inspection mode.  P/C switch the
         # currently active renderer between point and cell inspection.
-        _enable_hierarchical_point_mode(
-            plotter,
-            mesh1,
-            mesh2,
-            omit_last_blocks,
-        )
+        _enable_hierarchical_point_mode( plotter, mesh1, mesh2, omit_last_blocks, )
 
         def point_mode_active_subplot():
             index = getattr(plotter, "_active_renderer_index", 0)

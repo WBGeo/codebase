@@ -559,11 +559,7 @@ class ExodusInput:
                             )
                         )
                     except IndexError:
-                        logger.warning(
-                            "Invalid face definition for element "
-                            "type '%s'",
-                            cell_type,
-                        )
+                        logger.warning( "Invalid face definition for element " "type '%s'", cell_type, )
                         continue
 
                     face_lookup[face_nodes] = (
@@ -635,10 +631,7 @@ class ExodusInput:
                 side_list.append(exodus_side)
 
             if not elem_list:
-                logger.debug(
-                    "Boundary block '%s' produced no sideset entries.",
-                    cell_type,
-                )
+                logger.debug( "Boundary block '%s' produced no sideset entries.", cell_type, )
                 continue
 
             side_sets.append(
@@ -934,16 +927,9 @@ class ExodusInput:
             if conn.ndim == 1:
                 conn = conn.reshape(-1, 1)
 
-            self.validate_connectivity(
-                conn,
-                num_nodes,
-                str(block.type),
-            )
+            self.validate_connectivity( conn, num_nodes, str(block.type), )
 
-            self.exo_elem_type(
-                block.type,
-                conn.shape[1],
-            )
+            self.exo_elem_type( block.type, conn.shape[1], )
 
         # ==========================================================
         # Create NetCDF Exodus file
@@ -972,68 +958,35 @@ class ExodusInput:
             # Dimensions
             # ======================================================
 
-            ds.createDimension(
-                "len_string",
-                self.MAX_STR_LENGTH + 1,
-            )
+            ds.createDimension( "len_string", self.MAX_STR_LENGTH + 1, )
 
-            ds.createDimension(
-                "len_line",
-                self.MAX_LINE_LENGTH + 1,
-            )
+            ds.createDimension( "len_line", self.MAX_LINE_LENGTH + 1, )
 
-            ds.createDimension(
-                "four",
-                4,
-            )
+            ds.createDimension( "four", 4, )
 
-            ds.createDimension(
-                "time_step",
-                None,
-            )
+            ds.createDimension( "time_step", None, )
 
-            ds.createDimension(
-                "num_dim",
-                num_dim,
-            )
+            ds.createDimension( "num_dim", num_dim, )
 
-            ds.createDimension(
-                "num_nodes",
-                num_nodes,
-            )
+            ds.createDimension( "num_nodes", num_nodes, )
 
-            ds.createDimension(
-                "num_elem",
-                num_elem,
-            )
+            ds.createDimension( "num_elem", num_elem, )
 
-            ds.createDimension(
-                "num_el_blk",
-                num_elem_blk,
-            )
+            ds.createDimension( "num_el_blk", num_elem_blk, )
 
             if num_node_sets > 0:
 
-                ds.createDimension(
-                    "num_node_sets",
-                    num_node_sets,
-                )
+                ds.createDimension( "num_node_sets", num_node_sets, )
 
             if num_side_sets > 0:
 
-                ds.createDimension(
-                    "num_side_sets",
-                    num_side_sets,
-                )
+                ds.createDimension( "num_side_sets", num_side_sets, )
 
             # ======================================================
             # QA records
             # ======================================================
 
-            ds.createDimension(
-                "num_qa_rec",
-                1,
-            )
+            ds.createDimension( "num_qa_rec", 1, )
 
             qa_records = ds.createVariable(
                 "qa_records",
@@ -1154,10 +1107,7 @@ class ExodusInput:
                     "Z",
                 ]
 
-            self.write_string_array(
-                coor_names,
-                coordinate_names,
-            )
+            self.write_string_array( coor_names, coordinate_names, )
 
             # ======================================================
             # Node number map
@@ -1216,10 +1166,7 @@ class ExodusInput:
                 ("num_el_blk",),
             )
 
-            eb_prop1.setncattr(
-                "name",
-                "ID",
-            )
+            eb_prop1.setncattr( "name", "ID", )
 
             eb_prop1[:] = np.arange(
                 1,
@@ -1251,14 +1198,9 @@ class ExodusInput:
                     block
                 )
 
-                block_names.append(
-                    f"block_{i}_{cell_type}"
-                )
+                block_names.append( f"block_{i}_{cell_type}" )
 
-            self.write_string_array(
-                eb_names,
-                block_names,
-            )
+            self.write_string_array( eb_names, block_names, )
 
             # ======================================================
             # Element block connectivity
@@ -1296,15 +1238,9 @@ class ExodusInput:
                 # Exodus dimensions are block-specific
                 # --------------------------------------------------
 
-                ds.createDimension(
-                    f"num_el_in_blk{ib}",
-                    num_el,
-                )
+                ds.createDimension( f"num_el_in_blk{ib}", num_el, )
 
-                ds.createDimension(
-                    f"num_nod_per_el{ib}",
-                    num_nod,
-                )
+                ds.createDimension( f"num_nod_per_el{ib}", num_nod, )
 
                 connect = ds.createVariable(
                     f"connect{ib}",
@@ -1379,10 +1315,7 @@ class ExodusInput:
                     ("num_side_sets",),
                 )
 
-                ss_prop1.setncattr(
-                    "name",
-                    "ID",
-                )
+                ss_prop1.setncattr( "name", "ID", )
 
                 ss_prop1[:] = np.asarray(
                     [
@@ -1406,10 +1339,7 @@ class ExodusInput:
                     for ss in side_sets
                 ]
 
-                self.write_string_array(
-                    ss_names,
-                    side_names,
-                )
+                self.write_string_array( ss_names, side_names, )
 
                 for i, ss in enumerate(
                     side_sets,
@@ -1439,10 +1369,7 @@ class ExodusInput:
                         elem_ids
                     )
 
-                    ds.createDimension(
-                        f"num_side_ss{i}",
-                        nside,
-                    )
+                    ds.createDimension( f"num_side_ss{i}", nside, )
 
                     elem_ss = ds.createVariable(
                         f"elem_ss{i}",
@@ -1495,10 +1422,7 @@ class ExodusInput:
                     ("num_node_sets",),
                 )
 
-                ns_prop1.setncattr(
-                    "name",
-                    "ID",
-                )
+                ns_prop1.setncattr( "name", "ID", )
 
                 ns_prop1[:] = np.arange(
                     1,
@@ -1515,10 +1439,7 @@ class ExodusInput:
                     ),
                 )
 
-                self.write_string_array(
-                    ns_names,
-                    node_set_names,
-                )
+                self.write_string_array( ns_names, node_set_names, )
 
                 for i, set_name in enumerate(
                     node_set_names,
@@ -1561,10 +1482,7 @@ class ExodusInput:
                         node_ids
                     )
 
-                    ds.createDimension(
-                        f"num_nod_ns{i}",
-                        n_nodes_in_set,
-                    )
+                    ds.createDimension( f"num_nod_ns{i}", n_nodes_in_set, )
 
                     node_list = ds.createVariable(
                         f"node_ns{i}",
