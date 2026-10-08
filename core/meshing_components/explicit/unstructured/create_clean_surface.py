@@ -898,7 +898,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
             # 1. reference/fault surfaces
             # 2. surfaces for which filtered == 0
             # Fault/reference
-            if file in reference_surface_id_to_cleaned_index.values():
+            if file in reference_surface_id_to_cleaned_index:
                 #print(f"SKIP {file}: reference surface")
                 continue
 

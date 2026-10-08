@@ -443,7 +443,7 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: Optional[
     return surfaces, bounds
 
 
-def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indices: Dict[int, int], wells: List[Tuple[float, ...]],
+def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surface_positions_or_tags: Dict[int, int], wells: List[Tuple[float, ...]],
     extra_planes: List[Tuple[float, ...]], source_points: List[Tuple[float, ...]], mine_shafts: List[Dict[str, Any]], ellipses: List[Dict[str, Any]] = [],
     triangulations: List[np.ndarray] = [] , mesh_size: float = 20.0, curve_mesh_size: float = 5.0, refinement: Optional[Refinement] = None,) -> Tuple[List[Tuple[int, int]], List[List[Tuple[int, int]]],
     List[int], List[int], List[int], Dict[int, List[int]], List[int]]:
@@ -459,7 +459,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     Args:
         surfaces (List[int]): GMSH surface tags to be fragmented.
         extent (List[float]): Model bounding box given as (x_min, x_max, y_min, y_max, z_min, z_max).
-        ref_surface_indices (Dict[int, int]): Mapping that identifies reference surfaces (faults) and their indices
+        reference_surface_positions_or_tags (Dict[int, int]): Mapping that identifies reference surfaces (faults) and their indices
                         in the `surfaces` list. Used to preserve and track fault surfaces.
         wells (List[Tuple[float, ...]]): Well trajectories defined by sequences of (x, y, z) coordinates. Each tuple
                        length must be a multiple of 3.
@@ -628,7 +628,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             surface_mine = gmsh.model.occ.addPlaneSurface([loop])
             surfaces.append(surface_mine)
 
-            ref_surface_indices[len(surfaces) - 1] = len(surfaces) - 1
+            reference_surface_positions_or_tags[len(surfaces) - 1] = len(surfaces) - 1
             extra_planes_surface_indices.add(len(surfaces) - 1)
 
         gmsh.model.occ.synchronize()
@@ -700,7 +700,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             # Store for fragmentation
 
             surfaces.append(ellipse_surface)
-            ref_surface_indices[len(surfaces) - 1] = len(surfaces) - 1
+            reference_surface_positions_or_tags[len(surfaces) - 1] = len(surfaces) - 1
 
             ellipse_surface_indices.add(len(surfaces) - 1)
 
@@ -1061,7 +1061,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                         surf
                     )
 
-                    ref_surface_indices[
+                    reference_surface_positions_or_tags[
                         surf
                     ] = surf
 
@@ -1151,7 +1151,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                         surf
                     )
 
-                    ref_surface_indices[
+                    reference_surface_positions_or_tags[
                         surf
                     ] = surf
 
@@ -1424,9 +1424,9 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     # FIND FAULT SURFACES
     #########################
     counter=0
-    if ref_surface_indices:
+    if reference_surface_positions_or_tags:
 
-        for _, reference_position_or_tag in ref_surface_indices.items():
+        for _, reference_position_or_tag in reference_surface_positions_or_tags.items():
                 # SKIP TRIANGULATED SURFACES HERE
 
                 if triangulations is not None and len(triangulations) > 0:
@@ -1569,8 +1569,8 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     ##############################################################
     tagsss: List[int] = []  # List to store physical groups
 
-    # Handle the case when there are ref_surface_indices
-    if ref_surface_indices:
+    # Handle the case when there are reference_surface_positions_or_tags
+    if reference_surface_positions_or_tags:
         # Mesh generation for surfaces
         gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
         gmsh.model.mesh.removeDuplicateNodes()
@@ -1600,7 +1600,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
         # Loop through fault surfaces
 
-        for _, reference_position_or_tag in ref_surface_indices.items():
+        for _, reference_position_or_tag in reference_surface_positions_or_tags.items():
             # SKIP TRIANGULATED SURFACES HERE
 
             if triangulations is not None and len(triangulations) > 0:
