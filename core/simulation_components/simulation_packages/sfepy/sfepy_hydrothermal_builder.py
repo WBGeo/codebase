@@ -30,6 +30,7 @@ defined in this file) so it and build_custom_sfepy_problem's
 CustomSfepyBuilder output register as the same Workbench type -- run_simulation
 is one component accepting either, rather than two separate Run components.
 """
+import importlib.util
 import logging
 import re
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -180,12 +181,14 @@ class RockUnitProperties(BaseModel):
 #:                  floating-point precision), no tuning needed. Does not
 #:                  scale to very large meshes -- expect multi-minute solves
 #:                  at full production resolution. Use for small/debug meshes.
-#: - "iterative" -- scipy_iterative (BiCGStab, ILU-preconditioned + diagonal
-#:                  scaling). DEFAULT. Scales much better to large meshes.
+#: - "iterative" -- scipy_iterative (LGMRES, ILU-preconditioned + diagonal
+#:                  scaling). No extra PETSc dependency; useful locally.
 #:                  As with any iterative method, verify convergence (check
 #:                  the printed residual) for new rock/fluid parameter sets
 #:                  or a manually-supplied `t1` that deviates a lot from the
 #:                  diffusion timescale.
+#: - "petsc"     -- PETSc FGMRES with ASM/ILU (or GAMG for faulted pressure).
+#:                  DEFAULT. Requires petsc4py and a compatible PETSc/MPI install.
 LINEAR_SOLVERS = ("direct", "iterative", "petsc")
 
 
@@ -248,14 +251,14 @@ def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
 
 def check_mesh_has_no_engineering_objects(mesh_results: MeshResults) -> None:
     """
-    Reject the mesh if it contains line or vertex cells.
+    Reject mesh blocks with dimension below 2 (lines and vertices).
     """
 
     bad = []
 
     for b in mesh_results.elements:
 
-        if b.type in ("line", "vertex"):
+        if b.dim < 2:
             bad.append(b)
 
     if bad:
@@ -532,6 +535,12 @@ class HydrothermalProblemBuilder:
     Material regions and boundary regions are inferred automatically from
     the mesh and structural model.
 
+    The default linear_solver="petsc" requires petsc4py and a compatible
+    PETSc/MPI installation (typically available in Docker or via conda-forge
+    on supported Unix-like platforms). Native Windows installation is not
+    generally supported. Use linear_solver="iterative" for a SciPy-based
+    alternative without the PETSc dependency.
+
     Temperature is coupled to the Darcy flow: pressure is solved first, a
     Darcy velocity is computed from its gradient, and that velocity enters
     the temperature equation as a `dw_advect_div_free` advection term.
@@ -606,9 +615,13 @@ class HydrothermalProblemBuilder:
     p_bottom: float = 100e4
     t_top: float = 10.0
     t_bottom: float = 60.0
-    # Internal default chosen to match the available GOLEM PETSc strategy.
+    # Deployment-oriented default for GOLEM comparisons; requires petsc4py.
+    # For environments without PETSc, explicitly select "iterative" (SciPy).
     linear_solver: str = "petsc"
     linear_solver_i_max: int = 500
+    # With Newton i_max=1, the inner linear solve controls the final accuracy.
+    # High-contrast fault models using SciPy's iterative backend may require
+    # per-model tolerance tuning; inspect the reported linear residuals.
     linear_solver_eps_r: float = 1e-8
     print_linear_residuals: bool = False
 
@@ -621,9 +634,16 @@ class HydrothermalProblemBuilder:
         Raises:
             ValueError: linear_solver isn't a valid LINEAR_SOLVERS entry, or
                 mesh_results.mesh_type is None (see that check's message for why).
+            ImportError: PETSc was selected but petsc4py is unavailable.
         """
         if self.linear_solver not in LINEAR_SOLVERS:
             raise ValueError(f"linear_solver must be one of {LINEAR_SOLVERS}, got {self.linear_solver!r}")
+        if self.linear_solver == "petsc" and importlib.util.find_spec("petsc4py") is None:
+            raise ImportError(
+                "linear_solver='petsc' requires petsc4py, which is not installed. "
+                "Install PETSc/petsc4py (see documentation), or pass "
+                "linear_solver='iterative' to use SciPy without PETSc."
+            )
 
         check_mesh_has_known_type(self.mesh_results)
         self.mesh_type = self.mesh_results.mesh_type
@@ -847,7 +867,8 @@ def setup_precond(mtx, context):
             ilu = spla.spilu(shifted, drop_tol=1e-4, fill_factor=10,
                              permc_spec='COLAMD', diag_pivot_thresh=0.0)
         except RuntimeError:
-            print('warning: ILU is singular; using Jacobi', flush=True)
+            import logging
+            logging.getLogger(__name__).warning('ILU is singular; using Jacobi')
             return spla.LinearOperator(
                 mtx.shape, matvec=lambda b: Dinv @ b, dtype=mtx.dtype,
             )
@@ -1151,7 +1172,6 @@ equations = {{
                     f"def {fn_name}(ts, coors, mode=None, problem=None, **kwargs):\n"
                     f"    if mode != 'qp':\n"
                     f"        return\n"
-                    f"    # After dividing all terms by rho_f*c_f, the\n"
                     f"    # After normalization the advection coefficient is Darcy flux q.\n"
                     f"    v_per_cell = _velocity_data['v{gid}']\n"
                     f"    n_qp = coors.shape[0] // v_per_cell.shape[0]\n"
@@ -1209,11 +1229,12 @@ variables = {{
 {chr(10).join(velocity_fn_defs)}
 {precond_fn_def}
 def ic_temp(coor, ic=None):
-    # Use the structural-model extent, exactly like GOLEM's ParsedFunction.
-    z_min, z_max = {float(self.geomodel_result.structural_frame.grid.extent[4])!r}, {float(self.geomodel_result.structural_frame.grid.extent[5])!r}
+    # Cell-centered implicit meshes have nodes inset from the nominal domain.
+    # Match the initial profile to the actual temperature DOF boundaries.
+    z_min = float(np.min(coor[:, 2]))
+    z_max = float(np.max(coor[:, 2]))
     T_top, T_bottom = {self.t_top!r}, {self.t_bottom!r}
-    gradient = (T_top - T_bottom) / (z_max - z_min)
-    return gradient * (coor[:, 2] - z_min) + T_bottom
+    return T_bottom + (T_top - T_bottom) * (coor[:, 2] - z_min) / (z_max - z_min)
 
 functions = {{
     'ic_temp': (ic_temp,),

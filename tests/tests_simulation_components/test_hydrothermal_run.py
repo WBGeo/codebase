@@ -206,13 +206,21 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
 # -----------------------------------------------------------------------------
 
 def test_hydrothermal_builder_default_solver_is_petsc(
-    model1_implicit_mesh, model1_structural_result
+    monkeypatch, model1_implicit_mesh, model1_structural_result
 ):
     """The current production default is PETSc.
 
     Keep this as a cheap configuration test rather than making every SfePy
     end-to-end test require petsc4py/PETSc in CI.
     """
+    import core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder as builder_module
+
+    # Verify the default without requiring PETSc in the test environment.
+    original_find_spec = builder_module.importlib.util.find_spec
+    monkeypatch.setattr(
+        builder_module.importlib.util, "find_spec",
+        lambda name: object() if name == "petsc4py" else original_find_spec(name),
+    )
     builder = HydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
@@ -328,9 +336,9 @@ def test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_propert
 ):
     """
     include_flow=False + homogeneous rock properties across all lithologies
-    -> the initial condition already IS the exact steady-state solution, so
-    the domain-mean temperature must stay exactly constant across every saved
-    step (a real correctness check, not just "did it run").
+    -> the initial condition is the steady linear profile on actual mesh nodes.
+    Check every nodal temperature, not just the mean (which can hide symmetric
+    top/bottom boundary drift).
     """
     homogeneous = {
         name: RockUnitProperties(name=name, porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6)
@@ -345,6 +353,16 @@ def test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_propert
         num_steps=2,
     )
     result = run_simulation_sfepy(builder)
+    # A mean-only check misses equal-and-opposite top/bottom temperature drift.
+    # Compare every saved temperature field to the steady linear profile on
+    # the *actual* mesh-node z extent, including inset implicit mesh nodes.
+    for time, data in result.node_data_by_time.items():
+        z = np.asarray(result.nodes_by_time[time])[:, 2]
+        expected = builder.t_bottom + (builder.t_top - builder.t_bottom) * (
+            (z - z.min()) / (z.max() - z.min())
+        )
+        np.testing.assert_allclose(np.asarray(data["T"]).reshape(-1), expected, atol=1e-4, rtol=0)
+
     means = [float(np.mean(data["T"])) for data in result.node_data_by_time.values()]
     assert means[0] == pytest.approx(35.0, abs=1e-6)  # exact linear T_top/T_bottom midpoint
     for m in means[1:]:

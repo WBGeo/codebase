@@ -11,6 +11,7 @@ Depends on export_mesh_results_to_exodus (mesh export/format-conversion
 logic, owned by meshing, not simulation).
 """
 import io
+import types
 import logging
 import os
 import re
@@ -212,12 +213,6 @@ def _run_sfepy_input_file(
             if block.dim == 3
         ]
 
-
-        volume_elements = [
-            block for block in mesh_results.elements
-            if block.dim == 3
-        ]
-
         if len(volume_elements) != len(mesh_results.elements):
             empty_boundary_blocks = [
                 CellBlock( cell_type="triangle", data=np.empty((0, 3), dtype=int), )
@@ -244,12 +239,19 @@ def _run_sfepy_input_file(
             f.write(exo_buffer.getbuffer())
         from meshio.exodus import _exodus
 
-        # meshio compatibility fix:
-        # Keep Exodus/MOOSE element type as TETRA4,
-        # but make meshio interpret it internally as "tetra".
-        _exodus.exodus_to_meshio_type["TETRA4"] = "tetra"
-        _exodus.exodus_to_meshio_type["TET4"] = "tetra"
-        mesh = meshio.read(tmp_exo_path, file_format="exodus")
+        # Use a private copy of meshio's Exodus element mapping for the
+        # TETRA4/TET4 aliases emitted by our exporter. Do not mutate meshio's
+        # process-global dictionary (which other readers may also use).
+        reader_globals = dict(_exodus.read.__globals__)
+        element_types = dict(_exodus.exodus_to_meshio_type)
+        element_types.update({"TETRA4": "tetra", "TET4": "tetra"})
+        reader_globals["exodus_to_meshio_type"] = element_types
+        local_exodus_reader = types.FunctionType(
+            _exodus.read.__code__, reader_globals,
+            _exodus.read.__name__, _exodus.read.__defaults__,
+            _exodus.read.__closure__,
+        )
+        mesh = local_exodus_reader(tmp_exo_path)
         mat_ids = []
         offset = 0
         for i, cell_block in enumerate(mesh.cells):

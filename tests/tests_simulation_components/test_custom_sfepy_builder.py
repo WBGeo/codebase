@@ -150,3 +150,16 @@ def test_custom_file_can_reference_fault_group(model2_implicit_mesh, model2_faul
         fault_zone_n_voxels=1,
     )
     assert builder.fault_group_id == fault_group_id
+
+
+def test_surface_cell_is_not_rejected_as_engineering_object(model1_implicit_mesh):
+    """The dimension-based guard rejects lines/vertices, not surface cells."""
+    from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+        check_mesh_has_no_engineering_objects,
+    )
+
+    surface = meshio.CellBlock("triangle", np.array([[0, 1, 2]]))
+    mesh_with_surface = model1_implicit_mesh.model_copy(update={
+        "elements": list(model1_implicit_mesh.elements) + [surface],
+    })
+    check_mesh_has_no_engineering_objects(mesh_with_surface)
