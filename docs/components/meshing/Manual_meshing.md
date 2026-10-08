@@ -727,7 +727,7 @@ The current `Refinement` object supports:
     mine-shaft axes.
 -   **`triangulations`** --- refinement around triangulated surfaces.
 -   **`ellipses`** --- refinement around elliptical surfaces.
--   **`extraplanes`** --- refinement around the additional planes
+-   **`extra_planes`** --- refinement around the additional planes
     supplied through `extra_planes`.
 -   **`faults`** --- refinement around fault surfaces.
 -   **`general`** --- refinement around one user-defined point or a
@@ -808,14 +808,14 @@ refinement.faults = FaultRefinement(
     DistMax=100.0,
 )
 
-refinement.extraplanes = ExtraPlaneRefinement(
+refinement.extra_planes = ExtraPlaneRefinement(
     SizeMin=8.0,
     SizeMax=90.0,
     DistMin=40.0,
     DistMax=100.0,
 )
 
-refinement.ellipses = ExtraPlaneRefinement(
+refinement.ellipses = EllipseRefinement(
     SizeMin=8.0,
     SizeMax=90.0,
     DistMin=40.0,
@@ -876,7 +876,7 @@ refinement.faults = FaultRefinement(
 refinement.triangulations = TriangulationRefinement(
     SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0
 )
-refinement.extraplanes = ExtraPlaneRefinement(
+refinement.extra_planes = ExtraPlaneRefinement(
     SizeMin=8.0, SizeMax=90.0, DistMin=40.0, DistMax=100.0
 )
 refinement.general = GeneralRefinement(

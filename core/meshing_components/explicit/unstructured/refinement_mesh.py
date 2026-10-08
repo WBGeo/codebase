@@ -1,8 +1,7 @@
-from typing import Union, Optional
-from pydantic import BaseModel
-from py_api_wbgeo.nodesapi import wbgeo_type
 from typing import List, Optional, Tuple, Union
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
+from py_api_wbgeo.nodesapi import wbgeo_type
 
 # ------------------------
 # Wells
@@ -179,6 +178,21 @@ class GeneralRefinement(BaseModel):
 # ------------------------
 @wbgeo_type(name="Mesh Refinement", identifier="Refinement")
 class Refinement(BaseModel):
+    """Configuration of optional mesh-refinement regions and strategies.
+
+    Each field enables refinement around the corresponding geometric feature.
+    Linear strategies specify element sizes and distance thresholds, while
+    function strategies use a Gmsh mesh-size expression. The ``general`` field
+    accepts one or multiple point- or line-based refinements.
+
+    ``extra_planes`` is the preferred Python attribute name. The legacy
+    ``extraplanes`` input name remains accepted for compatibility.
+    """
+
+    class Config:
+        allow_population_by_field_name = True  # Pydantic v1
+        populate_by_name = True  # Pydantic v2
+
     wells: Optional[
         Union[LinearWellRefinement, FunctionWellRefinement]
     ] = None
@@ -201,5 +215,10 @@ class Refinement(BaseModel):
 
     triangulations: Optional[TriangulationRefinement] = None
     ellipses: Optional[EllipseRefinement] = None
-    extraplanes: Optional[ExtraPlaneRefinement] = None
+    extra_planes: Optional[ExtraPlaneRefinement] = Field(default=None, alias="extraplanes")
+
+    @property
+    def extraplanes(self) -> Optional[ExtraPlaneRefinement]:
+        """Legacy attribute alias for :attr:`extra_planes`."""
+        return self.extra_planes
     faults: Optional[FaultRefinement] = None

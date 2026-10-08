@@ -230,7 +230,7 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 #refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
 #refinement.triangulations = TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0)
 #refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
-#refinement.extraplanes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
+#refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
 #refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
 #    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
 
@@ -271,7 +271,7 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 #    sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))",),
 #    triangulations=TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0,),
 #    ellipses=EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0,),
-#    extraplanes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
+#    extra_planes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
 #    general=[
 #        GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),], SizeMin=4.0, DistMax=300.0,),
 #        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
@@ -804,7 +804,7 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 #        wells=LinearWellRefinement(
 #            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
 #        ),
-#        extraplanes=ExtraPlaneRefinement(
+#        extra_planes=ExtraPlaneRefinement(
 #            SizeMin=5.0, SizeMax=30.0, DistMin=10.0, DistMax=60.0,
 #        ),
 #    )
@@ -926,7 +926,7 @@ refinement.shafts = LinearShaftRefinement(
 refinement.ellipses = EllipseRefinement(
     SizeMin=20.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0
 )
-refinement.extraplanes = ExtraPlaneRefinement(
+refinement.extra_planes = ExtraPlaneRefinement(
     SizeMin=20.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0
 )
 refinement.triangulations = TriangulationRefinement(

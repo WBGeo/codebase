@@ -242,6 +242,7 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
 #    #interpolated_surface_csv_dir="model2_interpolated_surfaces",
 
 )
+plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 
 # Explicit structured mesh
 # NOTE: Currently structured mesh does not support models with faults
@@ -300,7 +301,7 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 #refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
 #refinement.triangulations = TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0)
 #refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
-#refinement.extraplanes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
+#refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
 #refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
 #    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
 
@@ -341,7 +342,7 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 #    sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))",),
 #    triangulations=TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0,),
 #    ellipses=EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0,),
-#    extraplanes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
+#    extra_planes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
 #    general=[
 #        GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),], SizeMin=4.0, DistMax=300.0,),
 #        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
@@ -850,7 +851,7 @@ model2_reservoir_refinement = Refinement(
         DistMin=10.0,
         DistMax=60.0,
     ),
-    extraplanes=ExtraPlaneRefinement(
+    extra_planes=ExtraPlaneRefinement(
         SizeMin=5.0,
         SizeMax=30.0,
         DistMin=10.0,
