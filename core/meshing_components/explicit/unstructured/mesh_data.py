@@ -27,7 +27,37 @@ from enum import Enum, StrEnum
 
 
 def _load_csv_surface_coordinates(surface_csv_dir):
-    """Read and validate CSV surface coordinates once for extent and meshing."""
+    """Load surface point coordinates from CSV files for extent and meshing.
+
+    Each CSV represents one surface and contains a header with ``x``, ``y``,
+    and ``z`` columns, followed by one 3D coordinate point per row. Fault and
+    geological surfaces share this format; for example, ``fault1.csv`` and
+    ``surface_0.csv`` both contain::
+
+        x,y,z
+        1598.8658142089844,-40.0,1019.999991966042
+        1615.1783417083404,-40.0,996.7021942749328
+
+    Column names are matched case-insensitively after stripping whitespace.
+    Other columns, if present, are ignored. Non-numeric or non-finite coordinate
+    rows are discarded. Each file must retain at least three valid points.
+    CSV files are processed in filename order; hidden files and non-CSV files
+    are ignored.
+
+    Args:
+        surface_csv_dir: Directory containing one CSV file per surface.
+            A string or path-like value is accepted; ``~`` is expanded.
+
+    Returns:
+        list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
+        finite floating-point coordinate arrays of shape ``(N, 3)``.
+
+    Raises:
+        ValueError: If the directory does not exist, contains no CSV files,
+            a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
+            valid coordinate rows remain in a file.
+        pandas.errors.ParserError: If pandas cannot parse a CSV file.
+    """
     csv_root = Path(surface_csv_dir).expanduser()
     if not csv_root.is_dir():
         raise ValueError(
@@ -1751,15 +1781,27 @@ WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
-    """
-    Load well trajectories from a CSV file.
+    """Load well trajectories grouped by well identifier.
+
+    CSV rows have no header and use ``id,x,y,z`` (four columns), or
+    ``id,x,y,z,key`` (five columns) when ``key_hierarchical=True``.
+    Repeated IDs supply consecutive 3D points for the same well; each
+    well must contain at least two points. Blank lines and lines beginning
+    with ``#`` are ignored.
+
+    Args:
+        well_file: Path to the well CSV file.
+        key_hierarchical: Whether to group wells by an additional key.
+            Hierarchical output is organized under keys 1 and 2.
 
     Returns:
-        If key_hierarchical=False:
-            List[Tuple] → [(x1,y1,z1,x2,y2,z2,...), ...]
-        If key_hierarchical=True:
-            Dict[int, List[Tuple]] → {1: [...], 2: [...]}
-    """
+        Without hierarchy, a list of flattened coordinate tuples
+        ``(x1, y1, z1, x2, y2, z2, ...)``. With hierarchy, a dictionary
+        mapping keys 1 and 2 to lists of those tuples.
+
+    Raises:
+        ValueError: If a row has the wrong column count, coordinates
+            are non-numeric, or a well has fewer than two points."""
 
     named_well_data = {}
 
@@ -1857,7 +1899,24 @@ SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color
                  return_name='Sources',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def load_sources_from_csv(source_file: SourceCSVDataType, key_hierarchical: bool = False) -> SourcesData:
-    """Load sources. Hierarchical CSV format is: id,x,y,z,key (key must be 1 or 2)."""
+    """Load individual point sources from a CSV file.
+
+    CSV rows have no header and use ``id,x,y,z`` or, in hierarchical
+    mode, ``id,x,y,z,key``. Hierarchy keys must be 1 or 2. Blank lines
+    and comment lines beginning with ``#`` are ignored.
+
+    Args:
+        source_file: Path to the source CSV file.
+        key_hierarchical: Whether to read the final hierarchy-key column.
+
+    Returns:
+        A list of ``(x, y, z)`` tuples, or a dictionary mapping
+        keys 1 and 2 to lists of such tuples when hierarchical.
+
+    Raises:
+        ValueError: For incorrect column counts, invalid/non-finite
+            coordinates, invalid hierarchy keys, or duplicate source IDs
+            within the same hierarchy group."""
     named = {}
     with open(source_file, "r") as f:
         for line_no, line in enumerate(f, 1):
@@ -1902,7 +1961,30 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     return_name='Ellipses',
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: bool = False) -> EllipseData:
-    """Load ellipses; hierarchical rows append a final key (1 or 2)."""
+    """Load ellipse definitions from a CSV file.
+
+    Rows have no header. Accepted numeric fields (without an optional
+    leading ID) are ``cx,cy,cz,r1,r2``, optionally followed by
+    ``angle1,angle2``, then ``zAxis_x,zAxis_y,zAxis_z``, then
+    ``xAxis_x,xAxis_y,xAxis_z`` (5, 7, 10, or 13 fields).
+    An optional leading ID is accepted for each layout. Hierarchical
+    mode requires an additional final ``key`` column (1 or 2).
+    Omitted angles default to 0 and 2*pi; omitted zAxis defaults to
+    (0, 0, 1). Blank lines and ``#`` comments are ignored.
+
+    Args:
+        ellipse_file: Path to the ellipse CSV file.
+        key_hierarchical: Whether the final column is a hierarchy key.
+
+    Returns:
+        A list of ellipse dictionaries containing center, radii,
+        angle1, angle2, and zAxis (and xAxis if supplied), or a
+        dictionary grouping those lists under keys 1 and 2.
+
+    Raises:
+        ValueError: For unsupported column layouts, invalid numeric
+            fields or hierarchy keys, or ellipse validation failures
+            such as non-positive radii."""
     ellipses_by_key = {1: [], 2: []}
     ellipses = []
     with open(ellipse_file, "r") as f:
@@ -1964,7 +2046,25 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  return_name='Shafts',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = False) -> ShaftData:
-    """Load shafts. Hierarchical CSV format is: id,cx,cy,cz,ax,ay,az,radius,key."""
+    """Load shaft definitions from a CSV file.
+
+    CSV rows have no header and use
+    ``id,cx,cy,cz,ax,ay,az,radius`` (eight columns), or append ``key``
+    as a ninth column in hierarchical mode. The axis vector must be
+    nonzero, the radius positive, and the key 1 or 2.
+
+    Args:
+        shaft_file: Path to the shaft CSV file.
+        key_hierarchical: Whether to read and group by the final key.
+
+    Returns:
+        A list of seven-value tuples ``(cx,cy,cz,ax,ay,az,radius)``,
+        or a dictionary mapping keys 1 and 2 to lists of those tuples.
+
+    Raises:
+        ValueError: For wrong column counts, non-numeric or non-finite
+            values, zero axes, non-positive radii, invalid keys, or
+            duplicate shaft IDs within the same hierarchy group."""
     named = {}
     with open(shaft_file, "r") as f:
         for line_no, line in enumerate(f, 1):
@@ -2011,7 +2111,26 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  return_name='planes',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = False) -> PlaneData:
-    """Load extra planes. Hierarchical CSV format is: id,x,y,z,key."""
+    """Load additional planes as grouped 3D points from a CSV file.
+
+    CSV rows have no header and use ``id,x,y,z`` or, in hierarchical
+    mode, ``id,x,y,z,key``. Repeated IDs contribute points to the same
+    plane. Each plane requires at least four points; hierarchy keys
+    must be 1 or 2.
+
+    Args:
+        plane_file: Path to the plane CSV file.
+        key_hierarchical: Whether to read and group by the final key.
+
+    Returns:
+        A list of flattened plane-coordinate tuples
+        ``(x1,y1,z1,x2,y2,z2,...)``, or a dictionary mapping keys
+        1 and 2 to lists of those tuples.
+
+    Raises:
+        ValueError: For wrong column counts, invalid/non-finite
+            coordinates, invalid keys, or planes with fewer than four
+            points."""
     named = {}
     with open(plane_file, "r") as f:
         for line_no, line in enumerate(f, 1):
@@ -2057,11 +2176,28 @@ TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]],
     return_name='triangulations_planes',
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_hierarchical: bool = False) -> TriangulationData:
-    """Load triangulation points. Hierarchical CSV rows are x,y,z,key.
+    """Load triangulation points from one or more CSV files.
 
-    The fourth output column remains the triangulation/surface id (file number),
-    so the hierarchy key is used only for splitting and is not passed downstream.
-    """
+    CSV rows have no header and use ``x,y,z`` (three columns), or
+    ``x,y,z,key`` (four columns) in hierarchical mode. Hierarchy keys
+    must be 1 or 2. Each output point receives a fourth value: the
+    1-based input-file index identifying its triangulation surface.
+    The hierarchy key selects the output group but is not included in
+    the output point array. Blank lines and ``#`` comments are ignored.
+
+    Args:
+        csv_file: One CSV path or a list of CSV paths.
+        key_hierarchical: Whether to read the final hierarchy-key column.
+
+    Returns:
+        A float64 array of shape ``(N, 4)`` containing
+        ``[x, y, z, file_id]``, or a dictionary mapping keys 1 and 2
+        to arrays of shape ``(N_key, 4)`` in hierarchical mode.
+
+    Raises:
+        ValueError: For wrong column counts, invalid/non-finite
+            coordinates, invalid hierarchy keys, or (in non-hierarchical
+            mode) no loaded points."""
     csv_files = [csv_file] if isinstance(csv_file, str) else list(csv_file)
     grouped = {1: [], 2: []}
     all_points = []
