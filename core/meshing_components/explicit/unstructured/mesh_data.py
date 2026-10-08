@@ -25,6 +25,45 @@ from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from enum import Enum, StrEnum
 
 
+
+def _load_csv_surface_coordinates(surface_csv_dir):
+    """Read and validate CSV surface coordinates once for extent and meshing."""
+    csv_root = Path(surface_csv_dir).expanduser()
+    if not csv_root.is_dir():
+        raise ValueError(
+            f"surface_csv_dir is not a directory: {surface_csv_dir}"
+        )
+    csv_files = sorted(
+        p for p in csv_root.iterdir()
+        if p.is_file()
+        and p.suffix.lower() == ".csv"
+        and not p.name.startswith(".")
+        and not p.name.startswith("._")
+    )
+    if not csv_files:
+        raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
+
+    surfaces = []
+    for csv_path in csv_files:
+        df = pd.read_csv(csv_path)
+        columns = {str(c).strip().lower(): c for c in df.columns}
+        missing = [axis for axis in ("x", "y", "z") if axis not in columns]
+        if missing:
+            raise ValueError(
+                f"{csv_path.name} must contain x, y, z columns; missing {missing}."
+            )
+        xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
+            pd.to_numeric, errors="coerce"
+        ).to_numpy(dtype=float)
+        xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+        if len(xyz) < 3:
+            raise ValueError(
+                f"{csv_path.name} has fewer than 3 valid x,y,z points."
+            )
+        surfaces.append((csv_path, xyz))
+    return surfaces
+
+
 MESH_ENGINEERING_COLOR = '#99b3cc'
 MESH_ENGINEERING_GROUP = 'Engineering Objects'
 
@@ -2285,7 +2324,9 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.\n        surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.\n        rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
+        geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.
+        surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.
+        rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
         rotation_angle_translate (float, optional): Rotation angle in degrees in the XY plane with additional translation. The mesh center is used as the reference point. If xt/yt/zt are omitted, the transformed mesh is centered at (0, 0, 0).
         xt, yt, zt (float, optional): Target coordinates of the transformed mesh center, used only with rotation_angle_translate. If specified, all three values must be provided together.
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
@@ -2327,7 +2368,6 @@ def create_unstructured_mesh_data(
             Used only when mapping_litho="manual".
         refinement (Refinement, optional): Adaptive mesh refinement settings. Supports local refinement around wells, sources, faults, ellipses,
             and triangulated surfaces through GMSH background mesh fields.
-        Rotation_angle (float, optional): Angle in degree to rotate the mesh around the z-axis. If None, no rotation is applied.
 
     Returns:
         MeshResults: An instance of the MeshResults class.
@@ -2435,7 +2475,7 @@ def create_unstructured_mesh_data(
     else:
         extent_z_min = extent_z_max = None
 
-    # ``extent`` is backward compatible:
+    csv_surface_data = None  # Load lazily; reuse for extent and mesh preparation.\n\n    # ``extent`` is backward compatible:
     #   * 6 values -> legacy axis-aligned box
     #   * 8 (x,y,z) corners -> oriented parallelepiped
     if extent is None or len(extent) == 0:
@@ -2443,64 +2483,13 @@ def create_unstructured_mesh_data(
             # Same default pattern as structural-model mode: infer the domain
             # from the geological input when no explicit extent is supplied.
             # For CSV surfaces this is the combined x/y/z min/max of all files.
-            csv_root = Path(surface_csv_dir).expanduser()
-            if not csv_root.is_dir():
-                raise ValueError(
-                    f"surface_csv_dir is not a directory: {surface_csv_dir}"
-                )
-
-            csv_files = sorted(
-                p for p in csv_root.iterdir()
-                if p.is_file()
-                and p.suffix.lower() == ".csv"
-                and not p.name.startswith(".")
-                and not p.name.startswith("._")
+            csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
+            xyz_min = np.min(
+                [xyz.min(axis=0) for _, xyz in csv_surface_data], axis=0
             )
-            if not csv_files:
-                raise ValueError(
-                    f"No CSV surface files found in {surface_csv_dir}"
-                )
-
-            xyz_min = np.array([np.inf, np.inf, np.inf], dtype=float)
-            xyz_max = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
-            n_valid_points = 0
-
-            for csv_path in csv_files:
-                df = pd.read_csv(csv_path)
-                lower_to_original = {
-                    str(c).strip().lower(): c for c in df.columns
-                }
-                missing = [
-                    axis for axis in ("x", "y", "z")
-                    if axis not in lower_to_original
-                ]
-                if missing:
-                    raise ValueError(
-                        f"{csv_path.name} must contain x, y, z columns; "
-                        f"missing {missing}."
-                    )
-
-                xyz = df[
-                    [
-                        lower_to_original["x"],
-                        lower_to_original["y"],
-                        lower_to_original["z"],
-                    ]
-                ].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
-
-                xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
-                if xyz.size == 0:
-                    continue
-
-                xyz_min = np.minimum(xyz_min, xyz.min(axis=0))
-                xyz_max = np.maximum(xyz_max, xyz.max(axis=0))
-                n_valid_points += xyz.shape[0]
-
-            if n_valid_points == 0:
-                raise ValueError(
-                    "No finite x, y, z surface coordinates were found in "
-                    f"{surface_csv_dir}."
-                )
+            xyz_max = np.max(
+                [xyz.max(axis=0) for _, xyz in csv_surface_data], axis=0
+            )
 
             domain_spec = np.array(
                 [
@@ -2554,57 +2543,13 @@ def create_unstructured_mesh_data(
         if csv_mode:
             # CSV mode deliberately bypasses data_preparation(): no overlap
             # removal, fault-side cleaning, projection, or surface extension.
-            csv_root = Path(surface_csv_dir).expanduser()
-            if not csv_root.is_dir():
-                raise ValueError(
-                    f"surface_csv_dir is not a directory: {surface_csv_dir}"
-                )
-
-            csv_files = sorted(
-                p for p in csv_root.iterdir()
-                if p.is_file()
-                and p.suffix.lower() == ".csv"
-                and not p.name.startswith(".")
-                and not p.name.startswith("._")
-            )
-            if not csv_files:
-                raise ValueError(
-                    f"No CSV surface files found in {surface_csv_dir}"
-                )
+            if csv_surface_data is None:
+                csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
 
             cleaned_surfaces = []
             ref_surface_indices = {}
 
-            for csv_path in csv_files:
-                df = pd.read_csv(csv_path)
-                lower_to_original = {
-                    str(c).strip().lower(): c for c in df.columns
-                }
-                missing = [
-                    axis for axis in ("x", "y", "z")
-                    if axis not in lower_to_original
-                ]
-                if missing:
-                    raise ValueError(
-                        f"{csv_path.name} must contain x, y, z columns; "
-                        f"missing {missing}."
-                    )
-
-                xyz = df[
-                    [
-                        lower_to_original["x"],
-                        lower_to_original["y"],
-                        lower_to_original["z"],
-                    ]
-                ].to_numpy(dtype=float)
-
-                finite = np.all(np.isfinite(xyz), axis=1)
-                xyz = xyz[finite]
-                if len(xyz) < 3:
-                    raise ValueError(
-                        f"{csv_path.name} has fewer than 3 valid x,y,z points."
-                    )
-
+            for csv_path, xyz in csv_surface_data:
                 # IMPORTANT: create_surface_grid() expects exactly
                 # (surface_id, points), not extra metadata.
                 surface_id = csv_path.name
@@ -2703,6 +2648,8 @@ def create_unstructured_mesh_data(
         point_sets = build_point_sets(boundary_groups, len(nodes_global))
 
         # 3. Transform ALL node coordinates to the new coordinate system
+        # Without a requested transform, preserve the original coordinates.
+        nodes_local = nodes_global
 
         if rotation_angle is not None and rotation_angle_translate is not None:
             raise ValueError(
@@ -2745,7 +2692,7 @@ def create_unstructured_mesh_data(
 
     return MeshResults(
         elements=cells,
-        nodes=nodes_local if 'nodes_local' in locals() else nodes,
+        nodes=nodes_local,
         point_sets=point_sets,
         cell_data=cell_data,
         mesh_type=MeshType.UNSTRUCTURED,
