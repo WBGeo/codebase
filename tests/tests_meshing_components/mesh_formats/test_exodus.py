@@ -131,6 +131,36 @@ class TestUnstructuredPositionalBoundarySplit(unittest.TestCase):
         self.assertEqual(geometry_blocks, [])
         self.assertGreater(len(side_sets), 0)
 
+    def test_dim_mode_classifies_fault_and_boundaries_by_dimension(self):
+        fault = meshio.CellBlock("triangle", np.array([[0, 1, 3]]))
+        mesh_results = MeshResults(
+            nodes=self.nodes,
+            elements=[self.volume, fault, *self.boundaries],
+        )
+        exo = ExodusInput(mesh=mesh_results, boundary_mode="dim")
+        writable, geometry, side_sets = exo.classify_blocks(list(mesh_results.elements))
+        self.assertEqual(writable, [self.volume])
+        self.assertEqual(geometry, [])
+        self.assertEqual(len(side_sets), 7)
+
+        # An explicit per-call override must preserve the GOLEM convention.
+        writable, geometry, side_sets = exo.classify_blocks(
+            list(mesh_results.elements), boundary_mode="fixed_trailing"
+        )
+        self.assertEqual(writable, [self.volume, fault])
+        self.assertEqual(geometry, [])
+        self.assertEqual(len(side_sets), 6)
+
+    def test_invalid_boundary_mode_is_rejected(self):
+        mesh_results = MeshResults(
+            nodes=self.nodes, elements=[self.volume, *self.boundaries]
+        )
+        with self.assertRaisesRegex(ValueError, "boundary_mode"):
+            ExodusInput(mesh=mesh_results, boundary_mode="unknown")
+        exo = ExodusInput(mesh=mesh_results)
+        with self.assertRaisesRegex(ValueError, "boundary_mode"):
+            exo.classify_blocks(list(mesh_results.elements), boundary_mode="unknown")
+
     def test_unstructured_requires_at_least_six_blocks(self):
         mesh_results = MeshResults(
             nodes=self.nodes,

@@ -106,7 +106,7 @@ class TestDataPreprationModel2(unittest.TestCase):
         )
 
     # TEST 3: STRUCTURE CONSISTENCY
-    def test_ref_surface_indices(self):
+    def test_reference_surface_id_to_cleaned_index(self):
 
         geomodel = self.build_model()
 
@@ -118,8 +118,15 @@ class TestDataPreprationModel2(unittest.TestCase):
             z_threshold=10
         )
 
-        # ref indices should not be empty if faults exist
+        # Keys are original reference surface IDs; values are positions in
+        # cleaned_surfaces, not the surface IDs themselves.
         self.assertIsInstance(ref_indices, dict)
+        self.assertTrue(ref_indices)
+        for surface_id, cleaned_index in ref_indices.items():
+            self.assertIsInstance(cleaned_index, int)
+            self.assertGreaterEqual(cleaned_index, 0)
+            self.assertLess(cleaned_index, len(cleaned_surfaces))
+            self.assertEqual(cleaned_surfaces[cleaned_index][0], surface_id)
 
 ##################################
 if __name__ == "__main__":

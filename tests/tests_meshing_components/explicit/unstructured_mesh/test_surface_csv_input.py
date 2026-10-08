@@ -1,4 +1,6 @@
 import tempfile
+
+import netCDF4 as nc
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -7,6 +9,7 @@ import meshio
 import numpy as np
 import pandas as pd
 
+from core.meshing_components.mesh_format.exodus.Exo_format import ExodusInput
 from core.meshing_components.mesh_format.mesh_export import (
     MeshFormatType, export_mesh_results,
 )
@@ -33,7 +36,7 @@ def _write_surface(path: Path, z: float = 5.0):
 class SurfaceCsvInputTestCase(unittest.TestCase):
     """Regression tests for direct x/y/z CSV geological-surface input."""
 
-    def _run_csv_route(self, csv_dir, mapping_litho="none", extent=EXTENT, extent_z=None, export_ready=False):
+    def _run_csv_route(self, csv_dir, mapping_litho="none", extent=EXTENT, extent_z=None, export_ready=False, faulted_blocks=False):
         cube_nodes = np.array(
             [
                 [0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0],
@@ -53,6 +56,12 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
                     [1, 2, 4], [0, 1, 2], [0, 1, 4],
                 )
             ]
+            if faulted_blocks:
+                # Real fault triangle block immediately before the six exterior
+                # boundary blocks: the 7+-block layout missing from the old test.
+                cells.insert(1, meshio.CellBlock(
+                    "triangle", np.array([[0, 1, 2]], dtype=int)
+                ))
         else:
             cells = [tetra]
 
@@ -99,6 +108,47 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             exported = export_mesh_results(mesh, format=MeshFormatType.Exodus)
             self.assertTrue(exported.filename.endswith(".exo"))
             self.assertGreater(exported.getbuffer().nbytes, 0)
+
+    def test_faulted_csv_exodus_boundary_modes(self):
+        """CSV -> mesh -> real Exodus writer with a fault and six box faces.
+
+        The mesh generator is mocked, but CSV parsing, mesh assembly, block
+        classification and NetCDF Exodus serialization are exercised.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_surface(root / "surface1.csv", 4.0)
+            _write_surface(root / "fault1.csv", 6.0)
+            mesh, _, create_grid, fragment, _ = self._run_csv_route(
+                root, export_ready=True, faulted_blocks=True
+            )
+            self.assertEqual(len(create_grid.call_args.args[0]), 2)
+            self.assertIn("fault1.csv", fragment.call_args.args[2])
+            self.assertEqual(len(mesh.elements), 8)  # tetra + fault + six faces
+
+            for mode, expected_elements, expected_sidesets in (
+                ("fixed_trailing", 2, 6),
+                ("dim", 1, 7),
+            ):
+                with self.subTest(boundary_mode=mode):
+                    path = root / f"faulted_{mode}.exo"
+                    ExodusInput(mesh, boundary_mode=mode).write(str(path))
+                    with nc.Dataset(str(path), "r") as ds:
+                        self.assertEqual(len(ds.dimensions["num_elem"]), expected_elements)
+                        self.assertEqual(len(ds.dimensions["num_side_sets"]), expected_sidesets)
+                        self.assertEqual(len(ds.dimensions["num_el_blk"]), expected_elements)
+                        block_types = [
+                            ds.variables[f"connect{i}"].getncattr("elem_type")
+                            for i in range(1, expected_elements + 1)
+                        ]
+                        if mode == "fixed_trailing":
+                            self.assertEqual(block_types, ["TETRA4", "TRI3"])
+                        else:
+                            self.assertEqual(block_types, ["TETRA4"])
+                        # All boundary faces must match the real tetrahedron.
+                        for i in range(1, expected_sidesets + 1):
+                            self.assertEqual(len(ds.variables[f"elem_ss{i}"][:]), 1)
+                            self.assertEqual(int(ds.variables[f"elem_ss{i}"][0]), 1)
 
     def test_csv_mode_bypasses_structural_model_cleaning(self):
         with tempfile.TemporaryDirectory() as tmp:
