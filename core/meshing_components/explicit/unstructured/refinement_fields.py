@@ -645,9 +645,10 @@ def build_extra_plane_mesh_callback(
     """
     Creates a mesh-size callback around extra planar regions.
 
-    Each quadrilateral is split into two triangles. The mesh size is
-    controlled by the minimum distance from the query point to any
-    triangle:
+    Each quadrilateral is split into two triangles. A centroid KD-tree
+    prunes candidates using triangle bounding radii, while exact
+    point-to-triangle distances preserve the original refinement behavior.
+    Mesh size is controlled by the minimum distance to any triangle:
 
         distance <= DistMin:
             SizeMin
@@ -681,6 +682,15 @@ def build_extra_plane_mesh_callback(
 
     if not triangles:
         return None
+
+    # Build the spatial index once, not during Gmsh callback evaluations.
+    # A centroid alone is not sufficient to identify the nearest triangle:
+    # the closest point may lie on a large triangle far from its centroid.
+    triangle_array = np.asarray(triangles, dtype=float)
+    centroids = triangle_array.mean(axis=1)
+    radii = np.linalg.norm(triangle_array - centroids[:, None, :], axis=2).max(axis=1)
+    tree = cKDTree(centroids)
+    max_radius = float(radii.max())
 
     def point_triangle_distance(point, a, b, c):
         """
@@ -766,11 +776,25 @@ def build_extra_plane_mesh_callback(
             dtype=float,
         )
 
-        # Distance to the nearest extra-plane triangle
-        distance = min(
-            point_triangle_distance(point, a, b, c)
-            for a, b, c in triangles
-        )
+        # Start with the nearest centroid to obtain an exact upper bound.
+        # For any triangle T with centroid C and bounding radius R,
+        # distance(point, T) >= distance(point, C) - R.  The KD-tree
+        # radius search therefore cannot omit the truly closest triangle.
+        _, nearest_idx = tree.query(point)
+        nearest_idx = int(nearest_idx)
+        distance = point_triangle_distance(point, *triangle_array[nearest_idx])
+
+        candidate_ids = tree.query_ball_point(point, r=distance + max_radius)
+        for idx in candidate_ids:
+            if idx == nearest_idx:
+                continue
+            # Per-triangle lower bound avoids unnecessary exact calculations.
+            if np.linalg.norm(point - centroids[idx]) - radii[idx] >= distance:
+                continue
+            distance = min(
+                distance,
+                point_triangle_distance(point, *triangle_array[idx]),
+            )
 
         # Exactly at / very close to extra plane
         if distance <= DistMin:
