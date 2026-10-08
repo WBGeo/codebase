@@ -39,9 +39,10 @@ class ExodusInput:
         hexahedron   -> HEX8
         wedge        -> WEDGE6
 
-    IMPORTANT FOR UNSTRUCTURED MESHES
-    ---------------------------------
-    For MeshType.UNSTRUCTURED:
+    UNSTRUCTURED BOUNDARY CLASSIFICATION
+    ------------------------------------
+    The default ``boundary_mode="fixed_trailing"`` follows the GOLEM mesh
+    layout convention for MeshType.UNSTRUCTURED:
 
         all_blocks[:-6]
             -> blocks written to Exodus
@@ -50,6 +51,9 @@ class ExodusInput:
             -> boundary blocks used to construct sidesets
 
     Therefore the final 6 blocks are NOT written as element blocks.
+    ``boundary_mode="dim"`` instead selects 3D blocks as writable elements
+    and 2D blocks as sideset candidates, independent of block order.
+    This optional mode does not write 0D/1D/2D element blocks.
 
     For STRUCTURED / IMPLICIT meshes:
 
@@ -238,6 +242,7 @@ class ExodusInput:
         mesh: MeshResults,
         mesh_type: MeshType = MeshType.UNSTRUCTURED,
         include_geometry_entities: bool = True,
+        boundary_mode: str = "fixed_trailing",
     ):
         if isinstance(mesh_type, str):
             try:
@@ -251,6 +256,9 @@ class ExodusInput:
         self.mesh = mesh
         self.mesh_type = mesh_type
 
+        if boundary_mode not in {"fixed_trailing", "dim"}:
+            raise ValueError("boundary_mode must be 'fixed_trailing' or 'dim'")
+        self.boundary_mode = boundary_mode
         self.include_geometry_entities = include_geometry_entities
 
     # ==============================================================
@@ -758,144 +766,69 @@ class ExodusInput:
     # Block classification
     # ==============================================================
 
-    def classify_blocks(
-        self,
-        all_blocks: List[meshio.CellBlock],
-    ):
+    def classify_blocks(self, all_blocks: List[meshio.CellBlock], boundary_mode: Optional[str] = None):
+        """Classify blocks and build sidesets for the selected mesh type.
+
+        For unstructured meshes, ``fixed_trailing`` (default) follows the
+        GOLEM-specific convention: the last six blocks represent exterior
+        boundaries and are not written as element blocks. Earlier blocks,
+        including faults, wells and sources, remain writable elements.
+
+        ``dim`` is an order-independent alternative: 3D blocks are written
+        and 2D blocks are used as sideset candidates. In this mode, 0D/1D
+        entities and 2D surface elements are not written as element blocks.
+        Surface blocks must match volume faces to produce sideset entries.
+
+        Structured and implicit meshes retain their existing behavior.
         """
-        Classify blocks according to mesh type.
-
-        UNSTRUCTURED
-        ------------
-        The last six blocks are treated as boundary blocks:
-
-            boundary_blocks = all_blocks[-6:]
-
-        Everything before them is written:
-
-            volume_blocks = all_blocks[:-6]
-
-        This means the first N-6 blocks can contain:
-
-            vertex
-            line
-            line2
-            line3
-            triangle
-            quad
-            tetra
-            hexahedron
-            wedge
-
-        STRUCTURED / IMPLICIT
-        ---------------------
-        All blocks are written and exterior sidesets are generated.
-        """
-
-        # ==========================================================
-        # UNSTRUCTURED
-        # ==========================================================
+        mode = self.boundary_mode if boundary_mode is None else boundary_mode
+        if mode not in {"fixed_trailing", "dim"}:
+            raise ValueError("boundary_mode must be 'fixed_trailing' or 'dim'")
 
         if self.mesh_type == MeshType.UNSTRUCTURED:
-
-            NUM_SIDE_BLOCKS = 6
-
-            if len(all_blocks) < NUM_SIDE_BLOCKS:
-                raise ValueError(
-                    f"Unstructured mesh has only {len(all_blocks)} blocks, "
-                    f"but at least {NUM_SIDE_BLOCKS} blocks are required "
-                    f"because the last {NUM_SIDE_BLOCKS} blocks are "
-                    f"reserved for boundary blocks."
-                )
-
-            # ------------------------------------------------------
-            # IMPORTANT:
-            #
-            # Last 6 blocks = boundary blocks
-            # Everything before last 6 = blocks to write
-            # ------------------------------------------------------
-
-            boundary_blocks = all_blocks[-NUM_SIDE_BLOCKS:]
-            volume_blocks = all_blocks[:-NUM_SIDE_BLOCKS]
-
-            logger.debug(
-                "Unstructured mesh: %d total blocks",
-                len(all_blocks),
-            )
-
-            logger.debug(
-                "Writing first %d blocks",
-                len(volume_blocks),
-            )
-
-            logger.debug(
-                "Using last %d blocks as boundary blocks",
-                len(boundary_blocks),
-            )
-
-            # ------------------------------------------------------
-            # Validate the blocks that will actually be written.
-            #
-            # These may be vertices, lines, triangles, tetrahedra,
-            # hexahedra, wedges, etc.
-            # ------------------------------------------------------
+            if mode == "fixed_trailing":
+                # GOLEM layout: the final six blocks are the outer boundaries.
+                # Do not infer boundaries from dimension here: earlier 1D/2D
+                # blocks may represent wells, faults and other model features.
+                num_side_blocks = 6
+                if len(all_blocks) < num_side_blocks:
+                    raise ValueError(
+                        f"Unstructured mesh has only {len(all_blocks)} blocks, "
+                        f"but at least {num_side_blocks} blocks are required "
+                        f"because the last {num_side_blocks} blocks are "
+                        "reserved for boundary blocks."
+                    )
+                volume_blocks = all_blocks[:-num_side_blocks]
+                boundary_blocks = all_blocks[-num_side_blocks:]
+            else:
+                # Generic dimension-based alternative; does not depend on
+                # the GOLEM-specific position of the exterior surface blocks.
+                volume_blocks = [b for b in all_blocks if self.is_volume_block(b)]
+                boundary_blocks = [b for b in all_blocks if self.is_surface_block(b)]
 
             for block in volume_blocks:
-
                 cell_type = self.normalized_cell_type(block)
+                if not any((
+                    cell_type in self.VOLUME_TYPES,
+                    cell_type in self.SURFACE_TYPES,
+                    cell_type in self.EDGE_TYPES,
+                    cell_type in self.NODE_TYPES,
+                )):
+                    raise ValueError(f"Unsupported meshio cell block type '{block.type}'")
 
-                if (
-                    cell_type not in self.VOLUME_TYPES
-                    and cell_type not in self.SURFACE_TYPES
-                    and cell_type not in self.EDGE_TYPES
-                    and cell_type not in self.NODE_TYPES
-                ):
-                    raise ValueError(
-                        f"Unsupported meshio cell block type "
-                        f"'{block.type}'"
-                    )
-
-            # ------------------------------------------------------
-            # Boundary blocks are used only to build sidesets.
-            # ------------------------------------------------------
-
-            side_sets = self.build_side_sets_unstructured(
-                volume_blocks,
-                boundary_blocks,
+            logger.debug(
+                "Unstructured boundary mode %s: %d writable blocks, %d boundary blocks",
+                mode, len(volume_blocks), len(boundary_blocks),
             )
+            side_sets = self.build_side_sets_unstructured(volume_blocks, boundary_blocks)
+            return volume_blocks, [], side_sets
 
-            return (
-                volume_blocks,
-                [],
-                side_sets,
-            )
-
-        # ==========================================================
-        # STRUCTURED / IMPLICIT
-        # ==========================================================
-
-        if self.mesh_type in (
-            MeshType.STRUCTURED,
-            MeshType.IMPLICIT,
-        ):
-
+        if self.mesh_type in (MeshType.STRUCTURED, MeshType.IMPLICIT):
             volume_blocks = list(all_blocks)
+            side_sets = self.build_side_sets_from_elements(volume_blocks)
+            return volume_blocks, [], side_sets
 
-            geometry_blocks = []
-
-            side_sets = self.build_side_sets_from_elements(
-                volume_blocks,
-            )
-
-            return (
-                volume_blocks,
-                geometry_blocks,
-                side_sets,
-            )
-
-        raise ValueError(
-            f"Unknown mesh type: {self.mesh_type}"
-        )
+        raise ValueError(f"Unknown mesh type: {self.mesh_type}")
 
     # ==============================================================
     # Write Exodus
@@ -941,7 +874,7 @@ class ExodusInput:
             geometry_blocks,
             side_sets,
         ) = self.classify_blocks(
-            all_blocks
+            all_blocks, boundary_mode=self.boundary_mode
         )
 
         # ==========================================================
@@ -1658,17 +1591,21 @@ def export_mesh_results_to_exodus(
     mesh: MeshResults,
     type: MeshType = MeshType.UNSTRUCTURED,
     include_geometry_entities: bool = True,
+    boundary_mode: str = "fixed_trailing",
 ) -> BasicallyABufferedFile:
     """
     Export a MeshResults object to an in-memory ExodusII file.
 
-    For UNSTRUCTURED meshes:
+    For UNSTRUCTURED meshes (default boundary_mode="fixed_trailing"):
 
         mesh.elements[:-6]
             -> written to Exodus
 
         mesh.elements[-6:]
             -> treated as boundary blocks and used for sidesets
+
+    With boundary_mode="dim", only 3D blocks are written, while 2D
+    blocks are used to construct sidesets regardless of block order.
 
     For STRUCTURED / IMPLICIT meshes:
 
@@ -1698,7 +1635,12 @@ def export_mesh_results_to_exodus(
         If True, all classified writable geometry entities are
         preserved as Exodus element blocks.
 
-        For UNSTRUCTURED meshes this applies to the first N-6 blocks.
+        For UNSTRUCTURED meshes in the default mode, this applies to
+        the first N-6 blocks.
+
+    boundary_mode:
+        "fixed_trailing" (default, GOLEM layout) or "dim" (3D volume
+        blocks and 2D sideset candidates). Only affects unstructured meshes.
 
     Returns
     -------
@@ -1724,9 +1666,8 @@ def export_mesh_results_to_exodus(
     exo = ExodusInput(
         mesh=mesh,
         mesh_type=type,
-        include_geometry_entities=(
-            include_geometry_entities
-        ),
+        include_geometry_entities=include_geometry_entities,
+        boundary_mode=boundary_mode,
     )
 
     with tempfile.NamedTemporaryFile(
