@@ -265,16 +265,16 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 
 
 # The same configuration can be created in one Refinement instance like below:
-#refinement = Refinement(
-#    wells=LinearWellRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
-#    shafts=LinearShaftRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
-#    sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))",),
-#    triangulations=TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0,),
-#    ellipses=EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0,),
-#    extra_planes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
-#    general=[
-#        GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),], SizeMin=4.0, DistMax=300.0,),
-#        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
+refinement = Refinement(
+    wells=LinearWellRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+    shafts=LinearShaftRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+    sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))",),
+    triangulations=TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0,),
+    ellipses=EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0,),
+    extra_planes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
+    general=[
+        GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),], SizeMin=4.0, DistMax=300.0,),
+        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
 
 
 # # Explicit unstructured mesh with objects
@@ -297,7 +297,7 @@ triangulations= load_triangulations_planes_from_csv(csv_files)
 #)
 
 # save the mesh
-#buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
+#buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
 #with open("filename_model1___mesh.exo", "wb") as f:
 #     f.write(buf.getvalue())
 
