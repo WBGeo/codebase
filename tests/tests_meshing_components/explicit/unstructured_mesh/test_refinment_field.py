@@ -1,4 +1,7 @@
 import unittest
+
+import numpy as np
+from scipy.spatial import cKDTree
 from unittest.mock import patch
 
 from core.meshing_components.explicit.unstructured.refinement_fields import (
@@ -108,6 +111,79 @@ class TestRefinementFields(unittest.TestCase):
             DistMax=2.0,
         )
         self.assertEqual(cb(0, 0, 0.5, 0.5, 0.0, 20.0), 1.0)
+
+    def test_extra_plane_callback_exact_finite_triangle_distance(self):
+        """Distance is to the finite surface, not its vertices or plane extension."""
+        square = [0., 0., 0., 2., 0., 0., 2., 2., 0., 0., 2., 0.]
+        cb = build_extra_plane_mesh_callback(
+            [square], SizeMin=2., SizeMax=10., DistMin=1., DistMax=3.
+        )
+        # Directly above the face: distance 0.5, within DistMin.
+        self.assertAlmostEqual(cb(0, 0, 1., 1., .5, 100.), 2.)
+        # Above the face: distance 2, halfway through transition.
+        self.assertAlmostEqual(cb(0, 0, 1., 1., 2., 100.), 6.)
+        # Beyond the edge: distance 2 to the nearest finite edge.
+        self.assertAlmostEqual(cb(0, 0, 4., 1., 0., 100.), 6.)
+        self.assertAlmostEqual(cb(0, 0, 20., 1., 0., 100.), 10.)
+
+    def test_extra_plane_spatial_index_preserves_nearest_large_triangle(self):
+        """The nearest centroid need not belong to the nearest triangle."""
+        large = [0., 0., 0., 100., 0., 0., 100., 100., 0., 0., 100., 0.]
+        small = [2., 2., 3., 3., 2., 3., 3., 3., 3., 2., 3., 3.]
+        cb = build_extra_plane_mesh_callback(
+            [large, small], SizeMin=1., SizeMax=9., DistMin=0., DistMax=4.
+        )
+        # The large plane is nearest even though the small plane's
+        # centroid is much closer to the query point.
+        self.assertAlmostEqual(cb(0, 0, 2.5, 2.5, 0., 100.), 1.)
+        self.assertAlmostEqual(cb(0, 0, 2.5, 2.5, 1., 100.), 3.)
+
+    def test_extra_plane_spatial_index_matches_brute_force_on_parallel_planes(self):
+        """For points inside aligned squares, exact distance is the minimum |dz|."""
+        heights = [-20., -5., 7., 25.]
+        planes = [
+            [-10., -10., h, 10., -10., h, 10., 10., h, -10., 10., h]
+            for h in heights
+        ]
+        cb = build_extra_plane_mesh_callback(
+            planes, SizeMin=2., SizeMax=14., DistMin=1., DistMax=7.
+        )
+        rng = np.random.default_rng(42)
+        for x, y, z in rng.uniform([-9., -9., -30.], [9., 9., 35.], (200, 3)):
+            distance = min(abs(z - h) for h in heights)
+            expected = (
+                2. if distance <= 1. else
+                14. if distance >= 7. else
+                2. + (distance - 1.) / 6. * 12.
+            )
+            self.assertAlmostEqual(cb(0, 0, x, y, z, 100.), expected)
+
+    def test_extra_plane_spatial_index_constructed_once(self):
+        """The KD-tree is built at callback creation, not on every Gmsh query."""
+        from unittest.mock import patch as mock_patch
+        module = "core.meshing_components.explicit.unstructured.refinement_fields"
+        square = [0., 0., 0., 1., 0., 0., 1., 1., 0., 0., 1., 0.]
+        with mock_patch(f"{module}.cKDTree", wraps=cKDTree) as kd_tree:
+            cb = build_extra_plane_mesh_callback([square])
+            self.assertEqual(kd_tree.call_count, 1)
+            for z in (0., 1., 10.):
+                cb(0, 0, .5, .5, z, 20.)
+            self.assertEqual(kd_tree.call_count, 1)
+
+    def test_extra_plane_skips_invalid_coordinate_count(self):
+        self.assertIsNone(build_extra_plane_mesh_callback([[0., 1., 2.]]))
+
+    def test_refinement_accepts_extra_planes_snake_case(self):
+        cfg = ExtraPlaneRefinement(SizeMin=2., SizeMax=10.)
+        refinement = Refinement(extra_planes=cfg)
+        self.assertIsNotNone(refinement.extra_planes)
+        self.assertEqual(refinement.extra_planes.SizeMin, 2.)
+
+    def test_refinement_accepts_legacy_extraplanes_alias(self):
+        cfg = ExtraPlaneRefinement(SizeMin=2., SizeMax=10.)
+        refinement = Refinement(extraplanes=cfg)
+        self.assertIsNotNone(refinement.extra_planes)
+        self.assertEqual(refinement.extraplanes.SizeMin, 2.)
 
     # --------------------------------------------------
     # Combined callback -- triangulation / ellipse /

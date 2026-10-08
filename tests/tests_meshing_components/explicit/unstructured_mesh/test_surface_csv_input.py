@@ -7,6 +7,9 @@ import meshio
 import numpy as np
 import pandas as pd
 
+from core.meshing_components.mesh_format.mesh_export import (
+    MeshFormatType, export_mesh_results,
+)
 from core.meshing_components.explicit.unstructured.mesh_data import (
     LithoMappingMode,
     create_unstructured_mesh_data,
@@ -30,7 +33,7 @@ def _write_surface(path: Path, z: float = 5.0):
 class SurfaceCsvInputTestCase(unittest.TestCase):
     """Regression tests for direct x/y/z CSV geological-surface input."""
 
-    def _run_csv_route(self, csv_dir, mapping_litho="none", extent=EXTENT, extent_z=None):
+    def _run_csv_route(self, csv_dir, mapping_litho="none", extent=EXTENT, extent_z=None, export_ready=False):
         cube_nodes = np.array(
             [
                 [0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0],
@@ -39,6 +42,19 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             dtype=float,
         )
         tetra = meshio.CellBlock("tetra", np.array([[0, 1, 2, 4]], dtype=int))
+
+        if export_ready:
+            # One volume plus six positional boundary blocks required by
+            # the current UNSTRUCTURED Exodus exporter.
+            cells = [tetra] + [
+                meshio.CellBlock("triangle", np.array([face], dtype=int))
+                for face in (
+                    [0, 1, 2], [0, 1, 4], [0, 2, 4],
+                    [1, 2, 4], [0, 1, 2], [0, 1, 4],
+                )
+            ]
+        else:
+            cells = [tetra]
 
         with (
             patch(f"{MODULE}.data_preparation") as data_preparation,
@@ -50,7 +66,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             ) as fragment,
             patch(
                 f"{MODULE}.mesh_generator",
-                return_value=(cube_nodes, [tetra], {}),
+                return_value=(cube_nodes, cells, {}),
             ) as mesh_generator,
             patch(f"{MODULE}.gmsh.initialize"),
             patch(f"{MODULE}.gmsh.finalize"),
@@ -67,6 +83,22 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             result = create_unstructured_mesh_data(**kwargs)
 
         return result, data_preparation, create_grid, fragment, mesh_generator
+
+    def test_surface_csv_dir_to_generic_exodus_export(self):
+        """CSV input -> MeshResults -> generic dispatcher -> real Exodus writer.
+
+        Geometry/meshing are mocked to keep the test deterministic, but CSV
+        parsing, mesh provenance, dispatch, and Exodus serialization are real.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_surface(root / "surface1.csv", 4.0)
+            _write_surface(root / "fault1.csv", 6.0)
+            mesh, _, _, _, _ = self._run_csv_route(root, export_ready=True)
+            self.assertEqual(str(mesh.mesh_type), "unstructured")
+            exported = export_mesh_results(mesh, format=MeshFormatType.Exodus)
+            self.assertTrue(exported.filename.endswith(".exo"))
+            self.assertGreater(exported.getbuffer().nbytes, 0)
 
     def test_csv_mode_bypasses_structural_model_cleaning(self):
         with tempfile.TemporaryDirectory() as tmp:
