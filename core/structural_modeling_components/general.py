@@ -41,6 +41,7 @@ import pandas as pd
 from matplotlib.colors import to_hex
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults, FaultModelResults
+from core.structural_modeling_components.general_faults import check_fault_model_not_crosscutting
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import (
     marching_cubes_per_element, marching_cubes)
@@ -957,7 +958,7 @@ def build_structural_frame(
     """
     # Collect input_data
     surface_points = input_data_elements.surface_points.copy()
-    if hasattr(input_data_elements, "orientations"):
+    if input_data_elements.orientations is not None:
         orientations = input_data_elements.orientations.copy()
     else:
         orientations = None
@@ -1043,6 +1044,7 @@ def build_structural_frame(
     frame.orientations = orientations
 
     if fault_model_results is not None:
+        check_fault_model_not_crosscutting(fault_model_results)
         frame.set_fault_frame(fault_model_results.fault_frame)
 
     return frame
