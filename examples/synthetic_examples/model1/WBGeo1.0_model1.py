@@ -955,7 +955,7 @@ mesh1, mesh2, nodes_bcs = hierarchical_mesh(
     #shafts=shafts,
     #ellipses=ellipses,
     #extra_planes=planes,
-    triangulations=triangulations,
+    #triangulations=triangulations,
     # unstructured
     mesh_size1=40,
     mesh_size2=30,

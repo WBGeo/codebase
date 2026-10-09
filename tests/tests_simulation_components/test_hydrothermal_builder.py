@@ -286,7 +286,7 @@ def test_builder_survives_json_roundtrip(model1_implicit_mesh, model1_structural
         linear_solver="iterative",
     )
     as_json = json.dumps(to_jsonable_python(builder))
-    rebuilt = HydrothermalProblemBuilder(**json.loads(as_json), linear_solver="iterative")
+    rebuilt = HydrothermalProblemBuilder(**json.loads(as_json))
 
     assert rebuilt.mesh_type == builder.mesh_type
     assert rebuilt.rock_units == builder.rock_units
