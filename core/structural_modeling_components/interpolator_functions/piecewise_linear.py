@@ -171,10 +171,19 @@ def interpolate_group_piecewise_linear(
         raise ValueError(f"Missing interpolation params for group '{group.name}' (required for PLI)")
 
     # Create the foliation / feature (PLI)
+    #
+    # buffer=0.2 (LoopStructural's own default -- do not drop to 0.0): PLI's
+    # tetrahedral support has mesh nodes right at the domain edge with little
+    # to no nearby constraint when there's no margin, which solves to NaN for
+    # some of them under LoopStructural >=1.8 (confirmed directly: with this
+    # exact data, buffer=0.0 produces NaNs in the outermost grid slice,
+    # buffer=0.2 does not). FDI's structured-grid support doesn't have this
+    # failure mode (every cell is always fully defined), so it isn't affected
+    # the same way, but is unbuffered for the same (debatable) reason.
     create_kwargs: Dict[str, Any] = dict(
         interpolatortype="PLI",
         nelements=params.nelements,
-        buffer=0.0,
+        buffer=0.2,
         solver=params.solver,
         damp=params.damp,
     )
@@ -184,11 +193,19 @@ def interpolate_group_piecewise_linear(
     _ = model.create_and_add_foliation(group.name, **create_kwargs)
 
     # Evaluate on grid
+    #
+    # scale=True (not False): GeologicalModel.data's setter unconditionally
+    # rescales input X/Y/Z into the model's internal frame (subtract origin,
+    # divide by scale_factor) before the interpolator is built/solved -- so
+    # evaluation must undo that same transform on the query points, via
+    # GeologicalModel.scale(), or this samples the solved field at the wrong
+    # locations whenever the grid's origin isn't (0,0,0) (or scale_factor
+    # isn't 1). finite_difference.py already does this correctly.
     regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
     sf_flat = model.evaluate_feature_value(
         group.name,
         regular_grid,
-        scale=False,
+        scale=True,
     )
 
     # Match previous implementation: reshape then transpose
