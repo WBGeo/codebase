@@ -1,3 +1,4 @@
+from pathlib import Path
 # Importing necessary libraries
 import pandas as pd
 import numpy as np
@@ -396,6 +397,7 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
           "golem_GS_steady_output_t_Xinye"
     ),
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 # ------------------------------------------------------------------------------
@@ -438,6 +440,7 @@ model_GS_Xindyu_sready_results = run_simulation_golem(
           "golem_GS_transient_output_t_Xinye"
     ),
     nproc=3,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 
@@ -643,6 +646,7 @@ model1_simple_reservoir_results = run_simulation_golem(
           "golem_GR_hie_steady_big_output_t"
     ),
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 
@@ -704,6 +708,7 @@ model2_steady_thm_results = run_simulation_golem(
     ),
 
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 # ============================================================
@@ -762,6 +767,7 @@ model2_transient_thm_results = run_simulation_golem(
     ),
 
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 # -------------------------------------------------------------------------------

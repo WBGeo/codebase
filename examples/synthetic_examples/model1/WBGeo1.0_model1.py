@@ -1,3 +1,4 @@
+from pathlib import Path
 # Uncomment the two lines below to enable detailed log output from all WBGeo components.
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
@@ -570,6 +571,7 @@ custom_golem_results = run_simulation_golem(
     ),
 
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 #custom_initial_time = min(custom_golem_results.nodes_by_time.keys())

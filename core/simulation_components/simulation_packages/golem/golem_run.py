@@ -726,23 +726,26 @@ def run_simulation_golem(
                 elif item.is_file():
                     shutil.copy2(item, destination)
 
-            # Remove internal GOLEM/MOOSE recovery/checkpoint directories once,
-            # after all output files and directories have been copied.
-            checkpoint_dirs = sorted(
-                (
-                    path
-                    for path in output.rglob("*")
-                    if path.is_dir() and path.name.endswith("_cp")
-                ),
-                key=lambda path: len(path.parts),
-                reverse=True,
-            )
-            for checkpoint_dir in checkpoint_dirs:
-                shutil.rmtree(checkpoint_dir, ignore_errors=True)
+            # Automatically generated WBGeo problems do not need GOLEM/MOOSE
+            # recovery directories in their returned results. Custom GOLEM
+            # inputs may intentionally request checkpoints for restart, so
+            # preserve those directories for CustomGolemBuilder runs.
+            if not isinstance(problem, CustomGolemBuilder):
+                checkpoint_dirs = sorted(
+                    (
+                        path
+                        for path in output.rglob("*")
+                        if path.is_dir() and path.name.endswith("_cp")
+                    ),
+                    key=lambda path: len(path.parts),
+                    reverse=True,
+                )
+                for checkpoint_dir in checkpoint_dirs:
+                    shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
             # The Docker working directory has now been fully copied into the
-            # caller's output directory (with internal *_cp checkpoint folders
-            # filtered out). Remove the temporary host-side snapshot immediately
+            # caller's output directory (with checkpoint directories preserved
+            # for custom inputs). Remove the temporary host-side snapshot immediately
             # instead of keeping a duplicate until the end of the run.
             shutil.rmtree(container_snapshot, ignore_errors=True)
 

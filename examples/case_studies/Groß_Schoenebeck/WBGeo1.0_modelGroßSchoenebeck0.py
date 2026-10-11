@@ -1,3 +1,4 @@
+from pathlib import Path
 # Importing necessary libraries
 import pandas as pd
 import numpy as np
@@ -68,4 +69,5 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
           "output_steady_t/"
     ),
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )

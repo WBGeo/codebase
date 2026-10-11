@@ -1,3 +1,4 @@
+from pathlib import Path
 # Uncomment the two lines below to enable detailed log output from all WBGeo components.
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
@@ -577,6 +578,7 @@ problem_golem_results = run_simulation_golem(
     ),
 
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 # Results
@@ -920,6 +922,7 @@ model2_custom_reservoir_results = run_simulation_golem(
           "golem_custom_reservoir_output"
     ),
     nproc=4,
+    stream_output=True,  # Show live GOLEM output (opt-in)
 )
 
 # Visualisation of results.
