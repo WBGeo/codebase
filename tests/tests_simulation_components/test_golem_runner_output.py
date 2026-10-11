@@ -9,7 +9,7 @@ import time
 import logging
 import pytest
 
-SOURCE = Path(__file__).with_name("golem_run.py").read_text()
+SOURCE = (Path(__file__).resolve().parents[2] / "core" / "simulation_components" / "simulation_packages" / "golem" / "golem_run.py").read_text(encoding="utf-8")
 TREE = ast.parse(SOURCE)
 
 def helper(name):
