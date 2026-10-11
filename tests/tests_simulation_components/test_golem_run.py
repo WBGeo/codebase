@@ -308,7 +308,7 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
 
     # GOLEM itself is never launched.
     streamed = {}
-    def fake_stream(command):
+    def fake_stream(command, **kwargs):
         streamed["command"] = command
         return "fake GOLEM stdout\n"
     monkeypatch.setattr(golem_run, "_stream_process", fake_stream)
@@ -428,7 +428,7 @@ def test_run_simulation_golem_create_failure_is_reported_without_starting_golem(
         ),
     )
 
-    def must_not_stream(command):
+    def must_not_stream(command, **kwargs):
         raise AssertionError("GOLEM must not start when docker create fails")
 
     monkeypatch.setattr(golem_run, "_stream_process", must_not_stream)
@@ -496,7 +496,7 @@ def test_run_simulation_golem_custom_problem_keeps_checkpoint_directory(
     monkeypatch.setattr(
         golem_run,
         "_stream_process",
-        lambda command: "fake GOLEM stdout\n",
+        lambda command, **kwargs: "fake GOLEM stdout\n",
     )
 
     commands = []
@@ -620,7 +620,7 @@ def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
 
     monkeypatch.setattr(golem_run, "export_mesh_results_to_exodus", fake_export)
     monkeypatch.setattr(
-        golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n"
+        golem_run, "_stream_process", lambda command, **kwargs: "fake GOLEM stdout\n"
     )
 
     docker_cp_count = 0
@@ -713,7 +713,7 @@ def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
         lambda mesh, type: io.BytesIO(b"small-hierarchy-exodus"),
     )
     monkeypatch.setattr(
-        golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n"
+        golem_run, "_stream_process", lambda command, **kwargs: "fake GOLEM stdout\n"
     )
 
     docker_cp_count = 0
@@ -794,7 +794,7 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
     def must_not_export(*args, **kwargs):
         raise AssertionError("external mesh_file must not be re-exported")
     monkeypatch.setattr(golem_run, "export_mesh_results_to_exodus", must_not_export)
-    monkeypatch.setattr(golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n")
+    monkeypatch.setattr(golem_run, "_stream_process", lambda command, **kwargs: "fake GOLEM stdout\n")
 
     docker_cp_count = 0
 
