@@ -9,8 +9,7 @@ architecture provides two solver pipelines:
     finite-element simulations, supporting the built-in hydrothermal
     workflow as well as user-supplied SfePy problems.
 -   **GOLEM/MOOSE** for hydrothermal and simple-reservoir simulations,
-    as well as user-supplied GOLEM/MOOSE problems, executed through an
-    external Docker environment.
+    as well as user-supplied GOLEM/MOOSE problems, executed through local Docker, a native GOLEM installation, or the DSL shared-workspace MPI sidecar.
 
 Both pipelines follow the same general Workbench pattern:
 
@@ -108,10 +107,10 @@ execution defined by the supplied Python input.
 
 **GOLEM** is external to the WBGeo Python environment. The GOLEM runner
 stages the mesh and input file, validates their compatibility, executes
-GOLEM/MOOSE through Docker and MPI, collects the Exodus output, and
+GOLEM/MOOSE through the selected Docker/native/sidecar MPI backend, collects the Exodus output, and
 converts it back to WBGeo's common result representation.
 
-> **Cluster execution:** The runner documented here currently implements the Docker/MPI backend only. A GOLEM installation available directly on an HPC cluster is not yet selected automatically by `run_simulation_golem()`. Native SLURM execution (for example, launching GOLEM with `srun` across allocated nodes) requires a separate SLURM/native backend in the runner. The WBGeo problem builders and custom-input staging concepts can be reused by that backend.
+> **Execution environments:** Set `execution_mode="docker"`, `"local"`, or `"sidecar"` on `run_simulation_golem()`, or use `GOLEM_EXECUTION_MODE`. The DSL sidecar uses the existing shared workspace and MPI configuration; it is not a general SLURM `srun` backend. 
 
 ------------------------------------------------------------------------
 
@@ -340,6 +339,20 @@ problem_golem = GolemHydrothermalProblemBuilder(
 When explicit fault behaviour is required, use an unstructured mesh
 containing the exported 2D fault block(s). This differs from SfePy's
 built-in damage-zone representation.
+
+#### Initial pressure and temperature profiles (G.3)
+
+For `GolemHydrothermalProblemBuilder`, leaving `initial_pressure=None` or
+`initial_temperature=None` generates a linear initial-condition profile
+between the corresponding bottom and top values (`p_bottom`/`p_top` or
+`t_bottom`/`t_top`). For **implicit and structured meshes**, the gradient
+is calculated using the minimum and maximum Z coordinates of the actual
+mesh nodes, rather than the nominal structural-grid extent. This avoids
+shifting the profile when the mesh nodes are inset from the model bounds.
+For **unstructured meshes**, the existing structural-grid extent behaviour
+is preserved. Supplying a numeric initial pressure or temperature instead
+creates a spatially constant initial condition for that field.
+
 
 ### GOLEM: Simple Reservoir Problem
 
@@ -681,6 +694,23 @@ Other relevant inputs are:
     written by the hierarchy samplers. The default is
     `['pore_pressure', 'temp']`.
 
+#### MOOSE input block syntax and validation (G.1)
+
+Custom GOLEM `.i` inputs may use either modern MOOSE block syntax
+(`[Block]`, nested `[Child]`, and `[]` terminators) or legacy subsection
+syntax (`[./Child]` and `[../]` terminators). Keep the nesting balanced
+and place required top-level sections, including `Mesh`, `Variables`,
+`Kernels`, `Materials`, `BCs`, `Executioner`, and `Outputs`, in the input.
+
+WBGeo uses a shared input-block parser for pre-run validation and for
+inserting hierarchy `PointValueSampler` definitions. It recognizes
+block delimiters without treating bracket-like text in comments or
+quoted parameter values as blocks, including multiline quoted values.
+The WBGeo checks do not replace GOLEM/MOOSE's own input validation: the
+solver remains responsible for interpreting the complete MOOSE syntax
+and checking solver-specific parameters. The parser is an internal
+implementation detail; users do not need to import it.
+
 The mesh argument and placeholder must match. For example,
 `mesh1=mesh1_structural` requires `${GOLEM_MESH1_FILE}` in the `.i` file;
 it must not reference `${GOLEM_MESH2_FILE}`. Likewise,
@@ -757,7 +787,7 @@ The corresponding mesh entry in the `.i` file is:
 ```
 
 The runner copies the existing file into the GOLEM staging directory and
-replaces `${GOLEM_MESH_FILE}` with its container path. It does **not**
+replaces `${GOLEM_MESH_FILE}` with the path visible to the selected execution environment. It does **not**
 call the WBGeo Exodus exporter for this mode. Because an external file
 does not carry WBGeo `MeshResults` metadata, WBGeo performs the generic
 required-block validation and GOLEM/MOOSE performs the detailed
@@ -775,7 +805,7 @@ problem = CustomGolemBuilder(
 ```
 
 In this case the runner exports the `MeshResults` object to Exodus and
-performs WBGeo's detailed material/block validation before Docker/MPI is
+performs WBGeo's detailed material/block validation before GOLEM/MPI is
 started.
 
 #### Hierarchical custom GOLEM simulation
@@ -879,19 +909,19 @@ execution follows the supplied input.
 All three GOLEM builders connect to the same runner through the common
 `GolemProblem` type.
 
-Important runner inputs for the current **Docker backend** are:
+Important runner inputs are:
 
 -   **`problem`**: GOLEM problem produced by one of the GOLEM builders.
--   **`image_name`**: Docker image containing GOLEM.
--   **`project_dir`**: Host project directory mounted into the
-    container.
--   **`docker_dir`**: Corresponding path inside the container.
+-   **`image_name`** *(Docker only)*: Docker image containing GOLEM.
+-   **`project_dir`**: Local project/staging directory; in Docker mode it is also bind-mounted into the container.
+-   **`docker_dir`** *(Docker only)*: Corresponding path inside the container.
 -   **`output_dir`** *(optional)*: Host destination for final results.
 -   **`nproc`**: Number of MPI processes.
 -   **`keep_files_dir`** *(optional)*: Directory in which
     staged/generated files can be retained for debugging.
+-   **`execution_mode`** *(optional)*: `"docker"`, `"local"`, `"sidecar"`, or `"auto"` (default). Explicit argument overrides `GOLEM_EXECUTION_MODE`.
 
-The current function signature is Docker-specific: `image_name`, `project_dir`, and `docker_dir` are required by this backend. Native SLURM execution is not yet an alternative backend in the runner. When such a backend is added, WBGeo should be started once by the batch job and only the GOLEM executable should be launched with `srun`/MPI across the allocated tasks.
+The runner supports `docker`, `local`, and `sidecar` execution modes. `project_dir` is still a required argument; `image_name` and `docker_dir` matter only for Docker execution. Native MPI execution is supported, but SLURM `srun` scheduling is not implemented.
 
 Example call in the codebase:
 
@@ -921,17 +951,77 @@ The GOLEM runner performs the following operations:
     validation; external mesh files receive generic input-structure
     validation because no `MeshResults` metadata is available.
 5.  Replaces the matching mesh placeholder (`${GOLEM_MESH_FILE}`,
-    `${GOLEM_MESH1_FILE}`, or `${GOLEM_MESH2_FILE}`) with the staged
-    container path.
-6.  Executes GOLEM in the configured Docker environment using MPI.
+    `${GOLEM_MESH1_FILE}`, or `${GOLEM_MESH2_FILE}`) with the path visible to the selected GOLEM execution environment.
+6.  Executes GOLEM using Docker/MPI, native MPI, or the configured DSL shared-workspace MPI sidecar.
 7.  Copies the complete GOLEM working output back to `output_dir`, while
-    removing internal `*_cp` checkpoint directories.
+    removing internal `*_cp` checkpoint directories. The checkpoint cleanup
+    scans the copied output tree once, after all output items are staged.
 8.  Post-processes hierarchy sampler CSV files when hierarchy sampling is
     active (described below).
 9.  Loads the resulting Exodus database into `SimulationResults` and
     preserves the native Exodus/output-directory paths for later export.
-10. Cleans temporary host/container resources while retaining the
+10. Cleans temporary staging resources (and the Docker container when applicable) while retaining the
     user-facing outputs.
+
+#### Choose where GOLEM runs: Docker, native computer, or DSL
+
+The **same GOLEM problem builder** works with all three execution modes. The examples below assume `problem_golem` has already been constructed as shown in the preceding sections. Set `GOLEM_EXECUTION_MODE` explicitly in local examples to make the selected backend clear.
+
+| Environment | `execution_mode` | Required setup |
+| --- | --- | --- |
+| Workbench on your computer; GOLEM in local Docker | `"docker"` | Docker CLI/daemon, image `moose-dev:fixed`, project bind mount |
+| Workbench and GOLEM installed on the same computer | `"local"` | `GOLEM_BINARY` points to executable GOLEM; `mpiexec` is on `PATH` |
+| Workbench in DSL `py_runner`, GOLEM in `golem_runner` | `"sidecar"` | `GOLEM_BINARY`, shared `GOLEM_WORKSPACE`, working MPI/SSH configuration in deployed images |
+
+**Example A — local Docker on macOS**
+
+```python
+import os
+from pathlib import Path
+from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
+
+os.environ["GOLEM_EXECUTION_MODE"] = "docker"
+cwd = Path.cwd()
+problem_golem_results = run_simulation_golem(
+    problem=problem_golem,
+    image_name="moose-dev:fixed",
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
+    output_dir=str(cwd / "examples/case_studies/Groß_Schoenebeck/golem_GR_hie_transient_small_output_t"),
+    nproc=4,
+)
+```
+
+The host `project_dir` is mounted at `/projects` inside the temporary GOLEM container. The runner expects the executable at `/projects/golem/golem-opt`, stages the mesh and `.i` file into the container, and copies outputs back. Change the host path and image name for another Docker installation. The `GOLEM_BINARY` variable is not required in this mode.
+
+**Example B — native GOLEM on another computer**
+
+```python
+import os
+from pathlib import Path
+from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
+
+os.environ["GOLEM_EXECUTION_MODE"] = "local"
+os.environ["GOLEM_BINARY"] = "/absolute/path/to/golem-opt"  # replace with actual executable
+problem_golem_results = run_simulation_golem(
+    problem=problem_golem,
+    project_dir=str(Path.home() / "golem_projects"),
+    output_dir=str(Path.cwd() / "golem_native_output"),
+    nproc=4,
+)
+```
+
+Install a compatible MPI runtime so `mpiexec` is on `PATH`, and make sure `GOLEM_BINARY` is executable. No Docker image or `docker_dir` is needed. The runner copies results from its temporary working directory into `output_dir`.
+
+**DSL server — deployment explanation (not a codebase example)**
+
+On DSL, Workbench runs in the `py_runner` container and GOLEM is provided by the separate `golem_runner` container. The original Docker Compose deployment supplies `GOLEM_BINARY=/golem/golem-opt` and `GOLEM_WORKSPACE=/shared_golem_workspace` to `py_runner`, and configures a shared workspace and SSH-key volume. The updated runner recognizes this environment in `auto` mode, or the deployment can explicitly set `GOLEM_EXECUTION_MODE: "sidecar"` under `py_runner.environment`.
+
+The DSL configuration relies on MPI/SSH setup in the deployed images. By default the runner retains the existing `mpiexec` behavior. An explicit `GOLEM_MPI_HOST=golem_runner` should be used only if remote MPI launch and shared paths have been verified. This deployment is not Docker-out-of-Docker and does not require mounting a Docker socket in `py_runner`. The DSL deployment is described here for context; there is no DSL Python usage example because it is not part of the local codebase workflow.
+
+**Environment selection:** `execution_mode` takes priority over `GOLEM_EXECUTION_MODE`. In `auto` mode, `GOLEM_BINARY` + `GOLEM_WORKSPACE` selects `sidecar`; `GOLEM_BINARY` alone selects `local`; neither selects `docker`. Prefer explicit selection on developer machines to avoid inheriting unrelated environment variables. `GOLEM_DOCKER_IMAGE` sets the default image if `image_name` is omitted.
+
+For local Docker and native Python examples, see the snippets above. These snippets require a valid GOLEM problem object and a correctly configured solver; they are not standalone physics models.
 
 #### Hierarchical GOLEM CSV output and post-processing
 
@@ -1294,6 +1384,6 @@ topology, and numerical fields. It includes:
 
 The important architectural distinction is therefore at the **build and
 run stages**. SfePy executes natively in the WBGeo Python environment,
-while the current GOLEM runner stages and executes GOLEM externally through Docker/MPI. Native SLURM execution is a planned/alternative runner backend rather than functionality provided by the current implementation. After execution, both solver pipelines are represented as `SimulationResults` and can use the common WBGeo visualisation and export layer.
+while GOLEM is executed through one of the Docker, native MPI, or DSL sidecar MPI modes. SLURM `srun` is not currently implemented. After execution, both solver pipelines are represented as `SimulationResults` and can use the common WBGeo visualisation and export layer.
 
 \`\`\`

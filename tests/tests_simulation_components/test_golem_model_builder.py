@@ -515,3 +515,42 @@ def test_custom_golem_builder_rejects_external_mesh_with_hierarchy_placeholder(t
             input_file_contents=_custom_golem_input("${GOLEM_MESH1_FILE}"),
             mesh_file=str(mesh_path),
         )
+
+
+# G.3: pressure/temperature IC gradients must follow actual mesh node Z range.
+@pytest.mark.parametrize("mesh_type", [MeshType.IMPLICIT, MeshType.STRUCTURED])
+def test_hydrothermal_gradient_uses_actual_mesh_nodes(
+    mesh_type, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    nodes = np.asarray(model1_implicit_mesh.nodes, dtype=float).copy()
+    # Make the mesh range deliberately differ from the structural grid extent.
+    nodes[:, 2] = 100.0 + (nodes[:, 2] - nodes[:, 2].min()) * 0.5
+    mesh = model1_implicit_mesh.model_copy(update={"mesh_type": mesh_type, "nodes": nodes})
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=mesh, geomodel_result=model1_structural_result,
+        p_bottom=1.0e6, p_top=0.0, t_bottom=60.0, t_top=10.0,
+    )
+    assert builder.z_bottom == pytest.approx(nodes[:, 2].min())
+    assert builder.z_top == pytest.approx(nodes[:, 2].max())
+    assert builder.initial_temperature_gradient == pytest.approx(
+        (builder.t_top - builder.t_bottom) / np.ptp(nodes[:, 2])
+    )
+    path = tmp_path / "gradient.i"
+    builder.build_input_file(str(path))
+    content = path.read_text()
+    assert "[initial_pressure]" in content
+    assert "[initial_temperature]" in content
+
+
+def test_hydrothermal_unstructured_gradient_keeps_structural_extent(
+    model1_implicit_mesh, model1_structural_result
+):
+    mesh = _synthetic_hydrothermal_unstructured_mesh(
+        model1_implicit_mesh, with_fault=False
+    )
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=mesh, geomodel_result=model1_structural_result
+    )
+    extent = model1_structural_result.structural_frame.grid.extent
+    assert builder.z_bottom == pytest.approx(extent[4])
+    assert builder.z_top == pytest.approx(extent[5])

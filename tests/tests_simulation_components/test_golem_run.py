@@ -23,6 +23,19 @@ def _generated_hydro_input(model1_implicit_mesh, model1_structural_result, tmp_p
     return builder, path.read_text()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_golem_execution_environment(monkeypatch):
+    """Ensure Docker regression tests do not depend on the developer's shell."""
+    for name in ("GOLEM_BINARY", "GOLEM_SIDECAR_BINARY", "GOLEM_WORKSPACE",
+                 "GOLEM_MPI_HOST", "GOLEM_DOCKER_IMAGE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "docker")
+    # Unit tests mock subprocesses; they do not require the Docker CLI.
+    real_which = golem_run.shutil.which
+    monkeypatch.setattr(golem_run.shutil, "which", lambda name: "/usr/bin/" + name
+                        if name in {"docker", "mpiexec"} else real_which(name))
+
+
 # -----------------------------------------------------------------------------
 # validate_golem_input -- pure text/mesh validation, no Docker
 # -----------------------------------------------------------------------------
@@ -302,7 +315,12 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
 
     commands = []
 
+    docker_cp_count = 0
+
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        nonlocal docker_cp_count
+        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+            docker_cp_count += 1
         commands.append(command)
 
         # The second docker-cp copies the container working directory back.
@@ -311,7 +329,7 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
         if (
             len(command) >= 4
             and command[:2] == ["docker", "cp"]
-            and ":" in command[2]
+            and docker_cp_count == 2
         ):
             destination = Path(command[3])
             destination.mkdir(parents=True, exist_ok=True)
@@ -483,13 +501,18 @@ def test_run_simulation_golem_custom_problem_keeps_checkpoint_directory(
 
     commands = []
 
+    docker_cp_count = 0
+
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        nonlocal docker_cp_count
+        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+            docker_cp_count += 1
         commands.append(command)
 
         if (
             len(command) >= 4
             and command[:2] == ["docker", "cp"]
-            and ":" in command[2]
+            and docker_cp_count == 2
         ):
             destination = Path(command[3])
             destination.mkdir(parents=True, exist_ok=True)
@@ -600,11 +623,16 @@ def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
         golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n"
     )
 
+    docker_cp_count = 0
+
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        nonlocal docker_cp_count
+        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+            docker_cp_count += 1
         if (
             len(command) >= 4
             and command[:2] == ["docker", "cp"]
-            and ":" in command[2]
+            and docker_cp_count == 2
         ):
             destination = Path(command[3])
             destination.mkdir(parents=True, exist_ok=True)
@@ -688,11 +716,16 @@ def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
         golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n"
     )
 
+    docker_cp_count = 0
+
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
+        nonlocal docker_cp_count
+        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+            docker_cp_count += 1
         if (
             len(command) >= 4
             and command[:2] == ["docker", "cp"]
-            and ":" in command[2]
+            and docker_cp_count == 2
         ):
             destination = Path(command[3])
             destination.mkdir(parents=True, exist_ok=True)
@@ -763,8 +796,13 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
     monkeypatch.setattr(golem_run, "export_mesh_results_to_exodus", must_not_export)
     monkeypatch.setattr(golem_run, "_stream_process", lambda command: "fake GOLEM stdout\n")
 
+    docker_cp_count = 0
+
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
-        if len(command) >= 4 and command[:2] == ["docker", "cp"] and ":" in command[2]:
+        nonlocal docker_cp_count
+        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+            docker_cp_count += 1
+        if len(command) >= 4 and command[:2] == ["docker", "cp"] and docker_cp_count == 2:
             destination = Path(command[3])
             destination.mkdir(parents=True, exist_ok=True)
             out_dir = destination / "output"
@@ -797,3 +835,132 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
     assert run_info_seen["mesh_file"].endswith("reservoir.exo")
     assert run_info_seen["mesh1_file"] is None
     assert run_info_seen["mesh2_file"] is None
+
+
+# -----------------------------------------------------------------------------
+# Three-mode runner regression tests (no actual GOLEM, Docker or SSH required)
+# -----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("mode", ["local", "sidecar"])
+def test_direct_golem_modes_execute_and_copy_results(
+    mode, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        num_steps=1,
+    )
+    binary = tmp_path / "golem-opt"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", mode)
+    monkeypatch.setenv("GOLEM_BINARY", str(binary))
+    if mode == "sidecar":
+        workspace = tmp_path / "shared_workspace"
+        workspace.mkdir()
+        monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
+        monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
+
+    monkeypatch.setattr(
+        golem_run, "export_mesh_results_to_exodus",
+        lambda mesh, type: io.BytesIO(b"fake-exodus"),
+    )
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append((command, kwargs))
+        run_dir = Path(kwargs["cwd"])
+        (run_dir / "output").mkdir(exist_ok=True)
+        (run_dir / "output" / "wbgeo.e").write_bytes(b"result")
+        (run_dir / "diagnostic.csv").write_text("value\n1\n")
+        return SimpleNamespace(returncode=0, stdout="native stdout", stderr="")
+
+    monkeypatch.setattr(golem_run.subprocess, "run", fake_run)
+    result = SimulationResults()
+    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
+    seen = {}
+
+    def fake_loader(run_info):
+        seen.update(run_info)
+        return result
+
+    monkeypatch.setattr(golem_run, "load_exodus_results", fake_loader)
+    output = tmp_path / "results"
+    returned = golem_run.run_simulation_golem(
+        builder, project_dir=str(tmp_path / "project"),
+        output_dir=str(output), nproc=2,
+    )
+    assert returned is result
+    assert (output / "wbgeo.e").read_bytes() == b"result"
+    assert (output / "diagnostic.csv").is_file()
+    assert (output / "golem_stdout.txt").read_text() == "native stdout"
+    assert seen["output_file"] == str(output / "wbgeo.e")
+    command = commands[0][0]
+    assert command[:4] == ["mpiexec", "-n", "2", "--allow-run-as-root"]
+    assert str(binary) in command
+    assert ("--host" in command) == (mode == "sidecar")
+    assert not any(item[0][0] == "docker" for item in commands)
+
+
+def test_invalid_execution_mode_is_rejected(
+    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+    )
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "unknown")
+    with pytest.raises(ValueError, match="Invalid GOLEM execution mode"):
+        golem_run.run_simulation_golem(builder, project_dir=str(tmp_path))
+
+
+def test_local_mode_requires_native_binary(
+    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+    )
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "local")
+    with pytest.raises(ValueError, match="GOLEM_BINARY is required"):
+        golem_run.run_simulation_golem(builder, project_dir=str(tmp_path))
+
+
+def test_explicit_docker_mode_overrides_native_environment(
+    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+    )
+    monkeypatch.setenv("GOLEM_BINARY", "/nonexistent/golem-opt")
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "local")
+    # An explicit docker override must not validate the native executable.
+    # Stop before staging by making the builder raise a sentinel exception.
+    def stop(_):
+        raise RuntimeError("builder reached")
+    monkeypatch.setattr(builder, "build_input_file", stop)
+    with pytest.raises(RuntimeError, match="builder reached"):
+        golem_run.run_simulation_golem(
+            builder, project_dir=str(tmp_path), execution_mode="docker"
+        )
+
+
+# G.2: checkpoint cleanup must execute after, not inside, the copy loop.
+def test_checkpoint_cleanup_is_outside_copy_loop():
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(golem_run.run_simulation_golem)))
+    loops = [node for node in ast.walk(tree) if isinstance(node, (ast.For, ast.AsyncFor))]
+    copy_loops = [node for node in loops if isinstance(node.target, ast.Name)
+                  and node.target.id == "item"]
+    assert copy_loops, "Expected the GOLEM output item-copy loop"
+    for loop in copy_loops:
+        assert not any(isinstance(node, ast.Call)
+                       and isinstance(node.func, ast.Attribute)
+                       and node.func.attr == "rglob"
+                       for statement in loop.body for node in ast.walk(statement)), (
+            "Checkpoint recursive scanning must not be repeated for every copied item"
+        )

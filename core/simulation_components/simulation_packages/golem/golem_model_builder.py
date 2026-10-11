@@ -27,6 +27,9 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
     RockUnitProperties,
 )
 from py_api_wbgeo.nodesapi import wbgeo_type
+from core.simulation_components.simulation_packages.golem.golem_input_parser import (
+    locate_blocks, top_block,
+)
 
 # Backward-compatible names. Both solvers now use the same concrete models.
 GolemFluidProperties = FluidProperties
@@ -233,72 +236,36 @@ class CustomGolemBuilder:
         if not children:
             return content
         child_text = "\n".join(children)
-        # Add children to an existing top-level VectorPostprocessors block when
-        # present; otherwise create the block before Executioner.
-        lines = content.splitlines(keepends=True)
-        start = next((i for i, line in enumerate(lines)
-                      if line.strip() == "[VectorPostprocessors]"), None)
-        if start is not None:
-            depth = 1
-            end = None
-            for i in range(start + 1, len(lines)):
-                token = lines[i].strip()
-                if re.fullmatch(r"\[(?:\./)?[^\]]+\]", token):
-                    depth += 1
-                elif token in {"[]", "[../]"}:
-                    depth -= 1
-                    if depth == 0:
-                        end = i
-                        break
-            if end is None:
-                raise ValueError("Unterminated [VectorPostprocessors] block")
-            lines.insert(end, child_text + "\n")
+        # Locate insertion points with the shared MOOSE block parser.
+        lines, vector_block = top_block(content, "VectorPostprocessors")
+        if vector_block is not None:
+            lines.insert(vector_block.end, child_text + "\n")
             content = "".join(lines)
         else:
             block = "[VectorPostprocessors]\n" + child_text + "\n[]\n\n"
-            m = re.search(r"^\[Executioner\]\s*$", content, re.MULTILINE)
-            if m:
-                content = content[:m.start()] + block + content[m.start():]
+            lines, executioner = top_block(content, "Executioner")
+            if executioner is not None:
+                lines.insert(executioner.start, block)
+                content = "".join(lines)
             else:
                 content += "\n" + block
-        # Ensure CSV output is enabled, but never create a duplicate output.
-        # MOOSE accepts either the shortcut `csv = true` or an explicit child
-        # output such as `[csv] type = CSV`.  If the custom input already has
-        # any CSV Output object, reuse it for the injected VectorPostprocessors.
-        out = re.search(r"^\[Outputs\]\s*$", content, re.MULTILINE)
-        if out:
-            lines = content.splitlines(keepends=True)
-            start = next((i for i, line in enumerate(lines)
-                          if line.strip() == "[Outputs]"), None)
-            if start is not None:
-                depth = 1
-                end = None
-                for i in range(start + 1, len(lines)):
-                    token = lines[i].strip()
-                    if re.fullmatch(r"\[(?:\./)?[^\]]+\]", token):
-                        depth += 1
-                    elif token in {"[]", "[../]"}:
-                        depth -= 1
-                        if depth == 0:
-                            end = i
-                            break
-                if end is None:
-                    raise ValueError("Unterminated [Outputs] block")
-                outputs_text = "".join(lines[start + 1:end])
-                has_csv_shortcut = re.search(
-                    r"^\s*csv\s*=\s*(?:true|1)\s*$",
-                    outputs_text, re.MULTILINE | re.IGNORECASE
-                ) is not None
-                has_csv_object = re.search(
-                    r"^\s*type\s*=\s*CSV\s*$",
-                    outputs_text, re.MULTILINE | re.IGNORECASE
-                ) is not None
-                if not (has_csv_shortcut or has_csv_object):
-                    lines.insert(start + 1, "  csv = true\n")
-                    content = "".join(lines)
-        else:
-            # No Outputs block at all: create a minimal CSV output block.
+
+        lines, outputs_block = top_block(content, "Outputs")
+        if outputs_block is None:
             content += "\n[Outputs]\n  csv = true\n[]\n"
+        else:
+            outputs_text = "".join(lines[outputs_block.start + 1:outputs_block.end])
+            has_csv_shortcut = re.search(
+                r"^\s*csv\s*=\s*(?:true|1)\s*(?:#.*)?$",
+                outputs_text, re.MULTILINE | re.IGNORECASE,
+            ) is not None
+            has_csv_object = re.search(
+                r"^\s*type\s*=\s*CSV\s*(?:#.*)?$",
+                outputs_text, re.MULTILINE | re.IGNORECASE,
+            ) is not None
+            if not (has_csv_shortcut or has_csv_object):
+                lines.insert(outputs_block.start + 1, "  csv = true\n")
+                content = "".join(lines)
         return content
 
     def build_input_file(self, output_path: str) -> str:
@@ -389,6 +356,19 @@ class GolemHydrothermalProblemBuilder:
         extent = self.geomodel_result.structural_frame.grid.extent
         self.z_bottom = float(extent[4])
         self.z_top = float(extent[5])
+        if self.mesh_results.mesh_type != MeshType.UNSTRUCTURED:
+            # Cell-centred implicit/structured nodes can be inset from the
+            # nominal structural-model extent. Anchor the IC to actual nodes.
+            node_coordinates = getattr(self.mesh_results, "nodes", None)
+            if node_coordinates is None:
+                node_coordinates = getattr(self.mesh_results, "vertices", None)
+            if node_coordinates is None:
+                raise ValueError("Mesh node coordinates are required for GOLEM gradient initial conditions")
+            coordinates = np.asarray(node_coordinates, dtype=float)
+            if coordinates.ndim != 2 or coordinates.shape[1] < 3 or coordinates.shape[0] == 0:
+                raise ValueError("GOLEM mesh nodes must be a nonempty N x 3 coordinate array")
+            self.z_bottom = float(np.min(coordinates[:, 2]))
+            self.z_top = float(np.max(coordinates[:, 2]))
         if self.z_top <= self.z_bottom:
             raise ValueError("The structural-model z extent must have positive height")
         self.initial_temperature_gradient = (

@@ -48,6 +48,7 @@ from core.hierarchical_simulation.export_data.exodus.exo_format import export_me
 from core.hierarchical_simulation.visualization.hierarchical_meshing_visualization import plot_hierarchical_meshes_3d
 from core.hierarchical_simulation.visualization.hierarchical_paraview_visualization import open_hierarchical_exodus_in_paraview
 cwd = os.getcwd()
+os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 
 
 # ==============================================================================
@@ -540,36 +541,36 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 # ------------------------------------------------------------------------------
 
 # Running hydrothermal problem using golem from a costum file
-# custom_input_path = (
-#    cwd
-#    + "/examples/synthetic_examples/model1/input_data/simulation_files/"
-#      "custom_hydrothermal.i"
-#)
+custom_input_path = (
+    cwd
+    + "/examples/synthetic_examples/model1/input_data/simulation_files/"
+      "custom_hydrothermal.i"
+)
 
-# with open(custom_input_path, encoding="utf-8") as f:
-#   custom_input_file_contents = f.read()
+with open(custom_input_path, encoding="utf-8") as f:
+   custom_input_file_contents = f.read()
 
 
-# custom_golem_results = run_simulation_golem(
-#    problem=CustomGolemBuilder(
-#        input_file_contents=custom_input_file_contents,
-#        mesh_results=mesh_explicit_unstructured,
-#        geomodel_result=structural_model_result,
-#        print_linear_residuals=True,
-#    ),
+custom_golem_results = run_simulation_golem(
+    problem=CustomGolemBuilder(
+        input_file_contents=custom_input_file_contents,
+        mesh_results=mesh_explicit_unstructured,
+        geomodel_result=structural_model_result,
+        print_linear_residuals=True,
+    ),
 
-#    image_name="moose-dev:fixed",
-#    project_dir="/Users/marziehbaes/Documents/projects",
-#    docker_dir="/projects",
+    image_name="moose-dev:fixed",
+    project_dir="/Users/marziehbaes/Documents/projects",
+    docker_dir="/projects",
 
-#    output_dir=(
-#        cwd
-#        + "/examples/synthetic_examples/model1/"
-#          "golem_custom_output"
-#    ),
+    output_dir=(
+        cwd
+        + "/examples/synthetic_examples/model1/"
+          "golem_custom_output"
+    ),
 
-#    nproc=4,
-#)
+    nproc=4,
+)
 
 #custom_initial_time = min(custom_golem_results.nodes_by_time.keys())
 #custom_final_time = max(custom_golem_results.nodes_by_time.keys())

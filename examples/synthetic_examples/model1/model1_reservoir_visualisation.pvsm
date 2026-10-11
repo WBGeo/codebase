@@ -25031,11 +25031,11 @@
     </Proxy>
     <Proxy group="sources" type="ExodusIIReader" id="44031" servers="1">
       <Property name="FileName" id="44031.FileName" number_of_elements="1">
-        <Element index="0" value="/Users/marziehbaes/Documents/Aug_code/codebase/examples/synthetic_examples/model1/golem_simple_reservoir_output/wbgeo.e"/>
+        <Element index="0" value="golem_simple_reservoir_output/wbgeo.e"/>
         <Domain name="files" id="44031.FileName.files"/>
       </Property>
       <Property name="FileNameInfo" id="44031.FileNameInfo" number_of_elements="1">
-        <Element index="0" value="/Users/marziehbaes/Documents/Aug_code/codebase/examples/synthetic_examples/model1/golem_simple_reservoir_output/wbgeo.e"/>
+        <Element index="0" value="golem_simple_reservoir_output/wbgeo.e"/>
       </Property>
       <Property name="TimestepValues" id="44031.TimestepValues" number_of_elements="20">
         <Element index="0" value="0"/>

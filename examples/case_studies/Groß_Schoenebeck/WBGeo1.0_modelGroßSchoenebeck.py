@@ -39,13 +39,22 @@ from core.simulation_components.simulation_visualization.simulation_visualizatio
 
 cwd = os.getcwd()
 
+os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 
 # ==============================================================================
 # GROSS SCHOENEBECK CASE STUDY - SCRIPT MAP
 # ==============================================================================
 # SECTION 1: Structural geological model
 # SECTION 2: Mesh generation and mesh utilities
-# SECTION 3: Hierarchical mesh generation and export
+# SECTION 3: Groß Schönebeck GOLEM simulation
+#     ├── Steady-state simulation
+#     └── Transient simulation
+# SECTION 4: Hierarchical mesh generation and export
+# SECTION 5: Hierarchical simulation
+#     ├── BIG mesh: Steady hydrothermal (TH)
+#     ├── SMALL mesh: Steady hydro-thermo-mechanical (THM)
+#     │   └── Small mesh aligned with principal stress axes
+#     └── SMALL mesh: Transient simulation
 
 #
 # Each section starts and ends with a large banner so the workflow is easier to
@@ -355,6 +364,12 @@ with open("filename_Gross_Schoenebeck_SM_n.exo", "wb") as f:
 # END SECTION 2: MESH GENERATION AND MESH UTILITIES
 # ===============================================================================
 
+# ==============================================================================
+# SECTION 3: GROSS SCHÖNEBECK GOLEM SIMULATION
+# ==============================================================================
+# 3A. Steady-state simulation
+# ------------------------------------------------------------------------------
+
 # Solving steady state of the problem using custom golem input file.
 reservoir_input_path = (
     cwd
@@ -383,6 +398,9 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
     nproc=4,
 )
 
+# ------------------------------------------------------------------------------
+# 3B. Transient simulation
+# ------------------------------------------------------------------------------
 # Solving transient state of the problem using custom golem input file.
 
 reservoir_input_trans_path = (
@@ -427,8 +445,12 @@ model_GS_Xindyu_sready_results = run_simulation_golem(
 
 #%%
 
+# ------------------------------------------------------------------------------
+# END SECTION 3: GROSS SCHÖNEBECK GOLEM SIMULATION
+# ==============================================================================
+
 # ===============================================================================
-# SECTION 3: HIERARCHICAL MESH GENERATION AND EXPORT
+# SECTION 4: HIERARCHICAL MESH GENERATION AND EXPORT
 # ===============================================================================
 # Build two nested Groß Schönebeck meshes. Two equivalent workflows are shown:
 #   A) surfaces from the computed structural model;
@@ -454,7 +476,7 @@ hierarchical_small_extent = [
 ]
 
 # -------------------------------------------------------------------------------
-# 3A. Hierarchical mesh from the structural model
+# 4A. Hierarchical mesh from the structural model
 # -------------------------------------------------------------------------------
 # extent1="whole" uses the complete structural-model domain for the large mesh.
 # The small mesh is clipped to the eight-point domain and rotated by 18 degrees.
@@ -503,7 +525,7 @@ export_meshes_exodus(
 # )
 
 # -------------------------------------------------------------------------------
-# 3B. Hierarchical mesh directly from CSV surfaces
+# 4B. Hierarchical mesh directly from CSV surfaces
 # -------------------------------------------------------------------------------
 
 #surface_csv_dir = (
@@ -566,14 +588,23 @@ export_meshes_exodus(
 #%%
 
 # -------------------------------------------------------------------------------
-# END SECTION 3: HIERARCHICAL MESH GENERATION AND EXPORT
+# END SECTION 4: HIERARCHICAL MESH GENERATION AND EXPORT
 # ===============================================================================
 
 
-# Solving Gross Schonebeck steady and transient in hierarchical manner
-# Solve Steady state
+# ==============================================================================
+# SECTION 5: HIERARCHICAL SIMULATION
+# ==============================================================================
+# 5A. BIG mesh: Steady hydrothermal (TH)
+# 5B. SMALL mesh: Steady hydro-thermo-mechanical (THM)
+#     Small mesh aligned with principal stress axes
+# 5C. SMALL mesh: Transient simulation
+# ------------------------------------------------------------------------------
 
-# Solving the problem using custom golem input file. The GOLEM input file contains the Exodus material-block
+# Solving Gross Schonebeck steady and transient in hierarchical manner
+# ============================================================
+# # 5A. BIG MESH: Steady hydrothermal (TH)
+# ============================================================
 reservoir_input_path = (
     cwd
     + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_th.i"
@@ -617,7 +648,8 @@ model1_simple_reservoir_results = run_simulation_golem(
 
 
 # ============================================================
-# SMALL MODEL: steady THM
+# 5B. SMALL MESH: Steady hydro-thermo-mechanical (THM)
+# Small mesh aligned with principal stress axes
 # ============================================================
 
 small_steady_input_path = (
@@ -628,8 +660,6 @@ small_steady_input_path = (
 )
 
 # Hierarchy CSVs generated automatically by the BIG model.
-# golem_run.py prepares the staged PropertyReadFile copies and resolves
-# __N_*__/__NPROP_*__ before MOOSE sees the input.
 
 hierarchy_csv_dir = (
     cwd
@@ -643,9 +673,6 @@ with open(small_steady_input_path, "r") as f:
     small_steady_input = f.read()
 
 
-# ------------------------------------------------------------
-# Solve SMALL steady THM model
-# ------------------------------------------------------------
 
 model2_steady_thm_results = run_simulation_golem(
     problem=CustomGolemBuilder(
@@ -679,7 +706,10 @@ model2_steady_thm_results = run_simulation_golem(
     nproc=4,
 )
 
-
+# ============================================================
+# 5C. SMALL MESH: Transient simulation
+# solve transient
+# ============================================================
 
 small_transient_input_path = (
     cwd
@@ -699,8 +729,6 @@ reservoir_auxiliary_files_dir = (
     + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
 )
 
-
-# solve transient
 
 model2_transient_thm_results = run_simulation_golem(
     problem=CustomGolemBuilder(
@@ -736,3 +764,6 @@ model2_transient_thm_results = run_simulation_golem(
     nproc=4,
 )
 
+# -------------------------------------------------------------------------------
+# END SECTION 5: HIERARCHICAL SIMULATION
+# ===============================================================================

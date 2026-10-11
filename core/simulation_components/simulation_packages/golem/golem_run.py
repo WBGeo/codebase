@@ -31,6 +31,10 @@ from core.simulation_components.simulation_packages.golem.golem_model_builder im
     GolemSimpleReservoirProblemBuilder,
 )
 
+from core.simulation_components.simulation_packages.golem.golem_input_parser import (
+    locate_blocks, direct_children, block_body,
+)
+
 logger = logging.getLogger(__name__)
 
 MESH_TYPE_CODES = {
@@ -56,11 +60,9 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
         "BCs",
         "Materials",
     ]
-    missing = [
-        block
-        for block in required_blocks
-        if not re.search(rf"^\s*\[{re.escape(block)}\]\s*$", content, re.MULTILINE)
-    ]
+    _, parsed_blocks = locate_blocks(content)
+    present_top_level = {block.name for block in parsed_blocks if block.depth == 0}
+    missing = [block for block in required_blocks if block not in present_top_level]
     if missing:
         raise ValueError("Missing required blocks: " + ", ".join(missing))
 
@@ -80,92 +82,10 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
             "file = ${GOLEM_MESH_FILE}, ${GOLEM_MESH1_FILE}, or ${GOLEM_MESH2_FILE}"
         )
 
-    def extract_parent_block(text: str, parent_block: str) -> str:
-        lines = text.splitlines()
-        inside_parent = False
-        depth = 0
-        collected = []
-        parent_start = f"[{parent_block}]"
-
-        for line in lines:
-            stripped = line.strip()
-            if not inside_parent:
-                if stripped == parent_start:
-                    inside_parent = True
-                continue
-
-            if stripped == "[]":
-                if depth == 0:
-                    break
-                depth -= 1
-                collected.append(line)
-                continue
-
-            if stripped == "[../]":
-                if depth > 0:
-                    depth -= 1
-                collected.append(line)
-                continue
-
-            if re.match(r"^\[(?:\./)?[A-Za-z_][A-Za-z0-9_]*\]$", stripped):
-                depth += 1
-            collected.append(line)
-
-        return "\n".join(collected)
-
-    def get_direct_child_blocks(text: str, parent_block: str):
-        lines = text.splitlines()
-        inside_parent = False
-        depth = 0
-        children = []
-        parent_start = f"[{parent_block}]"
-
-        for line in lines:
-            stripped = line.strip()
-            if not inside_parent:
-                if stripped == parent_start:
-                    inside_parent = True
-                continue
-
-            if stripped == "[]":
-                if depth == 0:
-                    break
-                depth -= 1
-                continue
-
-            if stripped == "[../]":
-                if depth > 0:
-                    depth -= 1
-                continue
-
-            # Legacy [./name] is always a subsection.  Modern [name] is a
-            # direct child only while we are inside the parent; once a direct
-            # child has closed and another known top-level block starts, the
-            # parent has ended (some custom MOOSE inputs omit the parent's []).
-            legacy_match = re.match(
-                r"^\[\./([A-Za-z_][A-Za-z0-9_]*)\]$", stripped
-            )
-            if legacy_match:
-                if depth == 0:
-                    children.append(legacy_match.group(1))
-                depth += 1
-                continue
-
-            match = re.match(r"^\[([A-Za-z_][A-Za-z0-9_]*)\]$", stripped)
-            if match:
-                name = match.group(1)
-                if depth == 0 and name in {
-                    "Mesh", "Variables", "AuxVariables", "Problem", "Kernels",
-                    "AuxKernels", "Materials", "BCs", "Executioner", "Outputs",
-                    "UserObjects", "Functions", "Postprocessors", "VectorPostprocessors",
-                    "Preconditioning", "Controls", "Debug",
-                }:
-                    break
-                if depth == 0:
-                    children.append(name)
-                depth += 1
-
-        return children
+    # Shared block locator handles nested modern/legacy syntax, comments and
+    # quoted values consistently with hierarchy-sampler insertion.
+    extract_parent_block = block_body
+    get_direct_child_blocks = direct_children
 
     materials_content = extract_parent_block(content, "Materials")
     if not materials_content.strip():
@@ -299,15 +219,18 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
     )
 
 
-def _stream_process(command, heartbeat_seconds: float = 10.0) -> str:
-    """Run GOLEM while printing output and silence-period heartbeats live."""
-    print("\n" + "=" * 72, flush=True)
-    print("Starting GOLEM Docker/MPI simulation", flush=True)
-    print("Command:", shlex.join(command), flush=True)
-    print("=" * 72, flush=True)
+def _stream_process(command, heartbeat_seconds: float = 10.0, *, stream_output: bool = True, cwd=None) -> str:
+    """Capture GOLEM output; optionally display live lines and heartbeats."""
+    def emit(*args, **kwargs):
+        if stream_output:
+            print(*args, **kwargs)
+    emit("\n" + "=" * 72, flush=True)
+    emit("Starting GOLEM Docker/MPI simulation", flush=True)
+    emit("Command:", shlex.join(command), flush=True)
+    emit("=" * 72, flush=True)
 
     process = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, bufsize=1, universal_newlines=True,
     )
     if process.stdout is None:
@@ -335,7 +258,7 @@ def _stream_process(command, heartbeat_seconds: float = 10.0) -> str:
         except queue.Empty:
             elapsed = time.monotonic() - start_time
             silent = time.monotonic() - last_activity
-            print(
+            emit(
                 f"[GOLEM still running: elapsed {elapsed:.0f} s; "
                 f"no new output for {silent:.0f} s]",
                 flush=True,
@@ -344,7 +267,7 @@ def _stream_process(command, heartbeat_seconds: float = 10.0) -> str:
 
         if line is None:
             break
-        print(line, end="", flush=True)
+        emit(line, end="", flush=True)
         logger.debug("GOLEM: %s", line.rstrip())
         lines.append(line)
         last_activity = time.monotonic()
@@ -355,14 +278,14 @@ def _stream_process(command, heartbeat_seconds: float = 10.0) -> str:
     if return_code:
         raise RuntimeError(f"GOLEM exited with status {return_code}:\n{output}")
     elapsed = time.monotonic() - start_time
-    print("=" * 72, flush=True)
-    print(f"GOLEM completed successfully in {elapsed:.1f} seconds", flush=True)
-    print("=" * 72 + "\n", flush=True)
+    emit("=" * 72, flush=True)
+    emit(f"GOLEM completed successfully in {elapsed:.1f} seconds", flush=True)
+    emit("=" * 72 + "\n", flush=True)
     return output
 
 
 
-def _prepare_hierarchy_transfer_files(target_aux_dir: Path, generated: str) -> str:
+def _prepare_hierarchy_transfer_files(target_aux_dir: Path, generated: str, *, stream_output: bool = False) -> str:
     """Prepare hierarchy CSVs for PropertyReadFile and resolve row-count tokens.
 
     Big-model hierarchy output remains human-readable (headered) in small_frame/.
@@ -451,8 +374,9 @@ def _prepare_hierarchy_transfer_files(target_aux_dir: Path, generated: str) -> s
 
         generated = generated.replace(token, str(len(data_rows)))
         generated = generated.replace(nprop_token, str(nprop))
-        print(
-            f"Prepared hierarchy transfer {stable.name}: "
+        if stream_output:
+            print(
+                f"Prepared hierarchy transfer {stable.name}: "
             f"nvoronoi={len(data_rows)}, nprop={nprop}",
             flush=True,
         )
@@ -477,6 +401,8 @@ def run_simulation_golem(
     nproc: int = 4,
     keep_files_dir: Optional[str] = None,
     docker_library_paths: Optional[typing.Sequence[str]] = None,
+    execution_mode: Optional[str] = None,
+    stream_output: bool = False,
 ) -> SimulationResults:
     """Build or copy, validate and execute a GOLEM input against a WBGeo mesh.
 
@@ -489,13 +415,42 @@ def run_simulation_golem(
     GOLEM input.
     Environment variables:
     `$GOLEM_WORKSPACE` the directory we work in, shared as a docker volume
-    `$GOLEM_BINARY`: the golem binary, if preinstalled
+    `$GOLEM_BINARY`: native/sidecar GOLEM executable path
+    `$GOLEM_EXECUTION_MODE`: auto, docker, local, or sidecar
+    `$GOLEM_MPI_HOST`: optional explicit remote MPI host for sidecar
+    `$GOLEM_DOCKER_IMAGE`: Docker image default when image_name is omitted
     """
+    def emit(*args, **kwargs):
+        if stream_output:
+            print(*args, **kwargs)
+
     if nproc < 1:
         raise ValueError("nproc must be >= 1")
 
-    # is golem installed or do we create a docker container to run in?
-    create_docker = "GOLEM_BINARY" not in os.environ
+    # Explicit mode takes precedence. Auto preserves the original DSL setup:
+    # GOLEM_BINARY + GOLEM_WORKSPACE indicates the shared-volume MPI sidecar;
+    # GOLEM_BINARY alone indicates a native GOLEM installation.
+    mode = (execution_mode or os.getenv("GOLEM_EXECUTION_MODE", "auto")).lower().strip()
+    if mode == "auto":
+        if os.getenv("GOLEM_BINARY"):
+            mode = "sidecar" if os.getenv("GOLEM_WORKSPACE") else "local"
+        else:
+            mode = "docker"
+    if mode not in {"docker", "local", "sidecar"}:
+        raise ValueError(f"Invalid GOLEM execution mode {mode!r}; expected docker, local, sidecar or auto")
+    create_docker = mode == "docker"
+    if mode in {"local", "sidecar"} and not os.getenv("GOLEM_BINARY") and not os.getenv("GOLEM_SIDECAR_BINARY"):
+        raise ValueError(f"GOLEM_BINARY is required for GOLEM execution mode {mode!r}")
+    if mode == "sidecar" and not os.getenv("GOLEM_WORKSPACE"):
+        raise ValueError("Sidecar mode requires GOLEM_WORKSPACE mounted in both containers")
+    if mode == "local":
+        binary = os.getenv("GOLEM_BINARY")
+        if not binary or not (Path(binary).is_file() and os.access(binary, os.X_OK)):
+            raise RuntimeError(f"Native GOLEM binary not found or not executable: {binary!r}")
+    if mode != "docker" and shutil.which("mpiexec") is None:
+        raise RuntimeError("mpiexec is required for local and sidecar GOLEM execution")
+    if mode == "docker" and shutil.which("docker") is None:
+        raise RuntimeError("Docker CLI not found. Install Docker or choose another GOLEM_EXECUTION_MODE")
 
     # Shared-library locations used by GOLEM inside Docker.  The defaults are
     # derived from docker_dir so installations mounted somewhere other than
@@ -553,7 +508,7 @@ def run_simulation_golem(
                 )
             target_aux_dir = run_dir / "files"
             shutil.copytree(source_aux_dir, target_aux_dir, dirs_exist_ok=True)
-            print( f"Staged GOLEM auxiliary files: {source_aux_dir} -> {target_aux_dir}", flush=True, )
+            emit( f"Staged GOLEM auxiliary files: {source_aux_dir} -> {target_aux_dir}", flush=True, )
         else:
             target_aux_dir = None
 
@@ -563,7 +518,7 @@ def run_simulation_golem(
         # mesh2 consumes hierarchy CSVs produced by mesh1. Convert only the
         # staged copies to PropertyReadFile format and resolve row-count tokens.
         if isinstance(problem, CustomGolemBuilder) and problem.mesh2 is not None and target_aux_dir is not None:
-            generated = _prepare_hierarchy_transfer_files(target_aux_dir, generated)
+            generated = _prepare_hierarchy_transfer_files(target_aux_dir, generated, stream_output=stream_output)
             input_path.write_text(generated, encoding="utf-8")
 
         external_mesh_mode = False
@@ -582,7 +537,7 @@ def run_simulation_golem(
                         original_input.stem + "_hierarchy_sampling" + original_input.suffix
                     )
                     augmented_input.write_text(generated, encoding="utf-8")
-                    print( f"Saved hierarchy-augmented GOLEM input: {augmented_input}", flush=True, )
+                    emit( f"Saved hierarchy-augmented GOLEM input: {augmented_input}", flush=True, )
                 input_path.write_text(generated, encoding="utf-8")
         else:
             referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
@@ -630,7 +585,7 @@ def run_simulation_golem(
             staged_name = Path(requested_name).name
             staged_mesh = run_dir / staged_name
             shutil.copy2(source_mesh, staged_mesh)
-            container_mesh = f"{container_run}/{staged_name}"
+            container_mesh = f"{execution_run_dir}/{staged_name}"
             mesh_paths[placeholder] = staged_mesh
             generated = generated.replace(placeholder, container_mesh)
 
@@ -662,11 +617,13 @@ def run_simulation_golem(
                      or mesh_paths.get("${GOLEM_MESH1_FILE}")
                      or mesh_paths.get("${GOLEM_MESH2_FILE}"))
 
-        print(f"GOLEM host staging directory: {run_dir}", flush=True)
-        print(f"Input to copy: {input_path}", flush=True)
-        print(f"Mesh to copy: {mesh_path}", flush=True)
-        print(f"Docker container: {container_name}", flush=True)
-        print(f"MPI processes: {nproc}", flush=True)
+        emit(f"GOLEM host staging directory: {run_dir}", flush=True)
+        emit(f"Input to copy: {input_path}", flush=True)
+        emit(f"Mesh to copy: {mesh_path}", flush=True)
+        emit(f"GOLEM execution mode: {mode}", flush=True)
+        if create_docker:
+            emit(f"Docker container: {container_name}", flush=True)
+        emit(f"MPI processes: {nproc}", flush=True)
 
         # Resolve executable and input paths in the namespace where GOLEM runs.
         # Host paths (for example /Users/... on macOS) are not valid inside
@@ -675,16 +632,16 @@ def run_simulation_golem(
             golem_binary = f'{docker_dir.rstrip("/")}/golem/golem-opt'
             golem_input_path = f"{container_run}/wbgeo.i"
         else:
-            golem_binary = os.getenv("GOLEM_BINARY")
+            golem_binary = os.getenv("GOLEM_SIDECAR_BINARY", os.getenv("GOLEM_BINARY")) if mode == "sidecar" else os.getenv("GOLEM_BINARY")
             golem_input_path = str(input_path)
 
-        golem_command = (
-            "mpiexec",
-            "-n", str(nproc),
-            "--allow-run-as-root",
-            str(golem_binary),
-            "-i", golem_input_path,
-        )
+        # Original DSL images may configure the MPI host externally. Keep
+        # their bare mpiexec invocation unless GOLEM_MPI_HOST is specified.
+        mpi_host = os.getenv("GOLEM_MPI_HOST", "").strip() if mode == "sidecar" else ""
+        golem_command = ["mpiexec", "-n", str(nproc), "--allow-run-as-root"]
+        if mpi_host:
+            golem_command.extend(["--host", mpi_host])
+        golem_command.extend([str(golem_binary), "-i", golem_input_path])
 
         if create_docker:  # run via docker create/run
             import shlex
@@ -696,7 +653,7 @@ def run_simulation_golem(
             )
 
             if image_name is None:
-                image_name = 'moose-dev:fixed'
+                image_name = os.getenv('GOLEM_DOCKER_IMAGE', 'moose-dev:fixed')
 
             create_command = [
                 "docker", "create", "--name", container_name, "-i",
@@ -727,7 +684,7 @@ def run_simulation_golem(
                     + copied.stdout + copied.stderr
                 )
 
-            transcript = _stream_process(["docker", "start", "-a", container_name])
+            transcript = _stream_process(["docker", "start", "-a", container_name], stream_output=stream_output)
 
             # Copy the ENTIRE GOLEM working directory back from the container.
             # Some MOOSE outputs (especially CSV when no file_base is given) are
@@ -769,22 +726,19 @@ def run_simulation_golem(
                 elif item.is_file():
                     shutil.copy2(item, destination)
 
-                    # GOLEM/MOOSE may create recovery/checkpoint directories such as
-                    # ``wbgeo_out_cp`` during long runs. These are internal restart data,
-                    # not user-facing WBGeo simulation results, so remove them from the
-                    # final output directory for all GOLEM problem types (hydrothermal,
-                    # simple reservoir, and custom).
-                checkpoint_dirs = sorted(
-                    (
-                        path
-                        for path in output.rglob("*")
-                        if path.is_dir() and path.name.endswith("_cp")
-                    ),
-                    key=lambda path: len(path.parts),
-                    reverse=True,
-                )
-                for checkpoint_dir in checkpoint_dirs:
-                    shutil.rmtree(checkpoint_dir, ignore_errors=True)
+            # Remove internal GOLEM/MOOSE recovery/checkpoint directories once,
+            # after all output files and directories have been copied.
+            checkpoint_dirs = sorted(
+                (
+                    path
+                    for path in output.rglob("*")
+                    if path.is_dir() and path.name.endswith("_cp")
+                ),
+                key=lambda path: len(path.parts),
+                reverse=True,
+            )
+            for checkpoint_dir in checkpoint_dirs:
+                shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
             # The Docker working directory has now been fully copied into the
             # caller's output directory (with internal *_cp checkpoint folders
@@ -796,20 +750,39 @@ def run_simulation_golem(
                 (path for path in output.rglob("*") if path.is_file()),
                 key=lambda path: str(path),
             )
-            print( f"Copied {len(copied_files)} GOLEM output file(s) to {output}", flush=True, )
+            emit( f"Copied {len(copied_files)} GOLEM output file(s) to {output}", flush=True, )
             for path in copied_files:
-                print(f"  {path.relative_to(output)}", flush=True)
+                emit(f"  {path.relative_to(output)}", flush=True)
         else:
             # if golem is installed locally: Run the golem command directly
-            res = subprocess.run(golem_command, cwd=run_dir, capture_output=True, text=True)
-            if res.returncode != 0:
-                import sys
-                print(res.stdout)
-                print(res.stderr, file=sys.stderr)
-                raise ValueError("Failed to execute golem with ", golem_command, run_dir, res.stdout,
-                                 res.stderr)
-            transcript = res.stdout
-            copied_files = []
+            if stream_output:
+                transcript = _stream_process(golem_command, cwd=run_dir, stream_output=True)
+            else:
+                res = subprocess.run(golem_command, cwd=run_dir, capture_output=True, text=True)
+                if res.returncode != 0:
+                    raise RuntimeError(
+                        f"GOLEM execution failed (exit code {res.returncode}).\n"
+                        f"Command: {shlex.join(golem_command)}\n"
+                        f"Working directory: {run_dir}\n"
+                        f"stdout:\n{res.stdout or '(empty)'}\n"
+                        f"stderr:\n{res.stderr or '(empty)'}"
+                    )
+                transcript = res.stdout
+            # Direct and shared-workspace executions write to run_dir. Copy
+            # outputs to output_dir so result loading works in every mode.
+            if (run_dir / "output").is_dir() and (run_dir / "output").resolve() != output:
+                shutil.copytree(run_dir / "output", output, dirs_exist_ok=True)
+            excluded = {"wbgeo.i", "wbgeo_mesh.exo", "wbgeo_mesh1.exo", "wbgeo_mesh2.exo", "output"}
+            excluded.update(path.name for path in mesh_paths.values())
+            for item in run_dir.iterdir():
+                if item.name in excluded or item.resolve() == output:
+                    continue
+                target = output / item.name
+                if item.is_dir():
+                    shutil.copytree(item, target, dirs_exist_ok=True)
+                elif item.is_file():
+                    shutil.copy2(item, target)
+            copied_files = sorted(path for path in output.rglob("*") if path.is_file())
 
         # Hierarchy samplers execute at TIMESTEP_END so their vectors are
         # populated before CSV output.  MOOSE writes one CSV per timestep
@@ -977,8 +950,8 @@ def run_simulation_golem(
             "output_dir": str(output),
             "stdout_file": str(transcript_path),
         }
-        print(f"GOLEM Exodus result: {result_file}", flush=True)
-        print("Loading GOLEM Exodus result into SimulationResults...", flush=True)
+        emit(f"GOLEM Exodus result: {result_file}", flush=True)
+        emit("Loading GOLEM Exodus result into SimulationResults...", flush=True)
         simulation_results = load_exodus_results(run_info)
         # Keep the native GOLEM Exodus result path on the unified result object.
         # The generic simulation exporter uses this path for format="exodus" so
@@ -991,7 +964,7 @@ def run_simulation_golem(
             raise RuntimeError(
                 f"The GOLEM Exodus file at {result_file} contained no readable time steps."
             )
-        print( f"Loaded {len(simulation_results.nodes_by_time)} GOLEM time step(s).", flush=True, )
+        emit( f"Loaded {len(simulation_results.nodes_by_time)} GOLEM time step(s).", flush=True, )
         return simulation_results
     finally:
         if container_created:
