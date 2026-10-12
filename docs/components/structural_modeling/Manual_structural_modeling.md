@@ -87,7 +87,7 @@ The computation runs the following steps in sequence:
 **Limitations of the structural model:**
 
 - **Group interactions are limited to unconformities.** The only geometric relationship supported between stratigraphic groups is that a younger group erodes the top of an older one. There is no support for intrusions, cross-cutting bodies, or any other non-erosional contact geometry between groups.
-- **Sufficient data required in every active fault domain.** When a fault is active for a group, the interpolation in each fault domain uses only the data points that fall within that domain. If a domain contains too few surface points — or none at all — the result in that domain will be unreliable or empty. Methods that additionally require orientations (UCK, FDI, GeoINR) need orientation data in every active domain as well.
+- **Sufficient data required in every active fault domain.** When a fault is active for a group, the interpolation in each fault domain uses only the data points that fall within that domain. If a domain contains too few surface points — or none at all — the result in that domain will be unreliable or empty. Methods that additionally require orientations (UCK, FDI, PLI, GeoINR) need orientation data in every active domain as well.
 
 ---
 

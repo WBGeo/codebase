@@ -66,7 +66,7 @@ def test_pydantic_param_models_have_expected_defaults():
     assert fdi.tol is None
 
     pli = PLIParams()
-    assert pli.nelements == 5_000
+    assert pli.nelements == 2_000
     assert pli.solver == "cg"
     assert pli.damp is True
     assert pli.tol is None

@@ -90,6 +90,7 @@ ALL_GROUP_METHODS = list(InterpolationMethod)
 _MIN_INTERIOR_MATCH: dict[InterpolationMethod, float] = {
     InterpolationMethod.RADIAL_BASIS_FUNCTION: 0.95,
     InterpolationMethod.FINITE_DIFFERENCES:    0.95,
+    InterpolationMethod.PIECEWISE_LINEAR:      0.95,
     InterpolationMethod.UNIVERSAL_COKRIGING:   0.90,
     InterpolationMethod.UNIVERSAL_KRIGING:     0.90,
 

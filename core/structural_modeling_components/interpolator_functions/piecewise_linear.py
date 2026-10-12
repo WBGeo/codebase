@@ -159,11 +159,9 @@ def interpolate_group_piecewise_linear(
         # backward compatibility
         model.set_model_data(data_combined)
 
-    # Stratigraphic column: preserve original order (group.structural_elements)
-    stratigraphic_column: Dict[str, Dict[str, Dict[str, float]]] = {group.name: {}}
-    for i, rock in enumerate(group.structural_elements):
-        stratigraphic_column[group.name][rock.name] = {"min": i, "max": i + 1, "id": i}
-    model.set_stratigraphic_column(stratigraphic_column)
+    # No stratigraphic column is set: LoopStructural only reads it in
+    # evaluate_model()/fault topology, neither of which is used here -- we only
+    # evaluate this one feature's scalar field and assign lithology ourselves.
 
     # --- parameters (PLI) ---
     params = group.get_interpolation_params() if hasattr(group, "get_interpolation_params") else None
@@ -177,9 +175,7 @@ def interpolate_group_piecewise_linear(
     # to no nearby constraint when there's no margin, which solves to NaN for
     # some of them under LoopStructural >=1.8 (confirmed directly: with this
     # exact data, buffer=0.0 produces NaNs in the outermost grid slice,
-    # buffer=0.2 does not). FDI's structured-grid support doesn't have this
-    # failure mode (every cell is always fully defined), so it isn't affected
-    # the same way, but is unbuffered for the same (debatable) reason.
+    # buffer=0.2 does not). finite_difference.py uses the same buffer.
     create_kwargs: Dict[str, Any] = dict(
         interpolatortype="PLI",
         nelements=params.nelements,

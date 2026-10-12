@@ -411,8 +411,6 @@ class FDIParams(BaseModel):
     nelements:
         Discretisation size passed to `create_and_add_foliation`.
         (Controls the size of the discrete support; larger -> finer/more expensive.)
-    buffer:
-        Optional buffer around the model bounds used when building the interpolator domain.
     solver:
         Linear solver choice (LoopStructural versions commonly accept "cg").
     damp:
@@ -449,7 +447,6 @@ def default_fdi_params(ctx: "InterpolationContext") -> FDIParams:
     ----------
     - `nelements` grows sublinearly with problem size: more data -> allow finer support,
       but keep a hard cap to avoid runaway compute/memory costs.
-    - `buffer` defaults to 0 because your workflow already defines the grid/domain explicitly.
     - `solver` defaults to 'cg' because it's commonly used for these sparse linear systems.
     - `damp=True` by default for robustness (stabilises noisy/heterogeneous constraints).
     - `tol=None` to let LoopStructural choose a version-appropriate default.
@@ -504,7 +501,7 @@ class PLIParams(BaseModel):
     """
 
     nelements: int = Field(
-        5_000,
+        2_000,
         ge=1_000,
         description="PLI discretisation size for create_and_add_foliation (larger = finer, slower).",
     )
@@ -529,8 +526,8 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
 
     Heuristics
     ----------
-    - PLI generally needs a denser discretisation than FDI to avoid faceting / overly angular
-      results, so we start from a higher base `nelements`.
+    - PLI's unstructured tetrahedral mesh is much more expensive per element than FDI's
+      structured grid, so we start from a lower base `nelements` than FDI.
     - `nelements` grows sublinearly with problem size (sqrt scaling with point count),
       and is softly adjusted by how well-sampled the domain is (mean NN distance vs extent).
     - `solver` defaults to 'cg' (sparse linear systems).
