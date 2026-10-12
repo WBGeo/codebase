@@ -6,7 +6,7 @@ This is not a complete HIT grammar; MOOSE remains the final syntax authority.
 from dataclasses import dataclass
 import re
 
-_OPEN = re.compile(r"^\[(?:\./)?([A-Za-z_][A-Za-z0-9_]*)\]$")
+_OPEN = re.compile(r"^\[(?:\./)?([A-Za-z_][A-Za-z0-9_./-]*)\]$")
 
 @dataclass(frozen=True)
 class Block:

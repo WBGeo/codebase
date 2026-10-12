@@ -389,7 +389,7 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
         print_linear_residuals=True,
     ),
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
     output_dir=(
         cwd
@@ -432,7 +432,7 @@ model_GS_Xindyu_sready_results = run_simulation_golem(
         print_linear_residuals=True,
     ),
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
     output_dir=(
         cwd
@@ -638,7 +638,7 @@ model1_simple_reservoir_results = run_simulation_golem(
 
     ),
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
     output_dir=(
         cwd
@@ -697,7 +697,7 @@ model2_steady_thm_results = run_simulation_golem(
 
     image_name="moose-dev:fixed",
 
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
 
     # Output of the SMALL steady THM calculation
@@ -756,7 +756,7 @@ model2_transient_thm_results = run_simulation_golem(
 
     image_name="moose-dev:fixed",
 
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
 
     # Output of the SMALL steady THM calculation

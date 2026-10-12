@@ -50,6 +50,7 @@ from core.simulation_components.simulation_packages.golem.golem_run import (
 #%%
 
 cwd = os.getcwd()
+os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 
 # ==============================================================================
 # MODEL 2 - SCRIPT MAP
@@ -568,7 +569,7 @@ problem_golem.build_input_file("/tmp/wbgeo_golem_model2.i")
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
 
     output_dir=(
@@ -637,7 +638,7 @@ with open("simulation_golem_results.zip", "wb") as f:
 #    ),
 
 #    image_name="moose-dev:fixed",
-#    project_dir="/Users/marziehbaes/Documents/projects",
+#    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #    docker_dir="/projects",
 
 #    output_dir=(
@@ -761,7 +762,7 @@ with open("simulation_golem_results.zip", "wb") as f:
 #reservoir_results_model2 = run_simulation_golem(
 #    problem=reservoir_problem_model2,
 #    image_name="moose-dev:fixed",
-#    project_dir="/Users/marziehbaes/Documents/projects",
+#    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #    docker_dir="/projects",
 #    output_dir=(
 #        cwd + "/examples/synthetic_examples/model2/golem_universal_reservoir_output"
@@ -914,7 +915,7 @@ model2_custom_reservoir_results = run_simulation_golem(
         print_linear_residuals=True,
     ),
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
     output_dir=(
         cwd

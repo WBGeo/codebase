@@ -644,7 +644,6 @@ def run_simulation_golem(
         golem_command.extend([str(golem_binary), "-i", golem_input_path])
 
         if create_docker:  # run via docker create/run
-            import shlex
             docker_command = (
                 f'export LD_LIBRARY_PATH="{golem_library_path}:$LD_LIBRARY_PATH"; '
                 f'set -e; mkdir -p "{container_run}/output"; '
@@ -726,23 +725,6 @@ def run_simulation_golem(
                 elif item.is_file():
                     shutil.copy2(item, destination)
 
-            # Automatically generated WBGeo problems do not need GOLEM/MOOSE
-            # recovery directories in their returned results. Custom GOLEM
-            # inputs may intentionally request checkpoints for restart, so
-            # preserve those directories for CustomGolemBuilder runs.
-            if not isinstance(problem, CustomGolemBuilder):
-                checkpoint_dirs = sorted(
-                    (
-                        path
-                        for path in output.rglob("*")
-                        if path.is_dir() and path.name.endswith("_cp")
-                    ),
-                    key=lambda path: len(path.parts),
-                    reverse=True,
-                )
-                for checkpoint_dir in checkpoint_dirs:
-                    shutil.rmtree(checkpoint_dir, ignore_errors=True)
-
             # The Docker working directory has now been fully copied into the
             # caller's output directory (with checkpoint directories preserved
             # for custom inputs). Remove the temporary host-side snapshot immediately
@@ -786,6 +768,24 @@ def run_simulation_golem(
                 elif item.is_file():
                     shutil.copy2(item, target)
             copied_files = sorted(path for path in output.rglob("*") if path.is_file())
+
+        # Automatically generated WBGeo problems do not need GOLEM/MOOSE
+        # recovery directories in their returned results. Custom GOLEM
+        # inputs may intentionally request checkpoints for restart, so
+        # preserve those directories for CustomGolemBuilder runs.
+        if not isinstance(problem, CustomGolemBuilder):
+            checkpoint_dirs = sorted(
+                (
+                    path
+                    for path in output.rglob("*")
+                    if path.is_dir() and path.name.endswith("_cp")
+                ),
+                key=lambda path: len(path.parts),
+                reverse=True,
+            )
+            for checkpoint_dir in checkpoint_dirs:
+                shutil.rmtree(checkpoint_dir, ignore_errors=True)
+
 
         # Hierarchy samplers execute at TIMESTEP_END so their vectors are
         # populated before CSV output.  MOOSE writes one CSV per timestep

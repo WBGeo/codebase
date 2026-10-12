@@ -985,7 +985,7 @@ cwd = Path.cwd()
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir="${GOLEM_PROJECT_DIR}",
     docker_dir="/projects",
     output_dir=str(cwd / "examples/case_studies/Groß_Schoenebeck/golem_GR_hie_transient_small_output_t"),
     nproc=4,
@@ -1387,3 +1387,32 @@ run stages**. SfePy executes natively in the WBGeo Python environment,
 while GOLEM is executed through one of the Docker, native MPI, or DSL sidecar MPI modes. SLURM `srun` is not currently implemented. After execution, both solver pipelines are represented as `SimulationResults` and can use the common WBGeo visualisation and export layer.
 
 \`\`\`
+
+
+### GOLEM runner options and portable examples
+
+Set `GOLEM_PROJECT_DIR` to the host directory containing `golem/golem-opt`
+before running the case-study or synthetic examples. For example:
+
+```bash
+export GOLEM_PROJECT_DIR="/path/to/projects"
+```
+
+The Python examples use `project_dir=os.environ["GOLEM_PROJECT_DIR"]`;
+the variable must be set in the environment launching Python.
+
+`run_simulation_golem(..., stream_output=False)` captures solver output
+without displaying it live. Set `stream_output=True` to print live output
+and progress messages. This is independent of the builder's
+`print_linear_residuals` setting.
+
+`GOLEM_EXECUTION_MODE` accepts `auto`, `docker`, `local`, and `sidecar`.
+`GOLEM_BINARY` names the native or sidecar executable. In sidecar mode,
+`GOLEM_SIDECAR_BINARY` overrides `GOLEM_BINARY` when present.
+`GOLEM_WORKSPACE` must be shared between the Python and GOLEM containers.
+`GOLEM_MPI_HOST` optionally adds `--host <hostname>` to the sidecar
+`mpiexec` command; the MPI/SSH deployment must still be tested live.
+
+Checkpoint directories ending in `_cp` are removed from returned results
+for automatically generated GOLEM problems in every execution mode.
+`CustomGolemBuilder` checkpoints are preserved to support restarts.

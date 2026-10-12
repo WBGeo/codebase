@@ -494,7 +494,7 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 ##problem_golem_results = run_simulation_golem(
 ##    problem=problem_golem,
 ##    image_name="moose-dev:fixed",
-##    project_dir="/Users/marziehbaes/Documents/projects",
+##    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 ##    docker_dir="/projects",
 
 ##    output_dir=(
@@ -561,7 +561,7 @@ custom_golem_results = run_simulation_golem(
     ),
 
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
 
     output_dir=(
@@ -723,7 +723,7 @@ custom_golem_results = run_simulation_golem(
 ##model1_simple_reservoir_results = run_simulation_golem(
 ##    problem=reservoir_problem,
 ##    image_name="moose-dev:fixed",
-##    project_dir="/Users/marziehbaes/Documents/projects",
+##    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 ##    docker_dir="/projects",
 ##    output_dir=(
 ##        cwd
@@ -840,7 +840,7 @@ custom_golem_results = run_simulation_golem(
 #            print_linear_residuals=True,
 #        ),
 #        image_name="moose-dev:fixed",
-#        project_dir="/Users/marziehbaes/Documents/projects",
+#        project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #        docker_dir="/projects",
 #        output_dir=(
 #            cwd

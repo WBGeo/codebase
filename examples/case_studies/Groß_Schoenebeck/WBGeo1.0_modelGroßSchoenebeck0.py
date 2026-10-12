@@ -61,7 +61,7 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
           print_linear_residuals=True,
     ),
     image_name="moose-dev:fixed",
-    project_dir="/Users/marziehbaes/Documents/projects",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
     output_dir=(
         cwd

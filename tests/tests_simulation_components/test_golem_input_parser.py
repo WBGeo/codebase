@@ -49,3 +49,18 @@ def test_missing_top_block_returns_none():
     _, block = top_block("[Mesh]\n[]\n", "Outputs")
     assert block is None
     assert direct_children("[Mesh]\n[]\n", "Outputs") == []
+
+@pytest.mark.parametrize("name", ["rock-unit", "rock.unit", "rock/unit", "rock_unit"])
+def test_material_subsection_names_with_punctuation(name):
+    """G.1: WBGeo recognizes punctuation in valid subsection names."""
+    content = f"[Materials]\n  [{name}]\n    type = Example\n  []\n[]\n"
+    assert direct_children(content, "Materials") == [name]
+    _, blocks = locate_blocks(content)
+    assert [(block.name, block.depth) for block in blocks] == [
+        ("Materials", 0), (name, 1)
+    ]
+
+
+def test_legacy_subsection_name_with_punctuation():
+    content = "[Materials]\n  [./rock-unit.1/zone]\n  [../]\n[]\n"
+    assert direct_children(content, "Materials") == ["rock-unit.1/zone"]

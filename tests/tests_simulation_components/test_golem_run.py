@@ -964,3 +964,91 @@ def test_checkpoint_cleanup_is_outside_copy_loop():
                        for statement in loop.body for node in ast.walk(statement)), (
             "Checkpoint recursive scanning must not be repeated for every copied item"
         )
+
+@pytest.mark.parametrize("mode", ["local", "sidecar"])
+def test_direct_modes_remove_generated_checkpoints_but_keep_other_outputs(
+    mode, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    """G.2: local/sidecar must match Docker's generated-problem cleanup."""
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        num_steps=1,
+    )
+    binary = tmp_path / "golem-opt"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", mode)
+    monkeypatch.setenv("GOLEM_BINARY", str(binary))
+    if mode == "sidecar":
+        workspace = tmp_path / "shared_workspace"
+        workspace.mkdir()
+        monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
+        monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
+
+    monkeypatch.setattr(
+        golem_run, "export_mesh_results_to_exodus",
+        lambda mesh, type: io.BytesIO(b"fake-exodus"),
+    )
+
+    def fake_run(command, **kwargs):
+        run_dir = Path(kwargs["cwd"])
+        generated = run_dir / "output"
+        generated.mkdir(exist_ok=True)
+        (generated / "wbgeo.e").write_bytes(b"result")
+        checkpoint = generated / "wbgeo_out_cp"
+        checkpoint.mkdir()
+        (checkpoint / "restart.cpr").write_bytes(b"checkpoint")
+        (generated / "diagnostic.csv").write_text("x\n1\n")
+        return SimpleNamespace(returncode=0, stdout="done", stderr="")
+
+    monkeypatch.setattr(golem_run.subprocess, "run", fake_run)
+    result = SimulationResults()
+    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
+    monkeypatch.setattr(golem_run, "load_exodus_results", lambda _: result)
+    output = tmp_path / "results"
+    assert golem_run.run_simulation_golem(
+        builder, project_dir=str(tmp_path / "project"), output_dir=str(output)
+    ) is result
+    assert (output / "wbgeo.e").exists()
+    assert (output / "diagnostic.csv").exists()
+    assert not (output / "wbgeo_out_cp").exists()
+
+
+def test_sidecar_binary_override_and_mpi_host(
+    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    """Sidecar uses GOLEM_SIDECAR_BINARY and adds --host only when configured."""
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        num_steps=1,
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "sidecar")
+    monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
+    monkeypatch.setenv("GOLEM_BINARY", "/different/golem-opt")
+    monkeypatch.setenv("GOLEM_SIDECAR_BINARY", "/golem/golem-opt")
+    monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
+    monkeypatch.setattr(
+        golem_run, "export_mesh_results_to_exodus",
+        lambda mesh, type: io.BytesIO(b"fake-exodus"),
+    )
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        (Path(kwargs["cwd"]) / "wbgeo.e").write_bytes(b"result")
+        return SimpleNamespace(returncode=0, stdout="done", stderr="")
+
+    monkeypatch.setattr(golem_run.subprocess, "run", fake_run)
+    result = SimulationResults()
+    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
+    monkeypatch.setattr(golem_run, "load_exodus_results", lambda _: result)
+    assert golem_run.run_simulation_golem(
+        builder, project_dir=str(tmp_path / "project"), output_dir=str(tmp_path / "results")
+    ) is result
+    assert commands[0][commands[0].index("--host") + 1] == "golem_runner"
+    assert "/golem/golem-opt" in commands[0]
+    assert "/different/golem-opt" not in commands[0]
