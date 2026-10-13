@@ -362,8 +362,14 @@ def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
     # Epoch scaling (sublinear-ish)
     # - small: more epochs are cheap and often needed for smooth INR convergence
     # - large: reduce epochs for runtime
+    # n<800 case: validated against a real wbgeo model (84/36-point groups, one with a sharp
+    # local fold) at 3000/4000/6000 epochs - all three were equally reliable (10/10 clean
+    # across random seeds), so lowered from 6000 to 4000 for a ~30% runtime reduction with no
+    # observed reliability cost. Only tested on that one dataset - revisit with a proper
+    # input-data-driven calibration (like the other interpolators' heuristics) rather than
+    # assuming this generalizes to every dataset in this size bucket.
     if n < 800:
-        epochs = 6000
+        epochs = 4000
         lr = 0.01
     elif n < 5000:
         epochs = 4000

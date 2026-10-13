@@ -288,9 +288,9 @@ def test_default_geo_inr_params_capacity_breakpoints():
 
 def test_default_geo_inr_params_epoch_lr_breakpoints():
     """Verify epochs / lr at each training breakpoint."""
-    # n < 800: epochs=6000, lr=0.01
+    # n < 800: epochs=4000, lr=0.01
     p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=100, mean_nn_distance=2.0))
-    assert p.epochs == 6_000
+    assert p.epochs == 4_000
     assert math.isclose(p.lr, 0.01)
 
     # 800 <= n < 5000: epochs=4000, lr=0.005
