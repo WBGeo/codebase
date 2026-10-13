@@ -68,12 +68,7 @@ def _expected_lith_block(grid: RegularGrid, z_top: float, z_bottom: float) -> np
     return expected
 
 
-ALL_GROUP_METHODS = [
-    m for m in InterpolationMethod
-    if m not in {
-        InterpolationMethod.GEOINR,            # non-deterministic
-    }
-]
+ALL_GROUP_METHODS = list(InterpolationMethod)
 
 # Minimum fraction of interior voxels (1-voxel boundary margin excluded) that
 # must match the analytical solution.
@@ -84,6 +79,10 @@ _MIN_INTERIOR_MATCH: dict[InterpolationMethod, float] = {
     InterpolationMethod.UNIVERSAL_KRIGING:     0.90,
 
     InterpolationMethod.ORDINARY_KRIGING:      0.90,
+    # GeoINR is non-deterministic (unseeded random init); 0.90 gives a safe margin below
+    # the 1.000 interior match observed on this scenario across 15 unseeded trials, so a
+    # normal run-to-run variation doesn't make this test flaky.
+    InterpolationMethod.GEOINR:                0.90,
 }
 
 
@@ -126,6 +125,9 @@ def test_layercake_analytical_lithology_block(method, plot_mode):
 
     for g in frame.structural_groups:
         g.set_interpolation_method(method)
+        if method == InterpolationMethod.GEOINR:
+            # default is 4000 epochs; 1000 passed 6/6 unseeded trials here and keeps the suite fast
+            g.configure_interpolation_params(epochs=1000)
 
     res = general.compute_structural_model(frame, extract_meshes=False, verbose=False)
 
