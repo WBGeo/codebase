@@ -25,10 +25,6 @@ from core.meshing_components.mesh_format.mesh_export import (
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
-from core.hierarchical_simulation.generate_mesh.hierarchical_mesh import hierarchical_mesh
-from core.hierarchical_simulation.export_data.exodus.exo_format import export_meshes_exodus
-from core.hierarchical_simulation.visualization.hierarchical_meshing_visualization import plot_hierarchical_meshes_3d
-from core.hierarchical_simulation.visualization.hierarchical_paraview_visualization import open_hierarchical_exodus_in_paraview
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     CustomGolemBuilder,
 )

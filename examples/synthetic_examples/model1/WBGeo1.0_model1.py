@@ -44,10 +44,6 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement, LinearShaftRefinement, FunctionShaftRefinement, GeneralRefinement)
 #%%
 
-from core.hierarchical_simulation.generate_mesh.hierarchical_mesh import hierarchical_mesh
-from core.hierarchical_simulation.export_data.exodus.exo_format import export_meshes_exodus
-from core.hierarchical_simulation.visualization.hierarchical_meshing_visualization import plot_hierarchical_meshes_3d
-from core.hierarchical_simulation.visualization.hierarchical_paraview_visualization import open_hierarchical_exodus_in_paraview
 cwd = os.getcwd()
 os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 
@@ -63,7 +59,6 @@ os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 # SECTION 6: GOLEM custom hydrothermal simulation
 # SECTION 7: GOLEM generated simple-reservoir simulation
 # SECTION 8: GOLEM custom simple-reservoir simulation
-# SECTION 9: Hierarchical mesh generation and export
 #
 # Each section starts and ends with a large banner so the different sections are
 # visually separated while keeping the existing Model 1 code in one file.
@@ -872,150 +867,3 @@ custom_golem_results = run_simulation_golem(
 
 
 
-# ==============================================================================
-# SECTION 9: HIERARCHICAL MESH GENERATION AND EXPORT
-# ==============================================================================
-# Build two nested unstructured meshes, export them, and visualize the hierarchy.
-# ------------------------------------------------------------------------------
-
-# Unstructured hierarchical mesh
-
-engineering_objects_dir = (
-    cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/"
-)
-
-# Load all engineering objects in hierarchical mode.
-hierarchical_wells = load_wells_from_csv(
-    engineering_objects_dir + "model_1_wells_hierarchical.csv",
-    key_hierarchical=True,
-)
-
-hierarchical_sources = load_sources_from_csv(
-    engineering_objects_dir + "model_1_sources_hierarchical.csv",
-    key_hierarchical=True,
-)
-
-hierarchical_mining_shafts = load_shafts_from_csv(
-    engineering_objects_dir + "model_1_shafts_hierarchical.csv",
-    key_hierarchical=True,
-)
-
-hierarchical_ellipses = load_ellipses_from_csv(
-    engineering_objects_dir + "model_1_ellipses_hierarchical.csv",
-    key_hierarchical=True,
-)
-
-hierarchical_extra_planes = load_planes_from_csv(
-    engineering_objects_dir + "model_1_planes_hierarchical.csv",
-    key_hierarchical=True,
-)
-
-hierarchical_triangulation_files = (
-    engineering_objects_dir + "seismic_plane_new_offset_0_hierarchical.csv",
-    engineering_objects_dir + "seismic_plane_new_offset_1_hierarchical.csv",
-)
-hierarchical_triangulations = load_triangulations_planes_from_csv(
-    hierarchical_triangulation_files,
-    key_hierarchical=True,
-)
-
-# Refinement
-refinement = Refinement()
-refinement.wells = LinearWellRefinement(
-    SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
-)
-refinement.sources = LinearSourceRefinement(
-    SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
-)
-refinement.shafts = LinearShaftRefinement(
-    SizeMin=20.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0
-)
-refinement.ellipses = EllipseRefinement(
-    SizeMin=20.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0
-)
-refinement.extra_planes = ExtraPlaneRefinement(
-    SizeMin=20.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0
-)
-refinement.triangulations = TriangulationRefinement(
-    SizeMin=20.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0
-)
-
-mesh1, mesh2, nodes_bcs = hierarchical_mesh(
-    geomodel_result=structural_model_result,
-    mesh_type="Un",
-
-    extent1="whole",
-    extent2=[300, 900, 200, 900, 100, 800],
-
-
-    wells=hierarchical_wells,
-    sources=hierarchical_sources,
-    shafts=hierarchical_mining_shafts,
-    ellipses=hierarchical_ellipses,
-    extra_planes=hierarchical_extra_planes,
-    triangulations=hierarchical_triangulations,
-
-    # if the engoneering obkjects in both meshhes are the same, one can define only engineering bjects for the bigger model and the
-    # program cuts the objects to be inside the smaller one.
-    #wells=wells,
-    #sources=sources,
-    #shafts=shafts,
-    #ellipses=ellipses,
-    #extra_planes=planes,
-    #triangulations=triangulations,
-    # unstructured
-    mesh_size1=40,
-    mesh_size2=30,
-    unstructured_params={
-        "curve_mesh_size": 5,
-        "refinement": refinement,
-    },
-    unstructured_params2={
-        "rotation_angle":30,
-    },
-)
-
-
-# Export the hierarchical meshes to Exodus first. ParaView opens these files.
-mesh1_exodus = "mesh1r.exo"
-mesh2_exodus = "mesh2r.exo"
-boundary_nodes_file = "boundary_nodesr"
-
-export_meshes_exodus(
-    mesh1,
-    mesh2,
-    nodes_bcs,
-    mesh1_exodus,
-    mesh2_exodus,
-    boundary_nodes_file,
-)
-
-# Open both hierarchical Exodus meshes in one ParaView GUI session.
-# ParaView is launched as a separate process, so the Python script continues
-# immediately to the WBGeo/PyVista hierarchical visualization below.
-open_hierarchical_exodus_in_paraview(
-    mesh1_exodus=mesh1_exodus,
-    mesh2_exodus=mesh2_exodus,
-    paraview_executable=(
-        "/Applications/ParaView-5.12.0.app/"
-        "Contents/MacOS/paraview"
-    ),
-)
-
-
-# Interactive WBGeo/PyVista hierarchical mesh visualization.
-plot_hierarchical_meshes_3d(
-    mesh1,
-    mesh2,
-    structural_model_result,
-    show_plotter=True,
-    link_views=True,
-    volume_opacity=1.0,
-    show_block_controls=True,
-)
-
-#%%
-
-# ------------------------------------------------------------------------------
-# END SECTION 9: HIERARCHICAL MESH GENERATION AND EXPORT
-# ==============================================================================

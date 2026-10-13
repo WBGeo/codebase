@@ -281,9 +281,9 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
 # In addition, some export formats support only specific mesh types.
 # See the meshing manual/documentation for details.
-buf = export_mesh_results_to_exodus(mesh_explicit_unstructured)
-with open("filename_example_mesh.exo", "wb") as f:
-    f.write(buf.getvalue())
+# buf = export_mesh_results_to_exodus(mesh_explicit_unstructured)
+# with open("filename_example_mesh.exo", "wb") as f:
+#    f.write(buf.getvalue())
 
 
 #%%
