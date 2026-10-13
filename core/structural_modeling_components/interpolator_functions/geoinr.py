@@ -38,9 +38,12 @@ This was adapted from a colleague's port of the reference code. Remaining differ
 from __future__ import annotations
 
 import logging
+import math
+import os
 import warnings
 import time
-from typing import Any, Dict, Optional, Tuple, TypeAlias
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, Optional, Tuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -62,6 +65,48 @@ IntArray: TypeAlias = npt.NDArray[np.integer]
 BoolArray: TypeAlias = npt.NDArray[np.bool_]
 
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+
+def _usable_cpu_count() -> int:
+    """
+    Number of CPUs this process may actually use.
+
+    PyTorch sizes its thread pool from the host's cores. Inside a container with a CPU limit
+    (CI runner, Docker `--cpus`) that is more threads than CPUs, and the threads then fight
+    each other: measured 5.5x slower training with 6 threads on a 1-CPU limit. So the CPU
+    affinity and the cgroup CPU quota (v2, then v1) are taken into account here.
+    """
+    count = os.cpu_count() or 1
+    if hasattr(os, "sched_getaffinity"):
+        count = min(count, len(os.sched_getaffinity(0)))
+    try:
+        with open("/sys/fs/cgroup/cpu.max") as f:
+            quota, period = f.read().split()
+    except (OSError, ValueError):
+        try:
+            with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
+                quota = f.read().strip()
+            with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
+                period = f.read().strip()
+        except OSError:
+            return count
+    try:
+        if quota != "max" and int(quota) > 0:
+            count = min(count, max(1, math.floor(int(quota) / int(period))))
+    except ValueError:
+        pass
+    return count
+
+
+@contextmanager
+def _limit_torch_threads() -> Iterator[None]:
+    """Cap PyTorch's thread count at the usable CPUs for the duration of the block."""
+    previous = torch.get_num_threads()
+    torch.set_num_threads(max(1, min(previous, _usable_cpu_count())))
+    try:
+        yield
+    finally:
+        torch.set_num_threads(previous)
 
 
 def interpolate_group_geo_inr(
@@ -151,7 +196,7 @@ def interpolate_group_geo_inr(
 
     # --- run GeoINR (external function you already use) ---
     # Suppress noisy PyTorch / third-party warnings only for the duration of training.
-    with warnings.catch_warnings():
+    with warnings.catch_warnings(), _limit_torch_threads():
         warnings.simplefilter("ignore")
         res_inr, iso_values = stratigraphic_ConcatMLP(
             interface_data=interface_data,

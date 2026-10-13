@@ -258,6 +258,9 @@ def test_model2_fault_with_unconformity(method, plot_mode):
     )
     for g in frame.structural_groups:
         g.set_interpolation_method(method)
+        if method == InterpolationMethod.GEOINR:
+            # default is 4000 epochs; 1000 passed 6/6 unseeded trials here and keeps the suite fast
+            g.configure_interpolation_params(epochs=1000)
 
     res = general.compute_structural_model(frame, extract_meshes=False, verbose=False)
     lith = res.structural_frame.lith_block

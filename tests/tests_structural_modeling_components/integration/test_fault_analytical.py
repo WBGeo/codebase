@@ -208,6 +208,9 @@ def test_single_vertical_fault_two_layers_with_offset(method, plot_mode):
     # Make sure the group method is the one under test
     for g in frame.structural_groups:
         g.set_interpolation_method(method)
+        if method == InterpolationMethod.GEOINR:
+            # default is 4000 epochs; 1000 passed 6/6 unseeded trials here and keeps the suite fast
+            g.configure_interpolation_params(epochs=1000)
 
     # Run the pipeline steps explicitly (avoids any signature ambiguity)
     general.run_interpolation_with_fault_domains(frame=frame, fault_frame=fault_frame, crop_to_domain=True)
