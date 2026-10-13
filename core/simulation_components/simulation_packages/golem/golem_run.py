@@ -519,7 +519,7 @@ def run_simulation_golem(
         # staged copies to PropertyReadFile format and resolve row-count tokens.
         if isinstance(problem, CustomGolemBuilder) and problem.mesh2 is not None and target_aux_dir is not None:
             generated = _prepare_hierarchy_transfer_files(target_aux_dir, generated, stream_output=stream_output)
-            input_path.write_text(generated, encoding="utf-8")
+            input_path.write_text(generated, encoding="utf-8", newline="\n")
 
         external_mesh_mode = False
         if isinstance(problem, CustomGolemBuilder):
@@ -536,9 +536,9 @@ def run_simulation_golem(
                     augmented_input = original_input.with_name(
                         original_input.stem + "_hierarchy_sampling" + original_input.suffix
                     )
-                    augmented_input.write_text(generated, encoding="utf-8")
+                    augmented_input.write_text(generated, encoding="utf-8", newline="\n")
                     emit( f"Saved hierarchy-augmented GOLEM input: {augmented_input}", flush=True, )
-                input_path.write_text(generated, encoding="utf-8")
+                input_path.write_text(generated, encoding="utf-8", newline="\n")
         else:
             referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
             external_mesh = None
@@ -608,7 +608,7 @@ def run_simulation_golem(
             if missing:
                 raise ValueError("Missing required blocks: " + ", ".join(missing))
 
-        input_path.write_text(generated, encoding="utf-8")
+        input_path.write_text(generated, encoding="utf-8", newline="\n")
 
         # Legacy variable retained for the rest of the runner and run_info.
         # For hierarchical-only custom inputs it points to mesh1 when present,

@@ -541,6 +541,12 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 # Run the custom GOLEM hydrothermal input for Model 1.
 # ------------------------------------------------------------------------------
 
+from core.simulation_components.simulation_visualization.golem_material_preview import (
+    plot_golem_materials,
+)
+
+
+
 # Running hydrothermal problem using golem from a costum file
 custom_input_path = (
     cwd
@@ -551,27 +557,25 @@ custom_input_path = (
 with open(custom_input_path, encoding="utf-8") as f:
    custom_input_file_contents = f.read()
 
+# Build the problem without running the solver
+custom_problem = CustomGolemBuilder(
+    input_file_contents=custom_input_file_contents,
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    print_linear_residuals=True,
+)
+
+# Plot material assignments BEFORE running GOLEM
+plot_golem_materials(custom_problem, show_edges=True)
 
 custom_golem_results = run_simulation_golem(
-    problem=CustomGolemBuilder(
-        input_file_contents=custom_input_file_contents,
-        mesh_results=mesh_explicit_unstructured,
-        geomodel_result=structural_model_result,
-        print_linear_residuals=True,
-    ),
-
+    problem=custom_problem,
     image_name="moose-dev:fixed",
     project_dir=os.environ["GOLEM_PROJECT_DIR"],
     docker_dir="/projects",
-
-    output_dir=(
-        cwd
-        + "/examples/synthetic_examples/model1/"
-          "golem_custom_output"
-    ),
-
+    output_dir=cwd + "/examples/synthetic_examples/model1/golem_custom_output",
     nproc=4,
-    stream_output=True,  # Show live GOLEM output (opt-in)
+    stream_output=True,
 )
 
 #custom_initial_time = min(custom_golem_results.nodes_by_time.keys())

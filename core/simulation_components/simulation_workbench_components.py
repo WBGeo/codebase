@@ -10,6 +10,7 @@ and is called here unmodified.
 import os
 import pathlib
 import typing
+import uuid
 from typing import Dict, Optional
 
 import pydantic
@@ -37,6 +38,7 @@ from core.simulation_components.simulation_packages.golem.golem_model_builder im
 from core.simulation_components.simulation_packages.golem.golem_run import (
     run_simulation_golem as _run_simulation_golem,
 )
+from core.simulation_components.simulation_visualization.golem_material_preview import plot_golem_materials
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials,
 )
@@ -636,13 +638,14 @@ def run_golem_simulation(
     problem: GolemProblem,
     nproc: int = 4,
 ) -> SimulationResults:
-    """Run a prepared GOLEM problem through the existing Docker runner."""
+    """Run GOLEM with an isolated output directory for this execution."""
+    run_output_dir = pathlib.Path.cwd() / "golem_output" / uuid.uuid4().hex
     return _run_simulation_golem(
         problem=problem.inner(),
         image_name=None,
         project_dir='',
         docker_dir='',
-        output_dir=None,
+        output_dir=str(run_output_dir),
         nproc=nproc,
         keep_files_dir=None,
     )
@@ -682,6 +685,16 @@ def export_simulation_results(simulation_result: SimulationResults, format: str 
 @wbgeo_inspector()
 def inspect_sfepy_problem_plot_materials(problem: SfepyProblem, _inspector: InspectorHelper):
     plot_builder_materials(problem.inner())
+
+
+@wbgeo_component(identifier='wbgeo::inspect_golem_problem_plot_materials',
+                 title='Plot GOLEM Materials',
+                 description='Preview GOLEM rock, fault, fracture and well material blocks '
+                             'before running the solver. Custom input assignments cannot '
+                             'be inferred safely and produce an informative error.')
+@wbgeo_inspector()
+def inspect_golem_problem_plot_materials(problem: GolemProblem, _inspector: InspectorHelper):
+    plot_golem_materials(problem.inner())
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_variable_at_a_time',
@@ -738,6 +751,17 @@ def inspect_simulation_result_plot_cross_section_2D(
                              'solve fails to converge.')
 @wbgeo_inspector()
 def inspect_simulation_result_stdout(simulation_result: SimulationResults, _inspector: InspectorHelper):
+    # GOLEM stores its transcript on disk; leave the SfePy handling below unchanged.
+    if getattr(simulation_result, "source_solver", None) == "golem":
+        output_dir = getattr(simulation_result, "source_output_dir", None)
+        if output_dir:
+            transcript_path = pathlib.Path(output_dir) / "golem_stdout.txt"
+            if transcript_path.is_file():
+                print("=== GOLEM ===")
+                print(transcript_path.read_text(encoding="utf-8", errors="replace"))
+                return
+        print("No GOLEM solver output recorded for this result.")
+        return
     if not simulation_result.sfepy_stdout:
         print("No solver output recorded for this result.")
         return

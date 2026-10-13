@@ -622,7 +622,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
     Returns:
         cleaned_surfaces (list of tuples): Each tuple is (surface ID, cleaned surface points),representing the processed and de-overlapped surfaces.
-        reference_surface_id_to_cleaned_index (list): List of surface indices (or IDs) identifying the reference fault surfaces within the `cleaned_surfaces` list.
+        ref_surface_indices (list): List of surface indices (or IDs) identifying the reference fault surfaces within the `cleaned_surfaces` list.
         grid_litho (np.ndarray): Structured lithology grid that represents the geological model domain — used for assigning physical groups in meshing.
     """
 
@@ -697,7 +697,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
     ref_surfaces = [surfaces[i] for i, is_fault in enumerate(result) if is_fault]
 
      # Dictionary to store reference surface - fault surfaces- in cleaned_surfaces
-    reference_surface_id_to_cleaned_index: Dict[str | int, int]  = {}
+    ref_surface_indices: Dict[str | int, int]  = {}
     # Call the plotting function
     ## plot_surfaces_excluding_ref(surfaces, result)
     # Remove overlapped points and store the surfaces in cleaned_surfaces and their normals in cleaned_normals
@@ -713,18 +713,18 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
             logger.debug("Using %s as reference", ref_file)
             # Append reference surface and their normal vectors to cleaned_surfaces and cleaned_normals
 
-            reference_surface_id_to_cleaned_index[ref_file] = len(cleaned_surfaces)
+            ref_surface_indices[ref_file] = len(cleaned_surfaces)
             cleaned_surfaces.append((ref_file, ref_points))
 
             normal_subset: NDArray[np.float64] = normal_surfaces[ref_file]  # Extract the corresponding normals
 
             cleaned_normals.append((ref_file, normal_subset))
-            logger.debug("Reference surface %s added at index %d", ref_file, reference_surface_id_to_cleaned_index[ref_file])
+            logger.debug("Reference surface %s added at index %d", ref_file, ref_surface_indices[ref_file])
 
         # Process other surfaces to remove overlapping points
         for idx, (file, points) in enumerate(surfaces):
 
-            if file not in reference_surface_id_to_cleaned_index:  # Skip if it's already a reference surface
+            if file not in ref_surface_indices:  # Skip if it's already a reference surface
                 logger.debug("Processing %s against reference surfaces", file)
                 # Plot current surface + current reference surface
 
@@ -885,7 +885,7 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
                         # Also store the corresponding normals in cleaned_normals
                             cleaned_normals.append((cluster_file, cluster_normals))
-        logger.debug("Reference surfaces at indices: %s, total surfaces: %d", reference_surface_id_to_cleaned_index, len(cleaned_surfaces))
+        logger.debug("Reference surfaces at indices: %s, total surfaces: %d", ref_surface_indices, len(cleaned_surfaces))
         # Optional
         # plot_cleaned_surfaces(cleaned_surfaces)
         # Find intersection points, add them to surfaces, and extrude them
@@ -898,120 +898,120 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
             # 1. reference/fault surfaces
             # 2. surfaces for which filtered == 0
             # Fault/reference
-            if file in reference_surface_id_to_cleaned_index:
-                #print(f"SKIP {file}: reference surface")
-                continue
-
-            # Surface marked as unchanged
-            if file in skip_extrusion_files:
-                #print(f"SKIP {file}: no filtering was performed")
-                continue
+                if file in ref_surface_indices:
+                    continue                    #print(f"SKIP {file}: reference surface")
 
 
-
-            all_extruded_points_for_current_surface: List[NDArray[np.floating]] = []
-            # Loop through each reference surface to find intersections
-            for ref_file, ref_points in ref_surfaces:
-
-                # Build a KDTree for the reference surface points for fast nearest-neighbor queries
-                ref_tree = cKDTree(ref_points)
-
-                # Find nearest reference points to all points on the current surface within the threshold
-                distances_ref, indices_ref = ref_tree.query(points, distance_upper_bound=PROJECTION_THRESHOLD)
-
-                # Build a KDTree for the current surface points
-                points_tree = cKDTree(points)
-
-                # Find all current surface points that are within PROJECTION_THRESHOLD of any reference point
-                indices_list: List[List[int]] = points_tree.query_ball_point(ref_points, r=PROJECTION_THRESHOLD)
-                indices: NDArray[np.integer]  = np.unique(np.hstack(indices_list))
-                nearest_to_ref: NDArray[np.floating] = points[indices.astype(int)]  # Points on current surface near reference
-
-                nonempty = sum(len(x) > 0 for x in indices_list)
-                # Skip if there are no points close to the reference surface
-                if nearest_to_ref.size == 0:
+                # Surface marked as unchanged
+                if file in skip_extrusion_files:
+                    #print(f"SKIP {file}: no filtering was performed")
                     continue
 
-                # Mask to select reference points that are within the threshold
-                close_ref_points_mask: NDArray[np.bool_] = distances_ref <= PROJECTION_THRESHOLD
-                nearest_ref_points: NDArray[np.floating] = ref_points[indices_ref[close_ref_points_mask]]  # Nearby points on the reference surface
 
-                # Query again to get current surface points near the reference points
-                distances_point, indices_point = points_tree.query(ref_points, distance_upper_bound=PROJECTION_THRESHOLD)
-                close_points_mask: NDArray[np.bool_]  = distances_point <= PROJECTION_THRESHOLD
-                nearest_or_points: NDArray[np.floating] = np.unique(points[indices_point[close_points_mask]], axis=0)  # Current surface points near ref
-                # Skip if either set is empty
-                if nearest_or_points.size == 0 or nearest_ref_points.size == 0:
-                    continue
 
-                # Extract farthest points per unique y-coordinate to ensure points are well distributed
-                unique_y: NDArray[np.floating] = np.unique(nearest_or_points[:, 1])
-                farthest_x_points: List[NDArray[np.floating]] = []
+                all_extruded_points_for_current_surface: List[NDArray[np.floating]] = []
+                # Loop through each reference surface to find intersections
+                for ref_file, ref_points in ref_surfaces:
 
-                for y in unique_y:
-                    # Subset of current surface points at this y-coordinate
-                    subset: NDArray[np.floating] = nearest_or_points[nearest_or_points[:, 1] == y]
+                    # Build a KDTree for the reference surface points for fast nearest-neighbor queries
+                    ref_tree = cKDTree(ref_points)
 
-                    # Subset of reference points at this y-coordinate
-                    fault_subset: NDArray[np.floating] = nearest_ref_points[nearest_ref_points[:, 1] == y]
+                    # Find nearest reference points to all points on the current surface within the threshold
+                    distances_ref, indices_ref = ref_tree.query(points, distance_upper_bound=PROJECTION_THRESHOLD)
 
-                    if len(fault_subset) == 0:
-                        continue  # Skip if no reference points at this y
+                    # Build a KDTree for the current surface points
+                    points_tree = cKDTree(points)
 
-                    # Use the center of current subset to find the closest reference point
-                    center_point: NDArray[np.floating] = np.mean(subset, axis=0)
-                    distances: NDArray[np.floating] = np.linalg.norm(fault_subset - center_point, axis=1)
-                    closest_fault_point: NDArray[np.floating] = fault_subset[np.argmin(distances)]
-                    fault_x: float = closest_fault_point[0]
+                    # Find all current surface points that are within PROJECTION_THRESHOLD of any reference point
+                    indices_list: List[List[int]] = points_tree.query_ball_point(ref_points, r=PROJECTION_THRESHOLD)
+                    indices: NDArray[np.integer]  = np.unique(np.hstack(indices_list))
+                    nearest_to_ref: NDArray[np.floating] = points[indices.astype(int)]  # Points on current surface near reference
 
-                    # Find the point in the subset farthest in x-direction from the fault
-                    x_values = subset[:, 0]
-                    x_distances: NDArray[np.floating] = np.abs(x_values - fault_x)
-                    farthest_idx:int = np.argmax(x_distances)
-                    farthest_x_points.append(subset[farthest_idx])
+                    nonempty = sum(len(x) > 0 for x in indices_list)
+                    # Skip if there are no points close to the reference surface
+                    if nearest_to_ref.size == 0:
+                        continue
 
-                # Final set of surface points used for extrusion
-                nearest_or_points = np.array(farthest_x_points)
-                # Store points associated with this surface for later reference
-                nearest_points_dict[file] = nearest_or_points
+                    # Mask to select reference points that are within the threshold
+                    close_ref_points_mask: NDArray[np.bool_] = distances_ref <= PROJECTION_THRESHOLD
+                    nearest_ref_points: NDArray[np.floating] = ref_points[indices_ref[close_ref_points_mask]]  # Nearby points on the reference surface
 
-                # Check if the surface is clustered: skip if too many points are very close
-                close_points_mask = distances_point <= (DISTANCE_THRESHOLD / 4)
-                nearest_thres_points: NDArray[np.floating] = np.unique(points[indices_point[close_points_mask]], axis=0)
+                    # Query again to get current surface points near the reference points
+                    distances_point, indices_point = points_tree.query(ref_points, distance_upper_bound=PROJECTION_THRESHOLD)
+                    close_points_mask: NDArray[np.bool_]  = distances_point <= PROJECTION_THRESHOLD
+                    nearest_or_points: NDArray[np.floating] = np.unique(points[indices_point[close_points_mask]], axis=0)  # Current surface points near ref
+                    # Skip if either set is empty
+                    if nearest_or_points.size == 0 or nearest_ref_points.size == 0:
+                        continue
 
-                if nearest_thres_points.size != 0:
-                    continue
+                    # Extract farthest points per unique y-coordinate to ensure points are well distributed
+                    unique_y: NDArray[np.floating] = np.unique(nearest_or_points[:, 1])
+                    farthest_x_points: List[NDArray[np.floating]] = []
 
-                # Calculate normals for the selected points on the surface
-                surface_normals: NDArray[np.floating] = calculate_normals(nearest_or_points, cleaned_surfaces, cleaned_normals, file)
+                    for y in unique_y:
+                        # Subset of current surface points at this y-coordinate
+                        subset: NDArray[np.floating] = nearest_or_points[nearest_or_points[:, 1] == y]
 
-                # Keep track of reference points for extrusion
-                intersection_points.extend(nearest_ref_points)
+                        # Subset of reference points at this y-coordinate
+                        fault_subset: NDArray[np.floating] = nearest_ref_points[nearest_ref_points[:, 1] == y]
 
-                # Extrude points along a direction perpendicular to their normals
-                extruded_intersection_points: NDArray[np.floating] = correct_extrusion_direction(
-                    nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR
-                )
-                # check if all surfaces cut the fault after extension
-                #plot_one_extended_surface_with_reference(
-                #    file=file,
-                #    points=points,
-                #    ref_file=ref_file,
-                #    ref_points=ref_points,
-                #    extruded_points=extruded_intersection_points,
-                #    intersection_points=nearest_ref_points,
-                #    point_size=5,
-                #)
-                # Add extruded points for this reference surface to the list
-                all_extruded_points_for_current_surface.append(extruded_intersection_points)
+                        if len(fault_subset) == 0:
+                            continue  # Skip if no reference points at this y
 
-            # Combine all extruded points with the current surface points
-            if all_extruded_points_for_current_surface:
+                        # Use the center of current subset to find the closest reference point
+                        center_point: NDArray[np.floating] = np.mean(subset, axis=0)
+                        distances: NDArray[np.floating] = np.linalg.norm(fault_subset - center_point, axis=1)
+                        closest_fault_point: NDArray[np.floating] = fault_subset[np.argmin(distances)]
+                        fault_x: float = closest_fault_point[0]
 
-                extruded_combined: NDArray[np.floating] = np.vstack(all_extruded_points_for_current_surface)
-                updated_points: NDArray[np.floating] = np.vstack([points, extruded_combined.reshape(-1, 3)])
-                # Update the surface with the new set of points
-                cleaned_surfaces[i] = (file, updated_points)
+                        # Find the point in the subset farthest in x-direction from the fault
+                        x_values = subset[:, 0]
+                        x_distances: NDArray[np.floating] = np.abs(x_values - fault_x)
+                        farthest_idx:int = np.argmax(x_distances)
+                        farthest_x_points.append(subset[farthest_idx])
+
+                    # Final set of surface points used for extrusion
+                    nearest_or_points = np.array(farthest_x_points)
+                    # Store points associated with this surface for later reference
+                    nearest_points_dict[file] = nearest_or_points
+
+                    # Check if the surface is clustered: skip if too many points are very close
+                    close_points_mask = distances_point <= (DISTANCE_THRESHOLD / 4)
+                    nearest_thres_points: NDArray[np.floating] = np.unique(points[indices_point[close_points_mask]], axis=0)
+
+                    if nearest_thres_points.size != 0:
+                        continue
+
+                    # Calculate normals for the selected points on the surface
+                    surface_normals: NDArray[np.floating] = calculate_normals(nearest_or_points, cleaned_surfaces, cleaned_normals, file)
+
+                    # Keep track of reference points for extrusion
+                    intersection_points.extend(nearest_ref_points)
+
+                    # Extrude points along a direction perpendicular to their normals
+                    extruded_intersection_points: NDArray[np.floating] = correct_extrusion_direction(
+                        nearest_or_points, surface_normals, file, intersection_points, nearest_points_dict, EXTRUSION_FACTOR
+                    )
+                    # check if all surfaces cut the fault after extension
+                    #plot_one_extended_surface_with_reference(
+                    #    file=file,
+                    #    points=points,
+                    #    ref_file=ref_file,
+                    #    ref_points=ref_points,
+                    #    extruded_points=extruded_intersection_points,
+                    #    intersection_points=nearest_ref_points,
+                    #    point_size=5,
+                    #)
+                    # Add extruded points for this reference surface to the list
+                    all_extruded_points_for_current_surface.append(extruded_intersection_points)
+
+                # Combine all extruded points with the current surface points
+                if all_extruded_points_for_current_surface:
+
+                    extruded_combined: NDArray[np.floating] = np.vstack(all_extruded_points_for_current_surface)
+                    updated_points: NDArray[np.floating] = np.vstack([points, extruded_combined.reshape(-1, 3)])
+                    # Update the surface with the new set of points
+                    cleaned_surfaces[i] = (file, updated_points)
         # Optionally, visualize all surfaces including extruded points
         #plot_surfaces_with_extrusions(
 
@@ -1032,4 +1032,4 @@ def data_preparation(geomodel_result: StructuralModelResults, DISTANCE_THRESHOLD
 
       cleaned_surfaces =surfaces
 
-    return cleaned_surfaces, reference_surface_id_to_cleaned_index, grid_litho
+    return cleaned_surfaces, ref_surface_indices, grid_litho

@@ -223,22 +223,57 @@ def build_grid_from_class(
     return mesh
 
 
-def _default_var_name(sim: SimulationResults, time: float) -> str:
-    """
-    Pick a variable to plot when none was given: "T" if present (this
-    pipeline's own hydrothermal convention), otherwise whatever field the
-    sim actually has at `time` -- a CustomSfepyBuilder result can solve
-    arbitrary physics and isn't guaranteed to produce a "T" field at all.
+# VTK bookkeeping arrays are not physical simulation results.  Compare names
+# case-insensitively so files produced by different exporters behave alike.
+_METADATA_FIELDS = {
+    "globalnodeid", "pedigreenodeid", "globalelementid",
+    "pedigreeelementid", "globalcellid", "pedigreecellid",
+    "vtkoriginalpointids", "vtkoriginalcellids", "vtkghosttype",
+}
+
+
+def _available_variables(sim: SimulationResults, time: float) -> List[str]:
+    """Return numeric scalar result fields, preserving their original order.
+
+    Works with arbitrary field names (e.g. T, temperature, temp, te) and
+    ignores VTK identifier arrays. Vector/tensor fields can still be plotted
+    explicitly with ``var_name`` where supported by the plotting function.
     """
     node_data = sim.node_data_by_time.get(time, {})
     cell_data = sim.cell_data_by_time.get(time, {})
-    if "T" in node_data or "T" in cell_data:
-        return "T"
-    for name in node_data:
-        return name
-    for name in cell_data:
-        return name
-    raise ValueError(f"sim has no data fields at time {time} to plot.")
+    variables = []
+    for fields in (node_data, cell_data):
+        for name, values in fields.items():
+            if name.lower() in _METADATA_FIELDS or name in variables:
+                continue
+            array = np.asarray(values)
+            if array.ndim != 1 or not np.issubdtype(array.dtype, np.number):
+                continue
+            variables.append(name)
+    return variables
+
+
+def _default_var_name(sim: SimulationResults, time: float) -> str:
+    """Choose a plottable scalar without requiring model-specific field names."""
+    variables = _available_variables(sim, time)
+    if not variables:
+        raise ValueError(f"No numeric scalar simulation fields found at time {time}.")
+    # Preserve the existing SfePy default, but accept any other model's names.
+    return "T" if "T" in variables else variables[0]
+
+
+def _variable_not_found_error(sim: SimulationResults, time: float, var_name: str, *, point_only: bool = False) -> ValueError:
+    """Explain an invalid variable name and list fields actually present at this timestep."""
+    node_names = list(sim.node_data_by_time.get(time, {}))
+    cell_names = list(sim.cell_data_by_time.get(time, {}))
+    available = node_names if point_only else list(dict.fromkeys(node_names + cell_names))
+    kind = "point-data variables" if point_only else "variables"
+    listed = ", ".join(repr(name) for name in available) if available else "(none)"
+    return ValueError(
+        f"Variable {var_name!r} not found at time {time}. "
+        f"Available {kind}: {listed}. "
+        "Variable names are case-sensitive; use an exact name from the list."
+    )
 
 
 # ----------------------------------------------------------------------
@@ -301,7 +336,7 @@ def plot_variable_at_a_time(
     grid = build_grid_from_class(sim, time, var_names=[var_name])
 
     if var_name not in grid.point_data and var_name not in grid.cell_data:
-        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
+        raise _variable_not_found_error(sim, time, var_name)
 
     surf = _extract_surface_compat(grid)
     surf.points *= scale
@@ -374,14 +409,14 @@ def plot_variable_difference(
     grid = _build_grid_geometry(sim, time_a)
     _attach_time_data(grid, sim, time_a, var_names=[var_name])
     if var_name not in grid.point_data:
-        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_a}.")
+        raise _variable_not_found_error(sim, time_a, var_name, point_only=True)
     val_a = np.asarray(grid.point_data[var_name]).copy()
 
     if not _same_geometry(sim, time_a, time_b):
         grid = _build_grid_geometry(sim, time_b)
     _attach_time_data(grid, sim, time_b, var_names=[var_name])
     if var_name not in grid.point_data:
-        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_b}.")
+        raise _variable_not_found_error(sim, time_b, var_name, point_only=True)
     val_b = grid.point_data[var_name]
 
     diff = val_b - val_a
@@ -643,7 +678,7 @@ def plot_variable_along_line(
     """
     grid = build_grid_from_class(sim, time, var_names=[var_name])
     if var_name not in grid.point_data and var_name not in grid.cell_data:
-        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
+        raise _variable_not_found_error(sim, time, var_name)
 
     line = pv.Line(p0, p1, resolution=n_samples)
     sampled = line.sample(grid)

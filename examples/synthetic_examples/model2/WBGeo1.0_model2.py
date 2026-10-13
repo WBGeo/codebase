@@ -47,6 +47,12 @@ from core.simulation_components.simulation_packages.golem.golem_model_builder im
 from core.simulation_components.simulation_packages.golem.golem_run import (
     run_simulation_golem,
 )
+
+from core.simulation_components.simulation_visualization.golem_material_preview import (
+    plot_golem_materials,
+)
+
+
 #%%
 
 cwd = os.getcwd()
@@ -275,9 +281,9 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 # NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
 # In addition, some export formats support only specific mesh types.
 # See the meshing manual/documentation for details.
-# buf = export_mesh_results_to_exodus(mesh_explicit_unstructured)
-# with open("filename_example_mesh.exo", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_explicit_unstructured)
+with open("filename_example_mesh.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 
 #%%
@@ -558,7 +564,8 @@ problem_golem = GolemHydrothermalProblemBuilder(
     dt=5.0e11 / 3,
     num_steps=3,
 )
-
+# Plot material assignments BEFORE running GOLEM
+plot_golem_materials(problem_golem, show_edges=True)
 
 # copy the input file to a diectory
 problem_golem.build_input_file("/tmp/wbgeo_golem_model2.i")

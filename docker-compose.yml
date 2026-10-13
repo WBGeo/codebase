@@ -51,7 +51,6 @@ services:
       GOLEM_BINARY: "/golem/golem-opt" # where golem can be found
       GOLEM_WORKSPACE: "/shared_golem_workspace" # where golem should work
       GOLEM_EXECUTION_MODE: "sidecar"
-      GOLEM_MPI_HOST: "golem_runner" # verify remote MPI execution in deployed images
     volumes:
       # option 1, for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
       # if this file is located at the root of the "codebase" project, the defaults work

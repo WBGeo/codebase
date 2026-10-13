@@ -2228,6 +2228,67 @@ def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_
         raise ValueError("No points loaded from the CSV file(s).")
     return np.asarray(all_points, dtype=np.float64)
 
+def filter_mesh_to_domain(nodes, cells, cell_data, domain_spec, tol=1e-8):
+    """Remove out-of-domain cells, compact nodes, and preserve per-cell metadata.
+
+    A cell is retained only when every vertex is inside the domain. The domain
+    may be an axis-aligned extent or an eight-corner parallelepiped.
+    """
+    nodes = np.asarray(nodes, dtype=float)
+    inside = points_inside_domain(nodes, domain_spec, tol=tol)
+    original_node_count = len(nodes)
+    kept_cells = []
+    keep_masks = []
+    for block in cells:
+        conn = np.asarray(block.data, dtype=np.int64)
+        keep = np.all(inside[conn], axis=1)
+        keep_masks.append(keep)
+        kept_cells.append(meshio.CellBlock(block.type, conn[keep]))
+
+    # mesh_generator may aggregate original Gmsh blocks into fewer output
+    # blocks without rebuilding gmsh:physical / gmsh:geometrical. Such arrays
+    # must NOT be zipped with the aggregated cells: that silently corrupts tags.
+    filtered_data = {}
+    for name, arrays in cell_data.items():
+        if len(arrays) != len(cells):
+            logger.warning(
+                "Skipping stale cell_data[%r]: %d metadata blocks for %d "
+                "output cell blocks. Rebuild this field during aggregation "
+                "if its physical tags are required.",
+                name, len(arrays), len(cells),
+            )
+            continue
+        if any(len(np.asarray(values)) != len(mask)
+               for values, mask in zip(arrays, keep_masks)):
+            logger.warning(
+                "Skipping misaligned cell_data[%r]: element counts do not "
+                "match output cell blocks", name,
+            )
+            continue
+        filtered_data[name] = [
+            np.asarray(values)[mask]
+            for values, mask in zip(arrays, keep_masks)
+        ]
+
+    used = np.zeros(original_node_count, dtype=bool)
+    for block in kept_cells:
+        used[block.data.ravel()] = True
+    if not np.any(used):
+        raise ValueError("Domain filtering removed every cell; check domain_spec and coordinates")
+    old_to_new = np.full(original_node_count, -1, dtype=np.int64)
+    old_to_new[used] = np.arange(np.count_nonzero(used))
+    filtered_cells = [
+        meshio.CellBlock(block.type, old_to_new[block.data])
+        for block in kept_cells
+    ]
+    logger.info(
+        "Domain filter: nodes %d -> %d; elements %d -> %d",
+        original_node_count, np.count_nonzero(used),
+        sum(len(b.data) for b in cells), sum(len(b.data) for b in filtered_cells),
+    )
+    return nodes[used], filtered_cells, filtered_data
+
+
 def classify_boundary_nodes(nodes: NDArray[np.float64], extent, tol_ratio: float = 1e-4) -> Dict[str, List[int]]:
     """Classify nodes on the six local faces of either supported domain form."""
     nodes = np.asarray(nodes, dtype=float)
@@ -2772,14 +2833,17 @@ def create_unstructured_mesh_data(
             tri_surface_tags, grid_litho, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,
             boundary_tags=boundary_tags, gmsh_flag=gmsh_flag, mapping_litho=mapping_litho, merge_file=merge_file,
         )
-        # 1. Original WBGeo/Gmsh coordinates
+        # 1. Clip generated mesh to the requested domain BEFORE boundary sets.
+        # This also removes unused nodes and remaps all cell connectivity.
+        nodes, cells, cell_data = filter_mesh_to_domain(
+            nodes, cells, cell_data, domain_spec
+        )
         x_min, y_min, z_min = nodes.min(axis=0)
         x_max, y_max, z_max = nodes.max(axis=0)
         nodes_global = nodes.copy()
-        extent_mesh = np.array([x_min, x_max, y_min, y_max, z_min, z_max])
 
-        # 2. Identify physical boundaries using original geometry
-        boundary_domain = extent_mesh if normalize_domain(domain_spec)[0] == "extent" else domain_spec
+        # 2. Classify faces against the REQUESTED domain, not the mesh AABB.
+        boundary_domain = domain_spec
         boundary_groups = classify_boundary_nodes(nodes_global, boundary_domain)
         point_sets = build_point_sets(boundary_groups, len(nodes_global))
 
