@@ -37,10 +37,30 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
     """Regression tests for direct x/y/z CSV geological-surface input."""
 
     def _run_csv_route(self, csv_dir, mapping_litho="none", extent=EXTENT, extent_z=None, export_ready=False, faulted_blocks=False):
+        # Match the mocked mesh to the domain resolved by the CSV route.
+        # The implementation now clips cells to that domain, so a fixed
+        # 0..10 tetrahedron is invalid when CSV bounds are inferred.
+        if extent is None:
+            csv_files = sorted(Path(csv_dir).glob("*.csv"))
+            xyz = np.concatenate(
+                [pd.read_csv(path)[["x", "y", "z"]].to_numpy(dtype=float)
+                 for path in csv_files],
+                axis=0,
+            )
+            low, high = xyz.min(axis=0), xyz.max(axis=0)
+            if extent_z is not None:
+                low[2], high[2] = map(float, extent_z)
+        else:
+            bounds = np.asarray(extent, dtype=float)
+            low = bounds[[0, 2, 4]]
+            high = bounds[[1, 3, 5]]
+
+        x0, y0, z0 = low
+        x1, y1, z1 = high
         cube_nodes = np.array(
             [
-                [0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0],
-                [0, 0, 10], [10, 0, 10], [0, 10, 10], [10, 10, 10],
+                [x0, y0, z0], [x1, y0, z0], [x0, y1, z0], [x1, y1, z0],
+                [x0, y0, z1], [x1, y0, z1], [x0, y1, z1], [x1, y1, z1],
             ],
             dtype=float,
         )

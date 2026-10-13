@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import re
 import shutil
 import tempfile
 
@@ -595,7 +596,11 @@ def test_run_golem_simulation_unwraps_all_problem_types_without_running_docker(
     assert received["image_name"] is None
     assert received["project_dir"] == ""
     assert received["docker_dir"] == ""
-    assert received["output_dir"] is None
+    # The runner now supplies an absolute, unique per-run output directory.
+    output_dir = pathlib.Path(received["output_dir"])
+    assert output_dir.is_absolute()
+    assert output_dir.parent.name == "golem_output"
+    assert re.fullmatch(r"[0-9a-f]{32}", output_dir.name)
     assert received["nproc"] == 6
     assert received["keep_files_dir"] is None
 
@@ -622,7 +627,11 @@ def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkey
     assert received["image_name"] is None
     assert received["project_dir"] == ""
     assert received["docker_dir"] == ""
-    assert received["output_dir"] is None
+    # The runner now supplies an absolute, unique per-run output directory.
+    output_dir = pathlib.Path(received["output_dir"])
+    assert output_dir.is_absolute()
+    assert output_dir.parent.name == "golem_output"
+    assert re.fullmatch(r"[0-9a-f]{32}", output_dir.name)
     assert received["nproc"] == 4
     assert received["keep_files_dir"] is None
 
