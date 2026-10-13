@@ -105,6 +105,16 @@ All methods produce the same output format (scalar field + per-element isovalues
 | **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
 | **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
 
+Three of these parameters take one of a fixed set of options. An unknown option is rejected when it is set.
+
+| Parameter | Methods | Options (default first) |
+|---|---|---|
+| `kernel` | RBF | `thin_plate_spline`, `linear`, `cubic`, `quintic`, `multiquadric`, `inverse_multiquadric`, `inverse_quadratic`, `gaussian` |
+| `variogram_model` | OK, UK | `gaussian`, `spherical`, `exponential`, `hole-effect` |
+| `solver` | FDI, PLI | `cg`, `lsmr`, `admm` |
+
+The RBF shape parameter `epsilon` is only used by the kernels `multiquadric`, `inverse_multiquadric`, `inverse_quadratic` and `gaussian`; the other kernels ignore it. It is an inverse length (larger values make the kernel more local) and always has a default, so these kernels can be selected without setting it.
+
 Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and sill for kriging methods, `nelements` for FDI and PLI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
 
 ---

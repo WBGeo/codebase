@@ -19,6 +19,10 @@ import pandas as pd
 import warnings
 from scipy.interpolate import RBFInterpolator
 
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+    RBF_KERNELS_USING_EPSILON,
+)
+
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
@@ -142,7 +146,8 @@ def interpolate_group_radial_basis_function(
         vals,
         kernel=params.kernel,
         smoothing=params.smoothing,
-        epsilon=params.epsilon,
+        # scale-invariant kernels are evaluated without the shape parameter
+        epsilon=params.epsilon if params.kernel in RBF_KERNELS_USING_EPSILON else None,
         neighbors=params.neighbors,  # None => all points
     )
 

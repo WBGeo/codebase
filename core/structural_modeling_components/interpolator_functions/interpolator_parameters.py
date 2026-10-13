@@ -5,7 +5,7 @@ from typing import Dict, FrozenSet, List, Optional, Tuple, Union, Literal
 
 import numpy as np
 import numpy.typing as npt
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -27,6 +27,58 @@ class InterpolationMethod(str, Enum):
     FINITE_DIFFERENCES = "Finite Differences"
     PIECEWISE_LINEAR = "Piecewise Linear"
     UNIVERSAL_KRIGING = "Universal Kriging"
+
+
+class VariogramModel(str, Enum):
+    """Variogram models available for Ordinary and Universal Kriging.
+
+    PyKrige's "linear" and "power" models are left out: they take a different
+    parameter list than the sill/range/nugget set exposed here.
+    """
+
+    GAUSSIAN = "gaussian"
+    SPHERICAL = "spherical"
+    EXPONENTIAL = "exponential"
+    HOLE_EFFECT = "hole-effect"
+
+
+class RBFKernel(str, Enum):
+    """Kernels available for Radial Basis Function interpolation (SciPy ``RBFInterpolator``)."""
+
+    THIN_PLATE_SPLINE = "thin_plate_spline"
+    LINEAR = "linear"
+    CUBIC = "cubic"
+    QUINTIC = "quintic"
+    MULTIQUADRIC = "multiquadric"
+    INVERSE_MULTIQUADRIC = "inverse_multiquadric"
+    INVERSE_QUADRATIC = "inverse_quadratic"
+    GAUSSIAN = "gaussian"
+
+
+# Kernels whose shape depends on `epsilon`. The remaining kernels are scale-invariant
+# and are evaluated without it.
+RBF_KERNELS_USING_EPSILON: FrozenSet[str] = frozenset(
+    {
+        RBFKernel.MULTIQUADRIC.value,
+        RBFKernel.INVERSE_MULTIQUADRIC.value,
+        RBFKernel.INVERSE_QUADRATIC.value,
+        RBFKernel.GAUSSIAN.value,
+    }
+)
+
+
+class LoopSolver(str, Enum):
+    """Linear solvers available for the LoopStructural interpolators (FDI, PLI)."""
+
+    CG = "cg"
+    LSMR = "lsmr"
+    ADMM = "admm"
+
+
+# Enum-typed fields are stored as their plain string value, so interpolators and
+# comparisons keep working with strings; assignments are validated so that an
+# unknown option is rejected when it is set, not later inside the backend library.
+_ENUM_FIELD_CONFIG = ConfigDict(use_enum_values=True, validate_default=True, validate_assignment=True)
 
 
 class InterpolationContext(BaseModel):
@@ -53,7 +105,7 @@ class OKParams(BaseModel):
         configuration values, not the interpolation algorithm implementation here.
 
     Attributes:
-        variogram_model: Variogram model type (e.g. "spherical", "exponential", "gaussian").
+        variogram_model: Variogram model type, one of :class:`VariogramModel`.
         range: Range of the variogram model.
         sill: Sill of the variogram model (max variance level).
         nugget: Nugget effect.
@@ -63,9 +115,11 @@ class OKParams(BaseModel):
         neighbors: Optional number of nearest neighbors. If None, all points are used.
     """
 
-    variogram_model: str = Field(
-        "gaussian",
-        description="Type of variogram model (e.g., spherical, exponential, gaussian).",
+    model_config = _ENUM_FIELD_CONFIG
+
+    variogram_model: VariogramModel = Field(
+        VariogramModel.GAUSSIAN,
+        description="Type of variogram model.",
     )
     range: float = Field(
         500.0,
@@ -103,7 +157,7 @@ def default_ok_params(ctx: InterpolationContext) -> OKParams:
     nn_dist = ctx.mean_nn_distance
 
     # Variogram: gaussian as default for smoother residuals; can be changed to exponential or others if needed
-    variogram_model = "gaussian"
+    variogram_model = VariogramModel.GAUSSIAN
 
     # Range: use the data diagonal as the reference scale so that the range
     # covers the full data extent even when points are sparse at corners.
@@ -155,15 +209,18 @@ class RBFParams(BaseModel):
     Parameters for Radial Basis Function (RBF) interpolation.
 
     Attributes:
-        kernel: RBF kernel (e.g., 'linear', 'cubic', 'thin_plate_spline', etc.).
+        kernel: RBF kernel, one of :class:`RBFKernel`.
         smoothing: Smoothing parameter (0 means exact fit).
-        epsilon: Shape parameter for certain kernels (multiquadric, inverse multiquadric, gaussian).
+        epsilon: Shape parameter (inverse length). Only used by the kernels in
+            ``RBF_KERNELS_USING_EPSILON``; ignored for the others.
         neighbors: Optional number of nearest neighbors. If None, all points are used.
     """
 
-    kernel: str = Field(
-        "thin_plate_spline",
-        description="Radial basis function kernel. Common options: 'linear', 'cubic', 'thin_plate'.",
+    model_config = _ENUM_FIELD_CONFIG
+
+    kernel: RBFKernel = Field(
+        RBFKernel.THIN_PLATE_SPLINE,
+        description="Radial basis function kernel.",
     )
     smoothing: float = Field(
         0,
@@ -171,7 +228,10 @@ class RBFParams(BaseModel):
     )
     epsilon: Optional[float] = Field(
         None,
-        description="Shape parameter for certain kernels like multiquadric or inverse multiquadric.",
+        description=(
+            "Shape parameter (inverse length; larger = more local). Only used by the kernels "
+            "multiquadric, inverse_multiquadric, inverse_quadratic and gaussian; ignored for the others."
+        ),
     )
     neighbors: Optional[int] = Field(
         None,
@@ -192,11 +252,11 @@ def default_rbf_params(ctx: InterpolationContext) -> RBFParams:
     # Characteristic length scale (currently informational; may influence future defaults)
     cl = max(ctx.data_scale)
 
-    kernel = "thin_plate_spline"
-
-    epsilon: Optional[float] = None
-    if kernel in {"multiquadric", "inverse_multiquadric", "gaussian"}:
-        epsilon = ctx.mean_nn_distance
+    # Always provide a shape parameter so that switching to a kernel that needs one
+    # works without further input. SciPy scales distances by epsilon, so it is an
+    # inverse length: a few nearest-neighbour distances per kernel width.
+    nn_dist = ctx.mean_nn_distance if ctx.mean_nn_distance > 0 else max(cl, 1.0)
+    epsilon = 1.0 / (5.0 * nn_dist)
 
     # Neighbors scale with problem size
     neighbors: Optional[int] = None
@@ -204,7 +264,7 @@ def default_rbf_params(ctx: InterpolationContext) -> RBFParams:
         neighbors = min(500, int(5 * ctx.n_points ** (2 / 3)))
 
     return RBFParams(
-        kernel="thin_plate_spline",
+        kernel=RBFKernel.THIN_PLATE_SPLINE,
         smoothing=0.05,  # categorical scalar field → smooth by default
         epsilon=epsilon,
         neighbors=neighbors,
@@ -412,21 +472,23 @@ class FDIParams(BaseModel):
         Discretisation size passed to `create_and_add_foliation`.
         (Controls the size of the discrete support; larger -> finer/more expensive.)
     solver:
-        Linear solver choice (LoopStructural versions commonly accept "cg").
+        Linear solver, one of :class:`LoopSolver`.
     damp:
         Whether to apply damping (regularisation / stabilisation) if supported by the LS version.
     tol:
         Solver tolerance. If None, LoopStructural defaults are used.
     """
 
+    model_config = _ENUM_FIELD_CONFIG
+
     nelements: int = Field(
         10_000,
         ge=1_000,
         description="FDI discretisation size for create_and_add_foliation (larger = finer, slower).",
     )
-    solver: str = Field(
-        "cg",
-        description="Linear solver (commonly 'cg' in LoopStructural examples/usage).",
+    solver: LoopSolver = Field(
+        LoopSolver.CG,
+        description="Linear solver. 'cg' is the fastest in most cases.",
     )
     damp: bool = Field(
         True,
@@ -470,7 +532,7 @@ def default_fdi_params(ctx: "InterpolationContext") -> FDIParams:
 
     return FDIParams(
         nelements=nelements,
-        solver="cg",
+        solver=LoopSolver.CG,
         damp=True,
         tol=None,
     )
@@ -493,21 +555,23 @@ class PLIParams(BaseModel):
         Discretisation size passed to `create_and_add_foliation`.
         (Controls the density of the piecewise-linear support; larger -> finer/more expensive.)
     solver:
-        Linear solver choice (LoopStructural versions commonly accept "cg").
+        Linear solver, one of :class:`LoopSolver`.
     damp:
         Whether to apply damping/regularisation for robustness.
     tol:
         Solver tolerance. If None, LoopStructural defaults are used.
     """
 
+    model_config = _ENUM_FIELD_CONFIG
+
     nelements: int = Field(
         2_000,
         ge=1_000,
         description="PLI discretisation size for create_and_add_foliation (larger = finer, slower).",
     )
-    solver: str = Field(
-        "cg",
-        description="Linear solver (commonly 'cg' in LoopStructural examples/usage).",
+    solver: LoopSolver = Field(
+        LoopSolver.CG,
+        description="Linear solver. 'cg' is the fastest in most cases.",
     )
     damp: bool = Field(
         True,
@@ -572,7 +636,7 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
 
     return PLIParams(
         nelements=nelements,
-        solver="cg",
+        solver=LoopSolver.CG,
         damp=True,
         tol=None,
     )
@@ -624,7 +688,7 @@ def default_uk_params(ctx: InterpolationContext) -> UKParams:
     nn_dist = ctx.mean_nn_distance
 
     # Variogram: gaussian as default for smoother residuals; can be changed to exponential or others if needed
-    variogram_model = "gaussian"
+    variogram_model = VariogramModel.GAUSSIAN
 
     # Range: a bit longer than OK
     max_scale = max(sx, sy, sz)
