@@ -727,10 +727,17 @@ def inspect_simulation_result_plot_variable_at_a_time(
     # colors -- confirmed to be disproportionately expensive under the
     # Workbench container's software (no GPU/display) rendering, unlike
     # every flat-colored 3D plot here (Plot Mesh in 3D, Plot Materials).
-    plot_variable_at_a_time(
-        simulation_result, var_name=var_name.strip() or None, cmap="coolwarm", show_edges=False,
-        off_screen=True, window_size=(800, 600), anti_aliasing=False,
-    )
+    plot_kwargs = {
+        "cmap": "coolwarm",
+        "show_edges": False,
+        "off_screen": True,
+        "window_size": (800, 600),
+        "anti_aliasing": False,
+    }
+    selected_var = var_name.strip()
+    if selected_var:
+        plot_kwargs["var_name"] = selected_var
+    plot_variable_at_a_time(simulation_result, **plot_kwargs)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_cross_section_2D',
