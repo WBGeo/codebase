@@ -62,7 +62,6 @@
     symbol_names = 'a b c'
     symbol_values = '2.5e-03 9.8065 65'
   []
-  # Calibrated surrogate top shear traction based on the previous model response
   [top_shear_x]
     type = ParsedFunction
     expression = '5.28'

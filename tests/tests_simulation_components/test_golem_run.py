@@ -1,4 +1,5 @@
 import io
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -946,6 +947,78 @@ def test_explicit_docker_mode_overrides_native_environment(
         )
 
 
+
+
+@pytest.mark.parametrize("mode", ["local", "sidecar"])
+def test_direct_modes_failure_reports_diagnostics_and_skips_result_loading(
+    mode, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+):
+    """Exercise the real local/sidecar runner failure branch without GOLEM or MPI."""
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        num_steps=1,
+    )
+    binary = tmp_path / "golem-opt"
+    binary.write_text("#!/bin/sh\\nexit 0\\n")
+    binary.chmod(0o755)
+    monkeypatch.setenv("GOLEM_EXECUTION_MODE", mode)
+    monkeypatch.setenv("GOLEM_BINARY", str(binary))
+    if mode == "sidecar":
+        workspace = tmp_path / "shared_workspace"
+        workspace.mkdir()
+        monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
+        monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
+
+    monkeypatch.setattr(
+        golem_run, "export_mesh_results_to_exodus",
+        lambda mesh, type: io.BytesIO(b"fake-exodus"),
+    )
+    calls = []
+
+    def failed_run(command, **kwargs):
+        calls.append((command, kwargs))
+        # A failed solver may leave partial files in its working directory.
+        run_dir = Path(kwargs["cwd"])
+        (run_dir / "output").mkdir(exist_ok=True)
+        (run_dir / "output" / "partial.e").write_bytes(b"incomplete")
+        return SimpleNamespace(
+            returncode=17,
+            stdout="nonlinear solve failed",
+            stderr="convergence error",
+        )
+
+    monkeypatch.setattr(golem_run.subprocess, "run", failed_run)
+
+    def must_not_load(_):
+        raise AssertionError("Result loader must not run after GOLEM failure")
+
+    monkeypatch.setattr(golem_run, "load_exodus_results", must_not_load)
+    output_dir = tmp_path / "results"
+
+    with pytest.raises(RuntimeError) as error:
+        golem_run.run_simulation_golem(
+            builder,
+            project_dir=str(tmp_path / "project"),
+            output_dir=str(output_dir),
+            nproc=2,
+        )
+
+    message = str(error.value)
+    assert "exit code 17" in message
+    assert "Working directory:" in message
+    assert "nonlinear solve failed" in message
+    assert "convergence error" in message
+    assert str(binary) in message
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command[:4] == ["mpiexec", "-n", "2", "--allow-run-as-root"]
+    assert str(binary) in command
+    assert ("--host" in command) == (mode == "sidecar")
+    assert not (output_dir / "partial.e").exists(), (
+        "A failed run must not copy partial solver output into the results directory"
+    )
+
 # G.2: checkpoint cleanup must execute after, not inside, the copy loop.
 def test_checkpoint_cleanup_is_outside_copy_loop():
     import ast
@@ -1052,3 +1125,51 @@ def test_sidecar_binary_override_and_mpi_host(
     assert commands[0][commands[0].index("--host") + 1] == "golem_runner"
     assert "/golem/golem-opt" in commands[0]
     assert "/different/golem-opt" not in commands[0]
+
+
+# -----------------------------------------------------------------------------
+# Streaming output: exercise the imported production helper with real subprocesses
+# -----------------------------------------------------------------------------
+
+def test_stream_silent_by_default(capsys):
+    output = golem_run._stream_process(
+        [sys.executable, "-c", "print('hello')"],
+        heartbeat_seconds=0.1, stream_output=False,
+    )
+    assert "hello" in output
+    assert capsys.readouterr().out == ""
+
+
+def test_stream_opt_in(capsys):
+    output = golem_run._stream_process(
+        [sys.executable, "-c", "print('hello')"],
+        heartbeat_seconds=0.1, stream_output=True,
+    )
+    assert "hello" in output
+    assert "hello" in capsys.readouterr().out
+
+
+def test_stream_failure_reports_output():
+    with pytest.raises(RuntimeError, match="GOLEM exited with status 7") as error:
+        golem_run._stream_process(
+            [sys.executable, "-c", "print('failure'); raise SystemExit(7)"],
+            stream_output=False,
+        )
+    assert "failure" in str(error.value)
+
+
+def test_runner_stream_output_defaults_to_false():
+    import inspect
+    assert inspect.signature(golem_run.run_simulation_golem).parameters[
+        "stream_output"
+    ].default is False
+
+
+def test_stream_failure_includes_output_and_exit_status():
+    with pytest.raises(RuntimeError) as error:
+        golem_run._stream_process(
+            [sys.executable, "-c", "import sys; print('solver failed'); sys.exit(17)"],
+            stream_output=False,
+        )
+    assert "status 17" in str(error.value)
+    assert "solver failed" in str(error.value)
