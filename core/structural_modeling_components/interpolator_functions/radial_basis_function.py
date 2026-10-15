@@ -4,7 +4,9 @@ Radial Basis Function (RBF) interpolation for a single structural group.
 This module provides a pure interpolator function that:
 - derives strictly increasing scalar values per element (oldest=1 .. youngest=n),
 - fits an RBF interpolator to surface points,
-- evaluates the scalar field on a regular grid.
+- evaluates the scalar field on a regular grid,
+and a fit-only variant (``fit_group_radial_basis_function``) that returns the
+fitted field for evaluation at arbitrary points (octree grids).
 
 No mutation of the passed `group` is performed.
 """
@@ -69,6 +71,76 @@ def interpolate_group_radial_basis_function(
     - Uses params from `group.get_interpolation_params()` (expected to be your RBFParams)
     - Does NOT mutate `group`
     """
+    rbfi, scalar_values_by_element = _fit_rbf(group, group_surface_points_df, group_orientations_points_df)
+
+    # 6) evaluate on grid
+    # Prefer a precomputed (N,3) array if your grid exposes it; otherwise build from axes.
+    if hasattr(grid, "grid_coordinates") and grid.grid_coordinates is not None:
+        grid_points: FloatArray = grid.grid_coordinates
+    else:
+        gx, gy, gz = np.meshgrid(grid.gridx, grid.gridy, grid.gridz, indexing="ij")
+        grid_points = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+
+    scalar_flat: FloatArray = rbfi(grid_points)
+    scalar_field = scalar_flat.reshape(tuple(grid.resolution)).T  # (nx, ny, nz)
+
+    return scalar_field, scalar_values_by_element
+
+
+class RBFFittedField:
+    """
+    A fitted RBF scalar field of one group, evaluable at any points (see ``FittedField``).
+
+    Attributes:
+        scalar_values: Element name -> isovalue, oldest = 1 .. youngest = n.
+    """
+
+    def __init__(self, interpolator: RBFInterpolator, scalar_values: Dict[str, float]) -> None:
+        self._interpolator = interpolator
+        self.scalar_values = scalar_values
+
+    def evaluate(self, xyz: FloatArray) -> FloatArray:
+        """Field values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
+        return self._interpolator(np.asarray(xyz, dtype=np.float64).reshape(-1, 3))
+
+
+def fit_group_radial_basis_function(
+    *,
+    group: Any,  # expected: StructuralGroup-like (group.name, group.structural_elements, group.get_interpolation_params())
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: Optional[pd.DataFrame] = None,  # unused here
+) -> RBFFittedField:
+    """
+    Fit the RBF scalar field of a single structural group without evaluating it.
+
+    Same inputs, checks, warnings and scalar values as
+    :func:`interpolate_group_radial_basis_function`; evaluating the result at a
+    regular grid's ``grid_coordinates`` gives that function's scalar field.
+
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object, as for :func:`interpolate_group_radial_basis_function`.
+    group_surface_points_df
+        DataFrame of constraint points with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        Optional orientations DataFrame. Accepted for API consistency but not used.
+
+    Returns
+    -------
+    RBFFittedField
+        The fitted field and the element scalar values.
+    """
+    rbfi, scalar_values_by_element = _fit_rbf(group, group_surface_points_df, group_orientations_points_df)
+    return RBFFittedField(rbfi, scalar_values_by_element)
+
+
+def _fit_rbf(
+    group: Any,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: Optional[pd.DataFrame],
+) -> Tuple[RBFInterpolator, Dict[str, float]]:
+    """Check the inputs, derive the element scalar values and fit the RBF (shared by both entry points)."""
     # Check if any surface points are provided
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
@@ -101,7 +173,7 @@ def interpolate_group_radial_basis_function(
                 f"layering and WILL produce incorrect results for steeply dipping or "
                 f"overturned structures. Consider using FDI, PLI, UCK, or GeoINR instead.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
         else:
             raise ValueError(
@@ -145,16 +217,4 @@ def interpolate_group_radial_basis_function(
         epsilon=params.epsilon,
         neighbors=params.neighbors,  # None => all points
     )
-
-    # 6) evaluate on grid
-    # Prefer a precomputed (N,3) array if your grid exposes it; otherwise build from axes.
-    if hasattr(grid, "grid_coordinates") and grid.grid_coordinates is not None:
-        grid_points: FloatArray = grid.grid_coordinates
-    else:
-        gx, gy, gz = np.meshgrid(grid.gridx, grid.gridy, grid.gridz, indexing="ij")
-        grid_points = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
-
-    scalar_flat: FloatArray = rbfi(grid_points)
-    scalar_field = scalar_flat.reshape(tuple(grid.resolution)).T  # (nx, ny, nz)
-
-    return scalar_field, scalar_values_by_element
+    return rbfi, scalar_values_by_element

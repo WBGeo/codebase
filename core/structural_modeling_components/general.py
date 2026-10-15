@@ -48,6 +48,7 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 )
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import (
     marching_cubes_per_element, marching_cubes)
+from core.structural_modeling_components.general_octree import compute_structural_model_octree
 
 from core.structural_modeling_components.structural_objects.structural_objects import (
     StructuralFrame,
@@ -767,7 +768,8 @@ def compute_structural_model(
         scalar fields, masks, and meshes.
     """
     if isinstance(frame.grid, OctreeGrid):
-        raise NotImplementedError("Structural modeling on an OctreeGrid is not implemented yet.")
+        # Separate octree path; the regular-grid pipeline below stays as it is.
+        return compute_structural_model_octree(frame, extract_meshes=extract_meshes)
 
     # Prepare domain map (supports "no faults" case).
     # NOTE: We intentionally create a minimal provider when no fault_frame exists.
