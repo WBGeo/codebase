@@ -41,7 +41,11 @@ import pandas as pd
 from matplotlib.colors import to_hex
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults, FaultModelResults
-from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import (
+    ModelGrid,
+    OctreeGrid,
+    RegularGrid,
+)
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import (
     marching_cubes_per_element, marching_cubes)
 
@@ -762,6 +766,9 @@ def compute_structural_model(
         Results object containing the updated (deepcopied) structural frame with
         scalar fields, masks, and meshes.
     """
+    if isinstance(frame.grid, OctreeGrid):
+        raise NotImplementedError("Structural modeling on an OctreeGrid is not implemented yet.")
+
     # Prepare domain map (supports "no faults" case).
     # NOTE: We intentionally create a minimal provider when no fault_frame exists.
     ff: FaultFrame | None = frame.fault_frame
@@ -932,7 +939,7 @@ def generate_grouped_colors_per_element(
 
 def build_structural_frame(
         input_data_elements: InputData_StructuralElements,
-        grid: RegularGrid,
+        grid: ModelGrid,
         default_interpolation: InterpolationMethod = InterpolationMethod.RADIAL_BASIS_FUNCTION,
         fault_model_results: Optional[FaultModelResults] = None,
 ) -> StructuralFrame:
@@ -943,7 +950,7 @@ def build_structural_frame(
     ----------
     input_data_elements : InputData_StructuralElements
         Input data containing mapping, surface points, and optional orientations.
-    grid : RegularGrid
+    grid : RegularGrid or OctreeGrid
         Model grid.
     default_interpolation : InterpolationMethod, default ``RADIAL_BASIS_FUNCTION``
         Interpolator assigned to each group (can be overridden later).
@@ -1025,7 +1032,10 @@ def build_structural_frame(
 
         group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
-        group.scalar_field = np.zeros(grid.resolution, dtype=float)
+        # On an octree the cells only exist after modeling, so there is no
+        # per-cell array to initialize yet.
+        if not isinstance(grid, OctreeGrid):
+            group.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     # Generate colors AFTER groups exist
     color_map = generate_grouped_colors_per_element(group_objects)

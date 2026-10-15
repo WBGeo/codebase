@@ -3,19 +3,27 @@ Grid utilities for discretizing a structural geological model.
 
 This module defines :class:`RegularGrid`, a (pydantic) dataclass that computes
 cell-centered coordinate vectors and a flattened list of grid point coordinates,
-and :class:`OctreeGrid`, the specification of an adaptive octree grid together
-with the geometry of its cell addresses.
+:class:`OctreeGrid`, the specification of an adaptive octree grid together
+with the geometry of its cell addresses, and :class:`OctreeCells`, the cells an
+octree ends up with after refinement.
+
+Per-cell results follow one layout rule for every grid type: on a
+:class:`RegularGrid` they are arrays of shape ``resolution``; on an
+:class:`OctreeGrid` they are 1D arrays aligned with the :class:`OctreeCells`
+stored next to them. :func:`cell_centers` and :func:`to_regular` work for both.
 """
 
 from __future__ import annotations
 
 import logging
 from enum import StrEnum
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
+from pydantic import BaseModel, model_validator
 from pydantic.dataclasses import dataclass
+from pydantic_numpy import NpNDArrayInt32, NpNDArrayUint8
 from py_api_wbgeo.nodesapi import wbgeo_type
 
 logger = logging.getLogger(__name__)
@@ -370,3 +378,161 @@ class OctreeGrid:
                 f"Octree level must be between 0 and max_level={self.max_level}. Got {level}"
             )
         return levels
+
+
+ModelGrid = Union[RegularGrid, OctreeGrid]
+
+
+class OctreeCells(BaseModel):
+    """
+    The cells an :class:`OctreeGrid` ended up with after adaptive refinement.
+
+    Cell ``n`` is the octree cell ``(level[n], *ijk[n])`` of the grid it was
+    built on. Together the cells tile the grid's extent without overlap. Every
+    per-cell result array on the octree path has shape ``(len(cells),)`` and is
+    aligned with this order.
+
+    Attributes:
+        level: Refinement level of each cell, shape ``(N,)``.
+        ijk: Integer cell indices at that level, shape ``(N, 3)``.
+    """
+
+    level: NpNDArrayUint8
+    ijk: NpNDArrayInt32
+
+    @model_validator(mode="after")
+    def _check_shapes(self) -> "OctreeCells":
+        if self.level.ndim != 1 or self.ijk.shape != (self.level.shape[0], 3):
+            raise ValueError(
+                f"OctreeCells needs level of shape (N,) and ijk of shape (N, 3). "
+                f"Got {self.level.shape} and {self.ijk.shape}"
+            )
+        return self
+
+    def __len__(self) -> int:
+        return int(self.level.shape[0])
+
+    def centers(self, grid: OctreeGrid) -> npt.NDArray[np.float64]:
+        """Cell centers, shape ``(N, 3)``."""
+        return grid.cell_centers(self.level, self.ijk)
+
+    def locate(self, grid: OctreeGrid, xyz: npt.NDArray[np.floating]) -> npt.NDArray[np.int64]:
+        """
+        Index of the cell that contains each point.
+
+        Points outside the extent are clamped to the nearest boundary cell, as in
+        :meth:`OctreeGrid.locate`.
+
+        Args:
+            grid: The grid the cells were built on.
+            xyz: Point coordinates, shape ``(M, 3)``.
+
+        Returns:
+            Cell indices into this object, shape ``(M,)``; ``-1`` where no cell
+            contains the point, which only happens if the cells don't tile the
+            extent.
+        """
+        points = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
+        found = np.full(points.shape[0], -1, dtype=np.int64)
+        levels = self.level.astype(np.int64)
+        for level in np.unique(levels):
+            members = np.flatnonzero(levels == level)
+            n_cells = grid.cells_per_axis(int(level))
+            keys = _linear_cell_index(self.ijk[members], n_cells)
+            order = np.argsort(keys)
+            sorted_keys = keys[order]
+            point_keys = _linear_cell_index(grid.locate(points, int(level)), n_cells)
+            pos = np.minimum(np.searchsorted(sorted_keys, point_keys), sorted_keys.size - 1)
+            hit = sorted_keys[pos] == point_keys
+            found[hit] = members[order[pos[hit]]]
+        return found
+
+
+def _linear_cell_index(ijk: npt.NDArray[np.integer], n_cells: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
+    """Row-major linear index of cell indices within a ``n_cells`` block."""
+    ijk = np.asarray(ijk, dtype=np.int64)
+    return (ijk[:, 0] * n_cells[1] + ijk[:, 1]) * n_cells[2] + ijk[:, 2]
+
+
+def cell_array_shape(grid: ModelGrid, cells: Optional[OctreeCells]) -> Tuple[int, ...]:
+    """
+    Shape of a per-cell result array for a grid.
+
+    Args:
+        grid: The model grid.
+        cells: The realized cells; required for an :class:`OctreeGrid`, must be
+            ``None`` for a :class:`RegularGrid`.
+
+    Returns:
+        ``resolution`` for a regular grid, ``(len(cells),)`` for an octree.
+    """
+    if isinstance(grid, OctreeGrid):
+        if cells is None:
+            raise ValueError("An OctreeGrid result needs its cells to interpret per-cell arrays.")
+        return (len(cells),)
+    if cells is not None:
+        raise ValueError("A RegularGrid result must not carry octree cells.")
+    return tuple(int(n) for n in grid.resolution)
+
+
+def cell_centers(grid: ModelGrid, cells: Optional[OctreeCells]) -> npt.NDArray[np.float64]:
+    """
+    Center of every cell, in the order of a per-cell array's ``ravel()``.
+
+    Args:
+        grid: The model grid.
+        cells: The realized cells for an :class:`OctreeGrid`, else ``None``.
+
+    Returns:
+        Array of shape ``(n_cells, 3)``: ``grid_coordinates`` for a regular grid,
+        the cell centers for an octree.
+    """
+    cell_array_shape(grid, cells)
+    if isinstance(grid, OctreeGrid):
+        return cells.centers(grid)
+    return grid.grid_coordinates
+
+
+def to_regular(
+        grid: ModelGrid,
+        cells: Optional[OctreeCells],
+        values: npt.NDArray[np.generic],
+        resolution: Optional[Resolution3] = None,
+) -> npt.NDArray[np.generic]:
+    """
+    Resample a per-cell array onto a regular grid over the same extent.
+
+    Every cell of the target grid takes the value of the cell that contains its
+    center. For an octree this is exact wherever the octree cells are at least as
+    fine as the target cells, i.e. everywhere at the default resolution, since
+    each octree cell then covers whole target cells.
+
+    Args:
+        grid: The grid ``values`` belongs to.
+        cells: The realized cells for an :class:`OctreeGrid`, else ``None``.
+        values: Per-cell array with shape ``cell_array_shape(grid, cells)``.
+        resolution: Target resolution. Defaults to the grid's own resolution for
+            a regular grid and to ``finest_resolution`` for an octree.
+
+    Returns:
+        Array of shape ``resolution``. For a regular grid at its own
+        resolution, ``values`` itself is returned.
+    """
+    values = np.asarray(values)
+    expected = cell_array_shape(grid, cells)
+    if values.shape != expected:
+        raise ValueError(f"Per-cell array has shape {values.shape}, expected {expected}.")
+
+    if isinstance(grid, OctreeGrid):
+        target_resolution = tuple(resolution) if resolution is not None else grid.finest_resolution
+        target = RegularGrid(extent=grid.extent, resolution=target_resolution)
+        index = cells.locate(grid, target.grid_coordinates)
+        if np.any(index < 0):
+            raise ValueError("The octree cells do not cover the whole extent.")
+        return values[index].reshape(target_resolution)
+
+    if resolution is None or tuple(resolution) == tuple(grid.resolution):
+        return values
+    target = RegularGrid(extent=grid.extent, resolution=tuple(resolution))
+    ijk = np.clip(grid.xyz_to_indices(target.grid_coordinates), 0, np.array(grid.resolution) - 1)
+    return values[ijk[:, 0], ijk[:, 1], ijk[:, 2]].reshape(tuple(resolution))

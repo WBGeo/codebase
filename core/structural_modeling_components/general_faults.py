@@ -26,6 +26,8 @@ import copy
 
 from core.object_components import InputData_FaultElements, FaultModelResults
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
+    ModelGrid,
+    OctreeGrid,
     RegularGrid,
 )
 from core.structural_modeling_components.structural_objects.structural_objects import (
@@ -259,6 +261,8 @@ def compute_fault_domains(
     """
     if not fault_frame.grid:
         raise ValueError("Grid must be set before domain generation.")
+    if isinstance(fault_frame.grid, OctreeGrid):
+        raise NotImplementedError("Fault modeling on an OctreeGrid is not implemented yet.")
     if fault_frame.fault_surface_points_df is None:
         raise ValueError("Fault surface points must be set.")
 
@@ -420,7 +424,7 @@ def compute_fault_domains(
 
 def build_fault_frame(
     input_data_fault_elements: InputData_FaultElements,
-    grid: RegularGrid,
+    grid: ModelGrid,
 ) -> FaultFrame:
     """
     Build a :class:`FaultFrame` from ordered fault names, surface data, and a grid.
@@ -429,7 +433,7 @@ def build_fault_frame(
     ----------
     input_data_fault_elements : InputData_FaultElements
         Input data for the fault elements, including names, surface points, and orientations.
-    grid : RegularGrid
+    grid : RegularGrid or OctreeGrid
         Model grid.
 
     Returns
