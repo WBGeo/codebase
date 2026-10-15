@@ -24,6 +24,8 @@ import numpy.typing as npt
 import pandas as pd
 from pykrige.uk3d import UniversalKriging3D
 
+from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6, KrigingFittedField
+
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
 
@@ -66,6 +68,72 @@ def interpolate_group_universal_kriging(
         oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
         so reversed order is used here).
     """
+    uk3d, scalar_values_by_element = _fit_uk(group, group_surface_points_df, group_orientations_points_df)
+
+    params = group.get_interpolation_params()
+    external_drift_grid = getattr(params, "external_drift_grid", None)
+
+    backend = "loop" if params.neighbors is not None else "vectorized"
+
+    execute_kwargs = dict(
+        backend=backend
+    )
+
+    if external_drift_grid is not None:
+        execute_kwargs["external_drift"] = external_drift_grid
+
+    scalar_field, _ = uk3d.execute(
+        "grid",
+        grid.gridx,
+        grid.gridy,
+        grid.gridz,
+        **execute_kwargs,
+    )
+
+    return scalar_field, scalar_values_by_element
+
+
+def fit_group_universal_kriging(
+    *,
+    group: Any,
+    extent: Optional[Extent6] = None,  # unused here: kriging has no support mesh
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: Optional[pd.DataFrame] = None,  # unused here
+) -> KrigingFittedField:
+    """
+    Fit the Universal Kriging scalar field of a single structural group without evaluating it.
+
+    Same inputs, checks, warnings and scalar values as
+    :func:`interpolate_group_universal_kriging`; evaluating the result at a regular
+    grid's cell centers gives that function's scalar field (up to rounding).
+
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object, as for :func:`interpolate_group_universal_kriging`.
+    extent
+        Accepted for the common ``fit_group_*`` interface; kriging doesn't depend on it.
+    group_surface_points_df
+        DataFrame of constraint points with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        Optional orientations DataFrame. Accepted for API consistency but not used.
+
+    Returns
+    -------
+    KrigingFittedField
+        The fitted field and the element scalar values, evaluated by dual kriging.
+        Like the regular-grid function, UK uses all points (``neighbors`` is not used).
+    """
+    uk3d, scalar_values_by_element = _fit_uk(group, group_surface_points_df, group_orientations_points_df)
+    return KrigingFittedField(uk3d, scalar_values_by_element)
+
+
+def _fit_uk(
+    group: Any,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: Optional[pd.DataFrame],
+) -> Tuple[UniversalKriging3D, Dict[str, float]]:
+    """Check the inputs, derive the element scalar values and fit the kriging model (shared by both entry points)."""
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
 
@@ -95,7 +163,7 @@ def interpolate_group_universal_kriging(
                 f"layering and WILL produce incorrect results for steeply dipping or "
                 f"overturned structures. Consider using FDI, PLI, UCK, or GeoINR instead.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
         else:
             raise ValueError(
@@ -150,7 +218,6 @@ def interpolate_group_universal_kriging(
             specified_drift_arrays = [specified_drift]
 
     external_drift = getattr(params, "external_drift", None)
-    external_drift_grid = getattr(params, "external_drift_grid", None)
 
     uk3d_kwargs = dict(
         variogram_model=params.variogram_model,
@@ -165,22 +232,4 @@ def interpolate_group_universal_kriging(
         uk3d_kwargs["external_drift"] = external_drift
 
     uk3d = UniversalKriging3D(x, y, z, vals, **uk3d_kwargs)
-
-    backend = "loop" if params.neighbors is not None else "vectorized"
-
-    execute_kwargs = dict(
-        backend=backend
-    )
-
-    if external_drift_grid is not None:
-        execute_kwargs["external_drift"] = external_drift_grid
-
-    scalar_field, _ = uk3d.execute(
-        "grid",
-        grid.gridx,
-        grid.gridy,
-        grid.gridz,
-        **execute_kwargs,
-    )
-
-    return scalar_field, scalar_values_by_element
+    return uk3d, scalar_values_by_element

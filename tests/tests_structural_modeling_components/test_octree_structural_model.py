@@ -20,6 +20,10 @@ from core.structural_modeling_components.interpolator_functions.finite_differenc
     interpolate_group_finite_differences,
 )
 from core.structural_modeling_components.interpolator_functions.geoinr import fit_group_geo_inr
+from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (
+    fit_group_ordinary_kriging,
+    interpolate_group_ordinary_kriging,
+)
 from core.structural_modeling_components.interpolator_functions.piecewise_linear import (
     fit_group_piecewise_linear,
     interpolate_group_piecewise_linear,
@@ -27,6 +31,10 @@ from core.structural_modeling_components.interpolator_functions.piecewise_linear
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     fit_group_radial_basis_function,
     interpolate_group_radial_basis_function,
+)
+from core.structural_modeling_components.interpolator_functions.universal_kriging import (
+    fit_group_universal_kriging,
+    interpolate_group_universal_kriging,
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     base_cells,
@@ -85,7 +93,12 @@ def compute(grid, method=InterpolationMethod.RADIAL_BASIS_FUNCTION) -> Structura
 
 
 # Interpolators whose octree result must equal the regular grid at the finest resolution.
-DETERMINISTIC_METHODS = [InterpolationMethod.RADIAL_BASIS_FUNCTION, InterpolationMethod.FINITE_DIFFERENCES]
+DETERMINISTIC_METHODS = [
+    InterpolationMethod.RADIAL_BASIS_FUNCTION,
+    InterpolationMethod.FINITE_DIFFERENCES,
+    InterpolationMethod.ORDINARY_KRIGING,
+    InterpolationMethod.UNIVERSAL_KRIGING,
+]
 
 
 @pytest.fixture(scope="module", params=DETERMINISTIC_METHODS, ids=lambda m: m.name)
@@ -155,6 +168,58 @@ def test_geo_inr_fit_gives_a_field_and_the_usual_scalar_values():
     # The network runs in float32, so a point's value depends slightly (~1e-7) on the
     # batch it is evaluated in; the octree evaluates the same point in different batches.
     np.testing.assert_allclose(field.evaluate(grid.grid_coordinates[:7]), values[:7], rtol=0, atol=1e-5)
+
+
+# -----------------------------------------------------------------------------
+# Kriging fit / evaluate (dual kriging vs. pykrige's execute)
+# -----------------------------------------------------------------------------
+
+OK = (InterpolationMethod.ORDINARY_KRIGING, interpolate_group_ordinary_kriging, fit_group_ordinary_kriging)
+UK = (InterpolationMethod.UNIVERSAL_KRIGING, interpolate_group_universal_kriging, fit_group_universal_kriging)
+
+
+# A Gaussian variogram without nugget gives a kriging matrix with a condition number
+# around 1e13 here, so solving it once (dual kriging) and pykrige's per-point inverse
+# agree only to ~1e-3; both carry that rounding noise.
+@pytest.mark.parametrize("method, interpolate, fit, params, atol", [
+    (*OK, dict(neighbors=None, variogram_model="exponential"), 1e-10),
+    (*OK, dict(neighbors=None, nugget=0.1), 1e-10),
+    (*OK, dict(neighbors=None), 1e-3),
+    (*OK, dict(neighbors=12), 1e-10),
+    (*UK, dict(), 1e-10),
+    (*UK, dict(nugget=0.1), 1e-10),
+], ids=["OK", "OK-nugget", "OK-gaussian-no-nugget", "OK-neighbors", "UK", "UK-nugget"])
+def test_kriging_fit_evaluates_to_the_regular_grid_interpolation(method, interpolate, fit, params, atol):
+    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
+    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+    group = frame.structural_groups[1]
+    group.set_interpolation_method(method)
+    group.configure_interpolation_params(**params)
+    sp = frame.surface_points[frame.surface_points["formation"].isin(["rock1", "rock2"])]
+
+    on_grid, values_on_grid = interpolate(group=group, grid=grid, group_surface_points_df=sp)
+    field = fit(group=group, extent=grid.extent, group_surface_points_df=sp)
+
+    assert field.scalar_values == values_on_grid
+    # interpolate_group_* returns pykrige's (z, y, x) grid; transpose to compare.
+    points = grid.grid_coordinates.copy()
+    np.testing.assert_allclose(field.evaluate(points).reshape(grid.resolution), on_grid.T, rtol=0, atol=atol)
+    np.testing.assert_array_equal(points, grid.grid_coordinates)  # evaluate leaves its input alone
+
+    # At the data points kriging returns the data values, also with a nugget.
+    on_data = field.evaluate(sp[["X", "Y", "Z"]].to_numpy())
+    np.testing.assert_allclose(on_data, sp["formation"].map(values_on_grid).to_numpy(), rtol=0, atol=max(atol, 1e-8))
+
+
+def test_kriging_with_unsupported_drift_is_refused_on_points():
+    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
+    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+    group = frame.structural_groups[1]
+    group.set_interpolation_method(InterpolationMethod.UNIVERSAL_KRIGING)
+    group.configure_interpolation_params(drift_terms=["specified"])
+    sp = frame.surface_points[frame.surface_points["formation"].isin(["rock1", "rock2"])]
+    with pytest.raises((NotImplementedError, ValueError)):
+        fit_group_universal_kriging(group=group, extent=grid.extent, group_surface_points_df=sp)
 
 
 def _expected_unconformity_lith(grid: RegularGrid) -> np.ndarray:
@@ -375,7 +440,7 @@ def test_octree_frame_is_not_meshed_yet(results):
 
 def test_other_interpolators_are_refused_on_an_octree():
     frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=octree_grid())
-    frame.structural_groups[0].set_interpolation_method(InterpolationMethod.ORDINARY_KRIGING)
+    frame.structural_groups[0].set_interpolation_method(InterpolationMethod.UNIVERSAL_COKRIGING)
     with pytest.raises(NotImplementedError, match="UpperSeries"):
         general.compute_structural_model(frame)
 
