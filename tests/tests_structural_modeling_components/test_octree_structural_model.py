@@ -13,6 +13,7 @@ import pytest
 from pydantic_core import to_jsonable_python
 
 import core.structural_modeling_components.general as general
+import core.structural_modeling_components.general_octree as general_octree
 from core.object_components import InputData_StructuralElements, StructuralModelResults
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     fit_group_radial_basis_function,
@@ -20,6 +21,7 @@ from core.structural_modeling_components.interpolator_functions.radial_basis_fun
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     base_cells,
+    coarsen_cells,
     refine_cells,
 )
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
@@ -123,6 +125,35 @@ def test_refinement_without_change_keeps_the_base_blocks():
     np.testing.assert_array_equal(cells.ijk, expected.ijk)
 
 
+def _as_set(cells: OctreeCells) -> set:
+    return {(int(level), *map(int, ijk)) for level, ijk in zip(cells.level, cells.ijk)}
+
+
+def test_coarsening_with_constant_labels_returns_the_base_blocks():
+    grid = octree_grid(base=(2, 2, 2), max_level=4)
+    refined = refine_cells(grid, lambda p: (p[:, 2] > 0.37).astype(int))
+    coarse = coarsen_cells(grid, refined, lambda p: np.zeros(len(p), dtype=int))
+    assert _as_set(coarse) == _as_set(base_cells(grid))
+
+
+def test_coarsening_with_the_refinement_labels_changes_nothing():
+    grid = octree_grid(base=(2, 2, 2), max_level=4)
+    label = lambda p: (p[:, 2] > 0.37).astype(int)  # noqa: E731
+    refined = refine_cells(grid, label)
+    assert _as_set(coarsen_cells(grid, refined, label)) == _as_set(refined)
+
+
+def test_coarsening_keeps_cells_where_the_coarser_labels_change():
+    """Refine for two planes, store only one: refinement survives along the stored plane only."""
+    grid = octree_grid(base=(2, 2, 2), max_level=4)
+    both = lambda p: np.column_stack([p[:, 2] > 0.37, p[:, 0] > 0.61]).astype(int)  # noqa: E731
+    refined = refine_cells(grid, both)
+    coarse = coarsen_cells(grid, refined, lambda p: (p[:, 2] > 0.37).astype(int))
+    assert len(coarse) < len(refined)
+    assert _as_set(coarse) == _as_set(refine_cells(grid, lambda p: (p[:, 2] > 0.37).astype(int)))
+    assert (8 ** (grid.max_level - coarse.level.astype(int))).sum() == np.prod(grid.finest_resolution)
+
+
 def test_refinement_continues_from_given_cells():
     grid = octree_grid(base=(1, 1, 1), max_level=3)
     start = OctreeCells(level=np.array([3], dtype=np.uint8), ijk=np.array([[0, 0, 0]], dtype=np.int32))
@@ -158,19 +189,37 @@ def test_scalar_fields_at_max_level_cells_equal_the_regular_grid(results):
         np.testing.assert_allclose(oct_group.scalar_field[fine], reg_group.scalar_field[i, j, k], atol=1e-12)
 
 
-def test_eroded_surfaces_stay_refined(results):
-    """The lower group's own surfaces are refined even above the unconformity, where they are eroded."""
-    oct_frame = results[0].structural_frame
-    lower = oct_frame.structural_groups[1]
-    mins, maxs = oct_frame.grid.cell_bounds(oct_frame.cells.level, oct_frame.cells.ijk)
-    centers = oct_frame.cells.centers(oct_frame.grid)
-    rock2_top = 0.40 + (centers[:, 0] - 0.5)   # rock2 surface at the cell's x
-    crosses_rock2 = (mins[:, 2] < rock2_top) & (maxs[:, 2] > rock2_top)
-    above_unconformity = mins[:, 2] > 0.62
-    assert lower.mask.all()
-    eroded = crosses_rock2 & above_unconformity
-    assert eroded.any()
-    assert np.all(oct_frame.cells.level[eroded] == oct_frame.grid.max_level)
+def _eroded_rock2_cells(grid: OctreeGrid, cells: OctreeCells) -> np.ndarray:
+    """Cells the (eroded) rock2 surface passes through above the unconformity at z = 0.62."""
+    mins, maxs = grid.cell_bounds(cells.level, cells.ijk)
+    # rock2: z = 0.40 + (x - 0.5); with a 45 degree dip, test against both x bounds.
+    z_low, z_high = 0.40 + (mins[:, 0] - 0.5), 0.40 + (maxs[:, 0] - 0.5)
+    crosses = (mins[:, 2] < z_high) & (maxs[:, 2] > z_low)
+    return crosses & (mins[:, 2] > 0.62)
+
+
+def test_eroded_surfaces_are_refined_for_meshes_then_coarsened(results):
+    """
+    The refinement for surfaces resolves the lower group's rock2 surface even above the
+    unconformity, where it is eroded; the stored cells merge that refinement away again,
+    since lithology and masks don't change there.
+    """
+    grid = octree_grid()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+        general_octree._assign_element_ids(frame)
+        fields = general_octree._fit_groups(frame)
+    mesh_cells = general_octree._refine_for_surfaces(frame, fields)
+    stored_cells = results[0].structural_frame.cells
+
+    eroded_mesh = _eroded_rock2_cells(grid, mesh_cells)
+    assert eroded_mesh.any()
+    assert np.all(mesh_cells.level[eroded_mesh] == grid.max_level)
+
+    eroded_stored = _eroded_rock2_cells(grid, stored_cells)
+    assert np.any(stored_cells.level[eroded_stored] < grid.max_level)
+    assert len(stored_cells) < len(mesh_cells)
 
 
 def test_octree_result_survives_the_runner_round_trip(results):

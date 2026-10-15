@@ -6,8 +6,13 @@ dispatches here when the frame's grid is an OctreeGrid:
 
   1) Fit each group's scalar field once (``fit_group_*``).
   2) Refine the octree where the lithology or any group's own surfaces change
-     between cell corners.
-  3) Evaluate fields, age masks and lithology at the final cell centers and store
+     between cell corners. This octree resolves every surface, including the
+     parts eroded by younger groups, which surface meshes need.
+  3) (Surface meshes will be extracted here, on the refined octree.)
+  4) Coarsen back to the cells the stored result needs: merge cells wherever the
+     lithology and the age masks don't change, so the result keeps as few cells
+     as possible.
+  5) Evaluate fields, age masks and lithology at the final cell centers and store
      them in the usual attributes, one value per cell (see ``StructuralFrame``).
 
 Current scope: models without faults, RBF only, no surface meshes yet. The age
@@ -30,8 +35,11 @@ from core.structural_modeling_components.interpolator_functions.fitted_field imp
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     fit_group_radial_basis_function,
 )
-from core.structural_modeling_components.structural_modeling_utility.octree_refinement import refine_cells
-from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeGrid
+from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
+    coarsen_cells,
+    refine_cells,
+)
+from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeCells, OctreeGrid
 from core.structural_modeling_components.structural_objects.structural_objects import (
     InterpolationMethod,
     StructuralFrame,
@@ -100,8 +108,18 @@ def compute_structural_model_octree(
     fields = _fit_groups(frame)
 
     logger.info("Refining the octree ...")
-    cells = refine_cells(grid, lambda points: _refinement_labels(frame, fields, points))
-    logger.info("Octree has %d cells (equivalent regular grid: %d).", len(cells), int(np.prod(grid.finest_resolution)))
+    mesh_cells = _refine_for_surfaces(frame, fields)
+
+    # Surface meshes will be extracted here, on mesh_cells.
+    if extract_meshes:
+        logger.info("Surface meshes on an OctreeGrid are not implemented yet; no meshes stored.")
+
+    logger.info("Coarsening the octree for the stored result ...")
+    cells = _coarsen_for_storage(frame, fields, mesh_cells)
+    logger.info(
+        "Octree cells: %d refined for surfaces, %d stored (equivalent regular grid: %d).",
+        len(mesh_cells), len(cells), int(np.prod(grid.finest_resolution)),
+    )
 
     logger.info("Evaluating the model at cell centers ...")
     values = _evaluate_groups(frame, fields, cells.centers(grid))
@@ -114,9 +132,6 @@ def compute_structural_model_octree(
         group.extended_scalar_field = None
     frame.lith_block = lith
     frame.check_cell_arrays()
-
-    if extract_meshes:
-        logger.info("Surface meshes on an OctreeGrid are not implemented yet; no meshes stored.")
 
     return StructuralModelResults(structural_frame=copy.deepcopy(frame))
 
@@ -221,11 +236,23 @@ def _lithology_and_masks(frame: StructuralFrame, values: FloatArray) -> Tuple[In
     return lith, masks
 
 
-def _refinement_labels(
+def _refine_for_surfaces(frame: StructuralFrame, fields: List[Optional[FittedField]]) -> OctreeCells:
+    """Refine from the base blocks until every group's surfaces and the lithology are at max level."""
+    return refine_cells(frame.grid, lambda points: _surface_labels(frame, fields, points))
+
+
+def _coarsen_for_storage(
+        frame: StructuralFrame, fields: List[Optional[FittedField]], cells: OctreeCells
+) -> OctreeCells:
+    """Merge cells back wherever the lithology and the age masks don't change."""
+    return coarsen_cells(frame.grid, cells, lambda points: _storage_labels(frame, fields, points))
+
+
+def _surface_labels(
         frame: StructuralFrame, fields: List[Optional[FittedField]], points: FloatArray
 ) -> IntArray:
     """
-    Labels whose change between cell corners triggers a split.
+    Labels for refining toward the surfaces.
 
     Column 0 is the lithology id. Then one column per group: which of the group's
     element surfaces the point lies above. The group columns keep every group's
@@ -239,3 +266,12 @@ def _refinement_labels(
         svals = sorted(e.get_scalar_value() for e in group.structural_elements if e.get_scalar_value() is not None)
         columns.append(np.searchsorted(np.asarray(svals, dtype=np.float64), values[group_idx], side="right"))
     return np.column_stack(columns)
+
+
+def _storage_labels(
+        frame: StructuralFrame, fields: List[Optional[FittedField]], points: FloatArray
+) -> IntArray:
+    """Labels the stored result must resolve: the lithology id and every group's age mask."""
+    values = _evaluate_groups(frame, fields, points)
+    lith, masks = _lithology_and_masks(frame, values)
+    return np.column_stack([lith, masks.T.astype(np.int64)])

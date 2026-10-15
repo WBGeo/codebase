@@ -1,10 +1,16 @@
 """
-Adaptive refinement of an :class:`OctreeGrid`.
+Adaptive refinement and coarsening of an :class:`OctreeGrid`.
 
-Starting from the base blocks (or from given cells), every cell whose 8 corners
-get different labels is split into its 8 children, level by level, until
-``max_level``. Cells whose corners all agree become leaves. The result is the
-set of realized cells (:class:`OctreeCells`) that per-cell results are stored on.
+:func:`refine_cells`: starting from the base blocks (or from given cells), every
+cell whose 8 corners get different labels is split into its 8 children, level by
+level, until ``max_level``. Cells whose corners all agree become leaves.
+
+:func:`coarsen_cells`: the reverse, bottom-up: 8 sibling leaves are merged back
+into their parent where the labels are identical across the whole parent. This
+lets a model refine for one purpose (e.g. surfaces needed for meshes) and then
+store only the cells another purpose needs (e.g. the lithology).
+
+The result of both is a set of cells (:class:`OctreeCells`) that tiles the extent.
 
 Ported from the adaptive classification loop of the octree research code
 (corner-disagreement refinement), adapted to integer cell addresses and a grid
@@ -22,6 +28,7 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
     CORNER_OFFSETS,
     OctreeCells,
     OctreeGrid,
+    linear_cell_index,
 )
 
 # Labels points: (M, 3) coordinates -> (M,) or (M, k) integer labels. A cell is
@@ -83,6 +90,72 @@ def refine_cells(
     return OctreeCells(level=np.concatenate(leaf_levels), ijk=np.concatenate(leaf_ijk).astype(np.int32))
 
 
+def coarsen_cells(
+        grid: OctreeGrid,
+        cells: OctreeCells,
+        label_points: PointLabeler,
+) -> OctreeCells:
+    """
+    Merge sibling leaves back into their parent wherever the labels don't change.
+
+    Bottom-up from ``max_level``: when all 8 children of a parent are leaves and
+    every label column is identical at all 27 lattice points of the parent (its
+    corners, edge and face midpoints and center, which are the corners of the 8
+    children), the children are replaced by the parent. Merged parents can merge
+    again one level up.
+
+    Labels never change inside a merged cell at the lattice points checked, so a
+    per-cell quantity derived from the labels (e.g. lithology classified at cell
+    centers) is the same before and after coarsening.
+
+    Args:
+        grid: The octree grid.
+        cells: Leaf cells that tile the extent, e.g. from :func:`refine_cells`.
+        label_points: Labels for points; see :data:`PointLabeler`.
+
+    Returns:
+        The coarsened leaf cells.
+    """
+    level = cells.level.astype(np.int64)
+    ijk = cells.ijk.astype(np.int64)
+
+    for child_level in range(grid.max_level, 0, -1):
+        at_level = np.flatnonzero(level == child_level)
+        if at_level.size == 0:
+            continue
+        parent_level = child_level - 1
+        parent_ijk_of_child = ijk[at_level] // 2
+        keys = linear_cell_index(parent_ijk_of_child, grid.cells_per_axis(parent_level))
+        unique_keys, first, inverse, counts = np.unique(
+            keys, return_index=True, return_inverse=True, return_counts=True)
+        complete = counts == 8
+        if not complete.any():
+            continue
+
+        candidates = parent_ijk_of_child[first[complete]]
+        lattice = (2 * candidates[:, None, :] + _PARENT_LATTICE_OFFSETS[None, :, :])
+        labels = _labels_at_lattice(grid, child_level, lattice, label_points)
+        uniform = np.all(labels == labels[:, :1, :], axis=(1, 2))
+        if not uniform.any():
+            continue
+
+        merged_parent = np.zeros(unique_keys.size, dtype=bool)
+        merged_parent[np.flatnonzero(complete)[uniform]] = True
+        drop = at_level[merged_parent[inverse.ravel()]]
+        keep = np.ones(level.size, dtype=bool)
+        keep[drop] = False
+        level = np.concatenate([level[keep], np.full(int(uniform.sum()), parent_level, dtype=np.int64)])
+        ijk = np.concatenate([ijk[keep], candidates[uniform]])
+
+    return OctreeCells(level=level.astype(np.uint8), ijk=ijk.astype(np.int32))
+
+
+# The 27 lattice points of a cell, in units of its children's size.
+_PARENT_LATTICE_OFFSETS: npt.NDArray[np.int64] = np.array(
+    [[i, j, k] for i in range(3) for j in range(3) for k in range(3)], dtype=np.int64
+)
+
+
 def _corners_disagree(
         grid: OctreeGrid,
         level: int,
@@ -90,14 +163,25 @@ def _corners_disagree(
         label_points: PointLabeler,
 ) -> npt.NDArray[np.bool_]:
     """For each cell, whether its 8 corners don't all get the same labels."""
-    # Corners as integer lattice points of this level; neighbouring cells share
-    # them, so each distinct corner is labelled once.
-    corners = (ijk[:, None, :] + CORNER_OFFSETS[None, :, :]).reshape(-1, 3)
-    unique_corners, inverse = np.unique(corners, axis=0, return_inverse=True)
-    points = grid.origin + unique_corners * grid.cell_size(level)
+    corners = ijk[:, None, :] + CORNER_OFFSETS[None, :, :]
+    per_corner = _labels_at_lattice(grid, level, corners, label_points)
+    return np.any(per_corner != per_corner[:, :1, :], axis=(1, 2))
 
-    labels = np.asarray(label_points(points))
+
+def _labels_at_lattice(
+        grid: OctreeGrid,
+        level: int,
+        lattice: npt.NDArray[np.int64],
+        label_points: PointLabeler,
+) -> npt.NDArray[np.integer]:
+    """
+    Labels at integer lattice points of a level, shape ``lattice.shape[:2] + (k,)``.
+
+    Neighbouring cells share lattice points, so each distinct point is labelled once.
+    """
+    n_cells, n_points = lattice.shape[:2]
+    unique_points, inverse = np.unique(lattice.reshape(-1, 3), axis=0, return_inverse=True)
+    labels = np.asarray(label_points(grid.origin + unique_points * grid.cell_size(level)))
     if labels.ndim == 1:
         labels = labels[:, None]
-    per_corner = labels[inverse.ravel()].reshape(ijk.shape[0], 8, labels.shape[1])
-    return np.any(per_corner != per_corner[:, :1, :], axis=(1, 2))
+    return labels[inverse.ravel()].reshape(n_cells, n_points, labels.shape[1])

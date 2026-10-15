@@ -438,17 +438,17 @@ class OctreeCells(BaseModel):
         for level in np.unique(levels):
             members = np.flatnonzero(levels == level)
             n_cells = grid.cells_per_axis(int(level))
-            keys = _linear_cell_index(self.ijk[members], n_cells)
+            keys = linear_cell_index(self.ijk[members], n_cells)
             order = np.argsort(keys)
             sorted_keys = keys[order]
-            point_keys = _linear_cell_index(grid.locate(points, int(level)), n_cells)
+            point_keys = linear_cell_index(grid.locate(points, int(level)), n_cells)
             pos = np.minimum(np.searchsorted(sorted_keys, point_keys), sorted_keys.size - 1)
             hit = sorted_keys[pos] == point_keys
             found[hit] = members[order[pos[hit]]]
         return found
 
 
-def _linear_cell_index(ijk: npt.NDArray[np.integer], n_cells: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
+def linear_cell_index(ijk: npt.NDArray[np.integer], n_cells: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
     """Row-major linear index of cell indices within a ``n_cells`` block."""
     ijk = np.asarray(ijk, dtype=np.int64)
     return (ijk[:, 0] * n_cells[1] + ijk[:, 1]) * n_cells[2] + ijk[:, 2]
