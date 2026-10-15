@@ -36,6 +36,7 @@ from core.structural_modeling_components.interpolator_functions.finite_differenc
     fit_group_finite_differences,
 )
 from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6, FittedField
+from core.structural_modeling_components.interpolator_functions.geoinr import fit_group_geo_inr
 from core.structural_modeling_components.interpolator_functions.piecewise_linear import (  # noqa: F401
     fit_group_piecewise_linear,
 )
@@ -64,6 +65,7 @@ fit_dispatch: Dict[InterpolationMethod, Callable[..., FittedField]] = {
     InterpolationMethod.RADIAL_BASIS_FUNCTION: fit_group_radial_basis_function,
     InterpolationMethod.FINITE_DIFFERENCES: fit_group_finite_differences,
     # InterpolationMethod.PIECEWISE_LINEAR: fit_group_piecewise_linear,  # excluded pending parameter tuning
+    InterpolationMethod.GEOINR: fit_group_geo_inr,
 }
 
 # Fits cover the extent padded by this many finest cells on every side, the same

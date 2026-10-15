@@ -3,8 +3,11 @@ GeoINR interpolation for a single structural group.
 
 This module contains:
 - `interpolate_group_geo_inr`: framework-facing interpolator (pure function)
+- `fit_group_geo_inr`: trains the network only and returns it for evaluation at arbitrary
+  points (octree grids)
 - `ConcatMLP`: small PyTorch MLP used for implicit neural representation
-- `stratigraphic_ConcatMLP`: training loop producing scalar field predictions and iso-values
+- `stratigraphic_ConcatMLP`: training loop producing scalar field predictions and iso-values,
+  split into `train_stratigraphic_mlp` and `predict_stratigraphic_mlp`
 - Helper functions: `normalize`, `loss_intf`, `compute_gradients`, `loss_grad`, `loss_eikonal`,
   `predict_to_mesh_stratigraphic`
 
@@ -65,6 +68,9 @@ IntArray: TypeAlias = npt.NDArray[np.integer]
 BoolArray: TypeAlias = npt.NDArray[np.bool_]
 
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+# Number of domain points for the eikonal regularization (see `loss_eikonal`).
+_N_EIKONAL_SAMPLES: int = 2000
 
 
 def _usable_cpu_count() -> int:
@@ -153,36 +159,8 @@ def interpolate_group_geo_inr(
     - Does NOT mutate `group`.
     - Assumes `iso_values` returned by the model are ordered oldest→youngest.
     """
-    # --- validation ---
-    if group_surface_points_df is None or group_surface_points_df.empty:
-        raise ValueError(f"No surface points provided for group '{group.name}'")
-    if group_orientations_points_df is None or group_orientations_points_df.empty:
-        raise ValueError(f"No orientations provided for group '{group.name}'")
-
-    for col in ("X", "Y", "Z", "formation"):
-        if col not in group_surface_points_df.columns:
-            raise ValueError(f"Surface points for '{group.name}' missing column '{col}'")
-    for col in ("X", "Y", "Z", "G_x", "G_y", "G_z", "formation"):
-        if col not in group_orientations_points_df.columns:
-            raise ValueError(f"Orientations for '{group.name}' missing column '{col}'")
-
-    # --- labels: youngest -> oldest mapped to +1 ... -1 ---
-    n = len(group.structural_elements)
-    # youngest..oldest (group order) gets labels linearly from +1 to -1
-    labels: FloatArray = np.linspace(1.0, -1.0, n)
-    formation_to_label: Dict[str, float] = {
-        elem.name: float(lab) for elem, lab in zip(group.structural_elements, labels)
-    }
-
-    # attach labels to surface points (as expected by your GeoINR code)
-    sp = group_surface_points_df.copy()
-    sp["label"] = sp["formation"].map(formation_to_label)
-
-    # to numpy (labels first)
-    interface_data: np.ndarray = sp[["label", "X", "Y", "Z"]].to_numpy()
-    orientation_data: np.ndarray = group_orientations_points_df[
-        ["X", "Y", "Z", "G_x", "G_y", "G_z"]
-    ].to_numpy()
+    interface_data, orientation_data = _geo_inr_training_data(
+        group, group_surface_points_df, group_orientations_points_df)
 
     # grid sampling points (N, 3)
     if hasattr(grid, "grid_coordinates") and grid.grid_coordinates is not None:
@@ -219,6 +197,141 @@ def interpolate_group_geo_inr(
     # `res_inr` -> (nx, ny, nz) without transpose (preserved behavior)
     scalar_field = np.asarray(res_inr).reshape(tuple(grid.resolution)).T
 
+    return scalar_field, _scalar_values_by_element(group, iso_values)
+
+
+class GeoINRFittedField:
+    """
+    A trained GeoINR network of one group, evaluable at any points (see ``FittedField``).
+
+    The network runs in float32, so a point's value can differ by ~1e-7 depending on the
+    batch it is evaluated in.
+
+    Attributes:
+        scalar_values: Element name -> iso-value (interface label), oldest lowest.
+    """
+
+    def __init__(
+        self,
+        network: "ConcatMLP",
+        extent: Tuple[float, float, float, float, float, float],
+        scalar_values: Dict[str, float],
+    ) -> None:
+        self._network = network
+        self._extent = extent
+        self.scalar_values = scalar_values
+
+    def evaluate(self, xyz: FloatArray) -> FloatArray:
+        """Field values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
+        points = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
+        with _limit_torch_threads():
+            predictions = predict_stratigraphic_mlp(self._network, normalize(points, self._extent))
+        return predictions.astype(np.float64)
+
+
+def fit_group_geo_inr(
+    *,
+    group: Any,  # StructuralGroup-like (expects .name, .structural_elements, .get_interpolation_params())
+    extent: Tuple[float, float, float, float, float, float],
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: Optional[pd.DataFrame] = None,
+) -> GeoINRFittedField:
+    """
+    Train the GeoINR network of a single structural group without evaluating it on a grid.
+
+    Same inputs, checks, labels and scalar values as :func:`interpolate_group_geo_inr`.
+    Coordinates are normalized with ``extent``, as the grid extent is used there. The
+    eikonal regularization samples are drawn uniformly from ``extent`` instead of from
+    grid points, since no grid points exist yet on an adaptive grid. Training is
+    stochastic (random initial weights and samples), as for the regular grid.
+
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object, as for :func:`interpolate_group_geo_inr`.
+    extent
+        Model extent ``(xmin, xmax, ymin, ymax, zmin, zmax)`` used for normalization and
+        for the eikonal samples.
+    group_surface_points_df
+        DataFrame with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        DataFrame with columns ["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"].
+
+    Returns
+    -------
+    GeoINRFittedField
+        The trained network and the element scalar values.
+    """
+    interface_data, orientation_data = _geo_inr_training_data(
+        group, group_surface_points_df, group_orientations_points_df)
+    params = group.get_interpolation_params()
+
+    lower, upper = np.array(extent[0::2], dtype=np.float64), np.array(extent[1::2], dtype=np.float64)
+    domain_samples = lower + np.random.random_sample((_N_EIKONAL_SAMPLES, 3)) * (upper - lower)
+
+    with warnings.catch_warnings(), _limit_torch_threads():
+        warnings.simplefilter("ignore")
+        network, iso_values = train_stratigraphic_mlp(
+            interface_data=interface_data,
+            orientation_data=orientation_data,
+            normalized_domain_samples=normalize(domain_samples, extent),
+            extent=extent,
+            in_dim=3,
+            hidden_dim=params.hidden_dim,
+            out_dim=1,
+            n_hidden_layers=params.n_hidden_layers,
+            activation="Softplus",
+            beta=params.beta,
+            concat=False,
+            epochs=params.epochs,
+            lr=params.lr,
+            alpha=params.alpha,
+        )
+
+    return GeoINRFittedField(network, extent, _scalar_values_by_element(group, iso_values))
+
+
+def _geo_inr_training_data(
+    group: Any,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: Optional[pd.DataFrame],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Check the inputs and build the labelled interface and orientation arrays (shared by both entry points)."""
+    # --- validation ---
+    if group_surface_points_df is None or group_surface_points_df.empty:
+        raise ValueError(f"No surface points provided for group '{group.name}'")
+    if group_orientations_points_df is None or group_orientations_points_df.empty:
+        raise ValueError(f"No orientations provided for group '{group.name}'")
+
+    for col in ("X", "Y", "Z", "formation"):
+        if col not in group_surface_points_df.columns:
+            raise ValueError(f"Surface points for '{group.name}' missing column '{col}'")
+    for col in ("X", "Y", "Z", "G_x", "G_y", "G_z", "formation"):
+        if col not in group_orientations_points_df.columns:
+            raise ValueError(f"Orientations for '{group.name}' missing column '{col}'")
+
+    # --- labels: youngest -> oldest mapped to +1 ... -1 ---
+    n = len(group.structural_elements)
+    # youngest..oldest (group order) gets labels linearly from +1 to -1
+    labels: FloatArray = np.linspace(1.0, -1.0, n)
+    formation_to_label: Dict[str, float] = {
+        elem.name: float(lab) for elem, lab in zip(group.structural_elements, labels)
+    }
+
+    # attach labels to surface points (as expected by your GeoINR code)
+    sp = group_surface_points_df.copy()
+    sp["label"] = sp["formation"].map(formation_to_label)
+
+    # to numpy (labels first)
+    interface_data: np.ndarray = sp[["label", "X", "Y", "Z"]].to_numpy()
+    orientation_data: np.ndarray = group_orientations_points_df[
+        ["X", "Y", "Z", "G_x", "G_y", "G_z"]
+    ].to_numpy()
+    return interface_data, orientation_data
+
+
+def _scalar_values_by_element(group: Any, iso_values: np.ndarray) -> Dict[str, float]:
+    """Element name -> iso-value; ``iso_values`` are ordered oldest -> youngest."""
     # Map per-element scalar values:
     # Your previous code effectively used iso_values[0] for oldest, ... iso_values[-1] for youngest.
     # So we build the dict accordingly (oldest→youngest indexing) while your group list is youngest→oldest.
@@ -229,11 +342,7 @@ def interpolate_group_geo_inr(
             f"{len(names_old_to_young)} elements."
         )
 
-    scalar_values_by_element: Dict[str, float] = {
-        name: float(val) for name, val in zip(names_old_to_young, iso_values)
-    }
-
-    return scalar_field, scalar_values_by_element
+    return {name: float(val) for name, val in zip(names_old_to_young, iso_values)}
 
 
 # -----------------------------------------------------------------------------
@@ -555,7 +664,7 @@ def stratigraphic_ConcatMLP(
     lr: float = 0.001,
     alpha: float = 0.1,
     lambda_g: float = 0.05,
-    n_eikonal_samples: int = 2000,
+    n_eikonal_samples: int = _N_EIKONAL_SAMPLES,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Train a ConcatMLP to represent stratigraphic scalar field, then infer on meshgrid points.
@@ -595,6 +704,76 @@ def stratigraphic_ConcatMLP(
     iso_values : np.ndarray
         Unique interface labels (as used for isosurface extraction).
     """
+    normalized_meshgrid_data = normalize(meshgrid_data, extent)
+
+    # static domain sample for the eikonal term (drawn once, reused every epoch - see
+    # `loss_eikonal` and module docstring)
+    n_eik = min(n_eikonal_samples, normalized_meshgrid_data.shape[0])
+    eik_idx = np.random.choice(normalized_meshgrid_data.shape[0], size=n_eik, replace=False)
+
+    best_model, iso_values = train_stratigraphic_mlp(
+        interface_data=interface_data,
+        orientation_data=orientation_data,
+        normalized_domain_samples=normalized_meshgrid_data[eik_idx],
+        extent=extent,
+        in_dim=in_dim,
+        hidden_dim=hidden_dim,
+        out_dim=out_dim,
+        n_hidden_layers=n_hidden_layers,
+        activation=activation,
+        beta=beta,
+        concat=concat,
+        epochs=epochs,
+        lr=lr,
+        alpha=alpha,
+        lambda_g=lambda_g,
+    )
+
+    # Predict with the model
+    t1_inference = time.time()
+    predictions = predict_stratigraphic_mlp(best_model, normalized_meshgrid_data)
+    t2_inference = time.time()
+    logger.info("Inference time: %.4f s", t2_inference - t1_inference)
+
+    return predictions, iso_values
+
+
+def train_stratigraphic_mlp(
+    interface_data: np.ndarray,
+    orientation_data: np.ndarray,
+    normalized_domain_samples: np.ndarray,
+    extent: Tuple[float, float, float, float, float, float],
+    in_dim: int,
+    hidden_dim: int,
+    out_dim: int,
+    n_hidden_layers: int,
+    activation: str = "Softplus",
+    beta: float = 1,
+    concat: bool = False,
+    epochs: int = 2000,
+    lr: float = 0.001,
+    alpha: float = 0.1,
+    lambda_g: float = 0.05,
+) -> Tuple[ConcatMLP, np.ndarray]:
+    """
+    Train a ConcatMLP on interface and orientation data (the training part of
+    :func:`stratigraphic_ConcatMLP`).
+
+    Parameters
+    ----------
+    interface_data, orientation_data, extent, in_dim, hidden_dim, out_dim, n_hidden_layers,
+    activation, beta, concat, epochs, lr, alpha, lambda_g
+        As for :func:`stratigraphic_ConcatMLP`.
+    normalized_domain_samples
+        Domain points for the eikonal term, already normalized with ``extent``, shape (N, 3).
+
+    Returns
+    -------
+    best_model : ConcatMLP
+        The trained network, on the training device.
+    iso_values : np.ndarray
+        Unique interface labels (as used for isosurface extraction).
+    """
     # read the input data
     train_data_x = interface_data[:, 1:].astype("float")
     train_data_y = interface_data[:, 0].astype("float")
@@ -604,15 +783,10 @@ def stratigraphic_ConcatMLP(
     # normalize the input data
     normalized_train_data_x = normalize(train_data_x, extent)
     normalized_train_orie_x = normalize(train_orie_x, extent)
-    normalized_meshgrid_data = normalize(meshgrid_data, extent)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # static domain sample for the eikonal term (drawn once, reused every epoch - see
-    # `loss_eikonal` and module docstring)
-    n_eik = min(n_eikonal_samples, normalized_meshgrid_data.shape[0])
-    eik_idx = np.random.choice(normalized_meshgrid_data.shape[0], size=n_eik, replace=False)
-    normalized_domain_x = normalized_meshgrid_data[eik_idx]
+    normalized_domain_x = np.asarray(normalized_domain_samples, dtype=np.float32)
 
     # concatenate interface + orientation + eikonal-domain points into one training batch,
     # so a single autograd call (in the epoch loop below) covers all three
@@ -622,7 +796,6 @@ def stratigraphic_ConcatMLP(
     x_dx_tensor = torch.tensor(train_x_dx, dtype=torch.float32).to(device).requires_grad_(True)
     y_tensor = torch.tensor(train_data_y, dtype=torch.float32).to(device)
     dy_tensor = torch.tensor(train_orie_y, dtype=torch.float32).to(device)
-    test_x_tensor = torch.tensor(normalized_meshgrid_data, dtype=torch.float32).to(device)
 
     # the number of interface/orientation/domain points, for dividing the stacked tensor
     n_intf = normalized_train_data_x.shape[0]
@@ -704,15 +877,29 @@ def stratigraphic_ConcatMLP(
     ).to(device)
     best_model.load_state_dict(best_params)
 
-    # Predict with the model
-    with torch.no_grad():
-        t1_inference = time.time()
-        predictions = best_model(test_x_tensor).cpu().numpy()
-        t2_inference = time.time()
-
     # get the iso values for extracting the stratigraphic surfaces
     iso_values = np.unique(interface_data[:, 0])
 
-    logger.info("Inference time: %.4f s", t2_inference - t1_inference)
+    return best_model, iso_values
 
-    return predictions.ravel(), iso_values
+
+def predict_stratigraphic_mlp(network: ConcatMLP, normalized_points: np.ndarray) -> np.ndarray:
+    """
+    Evaluate a trained network at points already normalized with the training extent.
+
+    Parameters
+    ----------
+    network : ConcatMLP
+        Trained network (see :func:`train_stratigraphic_mlp`).
+    normalized_points : np.ndarray
+        Points of shape (N, 3), normalized with :func:`normalize`.
+
+    Returns
+    -------
+    np.ndarray
+        Flat predictions, shape (N,).
+    """
+    device = next(network.parameters()).device
+    with torch.no_grad():
+        points = torch.tensor(np.asarray(normalized_points, dtype=np.float32), dtype=torch.float32).to(device)
+        return network(points).cpu().numpy().ravel()

@@ -19,6 +19,7 @@ from core.structural_modeling_components.interpolator_functions.finite_differenc
     fit_group_finite_differences,
     interpolate_group_finite_differences,
 )
+from core.structural_modeling_components.interpolator_functions.geoinr import fit_group_geo_inr
 from core.structural_modeling_components.interpolator_functions.piecewise_linear import (
     fit_group_piecewise_linear,
     interpolate_group_piecewise_linear,
@@ -132,6 +133,73 @@ def test_loopstructural_fit_evaluates_to_the_regular_grid_interpolation(interpol
     assert field.scalar_values == values_on_grid
     np.testing.assert_allclose(field.evaluate(grid.grid_coordinates).reshape(grid.resolution), on_grid.T,
                                rtol=0, atol=1e-10)
+
+
+def test_geo_inr_fit_gives_a_field_and_the_usual_scalar_values():
+    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
+    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+    group = frame.structural_groups[1]
+    group.set_interpolation_method(InterpolationMethod.GEOINR)
+    group.configure_interpolation_params(epochs=50)
+    formations = ["rock1", "rock2"]
+    sp = frame.surface_points[frame.surface_points["formation"].isin(formations)]
+    ori = frame.orientations[frame.orientations["formation"].isin(formations)]
+
+    field = fit_group_geo_inr(group=group, extent=grid.extent, group_surface_points_df=sp,
+                              group_orientations_points_df=ori)
+
+    # Labels run from -1 (oldest) to +1 (youngest), as in interpolate_group_geo_inr.
+    assert field.scalar_values == {"rock1": -1.0, "rock2": 1.0}
+    values = field.evaluate(grid.grid_coordinates)
+    assert values.shape == (grid.grid_coordinates.shape[0],) and values.dtype == np.float64
+    # The network runs in float32, so a point's value depends slightly (~1e-7) on the
+    # batch it is evaluated in; the octree evaluates the same point in different batches.
+    np.testing.assert_allclose(field.evaluate(grid.grid_coordinates[:7]), values[:7], rtol=0, atol=1e-5)
+
+
+def _expected_unconformity_lith(grid: RegularGrid) -> np.ndarray:
+    """Analytic lithology of unconformity_input() at the grid's cell centers (ids: rock1 = 1 .. rock4 = 4)."""
+    x, _, z = (grid.grid_coordinates[:, i].reshape(grid.resolution) for i in range(3))
+    lith = np.zeros(grid.resolution, dtype=int)
+    lith[z >= 0.20 + (x - 0.5)] = 1
+    lith[z >= 0.40 + (x - 0.5)] = 2
+    lith[z >= 0.62] = 3
+    lith[z >= 0.82] = 4
+    return lith
+
+
+def _away_from_contacts(lith: np.ndarray) -> np.ndarray:
+    """Cells whose 6 neighbours all have the same lithology."""
+    same = np.ones_like(lith, dtype=bool)
+    for axis in range(3):
+        differs = np.diff(lith, axis=axis) != 0
+        lo = [slice(None)] * 3
+        hi = [slice(None)] * 3
+        lo[axis], hi[axis] = slice(0, -1), slice(1, None)
+        same[tuple(lo)] &= ~differs
+        same[tuple(hi)] &= ~differs
+    return same
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_geo_inr_on_an_octree_matches_the_analytic_model():
+    """GeoINR is stochastic, so it is checked against the analytic solution, not the regular grid."""
+    grid = octree_grid()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+        for group in frame.structural_groups:
+            group.set_interpolation_method(InterpolationMethod.GEOINR)
+            # default is 4000 epochs; 1000 is what the regular-grid integration tests use
+            group.configure_interpolation_params(epochs=1000)
+        oct_frame = general.compute_structural_model(frame, extract_meshes=False).structural_frame
+
+    oct_frame.check_cell_arrays()
+    lith = oct_frame.to_regular(oct_frame.lith_block)
+    expected = _expected_unconformity_lith(grid.equivalent_regular_grid())
+    interior = _away_from_contacts(expected)
+    assert np.mean((lith == expected)[interior]) >= 0.90
 
 
 def test_fit_padding_matches_the_regular_grid_padding():
