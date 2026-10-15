@@ -1043,7 +1043,9 @@ def build_structural_frame(
     frame.orientations = orientations
 
     if fault_model_results is not None:
-        frame.set_fault_frame(fault_model_results.fault_frame)
+        # Attach a copy: compute_structural_model adds the masked fault meshes to
+        # the attached fault frame, which must not change the caller's fault result.
+        frame.set_fault_frame(copy.deepcopy(fault_model_results.fault_frame))
 
     return frame
 
