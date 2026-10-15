@@ -44,6 +44,9 @@ from core.structural_modeling_components.interpolator_functions.piecewise_linear
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     fit_group_radial_basis_function,
 )
+from core.structural_modeling_components.interpolator_functions.universal_cokriging import (
+    fit_group_universal_cokriging,
+)
 from core.structural_modeling_components.interpolator_functions.universal_kriging import (
     fit_group_universal_kriging,
 )
@@ -63,8 +66,7 @@ FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
 BoolArray = npt.NDArray[np.bool_]
 
-# Interpolators that can be fitted once and evaluated anywhere. Others follow
-# behind the same interface.
+# Interpolators that can be fitted once and evaluated anywhere.
 fit_dispatch: Dict[InterpolationMethod, Callable[..., FittedField]] = {
     InterpolationMethod.RADIAL_BASIS_FUNCTION: fit_group_radial_basis_function,
     InterpolationMethod.FINITE_DIFFERENCES: fit_group_finite_differences,
@@ -72,6 +74,7 @@ fit_dispatch: Dict[InterpolationMethod, Callable[..., FittedField]] = {
     InterpolationMethod.GEOINR: fit_group_geo_inr,
     InterpolationMethod.ORDINARY_KRIGING: fit_group_ordinary_kriging,
     InterpolationMethod.UNIVERSAL_KRIGING: fit_group_universal_kriging,
+    InterpolationMethod.UNIVERSAL_COKRIGING: fit_group_universal_cokriging,
 }
 
 # Fits cover the extent padded by this many finest cells on every side, the same

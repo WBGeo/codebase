@@ -32,6 +32,10 @@ from core.structural_modeling_components.interpolator_functions.radial_basis_fun
     fit_group_radial_basis_function,
     interpolate_group_radial_basis_function,
 )
+from core.structural_modeling_components.interpolator_functions.universal_cokriging import (
+    fit_group_universal_cokriging,
+    interpolate_group_universal_cokriging,
+)
 from core.structural_modeling_components.interpolator_functions.universal_kriging import (
     fit_group_universal_kriging,
     interpolate_group_universal_kriging,
@@ -98,6 +102,7 @@ DETERMINISTIC_METHODS = [
     InterpolationMethod.FINITE_DIFFERENCES,
     InterpolationMethod.ORDINARY_KRIGING,
     InterpolationMethod.UNIVERSAL_KRIGING,
+    InterpolationMethod.UNIVERSAL_COKRIGING,
 ]
 
 
@@ -220,6 +225,51 @@ def test_kriging_with_unsupported_drift_is_refused_on_points():
     sp = frame.surface_points[frame.surface_points["formation"].isin(["rock1", "rock2"])]
     with pytest.raises((NotImplementedError, ValueError)):
         fit_group_universal_kriging(group=group, extent=grid.extent, group_surface_points_df=sp)
+
+
+# -----------------------------------------------------------------------------
+# GemPy (UCK) fit / evaluate
+# -----------------------------------------------------------------------------
+
+def _uck_inputs(grid, formations):
+    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+    group = next(g for g in frame.structural_groups if g.structural_elements[0].name in formations)
+    group.set_interpolation_method(InterpolationMethod.UNIVERSAL_COKRIGING)
+    sp = frame.surface_points[frame.surface_points["formation"].isin(formations)]
+    ori = frame.orientations[frame.orientations["formation"].isin(formations)]
+    return group, sp, ori
+
+
+def test_uck_fit_evaluates_to_the_regular_grid_interpolation():
+    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
+    group, sp, ori = _uck_inputs(grid, ["rock1", "rock2"])
+
+    on_grid, values_on_grid = interpolate_group_universal_cokriging(
+        group=group, grid=grid, group_surface_points_df=sp, group_orientations_points_df=ori)
+    field = fit_group_universal_cokriging(group=group, extent=grid.extent, group_surface_points_df=sp,
+                                          group_orientations_points_df=ori)
+
+    assert field.scalar_values == values_on_grid
+    points = grid.grid_coordinates.copy()
+    # GemPy computes in float32; the dense and the custom grid round differently.
+    np.testing.assert_allclose(field.evaluate(points).reshape(grid.resolution), on_grid.T, rtol=0, atol=1e-4)
+    np.testing.assert_array_equal(points, grid.grid_coordinates)
+
+
+def test_uck_fields_of_different_groups_evaluate_independently():
+    """Each fitted field keeps its own GemPy weights, also when groups are evaluated in turn."""
+    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
+    fields = []
+    for formations in (["rock3", "rock4"], ["rock1", "rock2"]):
+        group, sp, ori = _uck_inputs(grid, formations)
+        fields.append(fit_group_universal_cokriging(group=group, extent=grid.extent, group_surface_points_df=sp,
+                                                    group_orientations_points_df=ori))
+    points = grid.grid_coordinates
+    first = [f.evaluate(points) for f in fields]
+    again = [f.evaluate(points) for f in reversed(fields)][::-1]
+    assert not np.allclose(first[0], first[1])
+    for a, b in zip(first, again):
+        np.testing.assert_array_equal(a, b)
 
 
 def _expected_unconformity_lith(grid: RegularGrid) -> np.ndarray:
@@ -359,10 +409,13 @@ def test_octree_result_matches_the_regular_grid(results):
 def test_scalar_fields_at_max_level_cells_equal_the_regular_grid(results):
     octree_result, regular_result = results
     oct_frame, reg_frame = octree_result.structural_frame, regular_result.structural_frame
+    # GemPy computes in float32, and its dense and custom grids round differently.
+    float32 = oct_frame.structural_groups[0].interpolation_method == InterpolationMethod.UNIVERSAL_COKRIGING
     fine = oct_frame.cells.level == oct_frame.grid.max_level
     i, j, k = oct_frame.cells.ijk[fine].T
     for oct_group, reg_group in zip(oct_frame.structural_groups, reg_frame.structural_groups):
-        np.testing.assert_allclose(oct_group.scalar_field[fine], reg_group.scalar_field[i, j, k], atol=1e-12)
+        np.testing.assert_allclose(oct_group.scalar_field[fine], reg_group.scalar_field[i, j, k],
+                                   atol=1e-4 if float32 else 1e-12)
 
 
 def _eroded_rock2_cells(grid: OctreeGrid, cells: OctreeCells) -> np.ndarray:
@@ -438,9 +491,11 @@ def test_octree_frame_is_not_meshed_yet(results):
 # Not supported yet
 # -----------------------------------------------------------------------------
 
-def test_other_interpolators_are_refused_on_an_octree():
+def test_interpolators_without_a_fit_are_refused_on_an_octree(monkeypatch):
+    # Every selectable interpolator has a fit now; drop one to check the guard.
+    monkeypatch.delitem(general_octree.fit_dispatch, InterpolationMethod.ORDINARY_KRIGING)
     frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=octree_grid())
-    frame.structural_groups[0].set_interpolation_method(InterpolationMethod.UNIVERSAL_COKRIGING)
+    frame.structural_groups[0].set_interpolation_method(InterpolationMethod.ORDINARY_KRIGING)
     with pytest.raises(NotImplementedError, match="UpperSeries"):
         general.compute_structural_model(frame)
 

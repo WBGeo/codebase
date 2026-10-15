@@ -16,12 +16,15 @@ Notes
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, TypeAlias
+import uuid
+from typing import Any, Dict, List, Sequence, Tuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import gempy as gp
+
+from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -70,6 +73,121 @@ def interpolate_group_universal_cokriging(
     RuntimeError
         If GemPy returns an unexpected number of scalar values at surface points.
     """
+    geo_model, group_elem_names = _build_gempy_model(
+        group, grid.extent, grid.resolution, group_surface_points_df, group_orientations_points_df
+    )
+
+    # ---- compute ----
+    gp.compute_model(geo_model)
+
+    # ---- fetch results ----
+    scalar_values_by_element = _scalar_values_by_element(
+        group, group_elem_names, geo_model.solutions.raw_arrays.scalar_field_at_surface_points[0]
+    )
+
+    raw_scalar_field = geo_model.solutions.raw_arrays.scalar_field_matrix[0]
+    scalar_field = np.asarray(raw_scalar_field, dtype=float).reshape(tuple(grid.resolution)).T
+
+    # ---- rescale scalar field so that element isosurfaces map exactly to 1..n ----
+    # Original code keeps affine_rescale_scalar_field commented out; preserved.
+    rescaled_scalar_field, rescaled_scalar_values_by_element = rescale_scalar_field_safe(
+        scalar_field=scalar_field,
+        scalar_values_by_element=scalar_values_by_element,
+    )
+
+    return rescaled_scalar_field, rescaled_scalar_values_by_element
+
+
+class GemPyFittedField:
+    """
+    A fitted single-series GemPy model, evaluable anywhere through GemPy's custom grid.
+
+    GemPy keeps the solved kriging weights in its in-memory cache, so each
+    evaluation only computes the kernel at the new points (about 50 µs per point
+    on the CPU; GemPy's dense grid and its own meshes are switched off). Values
+    are rescaled like :func:`interpolate_group_universal_cokriging`'s field, so
+    the element surfaces sit at 1..n.
+
+    Attributes:
+        scalar_values: Element name -> isovalue after rescaling (1..n).
+    """
+
+    def __init__(self, geo_model: Any, raw_scalar_values: Dict[str, float]) -> None:
+        self._geo_model = geo_model
+        self._raw_scalar_values = raw_scalar_values
+        _, self.scalar_values = rescale_scalar_field_safe(np.zeros(0), raw_scalar_values)
+
+    def evaluate(self, xyz: FloatArray) -> FloatArray:
+        """Rescaled field values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
+        points = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
+        raw = _gempy_scalar_field_at(self._geo_model, points)
+        rescaled, _ = rescale_scalar_field_safe(raw, self._raw_scalar_values)
+        return rescaled
+
+
+def fit_group_universal_cokriging(
+    *,
+    group: Any,  # expected: StructuralGroup-like (group.name, group.structural_elements with .name)
+    extent: Extent6,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> GemPyFittedField:
+    """
+    Fit the GemPy (Universal Co-Kriging) scalar field of a single structural group without evaluating it.
+
+    Same inputs, checks and scalar values as :func:`interpolate_group_universal_cokriging`;
+    with the same extent, evaluating the result at a regular grid's cell centers
+    gives that function's scalar field up to float32 rounding.
+
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object, as for :func:`interpolate_group_universal_cokriging`.
+    extent
+        Model extent ``(xmin, xmax, ymin, ymax, zmin, zmax)``. GemPy normalizes
+        coordinates by it, so the field depends on it.
+    group_surface_points_df
+        DataFrame with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        DataFrame with columns ["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"].
+
+    Returns
+    -------
+    GemPyFittedField
+        The fitted field and the rescaled element scalar values (1..n).
+    """
+    geo_model, group_elem_names = _build_gempy_model(
+        group, extent, (2, 2, 2), group_surface_points_df, group_orientations_points_df
+    )
+    # GemPy caches solved weights under "<cache_model_name>.<stack>" and checks a hash of
+    # the input's repr (which numpy truncates for large arrays). A name of its own keeps
+    # this field's weights from being replaced, or mistaken, by another group's.
+    geo_model.interpolation_options.cache_model_name = f"wbgeo_fit_{uuid.uuid4().hex}"
+    # The first evaluation solves (and caches) the weights and gives the values at the surface points.
+    _gempy_scalar_field_at(geo_model, group_surface_points_df[["X", "Y", "Z"]].to_numpy(dtype=np.float64))
+    raw_at_sp = geo_model.solutions.octrees_output[0].outputs_centers[0].scalar_field_at_sp
+    raw_scalar_values = _scalar_values_by_element(group, group_elem_names, raw_at_sp)
+    return GemPyFittedField(geo_model, raw_scalar_values)
+
+
+def _gempy_scalar_field_at(geo_model: Any, points: FloatArray) -> FloatArray:
+    """Raw GemPy scalar field at points, computed on the custom grid alone."""
+    gp.set_custom_grid(geo_model.grid, points)
+    geo_model.grid.active_grids = gp.data.Grid.GridTypes.CUSTOM
+    gp.compute_model(geo_model)
+    output = geo_model.solutions.octrees_output[0].outputs_centers[0]
+    # GemPy puts its own root octree cells in front of the custom grid; slice ours out.
+    return np.asarray(output.exported_fields.scalar_field[output.grid.custom_grid_slice], dtype=np.float64)
+
+
+def _build_gempy_model(
+    group: Any,
+    extent: Sequence[float],
+    resolution: Sequence[int],
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> Tuple[Any, List[str]]:
+    """Check the inputs and build the single-series GemPy model (shared by both entry points)."""
     # ---- validation ----
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
@@ -126,8 +244,8 @@ def interpolate_group_universal_cokriging(
     # NOTE: GemPy typing expects list/ndarray; convert tuples at call site only.
     geo_model = gp.create_geomodel(
         project_name="uk_group",
-        extent=list(grid.extent),
-        resolution=list(grid.resolution),
+        extent=list(extent),
+        resolution=list(resolution),
         structural_frame=gp_structural_frame,
     )
     # GemPy's own surface meshes are never used here and dominate the compute time.
@@ -137,32 +255,18 @@ def interpolate_group_universal_cokriging(
     series_to_surfaces: Dict[str, list[str]] = {group.name: group_elem_names}
     gp.map_stack_to_surfaces(gempy_model=geo_model, mapping_object=series_to_surfaces)
 
-    # ---- compute ----
-    gp.compute_model(geo_model)
 
-    # ---- fetch results ----
-    raw_scalar_vals = geo_model.solutions.raw_arrays.scalar_field_at_surface_points[0]
+    return geo_model, group_elem_names
+
+
+def _scalar_values_by_element(group: Any, group_elem_names: List[str], raw_scalar_vals: Any) -> Dict[str, float]:
+    """Element name -> GemPy's scalar value at its surface points (before rescaling)."""
     if len(raw_scalar_vals) != len(group_elem_names):
         raise RuntimeError(
             f"GemPy returned {len(raw_scalar_vals)} scalar values but group '{group.name}' has "
             f"{len(group_elem_names)} elements."
         )
-    scalar_values_by_element: Dict[str, float] = {
-        name: float(val) for name, val in zip(group_elem_names, raw_scalar_vals)
-    }
-
-    raw_scalar_field = geo_model.solutions.raw_arrays.scalar_field_matrix[0]
-    scalar_field = np.asarray(raw_scalar_field, dtype=float).reshape(tuple(grid.resolution)).T
-
-    # ---- rescale scalar field so that element isosurfaces map exactly to 1..n ----
-    # Original code keeps affine_rescale_scalar_field commented out; preserved.
-    rescaled_scalar_field, rescaled_scalar_values_by_element = rescale_scalar_field_safe(
-        scalar_field=scalar_field,
-        scalar_values_by_element=scalar_values_by_element,
-    )
-
-    return rescaled_scalar_field, rescaled_scalar_values_by_element
-
+    return {name: float(val) for name, val in zip(group_elem_names, raw_scalar_vals)}
 
 def affine_rescale_scalar_field(
     scalar_field: np.ndarray,
