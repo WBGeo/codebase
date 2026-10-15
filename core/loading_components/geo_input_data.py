@@ -1,7 +1,7 @@
 """
 WBGeo workflow components for loading geological input data from files.
 
-Provides components for creating RegularGrid instances and loading structural
+Provides components for creating RegularGrid and OctreeGrid instances and loading structural
 and fault input data from CSV and JSON files into the pipeline.
 """
 import collections
@@ -87,6 +87,59 @@ def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
       Grid defining the computation domain.
   """
   return grid_classes.RegularGrid(extent, resolution)
+
+
+AGapMitigation = typing.Annotated[
+  grid_classes.GapMitigation, AnnotatedScriptType(name='grid_classes.GapMitigation', color='aqua',
+                                                  identifier='grid_classes.GapMitigation',
+                                                  controlled='Select|balance_mesh_depth_adjacency|none')]
+
+
+@wbgeo_component(description='Adaptive octree grid defined by an extent, base blocks and a maximum refinement level',
+                 title='Octree Grid',
+                 color='#7fc7a3',
+                 border_color='#000000',
+                 group='Inputs',
+                 identifier='wbgeo::octree_grid',
+                 return_name='grid',
+                 is_object_type=True,
+                 )
+def _octree_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
+                        base_resolution: AResolution3 = (4, 4, 4),
+                        max_level: int = 4,
+                        gap_mitigation: AGapMitigation = grid_classes.GapMitigation.BALANCE_MESH_DEPTH_ADJACENCY.value
+                        ) -> grid_classes.OctreeGrid:
+  """
+  Defines an adaptive 3D computation domain for the geological model.
+
+  The extent is split into base blocks, the coarsest cells of the grid. During
+  modeling, blocks are halved repeatedly (up to max_level times) only where
+  surfaces pass through them, so the grid is fine near contacts and faults and
+  coarse elsewhere. The finest cells match a regular grid with resolution
+  base_resolution * 2^max_level; the defaults correspond to 64 x 64 x 64.
+
+  Choose the base resolution so that the base blocks are close to cubic (e.g.
+  5 x 5 x 1 for a 20 x 20 x 4 km model). Thin layers or small fault blocks that
+  fit inside one base block without touching its corners can be missed, so a
+  finer base resolution is safer for such models.
+
+  Parameters
+  ----------
+  extent : tuple[float, float, float, float, float, float]
+      Bounding box as (xmin, xmax, ymin, ymax, zmin, zmax).
+  base_resolution : tuple[int, int, int]
+      Number of base blocks along each axis (bx, by, bz).
+  max_level : int
+      Number of times a base block can be halved, between 0 and 10.
+  gap_mitigation : GapMitigation
+      How gaps in the extracted surfaces are avoided.
+
+  Returns
+  -------
+  OctreeGrid
+      Grid defining the computation domain.
+  """
+  return grid_classes.OctreeGrid(extent, base_resolution, max_level, gap_mitigation)
 
 
 GroupNames = typing.Annotated[
