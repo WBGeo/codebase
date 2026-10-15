@@ -321,7 +321,7 @@ def test_fit_padding_matches_the_regular_grid_padding():
     assert general_octree._FIT_PADDING_CELLS == general._SURFACE_PADDING_CELLS
     grid = octree_grid()
     padded = general._build_padded_grid(grid.equivalent_regular_grid(), general._SURFACE_PADDING_CELLS)
-    assert general_octree._fit_extent(grid) == padded.extent
+    assert general_octree.fit_extent(grid) == padded.extent
 
 
 # -----------------------------------------------------------------------------

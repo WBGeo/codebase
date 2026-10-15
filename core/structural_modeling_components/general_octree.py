@@ -184,7 +184,7 @@ def _fit_groups(frame: StructuralFrame) -> List[Optional[FittedField]]:
     Groups without surface points get ``None``, which evaluates to zero, like the
     zero-initialized field a regular-grid group keeps when it is skipped.
     """
-    extent = _fit_extent(frame.grid)
+    extent = fit_extent(frame.grid)
     fields: List[Optional[FittedField]] = []
     for group in frame.structural_groups:
         formations = [e.name for e in group.structural_elements]
@@ -216,7 +216,7 @@ def _fit_groups(frame: StructuralFrame) -> List[Optional[FittedField]]:
     return fields
 
 
-def _fit_extent(grid: OctreeGrid) -> Extent6:
+def fit_extent(grid: OctreeGrid) -> Extent6:
     """The grid's extent padded by ``_FIT_PADDING_CELLS`` finest cells on every side."""
     pad = _FIT_PADDING_CELLS * grid.finest_spacing
     lower = np.array(grid.extent[0::2]) - pad

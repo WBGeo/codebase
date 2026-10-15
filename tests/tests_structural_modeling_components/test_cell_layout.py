@@ -12,7 +12,6 @@ import pytest
 from pydantic_core import to_jsonable_python
 
 import core.structural_modeling_components.general as general
-import core.structural_modeling_components.general_faults as general_faults
 from core.object_components import FaultModelResults, InputData_StructuralElements, StructuralModelResults
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     CORNER_OFFSETS,
@@ -307,11 +306,3 @@ def test_build_structural_frame_leaves_scalar_fields_empty_on_an_octree():
     frame = general.build_structural_frame(input_data_elements=data, grid=make_grid())
     assert all(group.scalar_field is None for group in frame.structural_groups)
     assert frame.cells is None
-
-
-def test_fault_modeling_refuses_an_octree_for_now():
-    fault_frame = FaultFrame(fault_elements=[FaultElement(name="F1")])
-    fault_frame.set_grid(make_grid())
-    fault_frame.set_surface_points_df(pd.DataFrame({"X": [0.0], "Y": [0.0], "Z": [0.0], "formation": ["F1"]}))
-    with pytest.raises(NotImplementedError):
-        general_faults.compute_fault_domains(fault_frame)
