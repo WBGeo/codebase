@@ -21,6 +21,8 @@ import pandas as pd
 import warnings
 from scipy.interpolate import RBFInterpolator
 
+from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6
+
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
@@ -107,6 +109,7 @@ class RBFFittedField:
 def fit_group_radial_basis_function(
     *,
     group: Any,  # expected: StructuralGroup-like (group.name, group.structural_elements, group.get_interpolation_params())
+    extent: Optional[Extent6] = None,  # unused here: an RBF has no support mesh
     group_surface_points_df: pd.DataFrame,
     group_orientations_points_df: Optional[pd.DataFrame] = None,  # unused here
 ) -> RBFFittedField:
@@ -121,6 +124,8 @@ def fit_group_radial_basis_function(
     ----------
     group
         StructuralGroup-like object, as for :func:`interpolate_group_radial_basis_function`.
+    extent
+        Accepted for the common ``fit_group_*`` interface; the RBF doesn't depend on it.
     group_surface_points_df
         DataFrame of constraint points with columns ["X", "Y", "Z", "formation"].
     group_orientations_points_df

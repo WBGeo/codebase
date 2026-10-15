@@ -15,7 +15,8 @@ dispatches here when the frame's grid is an OctreeGrid:
   5) Evaluate fields, age masks and lithology at the final cell centers and store
      them in the usual attributes, one value per cell (see ``StructuralFrame``).
 
-Current scope: models without faults, RBF only, no surface meshes yet. The age
+Current scope: models without faults, interpolators listed in ``fit_dispatch``,
+no surface meshes yet. The age
 mask and lithology rules are the pointwise equivalents of
 ``set_scalar_masks_per_domain`` and ``compute_lithology_block_with_domains`` for
 a single fault domain.
@@ -31,7 +32,13 @@ import numpy as np
 import numpy.typing as npt
 
 from core.object_components import StructuralModelResults
-from core.structural_modeling_components.interpolator_functions.fitted_field import FittedField
+from core.structural_modeling_components.interpolator_functions.finite_difference import (
+    fit_group_finite_differences,
+)
+from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6, FittedField
+from core.structural_modeling_components.interpolator_functions.piecewise_linear import (  # noqa: F401
+    fit_group_piecewise_linear,
+)
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     fit_group_radial_basis_function,
 )
@@ -55,7 +62,15 @@ BoolArray = npt.NDArray[np.bool_]
 # behind the same interface.
 fit_dispatch: Dict[InterpolationMethod, Callable[..., FittedField]] = {
     InterpolationMethod.RADIAL_BASIS_FUNCTION: fit_group_radial_basis_function,
+    InterpolationMethod.FINITE_DIFFERENCES: fit_group_finite_differences,
+    # InterpolationMethod.PIECEWISE_LINEAR: fit_group_piecewise_linear,  # excluded pending parameter tuning
 }
+
+# Fits cover the extent padded by this many finest cells on every side, the same
+# margin the regular-grid pipeline interpolates on (general._SURFACE_PADDING_CELLS).
+# Interpolators with a support mesh (FDI, PLI) depend on the fitted extent, so this
+# keeps both grid types consistent, and the margin is where extended meshes will go.
+_FIT_PADDING_CELLS: int = 2
 
 
 def compute_structural_model_octree(
@@ -158,6 +173,7 @@ def _fit_groups(frame: StructuralFrame) -> List[Optional[FittedField]]:
     Groups without surface points get ``None``, which evaluates to zero, like the
     zero-initialized field a regular-grid group keeps when it is skipped.
     """
+    extent = _fit_extent(frame.grid)
     fields: List[Optional[FittedField]] = []
     for group in frame.structural_groups:
         formations = [e.name for e in group.structural_elements]
@@ -175,6 +191,7 @@ def _fit_groups(frame: StructuralFrame) -> List[Optional[FittedField]]:
 
         field = fit_dispatch[group.interpolation_method](
             group=group,
+            extent=extent,
             group_surface_points_df=sp,
             group_orientations_points_df=ori,
         )
@@ -186,6 +203,14 @@ def _fit_groups(frame: StructuralFrame) -> List[Optional[FittedField]]:
             elem.set_scalar_value(float(field.scalar_values[elem.name]))
         fields.append(field)
     return fields
+
+
+def _fit_extent(grid: OctreeGrid) -> Extent6:
+    """The grid's extent padded by ``_FIT_PADDING_CELLS`` finest cells on every side."""
+    pad = _FIT_PADDING_CELLS * grid.finest_spacing
+    lower = np.array(grid.extent[0::2]) - pad
+    upper = np.array(grid.extent[1::2]) + pad
+    return tuple(float(v) for pair in zip(lower, upper) for v in pair)
 
 
 def _evaluate_groups(

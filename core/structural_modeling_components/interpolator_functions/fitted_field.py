@@ -9,12 +9,13 @@ during refinement, so they use ``fit_group_*`` functions that return a
 
 from __future__ import annotations
 
-from typing import Dict, Protocol
+from typing import Any, Dict, Protocol, Tuple
 
 import numpy as np
 import numpy.typing as npt
 
 FloatArray = npt.NDArray[np.floating]
+Extent6 = Tuple[float, float, float, float, float, float]
 
 
 class FittedField(Protocol):
@@ -40,3 +41,23 @@ class FittedField(Protocol):
             Values of shape ``(M,)``.
         """
         ...
+
+
+class LoopStructuralFittedField:
+    """
+    A foliation of a fitted LoopStructural ``GeologicalModel`` (FDI, PLI), evaluable anywhere.
+
+    Attributes:
+        scalar_values: Element name -> isovalue, oldest = 1 .. youngest = n.
+    """
+
+    def __init__(self, model: Any, feature_name: str, scale: bool, scalar_values: Dict[str, float]) -> None:
+        self._model = model
+        self._feature_name = feature_name
+        self._scale = scale
+        self.scalar_values = scalar_values
+
+    def evaluate(self, xyz: FloatArray) -> FloatArray:
+        """Feature values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
+        points = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
+        return np.asarray(self._model.evaluate_feature_value(self._feature_name, points, scale=self._scale))

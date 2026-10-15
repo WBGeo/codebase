@@ -15,6 +15,14 @@ from pydantic_core import to_jsonable_python
 import core.structural_modeling_components.general as general
 import core.structural_modeling_components.general_octree as general_octree
 from core.object_components import InputData_StructuralElements, StructuralModelResults
+from core.structural_modeling_components.interpolator_functions.finite_difference import (
+    fit_group_finite_differences,
+    interpolate_group_finite_differences,
+)
+from core.structural_modeling_components.interpolator_functions.piecewise_linear import (
+    fit_group_piecewise_linear,
+    interpolate_group_piecewise_linear,
+)
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     fit_group_radial_basis_function,
     interpolate_group_radial_basis_function,
@@ -66,17 +74,23 @@ def octree_grid(base=(2, 2, 2), max_level=3) -> OctreeGrid:
     return OctreeGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), base_resolution=base, max_level=max_level)
 
 
-def compute(grid) -> StructuralModelResults:
+def compute(grid, method=InterpolationMethod.RADIAL_BASIS_FUNCTION) -> StructuralModelResults:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+        for group in frame.structural_groups:
+            group.set_interpolation_method(method)
         return general.compute_structural_model(frame, extract_meshes=False)
 
 
-@pytest.fixture(scope="module")
-def results() -> tuple[StructuralModelResults, StructuralModelResults]:
+# Interpolators whose octree result must equal the regular grid at the finest resolution.
+DETERMINISTIC_METHODS = [InterpolationMethod.RADIAL_BASIS_FUNCTION, InterpolationMethod.FINITE_DIFFERENCES]
+
+
+@pytest.fixture(scope="module", params=DETERMINISTIC_METHODS, ids=lambda m: m.name)
+def results(request) -> tuple[StructuralModelResults, StructuralModelResults]:
     grid = octree_grid()
-    return compute(grid), compute(grid.equivalent_regular_grid())
+    return compute(grid, request.param), compute(grid.equivalent_regular_grid(), request.param)
 
 
 # -----------------------------------------------------------------------------
@@ -96,6 +110,35 @@ def test_rbf_fit_evaluates_to_the_regular_grid_interpolation():
     assert field.scalar_values == values_on_grid
     # interpolate_group_* returns reshape(resolution).T; undo the transpose to compare.
     np.testing.assert_array_equal(field.evaluate(grid.grid_coordinates).reshape(grid.resolution), on_grid.T)
+
+
+@pytest.mark.parametrize("interpolate, fit", [
+    (interpolate_group_finite_differences, fit_group_finite_differences),
+    (interpolate_group_piecewise_linear, fit_group_piecewise_linear),
+], ids=["FDI", "PLI"])
+def test_loopstructural_fit_evaluates_to_the_regular_grid_interpolation(interpolate, fit):
+    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
+    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+    group = frame.structural_groups[1]
+    group.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)  # FDI and PLI share these params
+    formations = ["rock1", "rock2"]
+    sp = frame.surface_points[frame.surface_points["formation"].isin(formations)]
+    ori = frame.orientations[frame.orientations["formation"].isin(formations)]
+
+    on_grid, values_on_grid = interpolate(
+        group=group, grid=grid, group_surface_points_df=sp, group_orientations_points_df=ori)
+    field = fit(group=group, extent=grid.extent, group_surface_points_df=sp, group_orientations_points_df=ori)
+
+    assert field.scalar_values == values_on_grid
+    np.testing.assert_allclose(field.evaluate(grid.grid_coordinates).reshape(grid.resolution), on_grid.T,
+                               rtol=0, atol=1e-10)
+
+
+def test_fit_padding_matches_the_regular_grid_padding():
+    assert general_octree._FIT_PADDING_CELLS == general._SURFACE_PADDING_CELLS
+    grid = octree_grid()
+    padded = general._build_padded_grid(grid.equivalent_regular_grid(), general._SURFACE_PADDING_CELLS)
+    assert general_octree._fit_extent(grid) == padded.extent
 
 
 # -----------------------------------------------------------------------------
@@ -198,7 +241,7 @@ def _eroded_rock2_cells(grid: OctreeGrid, cells: OctreeCells) -> np.ndarray:
     return crosses & (mins[:, 2] > 0.62)
 
 
-def test_eroded_surfaces_are_refined_for_meshes_then_coarsened(results):
+def test_eroded_surfaces_are_refined_for_meshes_then_coarsened():
     """
     The refinement for surfaces resolves the lower group's rock2 surface even above the
     unconformity, where it is eroded; the stored cells merge that refinement away again,
@@ -211,7 +254,7 @@ def test_eroded_surfaces_are_refined_for_meshes_then_coarsened(results):
         general_octree._assign_element_ids(frame)
         fields = general_octree._fit_groups(frame)
     mesh_cells = general_octree._refine_for_surfaces(frame, fields)
-    stored_cells = results[0].structural_frame.cells
+    stored_cells = compute(grid).structural_frame.cells
 
     eroded_mesh = _eroded_rock2_cells(grid, mesh_cells)
     assert eroded_mesh.any()
@@ -220,6 +263,27 @@ def test_eroded_surfaces_are_refined_for_meshes_then_coarsened(results):
     eroded_stored = _eroded_rock2_cells(grid, stored_cells)
     assert np.any(stored_cells.level[eroded_stored] < grid.max_level)
     assert len(stored_cells) < len(mesh_cells)
+
+
+def test_mixed_interpolators_per_group_match_the_regular_grid():
+    """Each group keeps its own interpolator on the octree, as on the regular grid."""
+    def compute_mixed(grid) -> StructuralModelResults:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
+            frame["UpperSeries"].set_interpolation_method(InterpolationMethod.RADIAL_BASIS_FUNCTION)
+            frame["LowerSeries"].set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
+            return general.compute_structural_model(frame, extract_meshes=False)
+
+    grid = octree_grid()
+    oct_frame = compute_mixed(grid).structural_frame
+    reg_frame = compute_mixed(grid.equivalent_regular_grid()).structural_frame
+
+    assert [g.interpolation_method for g in oct_frame.structural_groups] == [
+        InterpolationMethod.RADIAL_BASIS_FUNCTION, InterpolationMethod.FINITE_DIFFERENCES]
+    np.testing.assert_array_equal(oct_frame.to_regular(oct_frame.lith_block), reg_frame.lith_block)
+    for oct_group, reg_group in zip(oct_frame.structural_groups, reg_frame.structural_groups):
+        np.testing.assert_array_equal(oct_frame.to_regular(oct_group.mask), reg_group.mask)
 
 
 def test_octree_result_survives_the_runner_round_trip(results):
