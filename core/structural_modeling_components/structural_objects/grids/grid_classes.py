@@ -10,7 +10,7 @@ with the geometry of its cell addresses.
 from __future__ import annotations
 
 import logging
-from enum import Enum
+from enum import StrEnum
 from typing import Tuple, Union
 
 import numpy as np
@@ -156,11 +156,14 @@ CORNER_OFFSETS: npt.NDArray[np.int64] = np.array(
 Level = Union[int, npt.NDArray[np.integer]]
 
 
-class GapMitigation(str, Enum):
+class GapMitigation(StrEnum):
     """
     Strategy against gaps in dual-contouring surfaces on an adaptive octree.
 
     Gaps appear where a surface crosses cells at different refinement depths.
+
+    A ``StrEnum`` because the Workbench runner deserializes dropdown values of
+    plain ``Enum`` types by member name, but those of ``StrEnum`` types by value.
 
     Members:
         BALANCE_MESH_DEPTH_ADJACENCY: After refinement, split every leaf that

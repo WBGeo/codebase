@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from enum import StrEnum
 
 import numpy as np
 import pytest
@@ -51,6 +52,17 @@ def test_defaults():
 def test_gap_mitigation_from_string():
     grid = OctreeGrid(extent=EXTENT, base_resolution=BASE, gap_mitigation="none")
     assert grid.gap_mitigation is GapMitigation.NONE
+
+
+def test_gap_mitigation_dropdown_values_deserialize_like_the_runner():
+    # The Workbench runner sends the dropdown value. For a StrEnum it accepts
+    # values as well as names; any other Enum is looked up by name only, which
+    # failed live with KeyError: 'balance_mesh_depth_adjacency'.
+    assert issubclass(GapMitigation, StrEnum)
+    for value in ("balance_mesh_depth_adjacency", "none"):
+        assert value in GapMitigation._value2member_map_
+        grid = OctreeGrid(extent=EXTENT, base_resolution=BASE, gap_mitigation=value)
+        assert grid.gap_mitigation == value
 
 
 @pytest.mark.parametrize(
