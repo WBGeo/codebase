@@ -215,6 +215,8 @@ def interpolate_group_universal_cokriging_for_faults(
         resolution=list(grid.resolution),
         structural_frame=gempy_structural_frame,
     )
+    # GemPy's own surface meshes are never used here and dominate the compute time.
+    geo_model.interpolation_options.evaluation_options.mesh_extraction = False
 
     mapping = {"fault_group": [element.name]}
     gp.map_stack_to_surfaces(gempy_model=geo_model, mapping_object=mapping)

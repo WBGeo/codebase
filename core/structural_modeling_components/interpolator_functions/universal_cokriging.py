@@ -130,6 +130,8 @@ def interpolate_group_universal_cokriging(
         resolution=list(grid.resolution),
         structural_frame=gp_structural_frame,
     )
+    # GemPy's own surface meshes are never used here and dominate the compute time.
+    geo_model.interpolation_options.evaluation_options.mesh_extraction = False
 
     # Map one series (group) to its surfaces (elements)
     series_to_surfaces: Dict[str, list[str]] = {group.name: group_elem_names}

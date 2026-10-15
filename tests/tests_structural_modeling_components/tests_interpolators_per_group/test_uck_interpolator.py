@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,6 +26,10 @@ class FakeGroup:
     def __init__(self, name: str, element_names: list[str]):
         self.name = name
         self.structural_elements = [FakeElem(n) for n in element_names]
+
+
+def _fake_interpolation_options() -> SimpleNamespace:
+    return SimpleNamespace(evaluation_options=SimpleNamespace(mesh_extraction=True))
 
 
 class FakeGrid:
@@ -174,6 +180,7 @@ def test_happy_path_calls_gempy_and_rescales(monkeypatch):
     class FakeGeoModel:
         def __init__(self):
             self.solutions = FakeSolutions()
+            self.interpolation_options = _fake_interpolation_options()
 
     def fake_create_geomodel(project_name, extent, resolution, structural_frame):
         captured["create_geomodel"] = {
@@ -214,6 +221,10 @@ def test_happy_path_calls_gempy_and_rescales(monkeypatch):
         group_surface_points_df=sp,
         group_orientations_points_df=od,
     )
+
+    # GemPy's own surface meshes are switched off
+    model = captured["map_stack_to_surfaces"]["model"]
+    assert model.interpolation_options.evaluation_options.mesh_extraction is False
 
     # GemPy create_geomodel should be called with list(...) conversions
     assert captured["create_geomodel"]["extent"] == list(grid.extent)
@@ -265,6 +276,7 @@ def test_raises_if_gempy_returns_wrong_number_of_scalar_values(monkeypatch):
     class FakeGeoModel:
         def __init__(self):
             self.solutions = type("S", (), {"raw_arrays": FakeRawArrays()})()
+            self.interpolation_options = _fake_interpolation_options()
 
     monkeypatch.setattr(mod.gp, "create_geomodel", lambda **kw: FakeGeoModel())
     monkeypatch.setattr(mod.gp, "map_stack_to_surfaces", lambda **kw: None)
