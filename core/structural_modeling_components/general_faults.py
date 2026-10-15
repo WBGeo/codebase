@@ -396,7 +396,9 @@ def compute_fault_domains(
     # --- Compute & store domain_pairs in FINAL ID SPACE ---
     for fault in fault_frame.fault_elements:
         sf = fault.scalar_field
-        if sf.shape == res_zyx:
+        # Same rule as for the masks above: the field is XYZ, and only a genuinely ZYX
+        # array is transposed (with nx == nz both shapes match, and XYZ must win).
+        if sf.shape != res_xyz and sf.shape == res_zyx:
             sf = sf.transpose(2, 1, 0)
 
         pairs = compute_domain_pairs_from_fault_band(
