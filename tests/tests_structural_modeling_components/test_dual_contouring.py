@@ -18,6 +18,7 @@ from core.structural_modeling_components.structural_modeling_utility.dual_contou
     contour_cells,
     dual_contour,
     interior_open_edges,
+    select_faces,
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     balance_mesh_depth_adjacency,
@@ -121,6 +122,53 @@ def test_several_isovalues_at_once_equal_one_at_a_time():
 
 
 # -----------------------------------------------------------------------------
+# Cell masks (MASKED meshes)
+# -----------------------------------------------------------------------------
+
+def _sphere_cells(g):
+    cells = contour_cells(g, refine_cells(g, lambda p: (sphere(p) >= 0.33).astype(int)))
+    return cells, np.zeros(len(cells), dtype=int)
+
+
+def test_keeping_every_cell_gives_the_unmasked_mesh():
+    g = grid()
+    cells, groups = _sphere_cells(g)
+    plain = dual_contour(g, cells.ijk, groups, lambda p, _: sphere(p), [0.33])[0]
+    kept = dual_contour(g, cells.ijk, groups, lambda p, _: sphere(p), [0.33],
+                        cell_kept=np.ones(len(cells), dtype=bool))[0]
+    np.testing.assert_array_equal(kept.vertices, plain.vertices)
+    np.testing.assert_array_equal(kept.faces, plain.faces)
+
+
+def test_a_cell_mask_keeps_only_quads_whose_four_cells_are_kept():
+    g = grid()
+    cells, groups = _sphere_cells(g)
+    kept_cells = cells.centers(g)[:, 0] < 0.5
+    plain = dual_contour(g, cells.ijk, groups, lambda p, _: sphere(p), [0.33])[0]
+    masked = dual_contour(g, cells.ijk, groups, lambda p, _: sphere(p), [0.33], cell_kept=kept_cells)[0]
+    assert 0 < masked.faces.shape[0] < plain.faces.shape[0]
+    assert masked.n_missing_quads == 0  # the cut is no gap
+    # Every vertex is used, comes from a kept cell, and is one of the unmasked vertices.
+    assert np.array_equal(np.unique(masked.faces), np.arange(len(masked.vertices)))
+    assert np.all(g.cell_centers(g.max_level, masked.vertex_cells)[:, 0] < 0.5)
+    plain_rows = {tuple(v) for v in plain.vertices}
+    assert all(tuple(v) in plain_rows for v in masked.vertices)
+    # The kept half of the sphere: everything strictly inside x < 0.5 - one cell is still there.
+    deep = plain.vertices[:, 0] < 0.5 - 1.5 * g.finest_spacing[0]
+    masked_rows = {tuple(v) for v in masked.vertices}
+    assert all(tuple(v) in masked_rows for v in plain.vertices[deep])
+
+
+def test_select_faces_keeps_the_used_vertices_in_order():
+    vertices = np.arange(15, dtype=float).reshape(5, 3)
+    faces = np.array([[0, 1, 2], [2, 3, 4], [1, 3, 4]])
+    v, f, used = select_faces(vertices, faces, np.array([False, True, True]))
+    np.testing.assert_array_equal(used, [1, 2, 3, 4])
+    np.testing.assert_array_equal(v, vertices[1:])
+    np.testing.assert_array_equal(v[f], vertices[faces[1:]])
+
+
+# -----------------------------------------------------------------------------
 # Groups (fault domains)
 # -----------------------------------------------------------------------------
 
@@ -182,10 +230,6 @@ def test_without_mitigation_a_grazing_surface_leaves_gaps_that_balancing_closes(
 # Fault and structural steps
 # -----------------------------------------------------------------------------
 
-def _no_gap_warnings(caplog):
-    return not [r for r in caplog.records if "gaps" in r.getMessage()]
-
-
 @pytest.fixture(scope="module")
 def dipping_fault_result():
     pytest.importorskip("gempy")
@@ -207,19 +251,95 @@ def test_fault_step_stores_unmasked_fault_surfaces_on_the_fault_planes(dipping_f
         assert np.abs(planes[fault.name](vertices)).max() < 0.3 * frame.grid.finest_spacing[0]
 
 
-def test_structural_step_stores_gap_free_unmasked_surfaces(caplog):
+@pytest.fixture(scope="module")
+def unconformity_result():
+    """Upper group horizontal at z = 0.82, 0.62; lower group dipping 45 degrees, eroded above z = 0.62."""
     from test_octree_structural_model import octree_grid, unconformity_input
-    with caplog.at_level(logging.WARNING), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=octree_grid())
-        result = general.compute_structural_model(frame, extract_meshes=True).structural_frame
-    assert _no_gap_warnings(caplog)
+    logger = logging.getLogger("core.structural_modeling_components.general_octree")
+    records = []
+    handler = logging.Handler(logging.WARNING)
+    handler.emit = records.append
+    logger.addHandler(handler)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=octree_grid())
+            result = general.compute_structural_model(frame, extract_meshes=True).structural_frame
+    finally:
+        logger.removeHandler(handler)
+    return result, records
+
+
+def test_structural_step_stores_gap_free_unmasked_surfaces(unconformity_result):
+    result, records = unconformity_result
+    assert not [r for r in records if "gaps" in r.getMessage()]
     expected_z = {"rock4": 0.82, "rock3": 0.62}
     for group in result.structural_groups:
         for elem in group.structural_elements:
-            assert set(elem.vertices) == {GeoMeshType.UNMASKED}
+            assert set(elem.vertices) == {GeoMeshType.UNMASKED, GeoMeshType.MASKED}
             vertices = elem.vertices[GeoMeshType.UNMASKED]
             faces = elem.edges[GeoMeshType.UNMASKED]
             assert len(vertices) > 0 and faces.dtype == np.int32 and faces.max() < len(vertices)
             if elem.name in expected_z:  # the horizontal surfaces of the upper group
                 np.testing.assert_allclose(vertices[:, 2], expected_z[elem.name], atol=0.01)
+
+
+def test_masked_surfaces_stop_at_the_unconformity(unconformity_result):
+    result, _ = unconformity_result
+    cell = result.grid.finest_spacing
+    upper, lower = result.structural_groups
+    for elem in upper.structural_elements:  # nothing younger: MASKED is UNMASKED
+        np.testing.assert_array_equal(elem.vertices[GeoMeshType.MASKED], elem.vertices[GeoMeshType.UNMASKED])
+        np.testing.assert_array_equal(elem.edges[GeoMeshType.MASKED], elem.edges[GeoMeshType.UNMASKED])
+    for elem in lower.structural_elements:
+        unmasked = elem.vertices[GeoMeshType.UNMASKED]
+        masked = elem.vertices[GeoMeshType.MASKED]
+        faces = elem.edges[GeoMeshType.MASKED]
+        assert faces.dtype == np.int32 and 0 < len(masked) < len(unmasked)
+        assert {tuple(v) for v in masked} <= {tuple(v) for v in unmasked}
+        # Below the unconformity at z = 0.62, up to it within a cell, and complete beneath it.
+        assert masked[:, 2].max() < 0.62 + cell[2]
+        assert masked[:, 2].max() > 0.62 - 2 * cell[2]
+        below = unmasked[:, 2] < 0.62 - 2 * cell[2]
+        assert {tuple(v) for v in unmasked[below]} <= {tuple(v) for v in masked}
+
+
+def test_fault_masked_mesh_stops_at_the_youngest_unaffected_group():
+    """Model 2 of the integration tests: vertical fault at x = 0.5, unconformity at z = 0.68."""
+    from test_octree_faulted_structural_model import MODELS, _integration_module, octree_grid
+    elements, faults = _integration_module(MODELS["model2"][0])._build_input_data()
+    grid = octree_grid()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fault_result = gf.compute_fault_domains(gf.build_fault_frame(faults, grid))
+        frames = {}
+        for youngest in ["UpperSeries", "LowerSeries"]:
+            frame = general.build_structural_frame(
+                input_data_elements=elements, grid=grid, fault_model_results=fault_result)
+            frame.set_fault_activity_by_group("F1", youngest)
+            frames[youngest] = general.compute_structural_model(frame, verbose=False).structural_frame
+    # The fault model's own result is not changed.
+    assert set(fault_result.fault_frame.fault_elements[0].vertices) == {FaultMeshType.UNMASKED}
+
+    cuts_all = frames["UpperSeries"].fault_frame.fault_elements[0]  # no unaffected group: kept whole
+    np.testing.assert_array_equal(cuts_all.vertices[FaultMeshType.MASKED], cuts_all.vertices[FaultMeshType.UNMASKED])
+    np.testing.assert_array_equal(cuts_all.edges[FaultMeshType.MASKED], cuts_all.edges[FaultMeshType.UNMASKED])
+
+    fault = frames["LowerSeries"].fault_frame.fault_elements[0]  # cut off where UpperSeries is
+    cell = grid.finest_spacing[2]
+    unmasked = fault.vertices[FaultMeshType.UNMASKED]
+    masked = fault.vertices[FaultMeshType.MASKED]
+    faces = fault.edges[FaultMeshType.MASKED]
+    assert faces.dtype == np.int32 and faces.max() < len(masked)
+    assert masked[:, 2].max() < 0.68 + cell
+    assert masked[:, 2].max() > 0.68 - 2 * cell
+    below = unmasked[:, 2] < 0.68 - 2 * cell
+    assert {tuple(v) for v in unmasked[below]} <= {tuple(v) for v in masked}
+
+    # Surfaces of the group the fault does not affect run through it; the others end before it.
+    upper, lower = frames["LowerSeries"].structural_groups
+    for group, crosses in [(upper, True), (lower, False)]:
+        for elem in group.structural_elements:
+            for kind in (GeoMeshType.UNMASKED, GeoMeshType.MASKED):
+                x = elem.vertices[kind][elem.edges[kind]][..., 0]
+                assert np.any((x.min(axis=1) < 0.5) & (x.max(axis=1) > 0.5)) == crosses, (elem.name, kind)

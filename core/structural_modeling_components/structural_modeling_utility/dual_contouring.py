@@ -26,7 +26,8 @@ For one isovalue:
      triangles whose normals point toward increasing field values. An edge with
      fewer than 4 such cells gets no quad: at the extent walls and next to cells
      of another group the surface ends there, next to a coarser cell this is a
-     gap.
+     gap. With a cell mask (MASKED meshes), a quad is kept only if all 4 of its
+     cells are kept.
 
 Ported from the flat dual-contouring path of the octree research code (itself a
 port of GemPy's), adapted to explicit isovalues, integer cell addresses and cell
@@ -36,7 +37,7 @@ groups.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, List, Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import numpy.typing as npt
@@ -127,6 +128,7 @@ def dual_contour(
         values: GroupFieldValues,
         isovalues: Sequence[float],
         strictly_above: bool = False,
+        cell_kept: Optional[npt.NDArray[np.bool_]] = None,
 ) -> List[DualContourMesh]:
     """
     Dual-contour one field at several isovalues on max-level cells.
@@ -141,12 +143,16 @@ def dual_contour(
         strictly_above: Count a value as above the isovalue only if it is
             greater (``>``) instead of greater or equal (``>=``). Must match the
             labels the cells were refined with.
+        cell_kept: Optional mask of the cells, shape ``(M,)``. A quad is kept
+            only if all 4 of its cells are kept; vertices no kept quad uses are
+            dropped. Quads dropped this way are no gaps. ``None`` keeps all.
 
     Returns:
         One :class:`DualContourMesh` per isovalue.
     """
     ijk = np.asarray(cell_ijk, dtype=np.int64).reshape(-1, 3)
     groups = np.asarray(cell_groups, dtype=np.int64).reshape(-1)
+    kept = np.ones(ijk.shape[0], dtype=bool) if cell_kept is None else np.asarray(cell_kept, dtype=bool).reshape(-1)
     if ijk.shape[0] == 0:
         return [_empty_mesh() for _ in isovalues]
 
@@ -272,7 +278,10 @@ def dual_contour(
             cell[rows, axes[:, 0]] -= slot_offsets[slot, 0]
             cell[rows, axes[:, 1]] -= slot_offsets[slot, 1]
             gap[empty[find(cell) < 0]] = True
-        n_missing = int(gap.sum())
+        # Only gaps among kept cells count; quads with a masked cell are dropped anyway.
+        all_kept = np.all(np.where(quads >= 0, kept[np.maximum(quads, 0)], True), axis=1)
+        n_missing = int(np.sum(gap & all_kept))
+        complete &= all_kept
         quads = vertex_of_cell[quads[complete]]
         # Slots run counter-clockwise around the edge's axis seen from its +
         # end, so the quad normal points along +axis; flip where the field
@@ -280,11 +289,39 @@ def dual_contour(
         increasing = (vb[idx] > va[idx])[complete]
         quads = np.where(increasing[:, None], quads, quads[:, ::-1])
         faces = np.concatenate([quads[:, [0, 1, 2]], quads[:, [0, 2, 3]]], axis=0)
+        vertex_cells = ijk[has_vertex]
+        boundary = at_group_boundary[has_vertex]
+        if cell_kept is not None:
+            vertices, faces, used = select_faces(vertices, faces, np.ones(faces.shape[0], dtype=bool))
+            vertex_cells, boundary = vertex_cells[used], boundary[used]
         meshes.append(DualContourMesh(
-            vertices=vertices, faces=faces.astype(np.int64), vertex_cells=ijk[has_vertex],
-            vertex_at_group_boundary=at_group_boundary[has_vertex], n_missing_quads=n_missing,
+            vertices=vertices, faces=faces.astype(np.int64), vertex_cells=vertex_cells,
+            vertex_at_group_boundary=boundary, n_missing_quads=n_missing,
         ))
     return meshes
+
+
+def select_faces(
+        vertices: FloatArray, faces: npt.NDArray[np.integer], keep: npt.NDArray[np.bool_]
+) -> Tuple[FloatArray, IntArray, IntArray]:
+    """
+    The triangles where ``keep`` is True, with only the vertices they use.
+
+    Args:
+        vertices: Vertex coordinates, shape ``(V, 3)``.
+        faces: Vertex indices of the triangles, shape ``(F, 3)``.
+        keep: Which triangles to keep, shape ``(F,)``.
+
+    Returns:
+        ``(vertices, faces, used)``: the kept vertices in their original order,
+        the kept triangles renumbered to them (int64), and the original index of
+        each kept vertex.
+    """
+    faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)[np.asarray(keep, dtype=bool)]
+    used = np.unique(faces)
+    new_index = np.full(np.asarray(vertices).shape[0], -1, dtype=np.int64)
+    new_index[used] = np.arange(used.size)
+    return np.asarray(vertices)[used], new_index[faces], used
 
 
 def interior_open_edges(mesh: DualContourMesh, grid: OctreeGrid) -> int:
