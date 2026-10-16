@@ -40,9 +40,14 @@ class UnstructuredMeshTestCase(unittest.TestCase):
     def setUpClass(cls):
 
         # Grid
+        # 40^3 rather than 50^3: at 50^3 the rock2 surface meets the shaft
+        # (horizontal cylinder at z 680-720) at a shallow angle in a position
+        # where GMSH fails with "PLC Error: Two facets intersect". The same
+        # inputs mesh fine at 40^3 and 64^3. See the issue on fragile
+        # surface/shaft intersections in unstructured meshing.
         cls.grid = RegularGrid(
             extent=(0, 1000, 0, 1000, 0, 1000),
-            resolution=(50, 50, 50)
+            resolution=(40, 40, 40)
         )
 
         # Input data
