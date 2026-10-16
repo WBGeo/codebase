@@ -12,14 +12,16 @@ dispatches here when the frame's grid is an OctreeGrid:
      refinement starts from the fault frame's cells, every cell keeps the
      domain of the fault cell it lies in, and points are evaluated with the
      field of their cell's domain.
-  3) (Surface meshes will be extracted here, on the refined octree.)
+  3) Extract the UNMASKED surface mesh of every element by dual contouring on
+     the refined octree, per fault domain.
   4) Coarsen back to the cells the stored result needs: merge cells wherever the
      lithology and the age masks don't change, so the result keeps as few cells
      as possible. Only cells of one fault domain are merged.
   5) Evaluate fields, age masks and lithology at the final cell centers and store
      them in the usual attributes, one value per cell (see ``StructuralFrame``).
 
-Current scope: interpolators listed in ``fit_dispatch``, no surface meshes yet.
+Current scope: interpolators listed in ``fit_dispatch``; of the surface meshes
+only UNMASKED so far.
 The domain components, their fit extents, the age mask and lithology rules are
 the pointwise equivalents of ``run_interpolation_with_fault_domains``,
 ``set_scalar_masks_per_domain`` and ``compute_lithology_block_with_domains``.
@@ -53,6 +55,10 @@ from core.structural_modeling_components.interpolator_functions.universal_cokrig
 from core.structural_modeling_components.interpolator_functions.universal_kriging import (
     fit_group_universal_kriging,
 )
+from core.structural_modeling_components.structural_modeling_utility.dual_contouring import (
+    contour_cells,
+    dual_contour,
+)
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     CellDomains,
     coarsen_cells,
@@ -60,6 +66,7 @@ from core.structural_modeling_components.structural_modeling_utility.octree_refi
 )
 from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeCells, OctreeGrid
 from core.structural_modeling_components.structural_objects.structural_objects import (
+    GeoMeshType,
     InterpolationMethod,
     StructuralFrame,
     StructuralGroup,
@@ -108,8 +115,8 @@ def compute_structural_model_octree(
         ``build_structural_frame``, optionally with a fault frame computed on the
         same grid.
     extract_meshes : bool, default True
-        Surface meshes are not available on an octree yet; when True this is
-        logged and no meshes are stored.
+        Extract each element's UNMASKED surface mesh by dual contouring. The
+        other mesh types are not available on an octree yet.
 
     Returns
     -------
@@ -153,9 +160,9 @@ def compute_structural_model_octree(
     logger.info("Refining the octree ...")
     mesh_cells = _refine_for_surfaces(frame, fields)
 
-    # Surface meshes will be extracted here, on mesh_cells.
     if extract_meshes:
-        logger.info("Surface meshes on an OctreeGrid are not implemented yet; no meshes stored.")
+        logger.info("Extracting surface meshes by dual contouring ...")
+        _extract_unmasked_meshes(frame, fields, mesh_cells)
 
     logger.info("Coarsening the octree for the stored result ...")
     cells = _coarsen_for_storage(frame, fields, mesh_cells)
@@ -357,12 +364,46 @@ def _evaluate_groups(
     """Every group's field at the points, each with its domain's field, shape ``(n_groups, M)``."""
     values = np.zeros((len(frame.structural_groups), points.shape[0]), dtype=np.float64)
     for group_idx, by_domain in enumerate(fields):
-        for d in np.unique(domains):
-            field = by_domain.get(int(d))
-            if field is not None:
-                at = domains == d
-                values[group_idx, at] = field.evaluate(points[at])
+        values[group_idx] = _group_values(by_domain, points, domains)
     return values
+
+
+def _group_values(by_domain: Dict[int, Optional[FittedField]], points: FloatArray, domains: IntArray) -> FloatArray:
+    """One group's field at the points, each with its domain's field; zero where a domain has none."""
+    values = np.zeros(points.shape[0], dtype=np.float64)
+    for d in np.unique(domains):
+        field = by_domain.get(int(d))
+        if field is not None:
+            at = domains == d
+            values[at] = field.evaluate(points[at])
+    return values
+
+
+def _extract_unmasked_meshes(frame: StructuralFrame, fields: GroupFields, cells: OctreeCells) -> None:
+    """
+    Every element's UNMASKED mesh: its group's field at the element's isovalue, no masks.
+
+    Dual contouring runs per fault domain, each domain with its own field, so the
+    surfaces end half a cell before the faults. (The regular grid contours the
+    field assembled from all domains instead, across the faults.)
+    """
+    grid = frame.grid
+    dc_cells = contour_cells(grid, cells)
+    domains = _point_domains(frame, dc_cells.centers(grid))
+    for group_idx, group in enumerate(frame.structural_groups):
+        elements = [e for e in group.structural_elements if e.get_scalar_value() is not None]
+        by_domain = fields[group_idx]
+        if not elements or all(field is None for field in by_domain.values()):
+            continue
+        meshes = dual_contour(
+            grid, dc_cells.ijk, domains, lambda p, d: _group_values(by_domain, p, d),
+            [float(e.get_scalar_value()) for e in elements],
+        )
+        for elem, mesh in zip(elements, meshes):
+            if mesh.n_missing_quads:
+                logger.warning("Surface of '%s' has %d gaps where a cell next to it is coarser than max level.",
+                               elem.name, mesh.n_missing_quads)
+            elem.set_mesh(GeoMeshType.UNMASKED, mesh.vertices, mesh.faces.astype(np.int32))
 
 
 def _lithology_and_masks(

@@ -181,6 +181,61 @@ def coarsen_cells(
     return OctreeCells(level=level.astype(np.uint8), ijk=ijk.astype(np.int32))
 
 
+def balance_mesh_depth_adjacency(grid: OctreeGrid, cells: OctreeCells) -> OctreeCells:
+    """
+    Split every leaf that shares a face with a max-level leaf down to max level (one pass).
+
+    Dual contouring joins max-level cells only, so a surface crossing next to a
+    coarser leaf would leave a gap; so would a surface that grazes a coarse leaf
+    without changing the label at any of its corners. Splitting the coarse
+    neighbours of all max-level leaves closes both kinds of gap in the octree
+    research code's test models. Only one pass: repeated, it floods the whole
+    extent.
+
+    Args:
+        grid: The octree grid.
+        cells: Leaf cells that tile the extent.
+
+    Returns:
+        The leaves after the split; split leaves are replaced by their max-level
+        descendants. Cells keep their positions within a level otherwise.
+    """
+    from scipy import ndimage
+
+    level = cells.level.astype(np.int64)
+    ijk = cells.ijk.astype(np.int64)
+    at_max = level == grid.max_level
+    if not at_max.any() or at_max.all():
+        return cells
+
+    finest = np.zeros(grid.finest_resolution, dtype=bool)
+    finest[ijk[at_max, 0], ijk[at_max, 1], ijk[at_max, 2]] = True
+    touched = ndimage.binary_dilation(finest, structure=ndimage.generate_binary_structure(3, 1))
+
+    split = np.zeros(level.size, dtype=bool)
+    for lvl in np.unique(level[~at_max]):
+        members = np.flatnonzero(level == lvl)
+        n = 2 ** (grid.max_level - int(lvl))
+        nx, ny, nz = grid.cells_per_axis(int(lvl))
+        blocks = touched.reshape(nx, n, ny, n, nz, n).any(axis=(1, 3, 5))
+        split[members] = blocks[ijk[members, 0], ijk[members, 1], ijk[members, 2]]
+    if not split.any():
+        return cells
+
+    new_ijk = [ijk[~split]]
+    new_level = [level[~split]]
+    for lvl in np.unique(level[split]):
+        members = np.flatnonzero(split & (level == lvl))
+        n = 2 ** (grid.max_level - int(lvl))
+        a = np.arange(n)
+        offsets = np.stack(np.meshgrid(a, a, a, indexing="ij"), axis=-1).reshape(-1, 3)
+        children = (ijk[members] * n)[:, None, :] + offsets[None, :, :]
+        new_ijk.append(children.reshape(-1, 3))
+        new_level.append(np.full(children.shape[0] * children.shape[1], grid.max_level, dtype=np.int64))
+    return OctreeCells(level=np.concatenate(new_level).astype(np.uint8),
+                       ijk=np.concatenate(new_ijk).astype(np.int32))
+
+
 # The 27 lattice points of a cell, in units of its children's size.
 _PARENT_LATTICE_OFFSETS: npt.NDArray[np.int64] = np.array(
     [[i, j, k] for i in range(3) for j in range(3) for k in range(3)], dtype=np.int64

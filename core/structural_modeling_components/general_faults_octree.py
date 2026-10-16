@@ -19,10 +19,14 @@ dispatches here when the fault frame's grid is an OctreeGrid:
      band width uses a gradient median weighted by cell volume, from central
      differences of the fitted fields.
 
+  5) Extract every fault's UNMASKED surface mesh by dual contouring on the fault
+     cells.
+
 The structural model later refines these cells further; a cell coarser than max
 level lies in a single domain, so its children inherit the domain id.
 
-Current scope: no fault meshes yet (``extended_scalar_field`` stays None).
+Current scope: of the fault meshes only UNMASKED so far (``extended_scalar_field``
+stays None).
 """
 
 from __future__ import annotations
@@ -46,13 +50,21 @@ from core.structural_modeling_components.interpolator_functions.universal_cokrig
     GemPyFittedField,
     fit_fault_universal_cokriging,
 )
+from core.structural_modeling_components.structural_modeling_utility.dual_contouring import (
+    contour_cells,
+    dual_contour,
+)
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import refine_cells
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     CORNER_OFFSETS,
     OctreeCells,
     OctreeGrid,
 )
-from core.structural_modeling_components.structural_objects.structural_objects import FaultElement, FaultFrame
+from core.structural_modeling_components.structural_objects.structural_objects import (
+    FaultElement,
+    FaultFrame,
+    FaultMeshType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +89,8 @@ def compute_fault_domains_octree(fault_frame: FaultFrame) -> FaultModelResults:
     FaultModelResults
         A deep copy of the frame with ``cells`` set and, per cell, ``domain_map``,
         ``domain_masks`` and each fault's ``scalar_field`` and ``mask``; per fault
-        ``scalar_value``, ``domain_pairs`` and ``separated_domains``.
+        ``scalar_value``, ``domain_pairs``, ``separated_domains`` and the UNMASKED
+        mesh.
 
     Raises
     ------
@@ -128,6 +141,19 @@ def compute_fault_domains_octree(fault_frame: FaultFrame) -> FaultModelResults:
         [(f.name, values, float(f.scalar_value)) for f, values in zip(faults, voxel_values)],
         tolerances,
     )
+
+    logger.info("Extracting fault surfaces by dual contouring ...")
+    dc_cells = contour_cells(grid, cells)
+    no_groups = np.zeros(len(dc_cells), dtype=np.int64)
+    for fault in faults:
+        field = fields[fault.name]
+        # Refined with field > isovalue (see _fault_sides), so contour with the same side rule.
+        mesh = dual_contour(grid, dc_cells.ijk, no_groups, lambda p, _groups: field.evaluate(p),
+                            [float(fault.scalar_value)], strictly_above=True)[0]
+        if mesh.n_missing_quads:
+            logger.warning("Surface of fault '%s' has %d gaps where a cell next to it is coarser than max level.",
+                           fault.name, mesh.n_missing_quads)
+        fault.set_mesh(FaultMeshType.UNMASKED, mesh.vertices, mesh.faces)
 
     fault_frame.check_cell_arrays()
     return FaultModelResults(fault_frame=copy.deepcopy(fault_frame))

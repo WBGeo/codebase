@@ -18,6 +18,7 @@ import core.structural_modeling_components.general_faults as gf
 from core.object_components import FaultModelResults, InputData_FaultElements
 from core.structural_modeling_components.general_faults_octree import _weighted_median
 from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeGrid
+from core.structural_modeling_components.structural_objects.structural_objects import FaultMeshType
 
 
 # -----------------------------------------------------------------------------
@@ -115,11 +116,12 @@ def test_coarse_fault_cells_lie_in_one_domain(results):
         assert np.all(block == octree.domain_map[cell])
 
 
-def test_fault_octree_is_not_meshed_yet(results):
+def test_fault_octree_has_only_the_unmasked_mesh_so_far(results):
     octree = results[0].fault_frame
     for fault in octree.fault_elements:
         assert fault.extended_scalar_field is None
-        assert not fault.vertices
+        assert set(fault.vertices) == {FaultMeshType.UNMASKED}
+        assert len(fault.vertices[FaultMeshType.UNMASKED]) > 0
 
 
 def test_fault_result_survives_the_runner_round_trip(results):

@@ -477,8 +477,8 @@ def test_octree_result_survives_the_runner_round_trip(results):
     np.testing.assert_array_equal(frame.lith_block, octree_result.structural_frame.lith_block)
 
 
-def test_octree_frame_is_not_meshed_yet(results):
-    oct_frame = results[0].structural_frame
+def test_no_meshes_without_extract_meshes(results):
+    oct_frame = results[0].structural_frame  # computed with extract_meshes=False
     assert all(not e.vertices for g in oct_frame.structural_groups for e in g.structural_elements)
     assert all(g.extended_scalar_field is None for g in oct_frame.structural_groups)
 
