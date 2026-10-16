@@ -41,6 +41,7 @@ import pandas as pd
 from matplotlib.colors import to_hex
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults, FaultModelResults
+from core.structural_modeling_components.general_faults import check_fault_model_not_crosscutting
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     ModelGrid,
     OctreeGrid,
@@ -974,7 +975,7 @@ def build_structural_frame(
     """
     # Collect input_data
     surface_points = input_data_elements.surface_points.copy()
-    if hasattr(input_data_elements, "orientations"):
+    if input_data_elements.orientations is not None:
         orientations = input_data_elements.orientations.copy()
     else:
         orientations = None
@@ -1063,6 +1064,7 @@ def build_structural_frame(
     frame.orientations = orientations
 
     if fault_model_results is not None:
+        check_fault_model_not_crosscutting(fault_model_results)
         # Attach a copy: compute_structural_model adds the masked fault meshes to
         # the attached fault frame, which must not change the caller's fault result.
         frame.set_fault_frame(copy.deepcopy(fault_model_results.fault_frame))
