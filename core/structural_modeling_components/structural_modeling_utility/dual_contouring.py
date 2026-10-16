@@ -29,6 +29,9 @@ For one isovalue:
      gap. With a cell mask (MASKED meshes), a quad is kept only if all 4 of its
      cells are kept.
 
+EXTENDED meshes run on the cells plus a padding shell outside the extent
+(:func:`padding_shell`), on a lattice padded by the same number of cells.
+
 Ported from the flat dual-contouring path of the octree research code (itself a
 port of GemPy's), adapted to explicit isovalues, integer cell addresses and cell
 groups.
@@ -121,6 +124,37 @@ def contour_cells(grid: OctreeGrid, cells: OctreeCells) -> OctreeCells:
     return OctreeCells(level=cells.level[fine], ijk=cells.ijk[fine])
 
 
+def padding_shell(grid: OctreeGrid, padding: int) -> IntArray:
+    """
+    All max-level cells of a shell ``padding`` finest cells thick around the extent.
+
+    The octree counterpart of the regular grid's padded margin: the extent
+    padded by ``padding`` cells on every side, minus the extent itself.
+
+    Args:
+        grid: The octree grid.
+        padding: Shell thickness in finest cells.
+
+    Returns:
+        Cell indices of shape ``(S, 3)``, each outside ``[0, finest_resolution)``
+        along at least one axis and inside ``[-padding, finest_resolution + padding)``.
+    """
+    n = np.array(grid.finest_resolution, dtype=np.int64)
+    outer = [np.arange(-padding, n[a] + padding) for a in range(3)]
+    inner = [np.arange(n[a]) for a in range(3)]
+    sides = [np.r_[-padding:0, n[a]:n[a] + padding] for a in range(3)]
+
+    def block(xs, ys, zs):
+        return np.stack(np.meshgrid(xs, ys, zs, indexing="ij"), axis=-1).reshape(-1, 3)
+
+    # Slabs outside x (full y, z), then outside y (x inside, full z), then outside z (x, y inside).
+    return np.concatenate([
+        block(sides[0], outer[1], outer[2]),
+        block(inner[0], sides[1], outer[2]),
+        block(inner[0], inner[1], sides[2]),
+    ]).astype(np.int64)
+
+
 def dual_contour(
         grid: OctreeGrid,
         cell_ijk: npt.NDArray[np.integer],
@@ -129,6 +163,8 @@ def dual_contour(
         isovalues: Sequence[float],
         strictly_above: bool = False,
         cell_kept: Optional[npt.NDArray[np.bool_]] = None,
+        padding: int = 0,
+        field_bounds: Optional[Tuple[float, float, float, float, float, float]] = None,
 ) -> List[DualContourMesh]:
     """
     Dual-contour one field at several isovalues on max-level cells.
@@ -146,6 +182,11 @@ def dual_contour(
         cell_kept: Optional mask of the cells, shape ``(M,)``. A quad is kept
             only if all 4 of its cells are kept; vertices no kept quad uses are
             dropped. Quads dropped this way are no gaps. ``None`` keeps all.
+        padding: Cells may lie up to this many finest cells outside the extent
+            (see :func:`padding_shell`); the walls are those of the padded box.
+        field_bounds: Optional ``(xmin, xmax, ymin, ymax, zmin, zmax)`` the field
+            is defined in; the points of the normals' difference stencils are
+            clamped into it.
 
     Returns:
         One :class:`DualContourMesh` per isovalue.
@@ -157,7 +198,9 @@ def dual_contour(
         return [_empty_mesh() for _ in isovalues]
 
     spacing = np.asarray(grid.finest_spacing, dtype=np.float64)
+    # The lattice: [-padding, finest_resolution + padding) along each axis.
     n_finest = np.array(grid.finest_resolution, dtype=np.int64)
+    n_lattice = n_finest + 2 * padding
 
     # Corner values, each (lattice point, group) once.
     corners = ijk[:, None, :] + CORNER_OFFSETS[None, :, :]                       # (M, 8, 3)
@@ -195,17 +238,18 @@ def dual_contour(
     on_wall = np.zeros(unique_edges.shape[0], dtype=bool)
     for a in range(3):
         across = axis != a
-        on_wall |= across & ((lo_pt[:, a] == 0) | (lo_pt[:, a] == n_finest[a]))
+        on_wall |= across & ((lo_pt[:, a] == -padding) | (lo_pt[:, a] == n_finest[a] + padding))
 
     # Look-up of all cells by position, to tell another group's cell from no cell.
-    keys = linear_cell_index(ijk, n_finest)
+    keys = linear_cell_index(ijk + padding, n_lattice)
     order = np.argsort(keys)
     sorted_keys = keys[order]
 
     def find(points_ijk: IntArray) -> IntArray:
         """Row of the cell at each position, -1 where there is none."""
-        inside = np.all((points_ijk >= 0) & (points_ijk < n_finest), axis=1)
-        k = linear_cell_index(np.where(inside[:, None], points_ijk, 0), n_finest)
+        shifted = points_ijk + padding
+        inside = np.all((shifted >= 0) & (shifted < n_lattice), axis=1)
+        k = linear_cell_index(np.where(inside[:, None], shifted, 0), n_lattice)
         pos = np.minimum(np.searchsorted(sorted_keys, k), sorted_keys.size - 1)
         return np.where(inside & (sorted_keys[pos] == k), order[pos], -1)
 
@@ -216,6 +260,10 @@ def dual_contour(
     slot_offsets = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.int64)  # (o1, o2) per slot
 
     h = _GRADIENT_STEP_CELLS * spacing
+    if field_bounds is None:
+        bounds_lo, bounds_hi = np.full(3, -np.inf), np.full(3, np.inf)
+    else:
+        bounds_lo, bounds_hi = np.array(field_bounds[0::2]), np.array(field_bounds[1::2])
     cell_min = grid.origin + ijk * spacing
     meshes = []
     for isovalue in isovalues:
@@ -233,11 +281,15 @@ def dual_contour(
         direction = np.eye(3)[axis[idx]]
         points = grid.origin + (lo_pt[idx] + t[:, None] * direction) * spacing
         edge_groups = unique_edges[idx, 4]
-        normals = np.column_stack([
-            (values(points + h[a] * np.eye(3)[a], edge_groups)
-             - values(points - h[a] * np.eye(3)[a], edge_groups)) / (2.0 * h[a])
-            for a in range(3)
-        ])
+        # All 6 stencil points in one call: every call into GemPy recompiles its
+        # backend, which leaks Windows DLL-directory handles over many calls.
+        steps = np.concatenate([np.diag(h), -np.diag(h)])                        # +x, +y, +z, -x, -y, -z
+        stencil = np.clip(points[None, :, :] + steps[:, None, :], bounds_lo, bounds_hi)
+        stencil_values = np.asarray(
+            values(stencil.reshape(-1, 3), np.tile(edge_groups, 6)), dtype=np.float64).reshape(6, -1)
+        distance = stencil[:3, :, :] - stencil[3:, :, :]                          # (3, K, 3)
+        normals = ((stencil_values[:3] - stencil_values[3:])
+                   / distance[np.arange(3), :, np.arange(3)]).T
         norm = np.linalg.norm(normals, axis=1, keepdims=True)
         normals = normals / np.where(norm > 1e-12, norm, 1.0)
 
@@ -324,14 +376,15 @@ def select_faces(
     return np.asarray(vertices)[used], new_index[faces], used
 
 
-def interior_open_edges(mesh: DualContourMesh, grid: OctreeGrid) -> int:
+def interior_open_edges(mesh: DualContourMesh, grid: OctreeGrid, padding: int = 0) -> int:
     """
     Number of open mesh edges (used by one triangle) that border a gap.
 
     A surface legitimately ends half a cell inside a wall of the extent and half a
     cell before a cell of another group: an open edge whose two vertices both come
     from cells next to the same wall, or both from cells next to another group, is
-    such an end. Every other open edge borders a gap in the surface.
+    such an end. Every other open edge borders a gap in the surface. With
+    ``padding`` (EXTENDED meshes), the walls are those of the padded box.
     """
     if mesh.faces.shape[0] == 0:
         return 0
@@ -339,7 +392,8 @@ def interior_open_edges(mesh: DualContourMesh, grid: OctreeGrid) -> int:
     unique, counts = np.unique(edges, axis=0, return_counts=True)
     open_edges = unique[counts == 1]
     n_finest = np.array(grid.finest_resolution, dtype=np.int64)
-    near_wall = np.concatenate([mesh.vertex_cells == 0, mesh.vertex_cells == n_finest - 1], axis=1)  # (V, 6)
+    near_wall = np.concatenate([mesh.vertex_cells == -padding, mesh.vertex_cells == n_finest - 1 + padding],
+                               axis=1)  # (V, 6)
     on_wall = np.any(near_wall[open_edges[:, 0]] & near_wall[open_edges[:, 1]], axis=1)
     at_boundary = mesh.vertex_at_group_boundary[open_edges[:, 0]] & mesh.vertex_at_group_boundary[open_edges[:, 1]]
     return int(np.sum(~on_wall & ~at_boundary))

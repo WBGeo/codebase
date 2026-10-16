@@ -116,11 +116,11 @@ def test_coarse_fault_cells_lie_in_one_domain(results):
         assert np.all(block == octree.domain_map[cell])
 
 
-def test_fault_octree_has_only_the_unmasked_mesh_so_far(results):
+def test_fault_octree_has_the_unmasked_and_extended_meshes(results):
     octree = results[0].fault_frame
     for fault in octree.fault_elements:
         assert fault.extended_scalar_field is None
-        assert set(fault.vertices) == {FaultMeshType.UNMASKED}
+        assert set(fault.vertices) == {FaultMeshType.UNMASKED, FaultMeshType.EXTENDED}
         assert len(fault.vertices[FaultMeshType.UNMASKED]) > 0
 
 

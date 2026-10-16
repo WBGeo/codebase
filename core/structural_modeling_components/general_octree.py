@@ -12,19 +12,22 @@ dispatches here when the frame's grid is an OctreeGrid:
      refinement starts from the fault frame's cells, every cell keeps the
      domain of the fault cell it lies in, and points are evaluated with the
      field of their cell's domain.
-  3) Extract the UNMASKED and MASKED surface meshes of every element by dual
-     contouring on the refined octree, per fault domain. MASKED keeps a quad only
-     if none of its 4 cells is eroded by a younger group.
+  3) Extract the UNMASKED, MASKED and EXTENDED surface meshes of every element
+     by dual contouring on the refined octree, per merged fault-domain component.
+     MASKED keeps a quad only if none of its 4 cells is eroded by a younger group;
+     EXTENDED also runs on a max-level shell around the extent, so it crosses the
+     model box.
   4) Coarsen back to the cells the stored result needs: merge cells wherever the
      lithology and the age masks don't change, so the result keeps as few cells
      as possible. Only cells of one fault domain are merged.
   5) Evaluate fields, age masks and lithology at the final cell centers and store
      them in the usual attributes, one value per cell (see ``StructuralFrame``).
-  6) With faults, the MASKED mesh of every fault: its UNMASKED triangles where
-     the youngest group the fault does not affect is absent.
+  6) With faults, the MASKED and EXTENDED_MASKED meshes of every fault: its
+     UNMASKED and EXTENDED triangles where the youngest group the fault does not
+     affect is absent.
 
 Current scope: interpolators listed in ``fit_dispatch``; of the surface meshes
-UNMASKED and MASKED so far.
+UNMASKED, MASKED and EXTENDED so far.
 The domain components, their fit extents, the age mask and lithology rules are
 the pointwise equivalents of ``run_interpolation_with_fault_domains``,
 ``set_scalar_masks_per_domain`` and ``compute_lithology_block_with_domains``.
@@ -62,6 +65,7 @@ from core.structural_modeling_components.structural_modeling_utility.dual_contou
     contour_cells,
     dual_contour,
     select_faces,
+    padding_shell,
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     CellDomains,
@@ -101,7 +105,7 @@ fit_dispatch: Dict[InterpolationMethod, Callable[..., FittedField]] = {
 # Fits cover the extent padded by this many finest cells on every side, the same
 # margin the regular-grid pipeline interpolates on (general._SURFACE_PADDING_CELLS).
 # Interpolators with a support mesh (FDI, PLI) depend on the fitted extent, so this
-# keeps both grid types consistent, and the margin is where extended meshes will go.
+# keeps both grid types consistent, and the margin is where EXTENDED meshes go.
 _FIT_PADDING_CELLS: int = 2
 
 
@@ -120,9 +124,9 @@ def compute_structural_model_octree(
         ``build_structural_frame``, optionally with a fault frame computed on the
         same grid.
     extract_meshes : bool, default True
-        Extract each element's UNMASKED and MASKED surface meshes by dual
-        contouring, and each fault's MASKED mesh. The other mesh types are not
-        available on an octree yet.
+        Extract each element's UNMASKED, MASKED and EXTENDED surface meshes by
+        dual contouring, and each fault's MASKED and EXTENDED_MASKED meshes. The
+        other mesh types are not available on an octree yet.
 
     Returns
     -------
@@ -411,13 +415,20 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
     assembled from all domains instead, across the faults.) UNMASKED uses
     no masks. MASKED keeps a quad only if none of its 4 cells is eroded, i.e.
     lies where the age mask of any younger group is True at the cell center (the
-    per-cell form of the erosion mask in ``general.extract_meshes``).
+    per-cell form of the erosion mask in ``general.extract_meshes``). EXTENDED
+    uses no masks and adds a max-level shell of ``_FIT_PADDING_CELLS`` finest
+    cells around the extent, whose cells take the domain of the nearest
+    boundary cell (the regular grid's edge-padded domain map).
     """
     grid = frame.grid
+    bounds = fit_extent(grid)
     dc_cells = contour_cells(grid, cells)
     centers = dc_cells.centers(grid)
     domains = _point_domains(frame, centers)
     _, masks = _lithology_and_masks(frame, _evaluate_groups(frame, fields, centers, domains), domains)
+    shell = padding_shell(grid, _FIT_PADDING_CELLS)
+    padded_ijk = np.concatenate([dc_cells.ijk.astype(np.int64), shell])
+    padded_domains = np.concatenate([domains, _point_domains(frame, grid.cell_centers(grid.max_level, shell))])
     for group_idx, group in enumerate(frame.structural_groups):
         elements = [e for e in group.structural_elements if e.get_scalar_value() is not None]
         by_domain = fields[group_idx]
@@ -428,46 +439,69 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
         # field is the component's field.
         components = _component_of_domains(frame, group_idx, domains)
         values = lambda p, c: _group_values(by_domain, p, c)  # noqa: E731
-        unmasked = dual_contour(grid, dc_cells.ijk, components, values, isovalues)
+        unmasked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, field_bounds=bounds)
         not_eroded = ~masks[:group_idx].any(axis=0)
-        masked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, cell_kept=not_eroded)
-        for elem, mesh, masked_mesh in zip(elements, unmasked, masked):
+        masked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, cell_kept=not_eroded,
+                              field_bounds=bounds)
+        extended = dual_contour(grid, padded_ijk, _component_of_domains(frame, group_idx, padded_domains),
+                                values, isovalues,
+                                padding=_FIT_PADDING_CELLS, field_bounds=bounds)
+        for elem, mesh, masked_mesh, extended_mesh in zip(elements, unmasked, masked, extended):
             if mesh.n_missing_quads:
                 logger.warning("Surface of '%s' has %d gaps where a cell next to it is coarser than max level.",
                                elem.name, mesh.n_missing_quads)
             elem.set_mesh(GeoMeshType.UNMASKED, mesh.vertices, mesh.faces.astype(np.int32))
             elem.set_mesh(GeoMeshType.MASKED, masked_mesh.vertices, masked_mesh.faces.astype(np.int32))
+            elem.set_mesh(GeoMeshType.EXTENDED, extended_mesh.vertices, extended_mesh.faces.astype(np.int32))
 
 
 def _extract_fault_masked_meshes(frame: StructuralFrame, fields: GroupFields, stored_masks: BoolArray) -> None:
     """
-    Every fault's MASKED mesh: its UNMASKED triangles outside the youngest group it does not affect.
+    Every fault's MASKED and EXTENDED_MASKED meshes: its UNMASKED and EXTENDED
+    triangles outside the youngest group it does not affect.
 
-    As in ``general.extract_meshes``: the mesh is kept where that group's age mask
-    is False, and everywhere if there is no such group or its mask covers the
-    whole model (checked on the stored cells). A triangle is kept if the
+    As in ``general.extract_meshes``: a mesh is kept where that group's age mask
+    is False, and whole if there is no such group. MASKED is also kept whole if
+    the group's mask covers the whole model (checked on the stored cells);
+    EXTENDED_MASKED is not, and is then empty. A triangle is kept if the
     max-level cells of all 3 of its vertices pass, with the mask evaluated at
-    those cells' centers.
+    those cells' centers (in the padding shell for EXTENDED vertices).
     """
-    grid = frame.grid
     activity = frame.fault_activity_verbose or {}
     for fault in frame.fault_frame.fault_elements:
-        vertices = fault.vertices.get(FaultMeshType.UNMASKED)
-        faces = fault.edges.get(FaultMeshType.UNMASKED)
-        if vertices is None or faces is None:
-            continue
-        vertices = np.asarray(vertices, dtype=np.float64)
         group_idx = activity[fault.name]["youngest_group_index"] - 1 if fault.name in activity else -1
-        if group_idx < 0 or stored_masks[group_idx].all():
-            kept_vertex = np.ones(vertices.shape[0], dtype=bool)
-        else:
-            centers = grid.cell_centers(grid.max_level, grid.locate(vertices, grid.max_level))
-            domains = _point_domains(frame, centers)
-            _, masks = _lithology_and_masks(frame, _evaluate_groups(frame, fields, centers, domains), domains)
-            kept_vertex = ~masks[group_idx]
-        faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
-        masked_vertices, masked_faces, _ = select_faces(vertices, faces, kept_vertex[faces].all(axis=1))
-        fault.set_mesh(FaultMeshType.MASKED, masked_vertices, masked_faces.astype(np.int32))
+        for source, target, keep_whole in [
+            (FaultMeshType.UNMASKED, FaultMeshType.MASKED, group_idx < 0 or stored_masks[group_idx].all()),
+            (FaultMeshType.EXTENDED, FaultMeshType.EXTENDED_MASKED, group_idx < 0),
+        ]:
+            vertices = fault.vertices.get(source)
+            faces = fault.edges.get(source)
+            if vertices is None or faces is None:
+                continue
+            vertices = np.asarray(vertices, dtype=np.float64)
+            faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+            if keep_whole:
+                kept_vertex = np.ones(vertices.shape[0], dtype=bool)
+            else:
+                kept_vertex = ~_age_mask_at_vertex_cells(frame, fields, vertices)[group_idx]
+            kept_vertices, kept_faces, _ = select_faces(vertices, faces, kept_vertex[faces].all(axis=1))
+            fault.set_mesh(target, kept_vertices, kept_faces.astype(np.int32))
+
+
+def _age_mask_at_vertex_cells(frame: StructuralFrame, fields: GroupFields, vertices: FloatArray) -> BoolArray:
+    """
+    Every group's age mask at the centers of the max-level cells containing the
+    vertices, shape ``(n_groups, V)``. Vertices in the padding shell take the
+    shell cell they lie in; points on a shared face go to the upper cell.
+    """
+    grid = frame.grid
+    ijk = np.floor((vertices - grid.origin) / grid.finest_spacing).astype(np.int64)
+    n_finest = np.array(grid.finest_resolution, dtype=np.int64)
+    ijk = np.clip(ijk, -_FIT_PADDING_CELLS, n_finest - 1 + _FIT_PADDING_CELLS)
+    centers = grid.cell_centers(grid.max_level, ijk)
+    domains = _point_domains(frame, centers)
+    _, masks = _lithology_and_masks(frame, _evaluate_groups(frame, fields, centers, domains), domains)
+    return masks
 
 
 def _lithology_and_masks(

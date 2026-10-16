@@ -14,11 +14,13 @@ import pytest
 
 import core.structural_modeling_components.general as general
 import core.structural_modeling_components.general_faults as gf
+import core.structural_modeling_components.general_octree as general_octree
 from core.structural_modeling_components.structural_modeling_utility.dual_contouring import (
     contour_cells,
     dual_contour,
     interior_open_edges,
     select_faces,
+    padding_shell,
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     balance_mesh_depth_adjacency,
@@ -56,6 +58,12 @@ def contour(g: OctreeGrid, field, isovalue, strictly_above=False):
     dc_cells = contour_cells(g, cells)
     return dual_contour(g, dc_cells.ijk, np.zeros(len(dc_cells), dtype=int), lambda p, _: field(p), [isovalue],
                         strictly_above=strictly_above)[0]
+
+
+def contains(points, subset, atol=1e-9):
+    """Whether every point of ``subset`` is one of ``points`` up to rounding."""
+    from scipy.spatial import cKDTree
+    return bool(len(subset) == 0 or cKDTree(points).query(subset)[0].max() <= atol)
 
 
 def face_normals(mesh):
@@ -169,6 +177,61 @@ def test_select_faces_keeps_the_used_vertices_in_order():
 
 
 # -----------------------------------------------------------------------------
+# Padding shell (EXTENDED meshes)
+# -----------------------------------------------------------------------------
+
+def test_the_padding_shell_is_the_padded_box_minus_the_extent():
+    g = grid(max_level=2)  # finest resolution (8, 16, 8)
+    shell = padding_shell(g, 2)
+    n = np.array(g.finest_resolution)
+    assert len(shell) == np.prod(n + 4) - np.prod(n)
+    assert len({tuple(c) for c in shell}) == len(shell)
+    assert np.all(np.any((shell < 0) | (shell >= n), axis=1))
+    assert np.all((shell >= -2) & (shell < n + 2))
+
+
+def _extended(g, field, isovalue, padding=2):
+    cells = contour_cells(g, refine_cells(g, lambda p: (field(p) >= isovalue).astype(int)))
+    ijk = np.concatenate([cells.ijk, padding_shell(g, padding)])
+    plain = dual_contour(g, cells.ijk, np.zeros(len(cells), dtype=int), lambda p, _: field(p), [isovalue])[0]
+    extended = dual_contour(g, ijk, np.zeros(len(ijk), dtype=int), lambda p, _: field(p), [isovalue],
+                            padding=padding)[0]
+    return plain, extended
+
+
+def test_an_extended_plane_crosses_the_box_and_contains_the_unmasked_plane():
+    g = grid()
+    plain, extended = _extended(g, plane, 0.55)
+    np.testing.assert_allclose(plane(extended.vertices), 0.55, atol=1e-12)
+    assert extended.n_missing_quads == 0 and interior_open_edges(extended, g, padding=2) == 0
+    lo, hi = np.array(g.extent[0::2]), np.array(g.extent[1::2])
+    for axis in (0, 1):  # the plane runs through the x and y walls
+        assert extended.vertices[:, axis].min() < lo[axis] - g.finest_spacing[axis]
+        assert extended.vertices[:, axis].max() > hi[axis] + g.finest_spacing[axis]
+    # The vertex of a cell depends only on its own edges: the unmasked vertices reappear unchanged.
+    assert {tuple(v) for v in plain.vertices} <= {tuple(v) for v in extended.vertices}
+
+
+def test_normal_stencils_are_clamped_into_the_field_bounds():
+    """A field that is NaN outside the padded box still gives finite vertices up to its outer face."""
+    g = grid()
+    pad = 2 * g.finest_spacing
+    bounds = (-pad[0], 1 + pad[0], -pad[1], 2 + pad[1], -pad[2], 1 + pad[2])
+    lo, hi = np.array(bounds[0::2]), np.array(bounds[1::2])
+
+    def bounded(p):
+        inside = np.all((p >= lo - 1e-12) & (p <= hi + 1e-12), axis=1)
+        return np.where(inside, plane(p), np.nan)
+
+    cells = contour_cells(g, refine_cells(g, lambda p: (plane(p) >= 0.55).astype(int)))
+    ijk = np.concatenate([cells.ijk, padding_shell(g, 2)])
+    mesh = dual_contour(g, ijk, np.zeros(len(ijk), dtype=int), lambda p, _: bounded(p), [0.55], padding=2,
+                        field_bounds=bounds)[0]
+    assert mesh.faces.shape[0] > 0 and np.all(np.isfinite(mesh.vertices))
+    np.testing.assert_allclose(plane(mesh.vertices), 0.55, atol=1e-12)
+
+
+# -----------------------------------------------------------------------------
 # Groups (fault domains)
 # -----------------------------------------------------------------------------
 
@@ -239,16 +302,23 @@ def dipping_fault_result():
         return gf.compute_fault_domains(gf.build_fault_frame(two_faults_input(), octree_grid()))
 
 
-def test_fault_step_stores_unmasked_fault_surfaces_on_the_fault_planes(dipping_fault_result):
+def test_fault_step_stores_unmasked_and_extended_fault_surfaces_on_the_fault_planes(dipping_fault_result):
     frame = dipping_fault_result.fault_frame
+    cell = frame.grid.finest_spacing
     planes = {"F1": lambda v: v[:, 0] - (0.27 + 0.4 * v[:, 2]), "F2": lambda v: v[:, 0] - 0.85}
     for fault in frame.fault_elements:
-        assert set(fault.vertices) == {FaultMeshType.UNMASKED}
-        vertices = fault.vertices[FaultMeshType.UNMASKED]
-        faces = np.asarray(fault.edges[FaultMeshType.UNMASKED], dtype=np.int64)
-        assert faces.shape[0] > 0 and faces.max() < len(vertices)
-        # GemPy's fit of planar input data; within a fraction of a finest cell.
-        assert np.abs(planes[fault.name](vertices)).max() < 0.3 * frame.grid.finest_spacing[0]
+        assert set(fault.vertices) == {FaultMeshType.UNMASKED, FaultMeshType.EXTENDED}
+        for kind in (FaultMeshType.UNMASKED, FaultMeshType.EXTENDED):
+            vertices = fault.vertices[kind]
+            faces = np.asarray(fault.edges[kind], dtype=np.int64)
+            assert faces.shape[0] > 0 and faces.max() < len(vertices)
+            # GemPy's fit of planar input data; within a fraction of a finest cell.
+            assert np.abs(planes[fault.name](vertices)).max() < 0.3 * cell[0]
+        extended = fault.vertices[FaultMeshType.EXTENDED]
+        # Through the y and z walls of the box, and the unmasked vertices reappear unchanged.
+        for axis in (1, 2):
+            assert extended[:, axis].min() < -cell[axis] and extended[:, axis].max() > 1 + cell[axis]
+        assert contains(extended, fault.vertices[FaultMeshType.UNMASKED])
 
 
 @pytest.fixture(scope="module")
@@ -276,7 +346,7 @@ def test_structural_step_stores_gap_free_unmasked_surfaces(unconformity_result):
     expected_z = {"rock4": 0.82, "rock3": 0.62}
     for group in result.structural_groups:
         for elem in group.structural_elements:
-            assert set(elem.vertices) == {GeoMeshType.UNMASKED, GeoMeshType.MASKED}
+            assert set(elem.vertices) == {GeoMeshType.UNMASKED, GeoMeshType.MASKED, GeoMeshType.EXTENDED}
             vertices = elem.vertices[GeoMeshType.UNMASKED]
             faces = elem.edges[GeoMeshType.UNMASKED]
             assert len(vertices) > 0 and faces.dtype == np.int32 and faces.max() < len(vertices)
@@ -304,7 +374,23 @@ def test_masked_surfaces_stop_at_the_unconformity(unconformity_result):
         assert {tuple(v) for v in unmasked[below]} <= {tuple(v) for v in masked}
 
 
-def test_fault_masked_mesh_stops_at_the_youngest_unaffected_group():
+def test_extended_surfaces_cross_the_box_and_contain_the_unmasked_surfaces(unconformity_result):
+    result, _ = unconformity_result
+    cell = result.grid.finest_spacing
+    for group in result.structural_groups:
+        for elem in group.structural_elements:
+            extended = elem.vertices[GeoMeshType.EXTENDED]
+            faces = elem.edges[GeoMeshType.EXTENDED]
+            assert faces.dtype == np.int32 and faces.max() < len(extended)
+            assert contains(extended, elem.vertices[GeoMeshType.UNMASKED])
+            assert extended[:, 1].min() < -cell[1] and extended[:, 1].max() > 1 + cell[1]  # all run along y
+            if elem.name in ("rock4", "rock3"):  # horizontal: through the x walls, and still flat
+                assert extended[:, 0].min() < -cell[0] and extended[:, 0].max() > 1 + cell[0]
+                np.testing.assert_allclose(extended[:, 2], {"rock4": 0.82, "rock3": 0.62}[elem.name], atol=0.01)
+
+
+@pytest.fixture(scope="module")
+def model2_frames():
     """Model 2 of the integration tests: vertical fault at x = 0.5, unconformity at z = 0.68."""
     from test_octree_faulted_structural_model import MODELS, _integration_module, octree_grid
     elements, faults = _integration_module(MODELS["model2"][0])._build_input_data()
@@ -318,28 +404,59 @@ def test_fault_masked_mesh_stops_at_the_youngest_unaffected_group():
                 input_data_elements=elements, grid=grid, fault_model_results=fault_result)
             frame.set_fault_activity_by_group("F1", youngest)
             frames[youngest] = general.compute_structural_model(frame, verbose=False).structural_frame
+    return fault_result, frames
+
+
+def test_fault_masked_meshes_stop_at_the_youngest_unaffected_group(model2_frames):
+    fault_result, frames = model2_frames
     # The fault model's own result is not changed.
-    assert set(fault_result.fault_frame.fault_elements[0].vertices) == {FaultMeshType.UNMASKED}
+    assert set(fault_result.fault_frame.fault_elements[0].vertices) == {FaultMeshType.UNMASKED,
+                                                                        FaultMeshType.EXTENDED}
 
     cuts_all = frames["UpperSeries"].fault_frame.fault_elements[0]  # no unaffected group: kept whole
-    np.testing.assert_array_equal(cuts_all.vertices[FaultMeshType.MASKED], cuts_all.vertices[FaultMeshType.UNMASKED])
-    np.testing.assert_array_equal(cuts_all.edges[FaultMeshType.MASKED], cuts_all.edges[FaultMeshType.UNMASKED])
+    for source, target in [(FaultMeshType.UNMASKED, FaultMeshType.MASKED),
+                           (FaultMeshType.EXTENDED, FaultMeshType.EXTENDED_MASKED)]:
+        np.testing.assert_array_equal(cuts_all.vertices[target], cuts_all.vertices[source])
+        np.testing.assert_array_equal(cuts_all.edges[target], cuts_all.edges[source])
 
     fault = frames["LowerSeries"].fault_frame.fault_elements[0]  # cut off where UpperSeries is
-    cell = grid.finest_spacing[2]
-    unmasked = fault.vertices[FaultMeshType.UNMASKED]
-    masked = fault.vertices[FaultMeshType.MASKED]
-    faces = fault.edges[FaultMeshType.MASKED]
-    assert faces.dtype == np.int32 and faces.max() < len(masked)
-    assert masked[:, 2].max() < 0.68 + cell
-    assert masked[:, 2].max() > 0.68 - 2 * cell
-    below = unmasked[:, 2] < 0.68 - 2 * cell
-    assert {tuple(v) for v in unmasked[below]} <= {tuple(v) for v in masked}
+    cell = frames["LowerSeries"].grid.finest_spacing
+    for source, target in [(FaultMeshType.UNMASKED, FaultMeshType.MASKED),
+                           (FaultMeshType.EXTENDED, FaultMeshType.EXTENDED_MASKED)]:
+        full = fault.vertices[source]
+        kept = fault.vertices[target]
+        faces = fault.edges[target]
+        assert faces.dtype == np.int32 and faces.max() < len(kept)
+        assert kept[:, 2].max() < 0.68 + cell[2]
+        assert kept[:, 2].max() > 0.68 - 2 * cell[2]
+        below = full[:, 2] < 0.68 - 2 * cell[2]
+        assert {tuple(v) for v in full[below]} <= {tuple(v) for v in kept}
+    # EXTENDED_MASKED still crosses the box below the unconformity.
+    extended_masked = fault.vertices[FaultMeshType.EXTENDED_MASKED]
+    assert extended_masked[:, 1].min() < -cell[1] and extended_masked[:, 1].max() > 1 + cell[1]
+    assert extended_masked[:, 2].min() < -cell[2]
 
-    # Surfaces of the group the fault does not affect run through it; the others end before it.
+
+def test_surfaces_run_through_faults_that_do_not_affect_their_group(model2_frames):
+    _, frames = model2_frames
     upper, lower = frames["LowerSeries"].structural_groups
     for group, crosses in [(upper, True), (lower, False)]:
         for elem in group.structural_elements:
-            for kind in (GeoMeshType.UNMASKED, GeoMeshType.MASKED):
+            for kind in (GeoMeshType.UNMASKED, GeoMeshType.MASKED, GeoMeshType.EXTENDED):
                 x = elem.vertices[kind][elem.edges[kind]][..., 0]
                 assert np.any((x.min(axis=1) < 0.5) & (x.max(axis=1) > 0.5)) == crosses, (elem.name, kind)
+
+
+def test_a_fault_under_a_group_covering_the_model_has_no_extended_masked_mesh(model2_frames, monkeypatch):
+    """As on the regular grid: MASKED falls back to the whole fault, EXTENDED_MASKED does not."""
+    _, frames = model2_frames
+    frame = frames["LowerSeries"].model_copy(deep=True)
+    n_groups = len(frame.structural_groups)
+    monkeypatch.setattr(general_octree, "_age_mask_at_vertex_cells",
+                        lambda frame, fields, vertices: np.ones((n_groups, len(vertices)), dtype=bool))
+    stored_masks = np.ones((n_groups, len(frame.cells)), dtype=bool)
+    general_octree._extract_fault_masked_meshes(frame, fields=[], stored_masks=stored_masks)
+    fault = frame.fault_frame.fault_elements[0]
+    np.testing.assert_array_equal(fault.vertices[FaultMeshType.MASKED], fault.vertices[FaultMeshType.UNMASKED])
+    assert len(fault.vertices[FaultMeshType.EXTENDED_MASKED]) == 0
+    assert len(fault.edges[FaultMeshType.EXTENDED_MASKED]) == 0
