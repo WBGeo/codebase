@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import colorsys
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple
 
 import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm, to_hex
+from matplotlib.colors import ListedColormap, BoundaryNorm, to_hex, to_rgb
 import warnings
 
+from core.structural_modeling_components.structural_objects.grids.grid_classes import (
+    OctreeCells,
+    OctreeGrid,
+)
 from core.structural_modeling_components.structural_objects.structural_objects import (
     FaultFrame,
     StructuralFrame,
@@ -42,6 +46,87 @@ def _make_formation_color_map(mapping_object: dict) -> dict[str, str]:
             lightness = 0.35 + 0.5 * (i / max(n_el - 1, 1))
             color_map[el_name] = to_hex(colorsys.hls_to_rgb(base_hls[0], lightness, base_hls[2]))
     return color_map
+
+
+BASEMENT_COLOR = "#cccccc"
+
+# Corners of a VTK hexahedron as (x, y, z) offsets from the cell's lower corner.
+_VTK_HEX_CORNERS = np.array(
+    [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)], dtype=float)
+
+
+def _lithology_colors(frame: StructuralFrame) -> Tuple[Dict[int, str], Dict[int, str]]:
+    """Color and label per lithology id: basement (0) grey, every element its own color."""
+    id_to_color = {0: BASEMENT_COLOR}
+    id_to_label = {0: "Basement"}
+    for group in frame.structural_groups:
+        for elem in group.structural_elements:
+            if elem.id:
+                id_to_color[elem.id] = elem.color
+                id_to_label[elem.id] = f"{group.name} | {elem.name}"
+    return id_to_color, id_to_label
+
+
+def _cell_boxes(frame: StructuralFrame | FaultFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Lower and upper corners of every result cell, and each cell's index into the
+    flattened per-cell result arrays: the octree's cells, or every voxel of a
+    regular grid (C order, matching ``array.ravel()`` of an ``(nx, ny, nz)`` array).
+    """
+    grid = frame.grid
+    if isinstance(grid, OctreeGrid):
+        mins, maxs = grid.cell_bounds(frame.cells.level, frame.cells.ijk)
+        return mins, maxs, np.arange(len(frame.cells))
+    ijk = np.indices(tuple(grid.resolution)).reshape(3, -1).T
+    mins = np.array(grid.extent[0::2]) + ijk * np.array(grid.spacing)
+    return mins, mins + np.array(grid.spacing), np.arange(ijk.shape[0])
+
+
+def _wall_faces(frame: StructuralFrame) -> pv.PolyData:
+    """
+    The faces of the result cells that lie on the six outer walls of the extent,
+    one quad per cell and wall, with each quad's RGB lithology color as cell data
+    ``"rgb"``. Only these faces of a block model are visible from outside, so this
+    shows the lithology and the cell layout at a fraction of the cost of all cells.
+    """
+    mins, maxs, index = _cell_boxes(frame)
+    lith = np.asarray(frame.lith_block).ravel()[index]
+    id_to_color, _ = _lithology_colors(frame)
+    lo, hi = np.array(frame.grid.extent[0::2]), np.array(frame.grid.extent[1::2])
+    tol = 1e-9 * np.max(hi - lo)
+
+    points, colors = [], []
+    for axis in range(3):
+        b, c = [a for a in range(3) if a != axis]
+        for plane, on_wall in [(lo[axis], np.abs(mins[:, axis] - lo[axis]) <= tol),
+                               (hi[axis], np.abs(maxs[:, axis] - hi[axis]) <= tol)]:
+            n = int(on_wall.sum())
+            if n == 0:
+                continue
+            quad = np.empty((n, 4, 3))
+            quad[:, :, axis] = plane
+            for k, (use_b, use_c) in enumerate([(mins, mins), (maxs, mins), (maxs, maxs), (mins, maxs)]):
+                quad[:, k, b] = use_b[on_wall, b]
+                quad[:, k, c] = use_c[on_wall, c]
+            points.append(quad.reshape(-1, 3))
+            colors.extend(id_to_color.get(int(i), BASEMENT_COLOR) for i in lith[on_wall])
+    points = np.concatenate(points)
+    n_quads = points.shape[0] // 4
+    faces = np.hstack([np.full((n_quads, 1), 4), np.arange(4 * n_quads).reshape(-1, 4)]).ravel()
+    mesh = pv.PolyData(points, faces)
+    rgb = {c: np.round(np.array(to_rgb(c)) * 255).astype(np.uint8) for c in set(colors)}
+    mesh.cell_data["rgb"] = np.array([rgb[c] for c in colors], dtype=np.uint8)
+    return mesh
+
+
+def _octree_hexahedra(grid: OctreeGrid, cells: OctreeCells) -> pv.UnstructuredGrid:
+    """Every octree cell as a VTK hexahedron, in the order of ``cells``."""
+    mins, maxs = grid.cell_bounds(cells.level, cells.ijk)
+    corners = mins[:, None, :] + _VTK_HEX_CORNERS[None, :, :] * (maxs - mins)[:, None, :]
+    n = len(cells)
+    connectivity = np.hstack([np.full((n, 1), 8), np.arange(8 * n).reshape(n, 8)]).ravel()
+    return pv.UnstructuredGrid(connectivity, np.full(n, pv.CellType.HEXAHEDRON, dtype=np.uint8),
+                               corners.reshape(-1, 3))
 
 
 def plot_input_data_3D(
@@ -197,6 +282,7 @@ def plot_structural_model_3D(
         show_points: bool = True,
         show_orientations: bool = True,
         fault_opacity: float = 0.35,
+        show_lith_block: bool = False,
         notebook: bool = False,
         off_screen: bool = False,
         show: bool = True,
@@ -220,6 +306,11 @@ def plot_structural_model_3D(
         Whether to render orientation arrows.
     fault_opacity : float, default 0.35
         Opacity of fault surface meshes.
+    show_lith_block : bool, default False
+        Show the lithology block as the outside of the model: the faces of the
+        result cells on the six walls of the extent, colored by lithology, with
+        their edges, so the grid's cells (uniform voxels, or octree cells of
+        different sizes) are visible. The block hides what lies inside it.
     notebook : bool, default False
         Use off-screen/notebook mode for PyVista.
     off_screen : bool, default False
@@ -306,6 +397,11 @@ def plot_structural_model_3D(
         # prepend a header row
         legend_entries = [("Faults", fault_entries)] + legend_entries
 
+    # ---------- lithology block: the cell faces on the outer walls ----------
+    if show_lith_block and frame.lith_block is not None and np.size(frame.lith_block) > 0:
+        plotter.add_mesh(_wall_faces(frame), scalars="rgb", rgb=True, show_edges=True,
+                         edge_color="#333333", line_width=0.5)
+
     # ---------- legend like before (youngest at top; group bold-ish) ----------
     # flatten & reverse (PyVista renders top-down)
     flat_legend = []
@@ -313,6 +409,8 @@ def plot_structural_model_3D(
         flat_legend.append((f"{group_name}", "black"))
         for label, col in entries:
             flat_legend.append((label, col))
+    if show_lith_block:
+        flat_legend.append(("• Basement", BASEMENT_COLOR))
 
     plotter.add_legend(labels=flat_legend, size=(0.22, 0.22), loc="lower right", face="rectangle")
 
@@ -411,17 +509,10 @@ def plot_structural_model_2D(
                 UserWarning
             )
         else:
-            id_to_color = {0: "#cccccc"}  # grey base
-            id_to_label = {0: "Basement"}
+            id_to_color, id_to_label = _lithology_colors(frame)
             if frame.lith_block is not None:
                 slice_lith = np.take(frame.lith_block, index, axis=dim)
                 slice_lith = slice_lith.T
-
-                for group in frame.structural_groups:
-                    for elem in group.structural_elements:
-                        if elem.id:
-                            id_to_color[elem.id] = elem.color
-                            id_to_label[elem.id] = f"{group.name} | {elem.name}"
 
                 sorted_ids = sorted(id_to_color)
                 colors = [id_to_color[i] for i in sorted_ids]
@@ -566,7 +657,12 @@ def plot_fault_model_3D(
     domain_map = fault_frame.domain_map
     grid = fault_frame.grid
 
-    if show_domain_map and domain_map is not None and grid is not None:
+    if show_domain_map and domain_map is not None and grid is not None and isinstance(grid, OctreeGrid):
+        # One hexahedron per fault cell, with its domain id as cell data.
+        dm = np.asarray(domain_map)
+        img = _octree_hexahedra(grid, fault_frame.cells)
+        img.cell_data["domain"] = dm.ravel().astype(np.float32)
+    elif show_domain_map and domain_map is not None and grid is not None:
         # Get coordinate vectors (same pattern as your 2D)
         def _get_coord(obj, name):
             val = getattr(obj, name, None)
@@ -604,6 +700,7 @@ def plot_fault_model_3D(
         # If colors look permuted/swapped, change order='F' to order='C'.
         img.cell_data["domain"] = dm.ravel(order="F").astype(np.float32)
 
+    if show_domain_map and domain_map is not None and grid is not None:
         # Discrete domain colors like the 2D logic (Set3)
         domain_values = np.unique(dm)
         domain_values = domain_values[~np.isnan(domain_values)]
