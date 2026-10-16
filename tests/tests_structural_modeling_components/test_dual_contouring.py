@@ -346,7 +346,7 @@ def test_structural_step_stores_gap_free_unmasked_surfaces(unconformity_result):
     expected_z = {"rock4": 0.82, "rock3": 0.62}
     for group in result.structural_groups:
         for elem in group.structural_elements:
-            assert set(elem.vertices) == {GeoMeshType.UNMASKED, GeoMeshType.MASKED, GeoMeshType.EXTENDED}
+            assert set(elem.vertices) == set(GeoMeshType)
             vertices = elem.vertices[GeoMeshType.UNMASKED]
             faces = elem.edges[GeoMeshType.UNMASKED]
             assert len(vertices) > 0 and faces.dtype == np.int32 and faces.max() < len(vertices)
@@ -387,6 +387,32 @@ def test_extended_surfaces_cross_the_box_and_contain_the_unmasked_surfaces(uncon
             if elem.name in ("rock4", "rock3"):  # horizontal: through the x walls, and still flat
                 assert extended[:, 0].min() < -cell[0] and extended[:, 0].max() > 1 + cell[0]
                 np.testing.assert_allclose(extended[:, 2], {"rock4": 0.82, "rock3": 0.62}[elem.name], atol=0.01)
+
+
+def test_combined_surfaces_are_the_lithology_contacts(unconformity_result):
+    """The boundary of 'lithology id >= the element's id', with the erosion: from the lithology itself."""
+    from scipy.spatial import cKDTree
+    result, _ = unconformity_result
+    cell = result.grid.finest_spacing
+    elements = {e.name: e for g in result.structural_groups for e in g.structural_elements}
+    for name in elements:
+        faces = elements[name].edges[GeoMeshType.COMBINED]
+        assert faces.dtype == np.int32 and len(faces) > 0
+    combined = {name: e.vertices[GeoMeshType.COMBINED] for name, e in elements.items()}
+    # The upper group is not eroded: its bases are the horizontal surfaces, within a cell.
+    np.testing.assert_allclose(combined["rock4"][:, 2], 0.82, atol=cell[2])
+    np.testing.assert_allclose(combined["rock3"][:, 2], 0.62, atol=cell[2])
+    # The lower group: its own surface below the unconformity, and the unconformity above
+    # the older rock it erodes down to.
+    for name in ("rock2", "rock1"):
+        to_surface = cKDTree(elements[name].vertices[GeoMeshType.MASKED]).query(combined[name])[0]
+        on_unconformity = np.abs(combined[name][:, 2] - 0.62) <= cell[2]
+        assert np.all((to_surface <= 1.5 * cell.max()) | on_unconformity), name
+        assert np.any(to_surface <= 1.5 * cell.max()), name
+    # rock2 continues along the unconformity over the eroded rock1, beyond the end of its own surface
+    # (x ~ 0.7) to the wall; rock1 meets the unconformity only next to the end of its own (x > 0.92).
+    rock2 = combined["rock2"]
+    assert rock2[np.abs(rock2[:, 2] - 0.62) <= cell[2], 0].max() > 0.9
 
 
 @pytest.fixture(scope="module")

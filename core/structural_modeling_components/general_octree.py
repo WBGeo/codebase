@@ -16,7 +16,7 @@ dispatches here when the frame's grid is an OctreeGrid:
      by dual contouring on the refined octree, per merged fault-domain component.
      MASKED keeps a quad only if none of its 4 cells is eroded by a younger group;
      EXTENDED also runs on a max-level shell around the extent, so it crosses the
-     model box.
+     model box. COMBINED contours the lithology id itself.
   4) Coarsen back to the cells the stored result needs: merge cells wherever the
      lithology and the age masks don't change, so the result keeps as few cells
      as possible. Only cells of one fault domain are merged.
@@ -26,8 +26,7 @@ dispatches here when the frame's grid is an OctreeGrid:
      UNMASKED and EXTENDED triangles where the youngest group the fault does not
      affect is absent.
 
-Current scope: interpolators listed in ``fit_dispatch``; of the surface meshes
-UNMASKED, MASKED and EXTENDED so far.
+Current scope: interpolators listed in ``fit_dispatch``; all surface mesh types.
 The domain components, their fit extents, the age mask and lithology rules are
 the pointwise equivalents of ``run_interpolation_with_fault_domains``,
 ``set_scalar_masks_per_domain`` and ``compute_lithology_block_with_domains``.
@@ -124,9 +123,9 @@ def compute_structural_model_octree(
         ``build_structural_frame``, optionally with a fault frame computed on the
         same grid.
     extract_meshes : bool, default True
-        Extract each element's UNMASKED, MASKED and EXTENDED surface meshes by
-        dual contouring, and each fault's MASKED and EXTENDED_MASKED meshes. The
-        other mesh types are not available on an octree yet.
+        Extract each element's UNMASKED, MASKED, EXTENDED and COMBINED surface
+        meshes by dual contouring, and each fault's MASKED and EXTENDED_MASKED
+        meshes.
 
     Returns
     -------
@@ -407,7 +406,8 @@ def _group_values(by_domain: Dict[int, Optional[FittedField]], points: FloatArra
 
 def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: OctreeCells) -> None:
     """
-    Every element's UNMASKED and MASKED meshes: its group's field at the element's isovalue.
+    Every element's UNMASKED, MASKED and EXTENDED meshes, its group's field at the
+    element's isovalue, and its COMBINED mesh.
 
     Dual contouring runs per merged domain component of the group, each with its
     own field, so the surfaces end half a cell before the faults that affect the
@@ -419,6 +419,13 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
     uses no masks and adds a max-level shell of ``_FIT_PADDING_CELLS`` finest
     cells around the extent, whose cells take the domain of the nearest
     boundary cell (the regular grid's edge-padded domain map).
+
+    COMBINED is the boundary of the region where the lithology id is at least
+    the element's id: the lithology id contoured at ``id - 0.1``, as the regular
+    grid does with marching cubes on the lithology block. The id already holds
+    the faults' offsets and the erosion, so all cells form one group. Being
+    piecewise constant, the id has no gradient, and each vertex is the centroid
+    of its cell's crossings.
     """
     grid = frame.grid
     bounds = fit_extent(grid)
@@ -444,8 +451,7 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
         masked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, cell_kept=not_eroded,
                               field_bounds=bounds)
         extended = dual_contour(grid, padded_ijk, _component_of_domains(frame, group_idx, padded_domains),
-                                values, isovalues,
-                                padding=_FIT_PADDING_CELLS, field_bounds=bounds)
+                                values, isovalues, padding=_FIT_PADDING_CELLS, field_bounds=bounds)
         for elem, mesh, masked_mesh, extended_mesh in zip(elements, unmasked, masked, extended):
             if mesh.n_missing_quads:
                 logger.warning("Surface of '%s' has %d gaps where a cell next to it is coarser than max level.",
@@ -453,6 +459,17 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
             elem.set_mesh(GeoMeshType.UNMASKED, mesh.vertices, mesh.faces.astype(np.int32))
             elem.set_mesh(GeoMeshType.MASKED, masked_mesh.vertices, masked_mesh.faces.astype(np.int32))
             elem.set_mesh(GeoMeshType.EXTENDED, extended_mesh.vertices, extended_mesh.faces.astype(np.int32))
+
+    def lithology(points: FloatArray, _groups: IntArray) -> FloatArray:
+        point_domains = _point_domains(frame, points)
+        lith, _ = _lithology_and_masks(frame, _evaluate_groups(frame, fields, points, point_domains), point_domains)
+        return lith.astype(np.float64)
+
+    elements = [e for g in frame.structural_groups for e in g.structural_elements if e.id is not None]
+    combined = dual_contour(grid, dc_cells.ijk, np.zeros(len(dc_cells), dtype=np.int64), lithology,
+                            [e.id - 0.1 for e in elements], field_bounds=bounds)
+    for elem, mesh in zip(elements, combined):
+        elem.set_mesh(GeoMeshType.COMBINED, mesh.vertices, mesh.faces.astype(np.int32))
 
 
 def _extract_fault_masked_meshes(frame: StructuralFrame, fields: GroupFields, stored_masks: BoolArray) -> None:
