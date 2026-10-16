@@ -16,6 +16,7 @@ import meshio
 from types import SimpleNamespace
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.geometry.Nodes import Nodes
+from core.meshing_components.pre_checks import pre_check_regular_grid
 
 # Rsample while preserving Z
 def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, extent: List[float]) -> NDArray[np.floating]:
@@ -144,7 +145,7 @@ def pre_check_no_faults_for_structured_mesh(geomodel_result: StructuralModelResu
                  group='Meshing',
                  identifier='wbgeo::create_structured_mesh_data',
                  return_name='Mesh',  # the name for the returned-port
-                 input_checks=[pre_check_no_faults_for_structured_mesh],
+                 input_checks=[pre_check_regular_grid, pre_check_no_faults_for_structured_mesh],
                  )  # inputs are handled via the method signature
 
 def create_structured_mesh_data(geomodel_result: StructuralModelResults,
@@ -157,8 +158,9 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
     Generates a geological mesh and returns a MeshData object.
 
     Args:
-        geomodel_result: Results of geological modeling. Must not contain
-            faults -- see pre_check_no_faults_for_structured_mesh.
+        geomodel_result: Results of geological modeling. Must be computed on a
+            RegularGrid and must not contain faults -- see pre_check_regular_grid
+            and pre_check_no_faults_for_structured_mesh.
         refinement_data (list): list of refinement values.
         z_threshold (float): Threshold for Z-value adjustment.
         mesh_division (MeshDev): Resolution in x and y directions.
@@ -174,11 +176,13 @@ def create_structured_mesh_data(geomodel_result: StructuralModelResults,
                   [element_id, node0, ..., node7, block_id]
 
     Raises:
-        ValueError: geomodel_result's structural model contains faults.
+        ValueError: geomodel_result's structural model is on an OctreeGrid or
+            contains faults.
     """
     # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
     # so also enforced here rather than relying solely on the Workbench's
     # input_checks catching the connection.
+    pre_check_regular_grid(geomodel_result)
     pre_check_no_faults_for_structured_mesh(geomodel_result)
 
     # Extent

@@ -7,6 +7,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 from core.meshing_components.explicit.unstructured.mesh_data import classify_boundary_nodes, \
   build_point_sets
 from core.object_components import MeshResults, StructuralModelResults, ExtentData, MeshType
+from core.meshing_components.pre_checks import pre_check_regular_grid
 
 
 @wbgeo_component(
@@ -17,12 +18,18 @@ from core.object_components import MeshResults, StructuralModelResults, ExtentDa
     group='Meshing',
     identifier='wbgeo::create_structured_implicit_mesh_meshio',
     return_name='Mesh',
+    input_checks=[pre_check_regular_grid],
 )
 def create_implicit_structured_mesh(geomodel_result: StructuralModelResults, extent: ExtentData = []) -> MeshResults:
     """
     Create a structured hexahedral mesh and return as meshio points, cells, and cell_data.
     Block IDs are reversed so the highest block becomes 0.
+
+    Raises:
+        ValueError: geomodel_result's structural model is on an OctreeGrid.
     """
+    # Pre-checks can be ignored/skipped by a caller, so also enforced here.
+    pre_check_regular_grid(geomodel_result)
 
     # Get extent
     if extent is None or len(extent) == 0:
