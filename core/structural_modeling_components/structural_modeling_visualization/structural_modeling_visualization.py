@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple
 import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
+from matplotlib.collections import PolyCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm, to_hex, to_rgb
 import warnings
 
@@ -117,6 +118,44 @@ def _wall_faces(frame: StructuralFrame) -> pv.PolyData:
     rgb = {c: np.round(np.array(to_rgb(c)) * 255).astype(np.uint8) for c in set(colors)}
     mesh.cell_data["rgb"] = np.array([rgb[c] for c in colors], dtype=np.uint8)
     return mesh
+
+
+def _axis_centers(grid) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Cell-center coordinates along x, y and z: the grid's own, or the finest cells' on an octree."""
+    if not isinstance(grid, OctreeGrid):
+        return np.asarray(grid.gridx), np.asarray(grid.gridy), np.asarray(grid.gridz)
+    return tuple(grid.origin[a] + (np.arange(grid.finest_resolution[a]) + 0.5) * grid.finest_spacing[a]
+                 for a in range(3))
+
+
+def _section_cells(frame: StructuralFrame | FaultFrame, axis: int, index: int) -> np.ndarray:
+    """
+    Outlines of the cells a slice cuts, in the slice's two coordinates, shape ``(n, 4, 2)``.
+
+    The slice is the plane through the cell centers with ``index`` along ``axis``
+    (finest resolution on an octree): every voxel of a regular grid, and on an
+    octree every cell of the frame that this plane passes through.
+    """
+    grid = frame.grid
+    a, b = [k for k in range(3) if k != axis]
+    if isinstance(grid, OctreeGrid):
+        mins, maxs = grid.cell_bounds(frame.cells.level, frame.cells.ijk)
+        plane = grid.origin[axis] + (index + 0.5) * grid.finest_spacing[axis]
+        cut = (mins[:, axis] < plane) & (maxs[:, axis] > plane)
+        lo, hi = mins[cut][:, [a, b]], maxs[cut][:, [a, b]]
+    else:
+        origin = np.array(grid.extent[0::2])[[a, b]]
+        spacing = np.array(grid.spacing)[[a, b]]
+        ia, ib = np.meshgrid(np.arange(grid.resolution[a]), np.arange(grid.resolution[b]), indexing="ij")
+        lo = origin + np.column_stack([ia.ravel(), ib.ravel()]) * spacing
+        hi = lo + spacing
+    return np.stack([lo, np.column_stack([hi[:, 0], lo[:, 1]]), hi, np.column_stack([lo[:, 0], hi[:, 1]])], axis=1)
+
+
+def _draw_section_cells(ax, frame: StructuralFrame | FaultFrame, axis: int, index: int) -> None:
+    """Outline the cells a slice cuts, above the background image and below lines and points."""
+    ax.add_collection(PolyCollection(_section_cells(frame, axis, index), facecolors="none",
+                                     edgecolors="#333333", linewidths=0.3, alpha=0.7, zorder=1))
 
 
 def _octree_hexahedra(grid: OctreeGrid, cells: OctreeCells) -> pv.UnstructuredGrid:
@@ -435,6 +474,7 @@ def plot_structural_model_2D(
         show_result: bool = True,
         show_fault_contours: bool = True,
         show_input_data: bool = True,
+        show_grid: bool = False,
         title_suffix: str = "",
 ) -> None:
     """
@@ -447,13 +487,17 @@ def plot_structural_model_2D(
     axis : {'x', 'y', 'z'}, default 'y'
         Axis along which to slice.
     index : int, optional
-        Slice index along the chosen axis. Defaults to the mid-point.
+        Slice index along the chosen axis, at the finest resolution on an
+        octree. Defaults to the mid-point.
     show_result : bool, default True
         Overlay the lithology block as a colored background if available.
     show_fault_contours : bool, default True
         Overlay fault isolines from their scalar fields.
     show_input_data : bool, default True
         Overlay input surface points and orientation arrows.
+    show_grid : bool, default False
+        Outline the grid cells the slice cuts: uniform voxels on a regular
+        grid, cells of different sizes on an octree.
     title_suffix : str, default ""
         Optional string appended to the plot title.
     """
@@ -463,9 +507,7 @@ def plot_structural_model_2D(
 
     dim = {'x': 0, 'y': 1, 'z': 2}[axis]
 
-    x = frame.grid.gridx
-    y = frame.grid.gridy
-    z = frame.grid.gridz
+    x, y, z = _axis_centers(frame.grid)
 
     if index is None:
         index = {'x': len(x), 'y': len(y), 'z': len(z)}[axis] // 2
@@ -511,7 +553,7 @@ def plot_structural_model_2D(
         else:
             id_to_color, id_to_label = _lithology_colors(frame)
             if frame.lith_block is not None:
-                slice_lith = np.take(frame.lith_block, index, axis=dim)
+                slice_lith = frame.section(frame.lith_block, dim, index)
                 slice_lith = slice_lith.T
 
                 sorted_ids = sorted(id_to_color)
@@ -520,6 +562,9 @@ def plot_structural_model_2D(
                 norm = BoundaryNorm(sorted_ids + [sorted_ids[-1] + 1], len(colors))
                 ax.imshow(slice_lith, origin='lower', cmap=cmap, norm=norm, extent=extent, alpha=1, zorder=-100)
 
+    if show_grid:
+        _draw_section_cells(ax, frame, dim, index)
+
     # ---- faults as contours from their scalar fields ----
     if show_fault_contours and frame.fault_frame is not None:
         for fault_index, fault in enumerate(frame.fault_frame.fault_elements):
@@ -527,14 +572,14 @@ def plot_structural_model_2D(
             f_sv = fault.scalar_value
             if f_sf is None or f_sv is None:
                 continue
-            f_slice = np.take(f_sf, index, axis=dim).T
+            f_slice = frame.fault_frame.section(f_sf, dim, index).T
 
             # if a result was already computed
             if show_result and frame.lith_block is not None:
                 # this mask is the age mask defined by youngest group affected by this fault
                 group_index = frame.fault_activity_verbose[fault.name]["youngest_group_index"] - 1
                 if group_index >= 0:
-                    fault_mask = np.take(frame.structural_groups[group_index].get_mask(), index, axis=dim).T
+                    fault_mask = frame.section(frame.structural_groups[group_index].get_mask(), dim, index).T
                 else:
                     fault_mask = np.zeros_like(f_slice, dtype=bool)
 
@@ -828,15 +873,19 @@ def plot_fault_model_2D(
         show_results: bool = True,
         show_input_data: bool = True,
         show_fault_contours: bool = True,
+        show_grid: bool = False,
 ) -> None:
     """
     2D slice plot for a FaultFrame.
 
     - If show_results=True AND a domain_map is present: plots domain map + fault isolines.
     - Otherwise: plots only input data (points) if available.
+    - With show_grid=True: outlines the grid cells the slice cuts (the fault
+      cells on an octree).
 
-    Extent is computed from grid coordinates (grid.gridx/gridy/gridz) with half-cell padding,
-    so imshow/contour align properly.
+    Extent is computed from the cell-center coordinates with half-cell padding,
+    so imshow/contour align properly. On an octree, ``index`` and the centers
+    refer to the finest resolution.
     """
 
     assert axis in ("x", "y", "z"), "Axis must be 'x', 'y', or 'z'."
@@ -846,28 +895,7 @@ def plot_fault_model_2D(
 
     grid = fault_frame.grid
 
-    # --- safe attribute getter ---
-    def _get_coord(obj, name):
-        val = getattr(obj, name, None)
-        if val is not None:
-            return val
-
-        sub = obj.grid
-        if sub is not None:
-            return getattr(sub, name, None)
-
-        return None
-
-    x = _get_coord(grid, "gridx")
-    y = _get_coord(grid, "gridy")
-    z = _get_coord(grid, "gridz")
-
-    if x is None or y is None or z is None:
-        raise ValueError("Grid must provide gridx, gridy, gridz coordinate arrays.")
-
-    x = np.asarray(x)
-    y = np.asarray(y)
-    z = np.asarray(z)
+    x, y, z = _axis_centers(grid)
 
     if index is None:
         index = {'x': len(x), 'y': len(y), 'z': len(z)}[axis] // 2
@@ -909,7 +937,7 @@ def plot_fault_model_2D(
     # RESULTS: domain map + isolines
     # ---------------------------
     if has_result:
-        domain_slice = np.take(domain_map, index, axis=dim).T
+        domain_slice = fault_frame.section(domain_map, dim, index).T
 
         domain_values = np.unique(domain_slice)
         domain_values = domain_values[~np.isnan(domain_values)]
@@ -932,6 +960,9 @@ def plot_fault_model_2D(
             cbar = plt.colorbar(im, ax=ax, ticks=domain_values)
             cbar.set_label("Fault Domain")
 
+        if show_grid:
+            _draw_section_cells(ax, fault_frame, dim, index)
+
         # fault contours (only if requested)
         if show_fault_contours:
             handles = []
@@ -941,7 +972,7 @@ def plot_fault_model_2D(
                 if sf is None or sv is None:
                     continue
 
-                f_slice = np.take(sf, index, axis=dim).T
+                f_slice = fault_frame.section(sf, dim, index).T
                 fcol = fault.color or "black"
 
                 CS = ax.contour(

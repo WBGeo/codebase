@@ -75,6 +75,37 @@ class _PerCellResults:
         """
         return to_regular(self.grid, self.cells, values, resolution)
 
+    def section(self, values: npt.NDArray[np.generic], axis: int, index: int) -> npt.NDArray[np.generic]:
+        """
+        One slice of a per-cell array, as ``np.take(values, index, axis)`` of a regular grid.
+
+        Regular grid: exactly that. Octree: the slice through the centers of the
+        finest cells with that index along ``axis`` (the equivalent regular
+        grid's slice), each value taken from the cell containing the center.
+
+        Args:
+            values: A per-cell array of this frame.
+            axis: The axis the slice is normal to: 0 (x), 1 (y) or 2 (z).
+            index: Index of the slice along ``axis``, at the finest resolution.
+
+        Returns:
+            Array of shape ``(n_a, n_b)`` over the two other axes, in order.
+        """
+        if not isinstance(self.grid, OctreeGrid):
+            return np.take(np.asarray(values), index, axis=axis)
+        grid = self.grid
+        n = np.array(grid.finest_resolution, dtype=np.int64)
+        if not 0 <= index < n[axis]:
+            raise IndexError(f"Slice index {index} is outside 0..{n[axis] - 1} along axis {axis}.")
+        a, b = [k for k in range(3) if k != axis]
+        ia, ib = np.meshgrid(np.arange(n[a]), np.arange(n[b]), indexing="ij")
+        ijk = np.empty((ia.size, 3), dtype=np.int64)
+        ijk[:, axis] = index
+        ijk[:, a] = ia.ravel()
+        ijk[:, b] = ib.ravel()
+        cells = self.cells.locate(grid, grid.cell_centers(grid.max_level, ijk))
+        return np.asarray(values)[cells].reshape(n[a], n[b])
+
     def _check_arrays(self, arrays: Dict[str, Optional[npt.NDArray[np.generic]]]) -> None:
         """Raise if any of the named arrays doesn't have this frame's per-cell shape."""
         expected = self.cell_array_shape()
@@ -635,15 +666,15 @@ class StructuralFrame(_PerCellResults, BaseModel):
         # --- Extract slice and extent ---
         xmin, xmax, ymin, ymax, zmin, zmax = self.grid.extent
         if axis == "y":
-            data_slice = group.scalar_field[:, index, :].T
+            data_slice = self.section(group.scalar_field, 1, index).T
             extent = (xmin, xmax, zmin, zmax)
             xlabel, ylabel = "X", "Z"
         elif axis == "x":
-            data_slice = group.scalar_field[index, :, :].T
+            data_slice = self.section(group.scalar_field, 0, index).T
             extent = (ymin, ymax, zmin, zmax)
             xlabel, ylabel = "Y", "Z"
         elif axis == "z":
-            data_slice = group.scalar_field[:, :, index].T
+            data_slice = self.section(group.scalar_field, 2, index).T
             extent = (xmin, xmax, ymin, ymax)
             xlabel, ylabel = "X", "Y"
         else:
@@ -690,7 +721,7 @@ class StructuralFrame(_PerCellResults, BaseModel):
     def plot_age_mask_section(self, group_nr: int = 0, axis: str = "y", index: int = 0) -> None:
         """
         Plot a section of an age mask (boolean field) along a specified axis at a given index.
-        Assumes masks are stored in XYZ order matching grid.resolution.
+        Index along the finest resolution on an octree (see ``section``).
         """
         group = self.structural_groups[group_nr]
         mask = group.get_mask()
@@ -702,17 +733,17 @@ class StructuralFrame(_PerCellResults, BaseModel):
 
         if axis == "y":
             # X-Z at fixed Y=index
-            mask_slice = mask[:, index, :].T  # (Z, X)
+            mask_slice = self.section(mask, 1, index).T  # (Z, X)
             extent = (xmin, xmax, zmin, zmax)
             xlabel, ylabel = "X", "Z"
         elif axis == "x":
             # Y-Z at fixed X=index
-            mask_slice = mask[index, :, :].T  # (Z, Y)
+            mask_slice = self.section(mask, 0, index).T  # (Z, Y)
             extent = (ymin, ymax, zmin, zmax)
             xlabel, ylabel = "Y", "Z"
         elif axis == "z":
             # X-Y at fixed Z=index
-            mask_slice = mask[:, :, index].T  # (Y, X)
+            mask_slice = self.section(mask, 2, index).T  # (Y, X)
             extent = (xmin, xmax, ymin, ymax)
             xlabel, ylabel = "X", "Y"
         else:
