@@ -59,11 +59,11 @@ If the geological model includes faults, they must be modelled before the strati
 Fault interpolation currently uses Universal Co-Kriging exclusively, so **both surface points and orientations are required for every fault**. The result is a `FaultModelResults` object containing:
 
 - A **surface mesh** for each fault (the boundary between hanging wall and footwall).
-- A **domain map** that partitions every voxel in the grid into strictly separate, non-overlapping fault blocks. Stratigraphic groups that are active for a given fault will be interpolated independently in each of its domains; groups that post-date the fault are not affected by the domain split.
+- A **domain map** that partitions every voxel in the grid into strictly separate, non-overlapping fault blocks. Stratigraphic groups that are active for a given fault will be interpolated independently in each of its domains; groups that post-date the fault are not affected by the domain split. The domain map is only computed if no faults cross-cut (see limitations below).
 
 **Limitations of the fault model:**
 
-- **Cross-cutting faults are not supported.** Each pair of faults is tested for isovalue-band overlap after interpolation. If two fault surfaces intersect within the model domain the computation raises an error. Ensure faults are geometrically compatible before running the model.
+- **Cross-cutting faults are not supported for structural modeling.** Each pair of faults is tested for isovalue-band overlap after interpolation. If two fault surfaces intersect within the model domain, the fault model is still computed and can be inspected (the 3D plot highlights the line where the faults cross), but the result is flagged `cross_cutting=True`, has no domain map, and is rejected by `Compute Structural Model` / `build_structural_frame` with an error. Fix the fault geometry and recompute the fault model.
 - **Every fault must split the grid.** A fault whose scalar field does not actually separate the domain into two non-empty sides will raise an error. Faults that are entirely outside the grid extent, or whose surface does not reach across the domain, cannot be modelled.
 
 ### 4. Build the structural model
@@ -199,6 +199,9 @@ fault_model_result.fault_frame.detailed_report()
 - **`show_input_data`** *(optional)*: Render input surface points and orientation arrows. Default `True`.
 - **`show_domain_map`** *(optional)*: Render translucent fault domain blocks. Default `True`.
 - **`domain_opacity`** *(optional)*: Opacity of the domain blocks. Default `0.15`.
+- **`highlight_crosscuts`** *(optional)*: Highlight the line where two fault surfaces cross. Has no effect if no faults cross or if `show_surface_meshes` is `False`. Default `True`.
+- **`crosscut_color`** *(optional)*: Color of the highlighted crosscut lines. Default `"red"`.
+- **`crosscut_line_width`** *(optional)*: Line width of the highlighted crosscut lines. Default `6.0`.
 - **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
 - **`show`** *(optional)*: If `True`, opens the interactive window immediately. Default `True`.
 

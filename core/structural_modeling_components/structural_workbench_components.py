@@ -172,6 +172,7 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                  group='Inputs',
                  identifier='wbgeo::structural_modeling',  # a unique identifier
                  return_name='structural_model',  # the name for the returned-port
+                 input_checks=[general_faults.check_fault_model_not_crosscutting],
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
@@ -195,9 +196,19 @@ def structural_modeling(
   :param elements: Structural input data including surface points, orientations, and group mapping.
   :param grid: The computation grid defining the model domain.
   :param fault_model: Optional fault model output from the Compute Fault Model component.
+      Must have cross_cutting=False (raises ValueError otherwise) -- a
+      cross-cutting fault model has no domain map to interpolate against.
   :param options: Optional smart options for interpolation method and parameter selection.
   :return: StructuralModelResults containing scalar fields, lithology block, and surface meshes.
+
+  Raises:
+      ValueError: fault_model is connected and has cross_cutting=True.
   """
+  # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
+  # so also enforced here rather than relying solely on the Workbench's
+  # input_checks catching the connection.
+  general_faults.check_fault_model_not_crosscutting(fault_model)
+
   frame = general.build_structural_frame(input_data_elements=elements,
                                          grid=grid,
                                          fault_model_results=fault_model
@@ -277,9 +288,15 @@ def compute_fault_frame(
   geometry as surface meshes. Connect the output to the Compute Structural
   Model component to incorporate faults into the geological model.
 
+  If any two faults cross-cut (their isovalue bands overlap), domaining is
+  skipped and the returned result has cross_cutting=True -- fault surfaces
+  are still available to inspect (e.g. with Plot Fault Model 3D) to see where
+  the faults cross, but this result cannot be wired into Compute Structural
+  Model until the fault geometry is fixed and recomputed without crossing.
+
   :param data_faults: Fault input data including surface points, orientations, and fault names.
   :param grid: The computation grid defining the model domain.
-  :return: FaultModelResults containing fault surfaces and the domain map.
+  :return: FaultModelResults containing fault surfaces and, if not cross-cutting, the domain map.
   """
   fault_frame = general_faults.build_fault_frame(
     input_data_fault_elements=data_faults,

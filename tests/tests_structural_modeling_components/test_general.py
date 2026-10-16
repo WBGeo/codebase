@@ -6,6 +6,7 @@ import pytest
 
 import core.structural_modeling_components.general as mod  # type: ignore
 
+from core.object_components import InputData_StructuralElements, FaultModelResults
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_objects.structural_objects import (
     StructuralElement,
@@ -1048,3 +1049,49 @@ def test_validate_passes_when_orientations_present_in_correct_domain():
     frame.fault_activity = {"F1": 0}
 
     mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)  # must not raise
+
+
+# -----------------------------------------------------------------------------
+# build_structural_frame -- rejects a cross-cutting FaultModelResults
+# -----------------------------------------------------------------------------
+
+def _make_input_data_elements() -> InputData_StructuralElements:
+    return InputData_StructuralElements(
+        name="test_model",
+        mapping_object={"G1": ("e1", "e2")},
+        surface_points=pd.DataFrame(
+            {"X": [0.5, 1.5], "Y": [0.5, 1.5], "Z": [0.5, 0.5], "formation": ["e1", "e2"]}
+        ),
+    )
+
+
+def test_build_structural_frame_rejects_crosscutting_fault_model():
+    grid = make_grid()
+    fault_frame = FaultFrame(fault_elements=[FaultElement("F1"), FaultElement("F2")])
+    fault_frame.set_grid(grid)
+    # domain_map intentionally left at its None default, as compute_fault_domains
+    # would leave it when it detects a cross-cut.
+    fault_model = FaultModelResults(fault_frame=fault_frame, cross_cutting=True)
+
+    with pytest.raises(ValueError, match="cross-cutting"):
+        mod.build_structural_frame(
+            input_data_elements=_make_input_data_elements(),
+            grid=grid,
+            fault_model_results=fault_model,
+        )
+
+
+def test_build_structural_frame_accepts_non_crosscutting_fault_model():
+    grid = make_grid()
+    fault_frame = FaultFrame(fault_elements=[FaultElement("F1"), FaultElement("F2")])
+    fault_frame.set_grid(grid)
+    fault_frame.domain_map = np.zeros(grid.resolution, dtype=int)
+    fault_model = FaultModelResults(fault_frame=fault_frame, cross_cutting=False)
+
+    frame = mod.build_structural_frame(
+        input_data_elements=_make_input_data_elements(),
+        grid=grid,
+        fault_model_results=fault_model,
+    )
+
+    assert frame.fault_frame is fault_frame
