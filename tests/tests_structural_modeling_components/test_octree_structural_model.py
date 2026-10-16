@@ -50,11 +50,7 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
     OctreeGrid,
     RegularGrid,
 )
-from core.structural_modeling_components.structural_objects.structural_objects import (
-    FaultElement,
-    FaultFrame,
-    InterpolationMethod,
-)
+from core.structural_modeling_components.structural_objects.structural_objects import InterpolationMethod
 
 
 # -----------------------------------------------------------------------------
@@ -499,14 +495,3 @@ def test_interpolators_without_a_fit_are_refused_on_an_octree(monkeypatch):
     with pytest.raises(NotImplementedError, match="UpperSeries"):
         general.compute_structural_model(frame)
 
-
-def test_faults_are_refused_on_an_octree():
-    grid = octree_grid()
-    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
-    fault_frame = FaultFrame(fault_elements=[FaultElement(name="F1")])
-    fault_frame.set_grid(grid)
-    fault_frame.cells = base_cells(grid)
-    fault_frame.set_domain_map(np.zeros(len(fault_frame.cells), dtype=int))
-    frame.set_fault_frame(fault_frame)
-    with pytest.raises(NotImplementedError, match="faults"):
-        general.compute_structural_model(frame)

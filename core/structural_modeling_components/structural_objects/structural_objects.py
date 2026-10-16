@@ -474,10 +474,11 @@ class StructuralFrame(_PerCellResults, BaseModel):
         """
         Fault domain id of every cell of this frame, shape ``cell_array_shape()``.
 
-        Regular grid: the fault frame's ``domain_map``. Octree: the fault frame's
-        cells are coarser than or equal to this frame's cells, so each cell takes
-        the domain of the fault cell that contains its center. Without a fault
-        frame every cell is in domain 0.
+        Regular grid: the fault frame's ``domain_map``. Octree: each cell takes
+        the domain of the fault cell that contains its center. Structural cells
+        refine the fault cells and only merge within one domain, so every fault
+        cell a structural cell overlaps has that domain. Without a fault frame
+        every cell is in domain 0.
         """
         if self.fault_frame is None:
             return np.zeros(self.cell_array_shape(), dtype=int)

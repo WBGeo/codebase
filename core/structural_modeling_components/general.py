@@ -424,27 +424,35 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
         if ff is not None:
             combined_mask = np.zeros_like(mask, dtype=bool)
             for d in domain_ids:
-                # Check if this domain is active for this group
-                domain_ok = False
-                for fault in ff.fault_elements:
-                    youngest_idx = frame.fault_activity[fault.name]
-                    if group_idx < youngest_idx:
-                        continue
-                    if d in fault.separated_domains_flat():
-                        domain_ok = True
-                        break
-
-                # Groups unaffected by any fault in this domain are allowed
-                if not domain_ok and all(group_idx < frame.fault_activity[f.name] for f in ff.fault_elements):
-                    domain_ok = True
-
-                if domain_ok:
+                if domain_is_active_for_group(ff, frame.fault_activity, group_idx, int(d)):
                     combined_mask[domain_map == d] = mask[domain_map == d]
 
             mask = combined_mask
 
         # Store the final mask
         group.set_mask(mask)
+
+
+def domain_is_active_for_group(
+        fault_frame: FaultFrame,
+        fault_activity: dict[str, int],
+        group_idx: int,
+        domain_id: int,
+) -> bool:
+    """
+    Whether a group's age mask is kept in a fault domain.
+
+    True if a fault that affects the group separates the domain, or if no fault
+    affects the group at all. ``fault_activity[fault.name]`` is the youngest
+    affected group index; a fault affects the group iff ``group_idx >= it``.
+    """
+    for fault in fault_frame.fault_elements:
+        if group_idx < fault_activity[fault.name]:
+            continue
+        if domain_id in fault.separated_domains_flat():
+            return True
+    # Groups unaffected by any fault are allowed everywhere
+    return all(group_idx < fault_activity[f.name] for f in fault_frame.fault_elements)
 
 
 # --- 3) Combine all domains to final lithology block --------------------------

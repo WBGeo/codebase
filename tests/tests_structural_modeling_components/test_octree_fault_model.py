@@ -48,8 +48,6 @@ def two_faults_input(f2_x_of_z=lambda z: 0.85, f2_normal=(1.0, 0.0, 0.0)) -> Inp
 
 
 def octree_grid() -> OctreeGrid:
-    # nx != nz on purpose: on grids with nx == nz the regular path transposes the
-    # (already XYZ) fault field before computing domain pairs, so its pairs are wrong there.
     return OctreeGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), base_resolution=(3, 2, 2), max_level=3)
 
 

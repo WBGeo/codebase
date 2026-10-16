@@ -159,6 +159,23 @@ def structural_modeling_smart_options_to_data(
   return smartcontrols.form_data_to_wbgeo_type_data(_input, StructuralFrameInputOptions)
 
 
+def pre_check_fault_model_grid(grid: grid_classes.RegularGrid,
+                               fault_model: typing.Optional[FaultModelResults] = None) -> None:
+  """
+  Pre-check: the fault model must have been computed on the grid connected to
+  the structural model. Fault domains are defined per cell of that grid, so a
+  fault model from another grid can't be combined with this one.
+  """
+  if fault_model is None:
+    return
+  fault_grid = fault_model.fault_frame.grid
+  if fault_grid != grid:
+    raise ValueError(
+      "The fault model was computed on a different grid than the one connected to this component "
+      f"(fault model: {fault_grid}, connected: {grid}). Connect the same grid to both components."
+    )
+
+
 SmartStructuralFrameInputOptions = typing.Annotated[
   StructuralFrameInputOptions, SmartInput(inputs=['data_elements'],
                                           to_form=structural_modeling_smart_options,
@@ -172,6 +189,7 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                  group='Inputs',
                  identifier='wbgeo::structural_modeling',  # a unique identifier
                  return_name='structural_model',  # the name for the returned-port
+                 input_checks=[pre_check_fault_model_grid],
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
@@ -198,6 +216,9 @@ def structural_modeling(
   :param options: Optional smart options for interpolation method and parameter selection.
   :return: StructuralModelResults containing scalar fields, lithology block, and surface meshes.
   """
+  # Pre-checks can be skipped by a caller (see docs/developers/components.md), so also run it here.
+  pre_check_fault_model_grid(grid, fault_model)
+
   frame = general.build_structural_frame(input_data_elements=elements,
                                          grid=grid,
                                          fault_model_results=fault_model
