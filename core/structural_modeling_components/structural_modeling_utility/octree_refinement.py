@@ -15,7 +15,11 @@ The result of both is a set of cells (:class:`OctreeCells`) that tiles the exten
 Both can work per fault domain: given the domain of every cell
 (:data:`CellDomains`), each point is labelled with the domain of the cell it
 belongs to, a lattice point shared by cells of different domains is labelled
-once per domain, and only siblings of one domain are merged.
+once per domain, and only siblings of one domain are merged (or, with separate
+merge labels, only siblings with the same merge label).
+
+:func:`balance_2to1`: refine until face-adjacent cells differ by at most one
+level.
 
 Ported from the adaptive classification loop of the octree research code
 (corner-disagreement refinement), adapted to integer cell addresses and a grid
@@ -111,6 +115,7 @@ def coarsen_cells(
         cells: OctreeCells,
         label_points: Union[PointLabeler, DomainPointLabeler],
         cell_domains: Optional[CellDomains] = None,
+        merge_labels: Optional[CellDomains] = None,
 ) -> OctreeCells:
     """
     Merge sibling leaves back into their parent wherever the labels don't change.
@@ -131,12 +136,18 @@ def coarsen_cells(
         label_points: Labels for points; see :data:`PointLabeler`. With
             ``cell_domains`` a :data:`DomainPointLabeler`.
         cell_domains: Domain of each cell; see :data:`CellDomains`. When given,
-            only children of one domain are merged, and the parent's lattice
-            points are labelled with that domain.
+            each child's corners are labelled with the child's domain, and
+            (without ``merge_labels``) only children of one domain are merged.
+        merge_labels: Optional label of each cell, in the form of
+            :data:`CellDomains`: only children with the same merge label are
+            merged. Lets children of different domains merge where that doesn't
+            matter, while their corners are still labelled with their own
+            domains. Defaults to ``cell_domains``.
 
     Returns:
         The coarsened leaf cells.
     """
+    merge_labels = merge_labels if merge_labels is not None else cell_domains
     level = cells.level.astype(np.int64)
     ijk = cells.ijk.astype(np.int64)
 
@@ -154,19 +165,28 @@ def coarsen_cells(
             continue
 
         candidates = parent_ijk_of_child[first[complete]]
-        domains = None
-        one_domain = np.ones(candidates.shape[0], dtype=bool)
-        if cell_domains is not None:
-            child_domains = np.asarray(cell_domains(child_level, ijk[at_level]), dtype=np.int64)
+        one_label = np.ones(candidates.shape[0], dtype=bool)
+        if merge_labels is not None:
+            child_labels = np.asarray(merge_labels(child_level, ijk[at_level]), dtype=np.int64)
             lowest = np.full(unique_keys.size, np.iinfo(np.int64).max)
             highest = np.full(unique_keys.size, np.iinfo(np.int64).min)
-            np.minimum.at(lowest, inverse.ravel(), child_domains)
-            np.maximum.at(highest, inverse.ravel(), child_domains)
-            one_domain = (lowest == highest)[complete]
-            domains = lowest[complete]
-        lattice = (2 * candidates[:, None, :] + _PARENT_LATTICE_OFFSETS[None, :, :])
+            np.minimum.at(lowest, inverse.ravel(), child_labels)
+            np.maximum.at(highest, inverse.ravel(), child_labels)
+            one_label = (lowest == highest)[complete]
+
+        # The 8 children of every candidate, and their corners (the parent's 27
+        # lattice points), each labelled with its child's domain.
+        parent_of = inverse.ravel()
+        is_candidate = complete[parent_of]
+        order = np.argsort(parent_of[is_candidate], kind="stable")
+        children = at_level[is_candidate][order].reshape(-1, 8)
+        lattice = (ijk[children][:, :, None, :] + CORNER_OFFSETS[None, None, :, :]).reshape(-1, 64, 3)
+        domains = None
+        if cell_domains is not None:
+            child_domains = np.asarray(cell_domains(child_level, ijk[children.ravel()]), dtype=np.int64)
+            domains = np.repeat(child_domains.reshape(-1, 8), 8, axis=1)
         labels = _labels_at_lattice(grid, child_level, lattice, label_points, domains)
-        uniform = one_domain & np.all(labels == labels[:, :1, :], axis=(1, 2))
+        uniform = one_label & np.all(labels == labels[:, :1, :], axis=(1, 2))
         if not uniform.any():
             continue
 
@@ -178,6 +198,61 @@ def coarsen_cells(
         level = np.concatenate([level[keep], np.full(int(uniform.sum()), parent_level, dtype=np.int64)])
         ijk = np.concatenate([ijk[keep], candidates[uniform]])
 
+    return OctreeCells(level=level.astype(np.uint8), ijk=ijk.astype(np.int32))
+
+
+def balance_2to1(grid: OctreeGrid, cells: OctreeCells) -> OctreeCells:
+    """
+    Refine until cells that share a face differ by at most one level (2:1 balance).
+
+    Repeatedly splits every leaf that has a face neighbour more than one level
+    finer into its 8 children, until none is left. Only splits, never merges:
+    every cell at max level stays, and the result refines ``cells``.
+
+    Args:
+        grid: The octree grid.
+        cells: Leaf cells that tile the extent.
+
+    Returns:
+        The balanced leaves. ``cells`` itself if it is balanced already.
+    """
+    level = cells.level.astype(np.int64)
+    ijk = cells.ijk.astype(np.int64)
+    changed = False
+    while True:
+        # Level of every finest voxel, and the finest level among its face neighbours.
+        level_map = np.empty(grid.finest_resolution, dtype=np.int8)
+        for lvl in np.unique(level):
+            members = np.flatnonzero(level == lvl)
+            n = 2 ** (grid.max_level - int(lvl))
+            view = level_map.reshape(level_map.shape[0] // n, n, level_map.shape[1] // n, n,
+                                     level_map.shape[2] // n, n)
+            view[ijk[members, 0], :, ijk[members, 1], :, ijk[members, 2], :] = lvl
+        finer_neighbour = np.full(level_map.shape, -1, dtype=np.int8)
+        for axis in range(3):
+            lower = [slice(None)] * 3
+            upper = [slice(None)] * 3
+            lower[axis], upper[axis] = slice(0, -1), slice(1, None)
+            np.maximum(finer_neighbour[tuple(lower)], level_map[tuple(upper)], out=finer_neighbour[tuple(lower)])
+            np.maximum(finer_neighbour[tuple(upper)], level_map[tuple(lower)], out=finer_neighbour[tuple(upper)])
+
+        split = np.zeros(level.size, dtype=bool)
+        for lvl in np.unique(level):
+            if lvl >= grid.max_level - 1:
+                continue  # no neighbour can be two levels finer
+            members = np.flatnonzero(level == lvl)
+            n = 2 ** (grid.max_level - int(lvl))
+            nx, ny, nz = grid.cells_per_axis(int(lvl))
+            finest_near = finer_neighbour.reshape(nx, n, ny, n, nz, n).max(axis=(1, 3, 5))
+            split[members] = finest_near[ijk[members, 0], ijk[members, 1], ijk[members, 2]] > lvl + 1
+        if not split.any():
+            break
+        changed = True
+        children = (2 * ijk[split])[:, None, :] + CORNER_OFFSETS[None, :, :]
+        level = np.concatenate([level[~split], np.repeat(level[split] + 1, 8)])
+        ijk = np.concatenate([ijk[~split], children.reshape(-1, 3)])
+    if not changed:
+        return cells
     return OctreeCells(level=level.astype(np.uint8), ijk=ijk.astype(np.int32))
 
 
@@ -267,14 +342,16 @@ def _labels_at_lattice(
     Labels at integer lattice points of a level, shape ``lattice.shape[:2] + (k,)``.
 
     Neighbouring cells share lattice points, so each distinct point is labelled
-    once. With ``domains`` (one per cell, shape ``(n_cells,)``) the points of a
-    cell are labelled with its domain, and a point is shared only between cells
-    of the same domain.
+    once. With ``domains`` (one per row, shape ``(n_cells,)``, or one per point,
+    shape ``lattice.shape[:2]``) each point is labelled with its domain, and a
+    point is shared only between rows of the same domain.
     """
     n_cells, n_points = lattice.shape[:2]
     keys = lattice.reshape(-1, 3)
     if domains is not None:
-        keys = np.column_stack([keys, np.repeat(domains, n_points)])
+        domains = np.asarray(domains)
+        per_point = domains.ravel() if domains.ndim == 2 else np.repeat(domains, n_points)
+        keys = np.column_stack([keys, per_point])
     unique_keys, inverse = np.unique(keys, axis=0, return_inverse=True)
     points = grid.origin + unique_keys[:, :3] * grid.cell_size(level)
     if domains is None:

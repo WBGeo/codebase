@@ -94,6 +94,11 @@ AGapMitigation = typing.Annotated[
                                                   identifier='grid_classes.GapMitigation',
                                                   controlled='Select|balance_mesh_depth_adjacency|none')]
 
+ACellBalance = typing.Annotated[
+  grid_classes.CellBalance, AnnotatedScriptType(name='grid_classes.CellBalance', color='aqua',
+                                                identifier='grid_classes.CellBalance',
+                                                controlled='Select|none|face_2to1')]
+
 
 @wbgeo_component(description='Adaptive octree grid defined by an extent, base blocks and a maximum refinement level',
                  title='Octree Grid',
@@ -107,7 +112,8 @@ AGapMitigation = typing.Annotated[
 def _octree_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
                         base_resolution: AResolution3 = (4, 4, 4),
                         max_level: int = 4,
-                        gap_mitigation: AGapMitigation = grid_classes.GapMitigation.BALANCE_MESH_DEPTH_ADJACENCY.value
+                        gap_mitigation: AGapMitigation = grid_classes.GapMitigation.BALANCE_MESH_DEPTH_ADJACENCY.value,
+                        cell_balance: ACellBalance = grid_classes.CellBalance.NONE.value,
                         ) -> grid_classes.OctreeGrid:
   """
   Defines an adaptive 3D computation domain for the geological model.
@@ -133,13 +139,16 @@ def _octree_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
       Number of times a base block can be halved, between 0 and 10.
   gap_mitigation : GapMitigation
       How gaps in the extracted surfaces are avoided.
+  cell_balance : CellBalance
+      Grading of the stored cells: "face_2to1" lets cells that share a face
+      differ by at most one level; "none" (default) has no constraint.
 
   Returns
   -------
   OctreeGrid
       Grid defining the computation domain.
   """
-  return grid_classes.OctreeGrid(extent, base_resolution, max_level, gap_mitigation)
+  return grid_classes.OctreeGrid(extent, base_resolution, max_level, gap_mitigation, cell_balance)
 
 
 GroupNames = typing.Annotated[

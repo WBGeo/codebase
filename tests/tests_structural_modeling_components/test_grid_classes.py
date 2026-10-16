@@ -8,6 +8,7 @@ import pytest
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     CORNER_OFFSETS,
+    CellBalance,
     GapMitigation,
     OctreeGrid,
     RegularGrid,
@@ -46,7 +47,15 @@ def test_defaults():
     grid = OctreeGrid(extent=(0, 1000, 0, 1000, 0, 1000), base_resolution=(4, 4, 4))
     assert grid.max_level == 4
     assert grid.gap_mitigation is GapMitigation.BALANCE_MESH_DEPTH_ADJACENCY
+    assert grid.cell_balance is CellBalance.NONE
     assert grid.finest_resolution == (64, 64, 64)
+
+
+def test_cell_balance_dropdown_values_deserialize_like_the_runner():
+    assert issubclass(CellBalance, StrEnum)
+    for value in ("none", "face_2to1"):
+        grid = OctreeGrid(extent=EXTENT, base_resolution=BASE, cell_balance=value)
+        assert grid.cell_balance == value and isinstance(grid.cell_balance, CellBalance)
 
 
 def test_gap_mitigation_from_string():

@@ -9,7 +9,8 @@ dispatches here when the fault frame's grid is an OctreeGrid:
   2) Refine the octree wherever a corner lies on the other side of any fault, so
      every fault surface ends at max level across the whole extent. These are the
      stored cells: the domain id carries the same information as the sides, so
-     there is nothing to coarsen.
+     there is nothing to coarsen. With ``grid.cell_balance`` they are 2:1
+     balanced afterwards.
   3) Evaluate the faults at the cell centers; a cell's side of each fault, and
      with it its domain, is decided by its center, like a regular voxel.
   4) Domain ids, domain pairs, separated domains and the cross-cut check with the
@@ -57,9 +58,13 @@ from core.structural_modeling_components.structural_modeling_utility.dual_contou
     dual_contour,
     padding_shell,
 )
-from core.structural_modeling_components.structural_modeling_utility.octree_refinement import refine_cells
+from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
+    balance_2to1,
+    refine_cells,
+)
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
     CORNER_OFFSETS,
+    CellBalance,
     OctreeCells,
     OctreeGrid,
 )
@@ -115,6 +120,8 @@ def compute_fault_domains_octree(fault_frame: FaultFrame) -> FaultModelResults:
 
     logger.info("Refining the octree along the faults ...")
     cells = refine_cells(grid, lambda points: _fault_sides(youngest_first, fields, points))
+    if grid.cell_balance == CellBalance.FACE_2TO1:
+        cells = balance_2to1(grid, cells)
     logger.info("Fault octree cells: %d (equivalent regular grid: %d).",
                 len(cells), int(np.prod(grid.finest_resolution)))
 

@@ -18,8 +18,11 @@ dispatches here when the frame's grid is an OctreeGrid:
      EXTENDED also runs on a max-level shell around the extent, so it crosses the
      model box. COMBINED contours the lithology id itself.
   4) Coarsen back to the cells the stored result needs: merge cells wherever the
-     lithology and the age masks don't change, so the result keeps as few cells
-     as possible. Only cells of one fault domain are merged.
+     final model doesn't change, so the result keeps as few cells as possible.
+     That is: the lithology and the age masks are the same, and no fault that
+     affects the group present there separates the cells (cells on both sides
+     of a fault that the present group ignores do merge). With
+     ``grid.cell_balance`` the stored cells are 2:1 balanced afterwards.
   5) Evaluate fields, age masks and lithology at the final cell centers and store
      them in the usual attributes, one value per cell (see ``StructuralFrame``).
   6) With faults, the MASKED and EXTENDED_MASKED meshes of every fault: its
@@ -68,10 +71,15 @@ from core.structural_modeling_components.structural_modeling_utility.dual_contou
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     CellDomains,
+    balance_2to1,
     coarsen_cells,
     refine_cells,
 )
-from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeCells, OctreeGrid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import (
+    CellBalance,
+    OctreeCells,
+    OctreeGrid,
+)
 from core.structural_modeling_components.structural_objects.structural_objects import (
     FaultMeshType,
     GeoMeshType,
@@ -584,10 +592,52 @@ def _refine_for_surfaces(frame: StructuralFrame, fields: GroupFields) -> OctreeC
 
 
 def _coarsen_for_storage(frame: StructuralFrame, fields: GroupFields, cells: OctreeCells) -> OctreeCells:
-    """Merge cells of one domain back wherever the lithology and the age masks don't change."""
-    return coarsen_cells(
-        frame.grid, cells, _labeler(frame, fields, _storage_labels), cell_domains=_cell_domains(frame)
+    """
+    Merge cells back wherever the final model doesn't change, then balance if the grid asks for it.
+
+    Siblings merge where the lithology and every age mask are the same at the
+    corners of all of them (each corner evaluated in its own cell's domain), and
+    the fault-domain component of the group present there is the same: cells on
+    both sides of a fault merge only where the fault doesn't affect the group
+    present (``_present_component``).
+    """
+    coarse = coarsen_cells(
+        frame.grid, cells, _labeler(frame, fields, _storage_labels), cell_domains=_cell_domains(frame),
+        merge_labels=_present_component(frame, fields),
     )
+    if frame.grid.cell_balance == CellBalance.FACE_2TO1:
+        coarse = balance_2to1(frame.grid, coarse)
+    return coarse
+
+
+def _present_component(frame: StructuralFrame, fields: GroupFields) -> Optional[CellDomains]:
+    """
+    For each cell, the fault-domain component of the group present at its center,
+    labelled by its smallest domain id; None without faults.
+
+    The group present is the group of the cell's lithology; basement belongs to
+    the oldest group. Two cells with the same label are not separated by any
+    fault that affects that group.
+    """
+    if frame.fault_frame is None:
+        return None
+    grid = frame.grid
+    group_of_id = {elem.id: group_idx for group_idx, group in enumerate(frame.structural_groups)
+                   for elem in group.structural_elements}
+    oldest = len(frame.structural_groups) - 1
+
+    def label(level: int, ijk: IntArray) -> IntArray:
+        centers = grid.cell_centers(level, ijk)
+        domains = _point_domains(frame, centers)
+        lith, _ = _lithology_and_masks(frame, _evaluate_groups(frame, fields, centers, domains), domains)
+        present = np.array([group_of_id.get(int(i), oldest) for i in lith], dtype=np.int64)
+        out = np.empty(len(domains), dtype=np.int64)
+        for group_idx in np.unique(present):
+            at = present == group_idx
+            out[at] = _component_of_domains(frame, int(group_idx), domains[at])
+        return out
+
+    return label
 
 
 def _labeler(

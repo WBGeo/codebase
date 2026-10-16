@@ -25,7 +25,7 @@ from core.structural_modeling_components.structural_modeling_utility.octree_refi
     coarsen_cells,
     refine_cells,
 )
-from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeGrid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import CellBalance, OctreeGrid
 from core.structural_modeling_components.structural_objects.structural_objects import InterpolationMethod
 from core.structural_modeling_components.structural_workbench_components import pre_check_fault_model_grid
 
@@ -45,6 +45,7 @@ def _integration_module(name: str):
 # name -> (integration test module, fault activity as (fault, youngest affected group))
 MODELS = {
     "model2": ("test_model2_fault_with_unconformity_analytical", []),
+    "model2_fault_below_unconformity": ("test_model2_fault_with_unconformity_analytical", [("F1", "LowerSeries")]),
     "model9": ("test_model9_multi_fault_analytical", [("F1", "A"), ("F2", "B")]),
 }
 
@@ -73,6 +74,7 @@ def compute(model: str, grid, method: InterpolationMethod) -> StructuralModelRes
     ("model9", InterpolationMethod.UNIVERSAL_KRIGING),
     ("model2", InterpolationMethod.RADIAL_BASIS_FUNCTION),
     ("model2", InterpolationMethod.UNIVERSAL_COKRIGING),
+    ("model2_fault_below_unconformity", InterpolationMethod.RADIAL_BASIS_FUNCTION),
 ], ids=lambda p: f"{p[0]}-{p[1].name}")
 def results(request) -> tuple[StructuralModelResults, StructuralModelResults]:
     model, method = request.param
@@ -90,7 +92,9 @@ def test_faulted_octree_result_matches_the_regular_grid(results):
     assert len(octree.cells) < np.prod(octree.grid.finest_resolution)
     octree.check_cell_arrays()
     np.testing.assert_array_equal(octree.to_regular(octree.lith_block), regular.lith_block)
-    np.testing.assert_array_equal(octree.to_regular(octree.cell_domain_ids()), regular.cell_domain_ids())
+    # The exact domains are the fault frame's, on its own cells.
+    np.testing.assert_array_equal(octree.fault_frame.to_regular(octree.fault_frame.domain_map),
+                                  regular.cell_domain_ids())
     for oct_group, reg_group in zip(octree.structural_groups, regular.structural_groups):
         np.testing.assert_array_equal(octree.to_regular(oct_group.mask), reg_group.mask)
         for oct_elem, reg_elem in zip(oct_group.structural_elements, reg_group.structural_elements):
@@ -107,16 +111,96 @@ def test_scalar_fields_at_max_level_cells_equal_the_regular_grid(results):
         np.testing.assert_allclose(oct_group.scalar_field[fine], reg_group.scalar_field[i, j, k], atol=1e-4)
 
 
-def test_every_cell_lies_in_one_fault_domain(results):
-    """Cells refine the fault cells and only merge within a domain: no cell spans a fault."""
+def test_no_cell_spans_a_fault_that_affects_the_group_present(results):
+    """Cells merge across a fault only where the group present there ignores it."""
     octree, regular = results[0].structural_frame, results[1].structural_frame
     grid = octree.grid
-    domains = octree.cell_domain_ids()
     regular_domains = regular.cell_domain_ids()
+    group_of_id = {e.id: g for g, group in enumerate(regular.structural_groups) for e in group.structural_elements}
+    oldest = len(regular.structural_groups) - 1
     for cell in np.flatnonzero(octree.cells.level < grid.max_level):
         n = 2 ** (grid.max_level - int(octree.cells.level[cell]))
         i, j, k = octree.cells.ijk[cell].astype(int) * n
-        assert np.all(regular_domains[i:i + n, j:j + n, k:k + n] == domains[cell])
+        lith = regular.lith_block[i:i + n, j:j + n, k:k + n]
+        assert np.all(lith == lith.flat[0])  # the lithology doesn't change inside the cell
+        group = group_of_id.get(int(lith.flat[0]), oldest)
+        components = general_octree._component_of_domains(
+            octree, group, regular_domains[i:i + n, j:j + n, k:k + n].ravel())
+        assert np.all(components == components[0])
+
+
+def _largest_face_jump(grid, cells):
+    """The largest level difference between face-adjacent finest voxels."""
+    level_map = np.empty(grid.finest_resolution, dtype=int)
+    for level, ijk in zip(cells.level, cells.ijk):
+        n = 2 ** (grid.max_level - int(level))
+        i, j, k = np.asarray(ijk, dtype=int) * n
+        level_map[i:i + n, j:j + n, k:k + n] = level
+    return max(int(np.abs(np.diff(level_map, axis=a)).max(initial=0)) for a in range(3))
+
+
+def test_balanced_cells_are_graded_and_keep_the_result():
+    """With cell_balance = face_2to1 both stored octrees are 2:1 balanced; the model is unchanged."""
+    module_name, activity = MODELS["model2_fault_below_unconformity"]
+    elements, faults = _integration_module(module_name)._build_input_data()
+    results = {}
+    for balance in (CellBalance.NONE, CellBalance.FACE_2TO1):
+        grid = OctreeGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), base_resolution=(3, 2, 3), max_level=3,
+                          cell_balance=balance)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fault_result = gf.compute_fault_domains(gf.build_fault_frame(faults, grid))
+            frame = general.build_structural_frame(input_data_elements=elements, grid=grid,
+                                                   fault_model_results=fault_result)
+            for fault, group in activity:
+                frame.set_fault_activity_by_group(fault, group)
+            results[balance] = general.compute_structural_model(frame, extract_meshes=False,
+                                                                verbose=False).structural_frame
+    plain, balanced = results[CellBalance.NONE], results[CellBalance.FACE_2TO1]
+    assert _largest_face_jump(plain.grid, plain.cells) > 1  # so balancing has something to do
+    assert _largest_face_jump(balanced.grid, balanced.cells) <= 1
+    assert _largest_face_jump(balanced.grid, balanced.fault_frame.cells) <= 1
+    assert len(balanced.cells) > len(plain.cells)
+    balanced.check_cell_arrays()
+    np.testing.assert_array_equal(balanced.to_regular(balanced.lith_block), plain.to_regular(plain.lith_block))
+    for b_group, p_group in zip(balanced.structural_groups, plain.structural_groups):
+        np.testing.assert_array_equal(balanced.to_regular(b_group.mask), plain.to_regular(p_group.mask))
+    np.testing.assert_array_equal(balanced.fault_frame.to_regular(balanced.fault_frame.domain_map),
+                                  plain.fault_frame.to_regular(plain.fault_frame.domain_map))
+
+
+def test_cells_merge_across_a_fault_above_the_unconformity_it_does_not_reach():
+    """
+    Model 2 with the fault offsetting only the lower group, on a grid where the
+    fault plane x = 0.5 is no cell boundary: above the unconformity (z = 0.68)
+    nothing changes across the fault, so no max-level cells are kept there.
+    Below it the fault is active and stays at max level.
+    """
+    module_name, _ = MODELS["model2"]
+    elements, faults = _integration_module(module_name)._build_input_data()
+    grid = OctreeGrid(extent=(0.0, 1.05, 0.0, 1.0, 0.0, 1.0), base_resolution=(3, 2, 3), max_level=3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fault_result = gf.compute_fault_domains(gf.build_fault_frame(faults, grid))
+        frame = general.build_structural_frame(input_data_elements=elements, grid=grid,
+                                               fault_model_results=fault_result)
+        frame.set_fault_activity_by_group("F1", "LowerSeries")
+        octree = general.compute_structural_model(frame, extract_meshes=False, verbose=False).structural_frame
+    mins, maxs = grid.cell_bounds(octree.cells.level, octree.cells.ijk)
+    on_fault = (mins[:, 0] < 0.5) & (maxs[:, 0] > 0.5)
+    # Max-level cells whose parent lies between the rock3 and rock4 bases (z = 0.68, 0.84):
+    # nothing changes inside such a parent, so they must have merged.
+    fine = octree.cells.level == grid.max_level
+    pmins, pmaxs = grid.cell_bounds(grid.max_level - 1, octree.cells.ijk.astype(int) // 2)
+    parent_between = (pmins[:, 2] > 0.68) & (pmaxs[:, 2] < 0.84)
+    assert not np.any(fine & on_fault & parent_between)
+    assert np.any(on_fault & (mins[:, 2] > 0.68) & (maxs[:, 2] < 0.84))  # the merged cells are there
+    below = (maxs[:, 2] < 0.2) & on_fault
+    assert np.all(octree.cells.level[below] == grid.max_level)
+    # The fault model's own cells are at max level along the whole fault.
+    fmins, fmaxs = grid.cell_bounds(fault_result.fault_frame.cells.level, fault_result.fault_frame.cells.ijk)
+    f_on_fault = (fmins[:, 0] < 0.5) & (fmaxs[:, 0] > 0.5)
+    assert np.all(fault_result.fault_frame.cells.level[f_on_fault] == grid.max_level)
 
 
 def test_faulted_octree_result_survives_the_runner_round_trip(results):

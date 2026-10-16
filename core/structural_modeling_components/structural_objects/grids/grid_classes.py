@@ -184,6 +184,22 @@ class GapMitigation(StrEnum):
     NONE = "none"
 
 
+class CellBalance(StrEnum):
+    """
+    Grading of the stored octree cells: how much neighbouring cells may differ in level.
+
+    A ``StrEnum`` for the same reason as :class:`GapMitigation`.
+
+    Members:
+        NONE: No constraint; a max-level cell can sit next to a much coarser one.
+        FACE_2TO1: Cells that share a face differ by at most one level (2:1
+            balance). Only adds cells; every feature stays at max level.
+    """
+
+    NONE = "none"
+    FACE_2TO1 = "face_2to1"
+
+
 @wbgeo_type(
     name="Octree grid for adaptive discretization of a structural geological model",
     color="#7fc7a3",
@@ -213,6 +229,8 @@ class OctreeGrid:
         max_level: Number of times a base block can be halved along every axis.
             ``0`` makes the grid a plain regular grid of base blocks.
         gap_mitigation: How gaps in dual-contouring surfaces are avoided.
+        cell_balance: Grading of the stored cells (fault and structural
+            results); see :class:`CellBalance`. Off by default.
 
     Computed (created in ``__post_init__``):
         origin: Lower corner of the extent as ``(xmin, ymin, zmin)``.
@@ -226,6 +244,7 @@ class OctreeGrid:
     base_resolution: Resolution3
     max_level: int = 4
     gap_mitigation: GapMitigation = GapMitigation.BALANCE_MESH_DEPTH_ADJACENCY
+    cell_balance: CellBalance = CellBalance.NONE
 
     def __post_init__(self) -> None:
         """

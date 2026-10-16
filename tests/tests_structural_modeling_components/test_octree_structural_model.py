@@ -41,6 +41,7 @@ from core.structural_modeling_components.interpolator_functions.universal_krigin
     interpolate_group_universal_kriging,
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
+    balance_2to1,
     base_cells,
     coarsen_cells,
     refine_cells,
@@ -382,6 +383,62 @@ def test_refinement_continues_from_given_cells():
     # A max-level start cell is kept as it is, whatever its corners say.
     cells = refine_cells(grid, lambda p: (p[:, 0] > 0.01).astype(int), start=start)
     assert len(cells) == 1 and cells.level[0] == 3
+
+
+def _level_map(grid, cells):
+    """Level of every finest voxel, and whether the cells tile the extent exactly once."""
+    level_map = np.full(grid.finest_resolution, -1, dtype=int)
+    covered = np.zeros(grid.finest_resolution, dtype=int)
+    for level, ijk in zip(cells.level, cells.ijk):
+        n = 2 ** (grid.max_level - int(level))
+        i, j, k = np.asarray(ijk, dtype=int) * n
+        level_map[i:i + n, j:j + n, k:k + n] = level
+        covered[i:i + n, j:j + n, k:k + n] += 1
+    return level_map, bool(np.all(covered == 1))
+
+
+def _largest_face_jump(level_map):
+    return max(int(np.abs(np.diff(level_map, axis=a)).max(initial=0)) for a in range(3))
+
+
+def test_balancing_grades_the_cells_next_to_a_max_level_plane():
+    grid = octree_grid(base=(1, 1, 1), max_level=4)
+    # The plane x = 0.52 lies in the max-level cells right of x = 0.5; left of it
+    # the corners all agree, so the level-1 block [0, 0.5] stays: a jump of 3 levels.
+    cells = refine_cells(grid, lambda p: (p[:, 0] > 0.52).astype(int))
+    before, _ = _level_map(grid, cells)
+    assert _largest_face_jump(before) > 1
+    balanced = balance_2to1(grid, cells)
+    after, tiles = _level_map(grid, balanced)
+    assert tiles and _largest_face_jump(after) <= 1
+    # Only splits: every voxel is at least as fine as before, max-level voxels stay.
+    assert np.all(after >= before) and np.all(after[before == grid.max_level] == grid.max_level)
+    assert balance_2to1(grid, balanced) is balanced
+
+
+def test_balancing_leaves_a_balanced_octree_alone():
+    grid = octree_grid(base=(2, 2, 2), max_level=3)
+    cells = refine_cells(grid, lambda p: np.zeros(len(p), dtype=int))
+    assert balance_2to1(grid, cells) is cells
+
+
+def test_merge_labels_decide_which_siblings_merge_while_corners_keep_their_domains():
+    # Two domains split at x = 0.5; constant labels, so only the merge rule matters.
+    grid = octree_grid(base=(1, 1, 1), max_level=2)
+    domains = lambda level, ijk: (grid.cell_centers(level, ijk)[:, 0] >= 0.5).astype(np.int64)  # noqa: E731
+    refined = refine_cells(grid, lambda p: (p[:, 0] > 0.5).astype(int))
+    seen = []
+
+    def label(points, point_domains):
+        seen.append(point_domains)
+        return np.zeros(len(points), dtype=int)
+
+    same = lambda level, ijk: np.zeros(len(ijk), dtype=np.int64)  # noqa: E731
+    merged = coarsen_cells(grid, refined, label, cell_domains=domains, merge_labels=same)
+    assert len(merged) == 1
+    assert {0, 1} <= set(np.concatenate(seen).tolist())  # corners were labelled in both domains
+    kept = coarsen_cells(grid, refined, label, cell_domains=domains)  # default: merge within one domain only
+    assert len(kept) == 8
 
 
 # -----------------------------------------------------------------------------
