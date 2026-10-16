@@ -137,12 +137,29 @@ def test_fault_result_survives_the_runner_round_trip(results):
 
 
 @pytest.mark.parametrize("grid", [octree_grid(), octree_grid().equivalent_regular_grid()], ids=["octree", "regular"])
-def test_crossing_faults_are_refused(grid):
+def test_crossing_faults_are_flagged_and_kept_for_inspection(grid):
+    """Both grids: no domains, but fields and fault meshes; structural modeling refuses the result."""
+    import core.structural_modeling_components.general as general
+    from test_octree_structural_model import unconformity_input
+
     # F2 dips the other way and crosses F1 near z = 0.4.
     n2 = np.array([1.0, 0.0, 0.5]) / np.linalg.norm([1.0, 0.0, 0.5])
     crossing = two_faults_input(f2_x_of_z=lambda z: 0.6 - 0.5 * z, f2_normal=n2)
-    with pytest.raises(ValueError, match="crosscuts"):
-        compute(crossing, grid)
+    result = compute(crossing, grid)
+    assert result.cross_cutting is True
+    frame = result.fault_frame
+    assert frame.domain_map is None and not frame.domain_masks
+    for fault in frame.fault_elements:
+        assert fault.domain_pairs is None and fault.separated_domains is None
+        assert fault.scalar_field is not None
+        assert len(fault.vertices[FaultMeshType.UNMASKED]) > 0
+    with pytest.raises(ValueError, match="cross-cutting"):
+        general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid,
+                                       fault_model_results=result)
+
+
+def test_faults_that_do_not_cross_are_not_flagged(results):
+    assert results[0].cross_cutting is False and results[1].cross_cutting is False
 
 
 # -----------------------------------------------------------------------------

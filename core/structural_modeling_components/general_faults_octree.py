@@ -13,8 +13,9 @@ dispatches here when the fault frame's grid is an OctreeGrid:
      balanced afterwards.
   3) Evaluate the faults at the cell centers; a cell's side of each fault, and
      with it its domain, is decided by its center, like a regular voxel.
-  4) Domain ids, domain pairs, separated domains and the cross-cut check with the
-     regular path's own rules. The isovalue bands are tested at finest-voxel
+  4) The cross-cut check, then domain ids, domain pairs and separated domains,
+     with the regular path's own rules. Cross-cutting faults get no domains (the
+     result is flagged ``cross_cutting`` and keeps its fields and meshes). The isovalue bands are tested at finest-voxel
      centers, like on the regular grid: max-level cells are voxels, coarser cells
      the band can reach are expanded into their voxels for the test only. The
      band width uses a gradient median weighted by cell volume, from central
@@ -95,17 +96,21 @@ def compute_fault_domains_octree(fault_frame: FaultFrame) -> FaultModelResults:
     Returns
     -------
     FaultModelResults
-        A deep copy of the frame with ``cells`` set and, per cell, ``domain_map``,
-        ``domain_masks`` and each fault's ``scalar_field`` and ``mask``; per fault
-        ``scalar_value``, ``domain_pairs``, ``separated_domains`` and the UNMASKED
-        and EXTENDED meshes.
+        A deep copy of the frame with ``cells`` set and, per cell, each fault's
+        ``scalar_field`` and ``mask``; per fault ``scalar_value`` and the
+        UNMASKED and EXTENDED meshes. If no two faults cross-cut, also
+        ``domain_map``, ``domain_masks`` and per fault ``domain_pairs`` and
+        ``separated_domains``; otherwise these stay at their None/empty
+        defaults and ``cross_cutting`` is True, as on the regular path: the
+        result can be inspected but not used for structural modeling.
 
     Raises
     ------
     ValueError
-        If input data is missing, or two faults cross-cut.
+        If input data is missing.
     RuntimeError
-        If a fault doesn't split the model or produces no domain pairs.
+        If a fault doesn't split the model or produces no domain pairs (only
+        without cross-cutting).
     """
     grid = fault_frame.grid
     if not isinstance(grid, OctreeGrid):
@@ -134,23 +139,31 @@ def compute_fault_domains_octree(fault_frame: FaultFrame) -> FaultModelResults:
 
     domain_map = split_into_domains([fault.get_domain_mask() for fault in youngest_first])
     fault_frame.cells = cells
-    fault_frame.domain_map = domain_map
-    fault_frame.domain_masks = {int(uid): (domain_map == uid) for uid in np.unique(domain_map)}
 
     faults = fault_frame.fault_elements
     tolerances = [_band_tolerance(grid, cells, fields[f.name], centers) for f in faults]
     voxel_domains, voxel_values = _band_voxels(grid, cells, domain_map, faults, fields, tolerances)
-    for fault, tol, values in zip(faults, tolerances, voxel_values):
-        pairs = domain_pairs_from_band(voxel_domains, values, float(fault.scalar_value), tol)
-        if not pairs:
-            raise RuntimeError(f"Fault '{fault.name}' produced no valid domain_pairs after remap.")
-        fault.set_domain_pairs(frozenset((int(a), int(b)) for a, b in pairs))
-        fault.set_separated_domains(separated_domains(domain_map, fault.get_domain_mask(), fault.name))
 
-    raise_on_band_overlap(
-        [(f.name, values, float(f.scalar_value)) for f, values in zip(faults, voxel_values)],
-        tolerances,
-    )
+    # Cross-cut check ahead of domaining, as on the regular path: a cross-cutting
+    # fault set gets no domains, but keeps its fields and meshes for inspection.
+    try:
+        raise_on_band_overlap(
+            [(f.name, values, float(f.scalar_value)) for f, values in zip(faults, voxel_values)],
+            tolerances,
+        )
+        cross_cutting = False
+    except ValueError:
+        cross_cutting = True
+
+    if not cross_cutting:
+        fault_frame.domain_map = domain_map
+        fault_frame.domain_masks = {int(uid): (domain_map == uid) for uid in np.unique(domain_map)}
+        for fault, tol, values in zip(faults, tolerances, voxel_values):
+            pairs = domain_pairs_from_band(voxel_domains, values, float(fault.scalar_value), tol)
+            if not pairs:
+                raise RuntimeError(f"Fault '{fault.name}' produced no valid domain_pairs after remap.")
+            fault.set_domain_pairs(frozenset((int(a), int(b)) for a, b in pairs))
+            fault.set_separated_domains(separated_domains(domain_map, fault.get_domain_mask(), fault.name))
 
     logger.info("Extracting fault surfaces by dual contouring ...")
     dc_cells = contour_cells(grid, cells)
@@ -172,7 +185,7 @@ def compute_fault_domains_octree(fault_frame: FaultFrame) -> FaultModelResults:
         fault.set_mesh(FaultMeshType.EXTENDED, extended.vertices, extended.faces)
 
     fault_frame.check_cell_arrays()
-    return FaultModelResults(fault_frame=copy.deepcopy(fault_frame))
+    return FaultModelResults(fault_frame=copy.deepcopy(fault_frame), cross_cutting=cross_cutting)
 
 
 # -----------------------------------------------------------------------------
