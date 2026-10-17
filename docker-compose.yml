@@ -11,6 +11,20 @@ services:
   
   backend:
     image: registry.git.rwth-aachen.de/wbgeo/container-registry/backend:latest
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "java",
+          "-cp",
+          "/app/classes/",
+          "wbgeo.service.WebSocketHealthCheck",
+          "ws://backend:8081/umlp/api/command"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     pull_policy: always
     environment:
       S3_HOST: "minio:9000"
@@ -41,8 +55,10 @@ services:
     restart: on-failure
     pull_policy: always
     depends_on:
-      - minio
-      - backend
+      minio:
+        condition: service_started
+      backend:
+        condition: service_healthy
     environment:
       LIQUIDEARTH_TOKEN: "" # TODO place your token here to use it by default
       MINIO_HOST: "minio:9000"
@@ -52,6 +68,7 @@ services:
       # option 1, for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
       # if this file is located at the root of the "codebase" project, the defaults work
       #      - "./core/:/usr/src/app/codebase/core/"
+      #      - "./requirements.txt:/usr/src/app/codebase/requirements.txt"
       #      - "./examples/:/usr/src/app/codebase/examples/"
       
       # option 2 - if the codebase is in a different folder, you can also use this format
@@ -60,7 +77,7 @@ services:
       # option 3 - to only include your own data directory (with input CSV files)
       - "./own_data/:/usr/src/app/codebase/examples/own_data/"
       
-      # cache installed python packages even across image updates
+      # cache installed python packages (of the codebase) even across image updates
       - "pythonDepCache:/opt/venv"
 
 volumes:
