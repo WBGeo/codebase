@@ -394,32 +394,32 @@ def run_simulation_golem(
         GolemSimpleReservoirProblemBuilder,
         CustomGolemBuilder,
     ],
-    project_dir: str,
-    docker_dir: str = "/project",
     image_name: Optional[str] = None,
+    golem_binary: Optional[str] = '/opt/golem/golem-opt',
     output_dir: Optional[str] = None,
     nproc: int = 4,
-    keep_files_dir: Optional[str] = None,
-    docker_library_paths: Optional[typing.Sequence[str]] = None,
-    execution_mode: Optional[str] = None,
+    temporary: bool = True,
+    workspace_dir: str = "/project",
     stream_output: bool = False,
 ) -> SimulationResults:
-    """Build or copy, validate and execute a GOLEM input against a WBGeo mesh.
-
-    ``project_dir`` is bind-mounted only to expose the GOLEM executable at
-    ``docker_dir/golem/golem-opt``. Input and mesh files are copied into a
-    private directory in a named container, results are copied back after the
-    run, and the container (including its temporary directory) is removed.
-    ``problem`` may be an automatically generated hydrothermal/simple-reservoir
-    problem or a ``CustomGolemBuilder`` containing complete caller-supplied
-    GOLEM input.
-    Environment variables:
-    `$GOLEM_WORKSPACE` the directory we work in, shared as a docker volume
-    `$GOLEM_BINARY`: native/sidecar GOLEM executable path
-    `$GOLEM_EXECUTION_MODE`: auto, docker, local, or sidecar
-    `$GOLEM_MPI_HOST`: optional explicit remote MPI host for sidecar
-    `$GOLEM_DOCKER_IMAGE`: Docker image default when image_name is omitted
     """
+    Build or copy, validate and execute a GOLEM input against a WBGeo mesh.
+    
+    If image_name is provided:
+    Input and mesh files are copied into a  directory in a named container, results are copied back after the
+    run, and the container (including its temporary directory) is removed.
+    
+    :param problem: may be an automatically generated hydrothermal/simple-reservoir problem or a ``CustomGolemBuilder`` containing complete caller-supplied GOLEM input.
+    :param image_name: (optional) whether to spawn a docker container with golem
+    :param golem_binary: where golem is installed on the host (or in the docker container)
+    :param output_dir: (optional) where to write the output to
+    :param nproc: nproc
+    :param temporary: whether to delete the working directory afterwards
+    :param workspace_dir: the directory in which golem should be executed (on the host or in the container)
+    :param stream_output: whether golem process should be streamed
+    :return: the simulation results
+    """
+
     def emit(*args, **kwargs):
         if stream_output:
             print(*args, **kwargs)
@@ -427,68 +427,21 @@ def run_simulation_golem(
     if nproc < 1:
         raise ValueError("nproc must be >= 1")
 
-    # Explicit mode takes precedence. Auto preserves the original DSL setup:
-    # GOLEM_BINARY + GOLEM_WORKSPACE indicates the shared-volume MPI sidecar;
-    # GOLEM_BINARY alone indicates a native GOLEM installation.
-    mode = (execution_mode or os.getenv("GOLEM_EXECUTION_MODE", "auto")).lower().strip()
-    if mode == "auto":
-        if os.getenv("GOLEM_BINARY"):
-            mode = "sidecar" if os.getenv("GOLEM_WORKSPACE") else "local"
-        else:
-            mode = "docker"
-    if mode not in {"docker", "local", "sidecar"}:
-        raise ValueError(f"Invalid GOLEM execution mode {mode!r}; expected docker, local, sidecar or auto")
-    create_docker = mode == "docker"
-    if mode in {"local", "sidecar"} and not os.getenv("GOLEM_BINARY") and not os.getenv("GOLEM_SIDECAR_BINARY"):
-        raise ValueError(f"GOLEM_BINARY is required for GOLEM execution mode {mode!r}")
-    if mode == "sidecar" and not os.getenv("GOLEM_WORKSPACE"):
-        raise ValueError("Sidecar mode requires GOLEM_WORKSPACE mounted in both containers")
-    if mode == "local":
-        binary = os.getenv("GOLEM_BINARY")
-        if not binary or not (Path(binary).is_file() and os.access(binary, os.X_OK)):
-            raise RuntimeError(f"Native GOLEM binary not found or not executable: {binary!r}")
-    if mode != "docker" and shutil.which("mpiexec") is None:
-        raise RuntimeError("mpiexec is required for local and sidecar GOLEM execution")
-    if mode == "docker" and shutil.which("docker") is None:
-        raise RuntimeError("Docker CLI not found. Install Docker or choose another GOLEM_EXECUTION_MODE")
+    create_docker = image_name is not None
 
-    # Shared-library locations used by GOLEM inside Docker.  The defaults are
-    # derived from docker_dir so installations mounted somewhere other than
-    # /project work without changing this runner.  Callers with a non-standard
-    # GOLEM/MOOSE layout can override the complete list.
-    if docker_library_paths is None:
-        docker_root = docker_dir.rstrip("/")
-        docker_library_paths = [
-            f"{docker_root}/golem/lib",
-            f"{docker_root}/golem/test/lib",
-            f"{docker_root}/moose/framework",
-            f"{docker_root}/moose/framework/contrib/pcre",
-            f"{docker_root}/moose/framework/contrib/hit",
-            f"{docker_root}/moose/modules/module_loader/lib",
-        ]
-    golem_library_path = ":".join(str(path) for path in docker_library_paths)
-
-    project = Path(project_dir).resolve()
+    project = Path(workspace_dir).resolve()
     project.mkdir(parents=True, exist_ok=True)
     output = Path(output_dir).resolve() if output_dir else project / "golem_output"
     output.mkdir(parents=True, exist_ok=True)
 
 
 
-    if 'GOLEM_WORKSPACE' in os.environ:
+    if temporary:
+        run_dir = Path(tempfile.mkdtemp(prefix="golem_run_", dir=project))
+    else:
         # the directory we work in, shared as a docker volume/copied into the docker
-        workspace_dir = os.getenv('GOLEM_WORKSPACE', '.')
-        workspace_dir = workspace_dir + "/" + str(uuid.uuid4())
         run_dir = Path(workspace_dir).resolve()
         run_dir.mkdir(parents=True, exist_ok=True)
-        temporary = keep_files_dir is None
-    elif keep_files_dir:
-        run_dir = Path(keep_files_dir).resolve()
-        run_dir.mkdir(parents=True, exist_ok=True)
-        temporary = False
-    else:
-        run_dir = Path(tempfile.mkdtemp(prefix="golem_run_", dir=project))
-        temporary = True
 
     container_name = f"wbgeo_golem_{uuid.uuid4().hex[:12]}"
     container_created = False
@@ -620,7 +573,6 @@ def run_simulation_golem(
         emit(f"GOLEM host staging directory: {run_dir}", flush=True)
         emit(f"Input to copy: {input_path}", flush=True)
         emit(f"Mesh to copy: {mesh_path}", flush=True)
-        emit(f"GOLEM execution mode: {mode}", flush=True)
         if create_docker:
             emit(f"Docker container: {container_name}", flush=True)
         emit(f"MPI processes: {nproc}", flush=True)
@@ -629,34 +581,23 @@ def run_simulation_golem(
         # Host paths (for example /Users/... on macOS) are not valid inside
         # Docker, because the staged run directory is copied to container_run.
         if create_docker:
-            golem_binary = f'{docker_dir.rstrip("/")}/golem/golem-opt'
             golem_input_path = f"{container_run}/wbgeo.i"
         else:
-            golem_binary = os.getenv("GOLEM_SIDECAR_BINARY", os.getenv("GOLEM_BINARY")) if mode == "sidecar" else os.getenv("GOLEM_BINARY")
             golem_input_path = str(input_path)
 
-        # Original DSL images may configure the MPI host externally. Keep
-        # their bare mpiexec invocation unless GOLEM_MPI_HOST is specified.
-        mpi_host = os.getenv("GOLEM_MPI_HOST", "").strip() if mode == "sidecar" else ""
         golem_command = ["mpiexec", "-n", str(nproc), "--allow-run-as-root"]
-        if mpi_host:
-            golem_command.extend(["--host", mpi_host])
         golem_command.extend([str(golem_binary), "-i", golem_input_path])
 
         if create_docker:  # run via docker create/run
             docker_command = (
-                f'export LD_LIBRARY_PATH="{golem_library_path}:$LD_LIBRARY_PATH"; '
+                #f'export LD_LIBRARY_PATH="{golem_library_path}:$LD_LIBRARY_PATH"; ' # todo: check if still required?
                 f'set -e; mkdir -p "{container_run}/output"; '
                 f'cd "{container_run}"; '
                 f'{shlex.join(golem_command)}'
             )
-
-            if image_name is None:
-                image_name = os.getenv('GOLEM_DOCKER_IMAGE', 'moose-dev:fixed')
-
             create_command = [
                 "docker", "create", "--name", container_name, "-i",
-                "-v", f"{project}:{docker_dir}",
+                "-v", f"{project}:{workspace_dir}",
                 image_name,
                 "-c", docker_command,
             ]

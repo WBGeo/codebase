@@ -45,8 +45,6 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
 #%%
 
 cwd = os.getcwd()
-os.environ["GOLEM_EXECUTION_MODE"] = "docker"
-
 
 # ==============================================================================
 # MODEL 1 - SCRIPT MAP
@@ -488,7 +486,7 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 # is required here.
 ##problem_golem_results = run_simulation_golem(
 ##    problem=problem_golem,
-##    image_name="moose-dev:fixed",
+##    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
 ##    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 ##    docker_dir="/projects",
 
@@ -565,9 +563,8 @@ plot_golem_materials(custom_problem, show_edges=True)
 
 custom_golem_results = run_simulation_golem(
     problem=custom_problem,
-    image_name="moose-dev:fixed",
-    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-    docker_dir="/projects",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    workspace_dir="/projects",
     output_dir=cwd + "/examples/synthetic_examples/model1/golem_custom_output",
     nproc=4,
     stream_output=True,
@@ -721,7 +718,7 @@ custom_golem_results = run_simulation_golem(
 # Run the simulation using Golem
 ##model1_simple_reservoir_results = run_simulation_golem(
 ##    problem=reservoir_problem,
-##    image_name="moose-dev:fixed",
+##    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
 ##    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 ##    docker_dir="/projects",
 ##    output_dir=(
@@ -838,7 +835,7 @@ custom_golem_results = run_simulation_golem(
 #            geomodel_result=structural_model_result,
 #            print_linear_residuals=True,
 #        ),
-#        image_name="moose-dev:fixed",
+#        image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
 #        project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #        docker_dir="/projects",
 #        output_dir=(

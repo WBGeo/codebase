@@ -1,5 +1,10 @@
 # Simulation
 
+** TODO**: Outdated & way too much LLM output
+
+** TODO:** The main entrypoint/exposed to users should be simulation_workflow_components.run_golem_installation,
+along with a descrption / .env file of environment variables to set
+
 The simulation component connects the Workbench to numerical solvers.
 Since the meshing component exports the mesh to different formats, WBGeo
 can interface with various simulation packages. The current simulation
@@ -834,7 +839,7 @@ Example call in the codebase:
 ``` python
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
-    image_name="moose-dev:fixed",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
     project_dir="/path/to/projects",
     docker_dir="/projects",
     output_dir="/path/to/output",
@@ -882,7 +887,7 @@ os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 cwd = Path.cwd()
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
-    image_name="moose-dev:fixed",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
     project_dir="${GOLEM_PROJECT_DIR}",
     docker_dir="/projects",
     output_dir=str(cwd / "examples/case_studies/Groß_Schoenebeck/golem_output"),
@@ -964,7 +969,7 @@ Example call in the codebase:
 ``` python
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
-    image_name="moose-dev:fixed",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
     project_dir="/path/to/projects",
     docker_dir="/projects",
     output_dir="/path/to/my_golem_output",

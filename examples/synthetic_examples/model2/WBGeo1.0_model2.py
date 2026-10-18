@@ -575,9 +575,8 @@ problem_golem.build_input_file("/tmp/wbgeo_golem_model2.i")
 # is required here.
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
-    image_name="moose-dev:fixed",
-    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-    docker_dir="/projects",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    workspace_dir='/projects',
 
     output_dir=(
         cwd
@@ -644,7 +643,7 @@ with open("simulation_golem_results.zip", "wb") as f:
 #        print_linear_residuals=True,
 #    ),
 
-#    image_name="moose-dev:fixed",
+#    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
 #    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #    docker_dir="/projects",
 
@@ -768,7 +767,7 @@ with open("simulation_golem_results.zip", "wb") as f:
 # run the model in Golem docker image.
 #reservoir_results_model2 = run_simulation_golem(
 #    problem=reservoir_problem_model2,
-#    image_name="moose-dev:fixed",
+#    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
 #    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #    docker_dir="/projects",
 #    output_dir=(
@@ -921,9 +920,8 @@ model2_custom_reservoir_results = run_simulation_golem(
         geomodel_result=structural_model_result,
         print_linear_residuals=True,
     ),
-    image_name="moose-dev:fixed",
-    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-    docker_dir="/projects",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    workspace_dir="/projects",
     output_dir=(
         cwd
         + "/examples/synthetic_examples/model2/"

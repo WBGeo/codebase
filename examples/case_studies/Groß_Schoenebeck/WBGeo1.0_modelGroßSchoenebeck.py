@@ -376,9 +376,8 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
         geomodel_result=structural_model_result,
         print_linear_residuals=True,
     ),
-    image_name="moose-dev:fixed",
-    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-    docker_dir="/projects",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    workspace_dir=os.environ["GOLEM_PROJECT_DIR"],
     output_dir=(
         cwd
         + "/examples/case_studies/Groß_Schoenebeck/"
@@ -419,9 +418,8 @@ model_GS_Xindyu_sready_results = run_simulation_golem(
         geomodel_result=structural_model_result,
         print_linear_residuals=True,
     ),
-    image_name="moose-dev:fixed",
-    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-    docker_dir="/projects",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    workspace_dir="/projects",
     output_dir=(
         cwd
         + "/examples/case_studies/Groß_Schoenebeck/"

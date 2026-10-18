@@ -643,14 +643,19 @@ def run_golem_simulation(
     """Run GOLEM with an isolated output directory for this execution."""
     run_output_dir = pathlib.Path.cwd() / "golem_output" / uuid.uuid4().hex
     try:
+        # the `registry.git.rwth-aachen.de/wbgeo/container-registry/pyrunner-base` image comes with golem already installed
+        # it is based upon `moose-dev:fixed`
+
+        golem_binary = os.environ.get('GOLEM_BINARY', '/golem/golem-opt')
+        workspace_dir = os.environ.get('GOLEM_WORKSPACE') + "/" + str(uuid.uuid4())
         result = _run_simulation_golem(
             problem=problem.inner(),
             image_name=None,
-            project_dir='',
-            docker_dir='',
+            golem_binary=golem_binary,
+            workspace_dir=workspace_dir,
             output_dir=str(run_output_dir),
             nproc=nproc,
-            keep_files_dir=None,
+            temporary=True,
         )
     except BaseException:
         # The GOLEM runner cleans its staging area, not the copied output.
