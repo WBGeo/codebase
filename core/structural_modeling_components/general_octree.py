@@ -13,7 +13,8 @@ dispatches here when the frame's grid is an OctreeGrid:
      domain of the fault cell it lies in, and points are evaluated with the
      field of their cell's domain.
   3) Extract the UNMASKED, MASKED and EXTENDED surface meshes of every element
-     by dual contouring on the refined octree, per merged fault-domain component.
+     by dual contouring on the refined octree, per merged fault-domain component
+     (contoured once, for EXTENDED; UNMASKED and MASKED are taken from it).
      MASKED keeps a quad only if none of its 4 cells is eroded by a younger group,
      and of that only the triangles whose vertices are not eroded themselves;
      EXTENDED also runs on a max-level shell around the extent, so it crosses the
@@ -435,8 +436,11 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
     Dual contouring runs per merged domain component of the group, each with its
     own field, so the surfaces end half a cell before the faults that affect the
     group and run through the others. (The regular grid contours the field
-    assembled from all domains instead, across the faults.) UNMASKED uses
-    no masks. MASKED is taken from UNMASKED, without contouring again: it keeps
+    assembled from all domains instead, across the faults.) Each group is
+    contoured once, for EXTENDED; UNMASKED and MASKED are taken from it.
+    UNMASKED uses no masks: it is EXTENDED without the quads that need a cell
+    of the shell, i.e. what contouring the cells in the extent gives (without
+    vertices no triangle uses). MASKED is taken from UNMASKED: it keeps
     a quad only if none of its 4 cells is eroded, i.e.
     lies where the age mask of any younger group is True at the cell center (the
     per-cell form of the erosion mask in ``general.extract_meshes``), and then
@@ -462,6 +466,7 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
     shell = padding_shell(grid, _FIT_PADDING_CELLS)
     padded_ijk = np.concatenate([dc_cells.ijk.astype(np.int64), shell])
     padded_domains = np.concatenate([domains, _point_domains(frame, grid.cell_centers(grid.max_level, shell))])
+    inside = np.arange(len(padded_ijk)) < len(dc_cells)  # the cells in the extent come first
     for group_idx, group in enumerate(frame.structural_groups):
         elements = [e for e in group.structural_elements if e.get_scalar_value() is not None]
         by_domain = fields[group_idx]
@@ -470,14 +475,13 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
         isovalues = [float(e.get_scalar_value()) for e in elements]
         # DC groups are the components, labelled by their smallest domain id, whose
         # field is the component's field.
-        components = _component_of_domains(frame, group_idx, domains)
         values = lambda p, c: _group_values(by_domain, p, c)  # noqa: E731
-        unmasked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, field_bounds=bounds)
+        extended = dual_contour(grid, padded_ijk, _component_of_domains(frame, group_idx, padded_domains),
+                                values, isovalues, padding=_FIT_PADDING_CELLS, field_bounds=bounds)
+        unmasked = [restrict_to_kept_cells(mesh, inside) for mesh in extended]
         not_eroded = ~masks[:group_idx].any(axis=0)
         masked = [_drop_eroded_triangles(frame, fields, group_idx, restrict_to_kept_cells(mesh, not_eroded))
                   for mesh in unmasked]
-        extended = dual_contour(grid, padded_ijk, _component_of_domains(frame, group_idx, padded_domains),
-                                values, isovalues, padding=_FIT_PADDING_CELLS, field_bounds=bounds)
         for elem, mesh, masked_mesh, extended_mesh in zip(elements, unmasked, masked, extended):
             if mesh.n_missing_quads:
                 logger.warning("Surface of '%s' has %d gaps where a cell next to it is coarser than max level.",

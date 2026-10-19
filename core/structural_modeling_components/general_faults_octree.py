@@ -21,10 +21,10 @@ dispatches here when the fault frame's grid is an OctreeGrid:
      band width uses a gradient median weighted by cell volume, from central
      differences of the fitted fields.
 
-  5) Extract every fault's UNMASKED surface mesh by dual contouring on the fault
-     cells, and its EXTENDED mesh on the fault cells plus a max-level shell of
-     ``_FIT_PADDING_CELLS`` finest cells around the extent (the regular path's
-     padded grid), so it crosses the model box.
+  5) Extract every fault's EXTENDED mesh by dual contouring on the fault cells
+     plus a max-level shell of ``_FIT_PADDING_CELLS`` finest cells around the
+     extent (the regular path's padded grid), so it crosses the model box, and
+     take its UNMASKED mesh from it: the quads whose cells all lie in the extent.
 
 The structural model later refines these cells further; a cell coarser than max
 level lies in a single domain, so its children inherit the domain id.
@@ -58,6 +58,7 @@ from core.structural_modeling_components.structural_modeling_utility.dual_contou
     contour_cells,
     dual_contour,
     padding_shell,
+    restrict_to_kept_cells,
 )
 from core.structural_modeling_components.structural_modeling_utility.octree_refinement import (
     balance_2to1,
@@ -169,19 +170,20 @@ def compute_fault_domains_octree(fault_frame: FaultFrame) -> FaultModelResults:
     dc_cells = contour_cells(grid, cells)
     padded_ijk = np.concatenate([dc_cells.ijk.astype(np.int64), padding_shell(grid, _FIT_PADDING_CELLS)])
     bounds = fit_extent(grid)
+    inside = np.arange(len(padded_ijk)) < len(dc_cells)  # the cells in the extent come first
     for fault in faults:
         field = fields[fault.name]
         values = lambda p, _groups: field.evaluate(p)  # noqa: E731
         # Refined with field > isovalue (see _fault_sides), so contour with the same side rule.
-        mesh = dual_contour(grid, dc_cells.ijk, np.zeros(len(dc_cells), dtype=np.int64), values,
-                            [float(fault.scalar_value)], strictly_above=True, field_bounds=bounds)[0]
+        # Contoured once, for EXTENDED; UNMASKED is EXTENDED without the quads that need a shell cell.
+        extended = dual_contour(grid, padded_ijk, np.zeros(len(padded_ijk), dtype=np.int64), values,
+                                [float(fault.scalar_value)], strictly_above=True, padding=_FIT_PADDING_CELLS,
+                                field_bounds=bounds)[0]
+        mesh = restrict_to_kept_cells(extended, inside)
         if mesh.n_missing_quads:
             logger.warning("Surface of fault '%s' has %d gaps where a cell next to it is coarser than max level.",
                            fault.name, mesh.n_missing_quads)
         fault.set_mesh(FaultMeshType.UNMASKED, mesh.vertices, mesh.faces)
-        extended = dual_contour(grid, padded_ijk, np.zeros(len(padded_ijk), dtype=np.int64), values,
-                                [float(fault.scalar_value)], strictly_above=True, padding=_FIT_PADDING_CELLS,
-                                field_bounds=bounds)[0]
         fault.set_mesh(FaultMeshType.EXTENDED, extended.vertices, extended.faces)
 
     fault_frame.check_cell_arrays()
