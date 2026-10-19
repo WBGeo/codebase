@@ -669,9 +669,9 @@ def _lithology_and_masks(
                       if domain_is_active_for_group(frame.fault_frame, frame.fault_activity, group_idx, int(d))]
             masks[group_idx] &= np.isin(domains, active)
 
-    lith = np.zeros(n_points, dtype=np.int64)
+    lith = np.zeros(n_points, dtype=np.int32)
     for group_idx in range(len(groups) - 1, -1, -1):  # oldest -> youngest
-        group_block = np.zeros(n_points, dtype=np.int64)
+        group_block = np.zeros(n_points, dtype=np.int32)
         for elem in groups[group_idx].structural_elements:  # youngest -> oldest
             sval = elem.get_scalar_value()
             if sval is None:

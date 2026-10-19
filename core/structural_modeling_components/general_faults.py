@@ -294,7 +294,7 @@ def split_into_domains(fault_masks: list[np.ndarray]) -> np.ndarray:
     np.ndarray
         Integer domain ids, same shape as the masks.
     """
-    domain_map = np.zeros(fault_masks[0].shape, dtype=int)
+    domain_map = np.zeros(fault_masks[0].shape, dtype=np.int32)
     domain_id_counter = 1
     for fault_mask in fault_masks:
         new_domain_map = domain_map.copy()

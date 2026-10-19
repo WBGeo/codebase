@@ -156,7 +156,7 @@ def validate_interpolation_inputs(
     domain_map: IntArray = (
         fault_frame.domain_map
         if fault_frame is not None
-        else np.zeros(frame.grid.resolution, dtype=int)
+        else np.zeros(frame.grid.resolution, dtype=np.int32)
     )
     domain_ids: IntArray = np.unique(domain_map)
     multi_domain = len(domain_ids) > 1
@@ -264,7 +264,7 @@ def run_interpolation_with_fault_domains(
     domain_map: IntArray = (
         fault_frame.domain_map
         if fault_frame is not None
-        else np.zeros(frame.grid.resolution, dtype=int)
+        else np.zeros(frame.grid.resolution, dtype=np.int32)
     )
     # Pad the domain map with boundary values so interpolations on the padded grid
     # see the correct domain IDs in the extended margin cells.
@@ -396,7 +396,7 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
     """
     ff = frame.fault_frame
     domain_map: IntArray = (
-        ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=int)
+        ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=np.int32)
     )
     domain_ids: IntArray = np.unique(domain_map)
 
@@ -480,7 +480,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
         Final lithology volume (integer IDs) with shape ``frame.grid.resolution``.
     """
     shape = tuple(map(int, frame.grid.resolution))  # (X,Y,Z)
-    final_lith = np.zeros(shape, dtype=int)
+    final_lith = np.zeros(shape, dtype=np.int32)
 
     # Assign stable global IDs to elements if not already set
     current_id = 1
@@ -496,7 +496,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
         domain_map = ff.domain_map
         domain_ids = np.unique(domain_map)
     else:
-        domain_map = np.zeros(shape, dtype=int)
+        domain_map = np.zeros(shape, dtype=np.int32)
         domain_ids = [0]
 
     # Process groups from oldest -> youngest so younger overwrites older
@@ -527,7 +527,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
             comp_ids_arr = np.array(sorted(comp_ids), dtype=int)
             comp_mask = np.isin(domain_map, comp_ids_arr)
 
-            group_block = np.zeros(shape, dtype=int)
+            group_block = np.zeros(shape, dtype=np.int32)
 
             # Fill elements oldest -> the youngest inside the group
             for elem in group.structural_elements:
@@ -567,7 +567,7 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
     fault_frame = frame.fault_frame
     if fault_frame is None:
         domain_ids = [0]
-        dom_map = np.zeros(tuple(frame.grid.resolution), dtype=int)
+        dom_map = np.zeros(tuple(frame.grid.resolution), dtype=np.int32)
     else:
         dom_map = fault_frame.domain_map
         domain_ids = np.unique(dom_map)
@@ -788,7 +788,7 @@ def compute_structural_model(
     ff: FaultFrame | None = frame.fault_frame
 
     if ff is None:
-        dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=int)
+        dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=np.int32)
 
         class _TmpFF:
             domain_map = dom_map

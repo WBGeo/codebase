@@ -595,3 +595,14 @@ def test_detailed_report_shows_the_octree_cells_per_level(capsys):
     assert grid_report_lines(grid.equivalent_regular_grid(), None)[1] == "• Grid resolution: (16, 16, 16)"
     frame.detailed_report()
     assert "Cells per level" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("kind", ["octree", "regular"])
+def test_lithology_and_domains_are_int32_also_after_the_runner_round_trip(kind):
+    """Same dtype on both grids and every platform (dtype=int was int32 on Windows, int64 on Linux)."""
+    grid = octree_grid() if kind == "octree" else octree_grid().equivalent_regular_grid()
+    result = compute(grid)
+    restored = StructuralModelResults(**json.loads(json.dumps(to_jsonable_python(result))))
+    for frame in (result.structural_frame, restored.structural_frame):
+        assert frame.lith_block.dtype == np.int32
+        assert frame.cell_domain_ids().dtype == np.int32

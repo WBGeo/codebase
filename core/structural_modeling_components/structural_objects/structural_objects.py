@@ -422,7 +422,7 @@ class StructuralFrame(_PerCellResults, BaseModel):
     cells: Optional[OctreeCells] = Field(default=None)
     surface_points: Optional[PandasDataFrame] = Field(default=None)
     orientations: Optional[PandasDataFrame] = Field(default=None)
-    lith_block: Optional[NpNDArrayFp64] = Field(default=None)
+    lith_block: Optional[NpNDArrayInt32] = Field(default=None)
     fault_frame: Optional["FaultFrame"] = Field(default=None)
     fault_activity: Optional[dict[str, int]] = Field(default=None)
 
@@ -543,7 +543,7 @@ class StructuralFrame(_PerCellResults, BaseModel):
         every cell is in domain 0.
         """
         if self.fault_frame is None:
-            return np.zeros(self.cell_array_shape(), dtype=int)
+            return np.zeros(self.cell_array_shape(), dtype=np.int32)
         ff = self.fault_frame
         if ff.domain_map is None:
             raise ValueError("The attached fault frame has no domain_map.")
@@ -998,7 +998,7 @@ class FaultFrame(_PerCellResults, BaseModel):
     cells: Optional[OctreeCells] = Field(default=None)
     fault_surface_points_df: Optional[PandasDataFrame] = Field(default=None)
     fault_orientations_df: Optional[PandasDataFrame] = Field(default=None)
-    domain_map: Optional[NpNDArrayFp64] = Field(default=None)
+    domain_map: Optional[NpNDArrayInt32] = Field(default=None)
     domain_masks: dict[int, NpNDArrayBool] = Field(default_factory=dict)
 
     def __init__(self, *args, **kwargs):
@@ -1045,7 +1045,7 @@ class FaultFrame(_PerCellResults, BaseModel):
               ]
         return pd.DataFrame()
 
-    def set_domain_map(self, domain_map: NpNDArrayFp64) -> None:
+    def set_domain_map(self, domain_map: NpNDArrayInt32) -> None:
         self.domain_map = domain_map
 
     def set_grid(self, grid: ModelGrid) -> None:
