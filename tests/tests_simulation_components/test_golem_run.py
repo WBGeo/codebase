@@ -30,7 +30,6 @@ def _isolate_golem_execution_environment(monkeypatch):
     for name in ("GOLEM_BINARY", "GOLEM_SIDECAR_BINARY", "GOLEM_WORKSPACE",
                  "GOLEM_MPI_HOST", "GOLEM_DOCKER_IMAGE"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "docker")
     # Unit tests mock subprocesses; they do not require the Docker CLI.
     real_which = golem_run.shutil.which
     monkeypatch.setattr(golem_run.shutil, "which", lambda name: "/usr/bin/" + name
@@ -285,7 +284,7 @@ def test_run_simulation_golem_rejects_invalid_nproc(
         golem_run.run_simulation_golem(
             builder,
             image_name="unused:image",
-            project_dir=str(tmp_path),
+            workspace_dir=str(tmp_path),
             nproc=0,
         )
 
@@ -365,8 +364,7 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
     returned = golem_run.run_simulation_golem(
         builder,
         image_name="registry.example/golem:test",
-        project_dir=str(tmp_path / "project"),
-        docker_dir="/project",
+        workspace_dir=str(tmp_path / "project"),
         output_dir=str(output_dir),
         nproc=3,
     )
@@ -380,7 +378,7 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
     assert "registry.example/golem:test" in create
     docker_shell = create[create.index("-c") + 1]
     assert "mpiexec -n 3 --allow-run-as-root" in docker_shell
-    assert "/project/golem/golem-opt -i /tmp/wbgeo_golem_run/wbgeo.i" in docker_shell
+    assert "/golem/golem-opt -i /tmp/wbgeo_golem_run/wbgeo.i" in docker_shell
 
     assert streamed["command"][0:3] == ["docker", "start", "-a"]
     assert any(cmd[:3] == ["docker", "rm", "-f"] for cmd in commands)
@@ -438,7 +436,7 @@ def test_run_simulation_golem_create_failure_is_reported_without_starting_golem(
         golem_run.run_simulation_golem(
             builder,
             image_name="missing:image",
-            project_dir=str(tmp_path),
+            workspace_dir=str(tmp_path),
         )
 
 
@@ -542,7 +540,7 @@ def test_run_simulation_golem_custom_problem_keeps_checkpoint_directory(
     returned = golem_run.run_simulation_golem(
         builder,
         image_name="registry.example/golem:test",
-        project_dir=str(tmp_path / "project"),
+        workspace_dir=str(tmp_path / "project"),
         output_dir=str(output_dir),
     )
 
@@ -658,7 +656,7 @@ def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
     returned = golem_run.run_simulation_golem(
         builder,
         image_name="registry.example/golem:test",
-        project_dir=str(tmp_path / f"project_{builder_kw}"),
+        workspace_dir=str(tmp_path / f"project_{builder_kw}"),
         output_dir=str(output_dir),
     )
 
@@ -702,6 +700,7 @@ def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
         "x,y,z,pore_pressure,temp\n0,0,-4470,48.0,152.0\n"
     )
 
+
     builder = CustomGolemBuilder(
         input_file_contents=_custom_hierarchical_input("${GOLEM_MESH2_FILE}"),
         mesh2=model1_implicit_mesh,
@@ -743,18 +742,18 @@ def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
 
     # Keep the staged working directory so the test can inspect exactly what
     # would be copied into /tmp/wbgeo_golem_run inside the container.
-    keep_dir = tmp_path / "kept_run"
+    workspace_dir = tmp_path / "kept_run"
     output_dir = tmp_path / "small_results"
     returned = golem_run.run_simulation_golem(
         builder,
         image_name="registry.example/golem:test",
-        project_dir=str(tmp_path / "project_aux"),
+        workspace_dir=str(workspace_dir),
         output_dir=str(output_dir),
-        keep_files_dir=str(keep_dir),
+        temporary=False,
     )
 
     assert returned is result
-    staged_files = keep_dir / "files"
+    staged_files = workspace_dir / "files"
     # mesh2 consumes hierarchy transfer files through PropertyReadFile.  The
     # runner converts only the staged copies to headerless numeric CSV; the
     # original big-model output remains human-readable and headered.
@@ -774,7 +773,7 @@ def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
     )
 
     # The small hierarchical mesh is staged independently of the CSV directory.
-    assert (keep_dir / "wbgeo_mesh2.exo").read_bytes() == b"small-hierarchy-exodus"
+    assert (workspace_dir / "wbgeo_mesh2.exo").read_bytes() == b"small-hierarchy-exodus"
 
 
 # -----------------------------------------------------------------------------
@@ -824,7 +823,7 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
     returned = golem_run.run_simulation_golem(
         builder,
         image_name="registry.example/golem:test",
-        project_dir=str(tmp_path / "project_external"),
+        workspace_dir=str(tmp_path / "project_external"),
         output_dir=str(output_dir),
     )
 
@@ -842,9 +841,9 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
 # Three-mode runner regression tests (no actual GOLEM, Docker or SSH required)
 # -----------------------------------------------------------------------------
 
-@pytest.mark.parametrize("mode", ["local", "sidecar"])
+@pytest.mark.parametrize("golem_image", ["WithDockerImage", None])
 def test_direct_golem_modes_execute_and_copy_results(
-    mode, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+    golem_image, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
 ):
     builder = GolemHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
@@ -854,13 +853,7 @@ def test_direct_golem_modes_execute_and_copy_results(
     binary = tmp_path / "golem-opt"
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", mode)
-    monkeypatch.setenv("GOLEM_BINARY", str(binary))
-    if mode == "sidecar":
-        workspace = tmp_path / "shared_workspace"
-        workspace.mkdir()
-        monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
-        monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
+
 
     monkeypatch.setattr(
         golem_run, "export_mesh_results_to_exodus",
@@ -888,8 +881,10 @@ def test_direct_golem_modes_execute_and_copy_results(
     monkeypatch.setattr(golem_run, "load_exodus_results", fake_loader)
     output = tmp_path / "results"
     returned = golem_run.run_simulation_golem(
-        builder, project_dir=str(tmp_path / "project"),
-        output_dir=str(output), nproc=2,
+      builder, workspace_dir=str(tmp_path / "project"),
+      output_dir=str(output), nproc=2,
+      image_name=golem_image,
+      golem_binary=str(binary)
     )
     assert returned is result
     assert (output / "wbgeo.e").read_bytes() == b"result"
@@ -899,59 +894,12 @@ def test_direct_golem_modes_execute_and_copy_results(
     command = commands[0][0]
     assert command[:4] == ["mpiexec", "-n", "2", "--allow-run-as-root"]
     assert str(binary) in command
-    assert ("--host" in command) == (mode == "sidecar")
     assert not any(item[0][0] == "docker" for item in commands)
 
 
-def test_invalid_execution_mode_is_rejected(
-    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
-):
-    builder = GolemHydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh,
-        geomodel_result=model1_structural_result,
-    )
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "unknown")
-    with pytest.raises(ValueError, match="Invalid GOLEM execution mode"):
-        golem_run.run_simulation_golem(builder, project_dir=str(tmp_path))
-
-
-def test_local_mode_requires_native_binary(
-    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
-):
-    builder = GolemHydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh,
-        geomodel_result=model1_structural_result,
-    )
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "local")
-    with pytest.raises(ValueError, match="GOLEM_BINARY is required"):
-        golem_run.run_simulation_golem(builder, project_dir=str(tmp_path))
-
-
-def test_explicit_docker_mode_overrides_native_environment(
-    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
-):
-    builder = GolemHydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh,
-        geomodel_result=model1_structural_result,
-    )
-    monkeypatch.setenv("GOLEM_BINARY", "/nonexistent/golem-opt")
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "local")
-    # An explicit docker override must not validate the native executable.
-    # Stop before staging by making the builder raise a sentinel exception.
-    def stop(_):
-        raise RuntimeError("builder reached")
-    monkeypatch.setattr(builder, "build_input_file", stop)
-    with pytest.raises(RuntimeError, match="builder reached"):
-        golem_run.run_simulation_golem(
-            builder, project_dir=str(tmp_path), execution_mode="docker"
-        )
-
-
-
-
-@pytest.mark.parametrize("mode", ["local", "sidecar"])
+@pytest.mark.parametrize("golem_image", ["exampleImage:version", None])
 def test_direct_modes_failure_reports_diagnostics_and_skips_result_loading(
-    mode, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+    golem_image, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
 ):
     """Exercise the real local/sidecar runner failure branch without GOLEM or MPI."""
     builder = GolemHydrothermalProblemBuilder(
@@ -962,13 +910,6 @@ def test_direct_modes_failure_reports_diagnostics_and_skips_result_loading(
     binary = tmp_path / "golem-opt"
     binary.write_text("#!/bin/sh\\nexit 0\\n")
     binary.chmod(0o755)
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", mode)
-    monkeypatch.setenv("GOLEM_BINARY", str(binary))
-    if mode == "sidecar":
-        workspace = tmp_path / "shared_workspace"
-        workspace.mkdir()
-        monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
-        monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
 
     monkeypatch.setattr(
         golem_run, "export_mesh_results_to_exodus",
@@ -999,9 +940,10 @@ def test_direct_modes_failure_reports_diagnostics_and_skips_result_loading(
     with pytest.raises(RuntimeError) as error:
         golem_run.run_simulation_golem(
             builder,
-            project_dir=str(tmp_path / "project"),
+            workspace_dir=str(tmp_path / "project"),
             output_dir=str(output_dir),
             nproc=2,
+            golem_binary=str(binary)
         )
 
     message = str(error.value)
@@ -1014,7 +956,6 @@ def test_direct_modes_failure_reports_diagnostics_and_skips_result_loading(
     command, kwargs = calls[0]
     assert command[:4] == ["mpiexec", "-n", "2", "--allow-run-as-root"]
     assert str(binary) in command
-    assert ("--host" in command) == (mode == "sidecar")
     assert not (output_dir / "partial.e").exists(), (
         "A failed run must not copy partial solver output into the results directory"
     )
@@ -1038,9 +979,9 @@ def test_checkpoint_cleanup_is_outside_copy_loop():
             "Checkpoint recursive scanning must not be repeated for every copied item"
         )
 
-@pytest.mark.parametrize("mode", ["local", "sidecar"])
+@pytest.mark.parametrize("golem_image", ["WithDockerImage", None])
 def test_direct_modes_remove_generated_checkpoints_but_keep_other_outputs(
-    mode, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+    golem_image, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
 ):
     """G.2: local/sidecar must match Docker's generated-problem cleanup."""
     builder = GolemHydrothermalProblemBuilder(
@@ -1051,13 +992,6 @@ def test_direct_modes_remove_generated_checkpoints_but_keep_other_outputs(
     binary = tmp_path / "golem-opt"
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", mode)
-    monkeypatch.setenv("GOLEM_BINARY", str(binary))
-    if mode == "sidecar":
-        workspace = tmp_path / "shared_workspace"
-        workspace.mkdir()
-        monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
-        monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
 
     monkeypatch.setattr(
         golem_run, "export_mesh_results_to_exodus",
@@ -1081,50 +1015,13 @@ def test_direct_modes_remove_generated_checkpoints_but_keep_other_outputs(
     monkeypatch.setattr(golem_run, "load_exodus_results", lambda _: result)
     output = tmp_path / "results"
     assert golem_run.run_simulation_golem(
-        builder, project_dir=str(tmp_path / "project"), output_dir=str(output)
+        builder, workspace_dir=str(tmp_path / "project"), output_dir=str(output),
+      image_name=golem_image,
+      golem_binary=str(binary)
     ) is result
     assert (output / "wbgeo.e").exists()
     assert (output / "diagnostic.csv").exists()
     assert not (output / "wbgeo_out_cp").exists()
-
-
-def test_sidecar_binary_override_and_mpi_host(
-    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
-):
-    """Sidecar uses GOLEM_SIDECAR_BINARY and adds --host only when configured."""
-    builder = GolemHydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh,
-        geomodel_result=model1_structural_result,
-        num_steps=1,
-    )
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    monkeypatch.setenv("GOLEM_EXECUTION_MODE", "sidecar")
-    monkeypatch.setenv("GOLEM_WORKSPACE", str(workspace))
-    monkeypatch.setenv("GOLEM_BINARY", "/different/golem-opt")
-    monkeypatch.setenv("GOLEM_SIDECAR_BINARY", "/golem/golem-opt")
-    monkeypatch.setenv("GOLEM_MPI_HOST", "golem_runner")
-    monkeypatch.setattr(
-        golem_run, "export_mesh_results_to_exodus",
-        lambda mesh, type: io.BytesIO(b"fake-exodus"),
-    )
-    commands = []
-
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        (Path(kwargs["cwd"]) / "wbgeo.e").write_bytes(b"result")
-        return SimpleNamespace(returncode=0, stdout="done", stderr="")
-
-    monkeypatch.setattr(golem_run.subprocess, "run", fake_run)
-    result = SimulationResults()
-    result.nodes_by_time[0.0] = model1_implicit_mesh.nodes
-    monkeypatch.setattr(golem_run, "load_exodus_results", lambda _: result)
-    assert golem_run.run_simulation_golem(
-        builder, project_dir=str(tmp_path / "project"), output_dir=str(tmp_path / "results")
-    ) is result
-    assert commands[0][commands[0].index("--host") + 1] == "golem_runner"
-    assert "/golem/golem-opt" in commands[0]
-    assert "/different/golem-opt" not in commands[0]
 
 
 # -----------------------------------------------------------------------------
