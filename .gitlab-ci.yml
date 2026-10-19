@@ -44,6 +44,8 @@ test:
           - requirements.txt
     paths:
       - .cache/pip
+    policy: pull-push
+    when: always
   variables: # Change pip's cache directory to be inside the project directory because we can only cache local items.
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
