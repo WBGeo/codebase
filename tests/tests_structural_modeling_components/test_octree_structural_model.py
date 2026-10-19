@@ -552,3 +552,30 @@ def test_interpolators_without_a_fit_are_refused_on_an_octree(monkeypatch):
     with pytest.raises(NotImplementedError, match="UpperSeries"):
         general.compute_structural_model(frame)
 
+
+
+def test_lattice_cache_evaluates_each_lattice_point_once():
+    """_LatticeCachedField gives the wrapped field's values and evaluates lattice points only the first time."""
+    class Counting:
+        scalar_values = {"a": 1.0}
+
+        def __init__(self):
+            self.points = 0
+
+        def evaluate(self, xyz):
+            self.points += len(xyz)
+            return xyz[:, 0] + 2 * xyz[:, 1] + 3 * xyz[:, 2]
+
+    grid = octree_grid()
+    field = Counting()
+    cached = general_octree._LatticeCachedField(field, grid)
+    h = grid.finest_spacing
+    corners = grid.origin + np.array([[0, 0, 0], [1, 2, 3], [-2, 0, 16], [16, 16, 18]]) * h  # incl. the shell
+    off = grid.origin + np.array([[0.5, 0.5, 0.5], [0.25, 0, 0]]) * h
+    first = cached.evaluate(np.concatenate([corners, off]))
+    np.testing.assert_array_equal(first, field.evaluate(np.concatenate([corners, off])))
+    field.points = 0
+    again = cached.evaluate(np.concatenate([off, corners[::-1]]))
+    np.testing.assert_array_equal(again, np.concatenate([first[4:], first[3::-1]]))
+    assert field.points == len(off)  # only the off-lattice points were evaluated again
+    assert cached.scalar_values == field.scalar_values

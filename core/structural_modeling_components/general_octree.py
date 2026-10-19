@@ -124,6 +124,11 @@ fit_dispatch: Dict[InterpolationMethod, Callable[..., FittedField]] = {
 # keeps both grid types consistent, and the margin is where EXTENDED meshes go.
 _FIT_PADDING_CELLS: int = 2
 
+# How close (in finest cells) a point must be to a lattice point to count as it in
+# _LatticeCachedField: far above the rounding of computed corner coordinates (~1e-14)
+# and far below any real offset (normal stencils are a quarter cell off).
+_LATTICE_TOLERANCE: float = 1e-9
+
 
 def compute_structural_model_octree(
         frame: StructuralFrame,
@@ -280,6 +285,7 @@ def _fit_groups(frame: StructuralFrame) -> GroupFields:
                     group_orientations_points_df=ori,
                 )
                 _collect_scalar_values(group, field, scalar_values)
+                field = _LatticeCachedField(field, frame.grid)
             for d in in_comp:
                 by_domain[d] = field
 
@@ -288,6 +294,66 @@ def _fit_groups(frame: StructuralFrame) -> GroupFields:
                 elem.set_scalar_value(scalar_values[elem.name])
         fields.append(by_domain)
     return fields
+
+
+class _LatticeCachedField:
+    """
+    A fitted field that evaluates every point of the finest-cell lattice only once.
+
+    The pipeline asks for the field at the same lattice points several times:
+    cell corners in refinement, dual contouring and coarsening, and every group's
+    field again for the lithology that COMBINED contours. Points on the lattice
+    (within ``_LATTICE_TOLERANCE`` finest cells, including the padding shell) are
+    keyed by their lattice index; only those not seen before are evaluated, in
+    one call together with the points off the lattice (cell centers, normal
+    stencils, vertices), which are never cached. Works for any interpolator.
+    Cached values come from an earlier evaluation batch, so they can differ from
+    a fresh evaluation in the last bits.
+
+    The cache is a sorted key array with the values, so it grows with the
+    points evaluated, not with the lattice.
+
+    Attributes:
+        scalar_values: The wrapped field's ``scalar_values``.
+    """
+
+    def __init__(self, field: FittedField, grid: OctreeGrid) -> None:
+        self._field = field
+        self.scalar_values = field.scalar_values
+        self._origin = np.asarray(grid.origin, dtype=np.float64)
+        self._spacing = np.asarray(grid.finest_spacing, dtype=np.float64)
+        self._low = -_FIT_PADDING_CELLS
+        self._size = np.asarray(grid.finest_resolution, dtype=np.int64) + 2 * _FIT_PADDING_CELLS + 1
+        self._keys = np.zeros(0, dtype=np.int64)
+        self._values = np.zeros(0, dtype=np.float64)
+
+    def evaluate(self, xyz: FloatArray) -> FloatArray:
+        """Field values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
+        points = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
+        lattice = (points - self._origin) / self._spacing
+        ijk = np.rint(lattice)
+        on = (np.all(np.abs(lattice - ijk) <= _LATTICE_TOLERANCE, axis=1)
+              & np.all((ijk >= self._low) & (ijk < self._low + self._size), axis=1))
+        on_rows = np.flatnonzero(on)
+        shifted = ijk[on_rows].astype(np.int64) - self._low
+        keys = (shifted[:, 0] * self._size[1] + shifted[:, 1]) * self._size[2] + shifted[:, 2]
+        pos = np.searchsorted(self._keys, keys)
+        found = pos < self._keys.size
+        found[found] = self._keys[pos[found]] == keys[found]
+
+        out = np.empty(points.shape[0], dtype=np.float64)
+        out[on_rows[found]] = self._values[pos[found]]
+        todo = np.ones(points.shape[0], dtype=bool)
+        todo[on_rows[found]] = False
+        if todo.any():
+            out[todo] = np.asarray(self._field.evaluate(points[todo]), dtype=np.float64).reshape(-1)
+            new_keys, first = np.unique(keys[~found], return_index=True)
+            if new_keys.size:
+                new_values = out[on_rows[~found][first]]
+                at = np.searchsorted(self._keys, new_keys)
+                self._keys = np.insert(self._keys, at, new_keys)
+                self._values = np.insert(self._values, at, new_values)
+        return out
 
 
 def _group_components(frame: StructuralFrame, group_idx: int) -> List[Set[int]]:
