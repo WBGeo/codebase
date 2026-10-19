@@ -80,6 +80,14 @@ _NEIGHBOUR_STEPS: npt.NDArray[np.int64] = np.array(
 # Fraction of the finest cell size used as the central-difference step for normals.
 _GRADIENT_STEP_CELLS: float = 0.25
 
+# Largest lattice (in max-level cells) that gets a dense cell look-up array (int32,
+# 4 bytes per entry, so up to 256 MB); larger lattices use a sorted search instead.
+_DENSE_LOOKUP_MAX_ENTRIES: int = 1 << 26
+
+# Dense key marking in _unique_rows when the key range is at most this many times
+# the number of rows (a bool and an int64 array over the range); else a sort.
+_DENSE_UNIQUE_RANGE_FACTOR: int = 8
+
 
 @dataclass
 class DualContourMesh:
@@ -205,7 +213,7 @@ def dual_contour(
     # Corner values, each (lattice point, group) once.
     corners = ijk[:, None, :] + CORNER_OFFSETS[None, :, :]                       # (M, 8, 3)
     corner_keys = np.column_stack([corners.reshape(-1, 3), np.repeat(groups, 8)])
-    unique_corners, corner_inverse = np.unique(corner_keys, axis=0, return_inverse=True)
+    unique_corners, corner_inverse = _unique_rows(corner_keys)
     corner_values = np.asarray(
         values(grid.origin + unique_corners[:, :3] * spacing, unique_corners[:, 3]), dtype=np.float64)
     corner_values = corner_values[corner_inverse.ravel()].reshape(-1, 8)        # (M, 8)
@@ -214,7 +222,7 @@ def dual_contour(
     lower = corners[:, _EDGES[:, 0], :]                                          # (M, 12, 3)
     edge_keys = np.column_stack([
         lower.reshape(-1, 3), np.tile(_EDGE_AXIS, ijk.shape[0]), np.repeat(groups, 12)])
-    unique_edges, edge_inverse = np.unique(edge_keys, axis=0, return_inverse=True)
+    unique_edges, edge_inverse = _unique_rows(edge_keys)
     edge_inverse = edge_inverse.ravel().reshape(-1, 12)                          # (M, 12)
     first = np.empty(unique_edges.shape[0], dtype=np.int64)
     first[edge_inverse.ravel()] = np.arange(edge_inverse.size)                   # any incidence of each edge
@@ -240,18 +248,29 @@ def dual_contour(
         across = axis != a
         on_wall |= across & ((lo_pt[:, a] == -padding) | (lo_pt[:, a] == n_finest[a] + padding))
 
-    # Look-up of all cells by position, to tell another group's cell from no cell.
+    # Look-up of all cells by position, to tell another group's cell from no cell:
+    # a dense array of cell rows over the lattice where it fits, else a sorted search.
     keys = linear_cell_index(ijk + padding, n_lattice)
-    order = np.argsort(keys)
-    sorted_keys = keys[order]
+    if int(np.prod(n_lattice)) <= _DENSE_LOOKUP_MAX_ENTRIES:
+        row_at = np.full(int(np.prod(n_lattice)), -1, dtype=np.int32)
+        row_at[keys] = np.arange(ijk.shape[0], dtype=np.int32)
+
+        def rows_at(k: IntArray) -> IntArray:
+            return row_at[k]
+    else:
+        order = np.argsort(keys)
+        sorted_keys = keys[order]
+
+        def rows_at(k: IntArray) -> IntArray:
+            pos = np.minimum(np.searchsorted(sorted_keys, k), sorted_keys.size - 1)
+            return np.where(sorted_keys[pos] == k, order[pos], -1)
 
     def find(points_ijk: IntArray) -> IntArray:
         """Row of the cell at each position, -1 where there is none."""
         shifted = points_ijk + padding
         inside = np.all((shifted >= 0) & (shifted < n_lattice), axis=1)
         k = linear_cell_index(np.where(inside[:, None], shifted, 0), n_lattice)
-        pos = np.minimum(np.searchsorted(sorted_keys, k), sorted_keys.size - 1)
-        return np.where(inside & (sorted_keys[pos] == k), order[pos], -1)
+        return np.where(inside, rows_at(k), -1)
 
     at_group_boundary = np.zeros(ijk.shape[0], dtype=bool)
     for step in _NEIGHBOUR_STEPS:
@@ -351,6 +370,53 @@ def dual_contour(
             vertex_at_group_boundary=boundary, n_missing_quads=n_missing,
         ))
     return meshes
+
+
+def _unique_rows(rows: IntArray) -> Tuple[IntArray, IntArray]:
+    """
+    ``np.unique(rows, axis=0, return_inverse=True)`` for integer rows, much faster.
+
+    ``np.unique`` with ``axis=0`` sorts rows with a slow generic comparison; it
+    took most of the time of dual contouring. Here each row becomes one int64
+    key, its columns shifted to start at 0 and packed with the first column
+    most significant, so the keys sort in the same (lexicographic) order as
+    the rows and the result is identical. When the keys span a range not much
+    larger than their number (corners and edges of cells packed around
+    surfaces), they are marked in an array over that range and numbered in
+    order, without sorting; otherwise they are sorted.
+
+    Args:
+        rows: Integer rows, shape ``(K, C)``.
+
+    Returns:
+        ``(unique_rows, inverse)``: the distinct rows in lexicographic order and,
+        for each input row, the index of its distinct row, shape ``(K,)``.
+    """
+    rows = np.asarray(rows, dtype=np.int64)
+    if rows.shape[0] == 0:
+        return rows, np.zeros(0, dtype=np.int64)
+    low = rows.min(axis=0)
+    span = rows.max(axis=0) - low + 1
+    if np.prod(span.astype(np.float64)) >= 2.0 ** 62:  # keys would overflow int64
+        unique, inverse = np.unique(rows, axis=0, return_inverse=True)
+        return unique, inverse.ravel()
+    keys = np.zeros(rows.shape[0], dtype=np.int64)
+    for column in range(rows.shape[1]):
+        keys = keys * span[column] + (rows[:, column] - low[column])
+    key_range = int(np.prod(span))
+    if key_range <= _DENSE_UNIQUE_RANGE_FACTOR * rows.shape[0]:
+        present = np.zeros(key_range, dtype=bool)
+        present[keys] = True
+        number = np.cumsum(present, dtype=np.int64) - 1
+        unique_keys = np.flatnonzero(present)
+        unique = np.empty((unique_keys.size, rows.shape[1]), dtype=np.int64)
+        rest = unique_keys
+        for column in range(rows.shape[1] - 1, -1, -1):
+            rest, unique[:, column] = np.divmod(rest, span[column])
+            unique[:, column] += low[column]
+        return unique, number[keys]
+    _, first, inverse = np.unique(keys, return_index=True, return_inverse=True)
+    return rows[first], inverse.ravel()
 
 
 def select_faces(
