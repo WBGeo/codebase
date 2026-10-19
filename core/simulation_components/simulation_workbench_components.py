@@ -645,12 +645,13 @@ def run_golem_simulation(
     try:
         # the `registry.git.rwth-aachen.de/wbgeo/container-registry/pyrunner-base` image comes with golem already installed
         # it is based upon `moose-dev:fixed`
+        golem_image = os.environ.get('GOLEM_IMAGE', None)
 
         golem_binary = os.environ.get('GOLEM_BINARY', '/golem/golem-opt')
-        workspace_dir = os.environ.get('GOLEM_WORKSPACE') + "/" + str(uuid.uuid4())
+        workspace_dir = os.environ.get('GOLEM_WORKSPACE', 'golem_workspace') + "/" + str(uuid.uuid4())
         result = _run_simulation_golem(
             problem=problem.inner(),
-            image_name=None,
+            image_name=golem_image,
             golem_binary=golem_binary,
             workspace_dir=workspace_dir,
             output_dir=str(run_output_dir),
