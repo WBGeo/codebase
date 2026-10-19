@@ -57,7 +57,11 @@ class InputData_StructuralElements:
         formation_order = [item for sublist in self.mapping_object.values() for item in
                            (sublist if isinstance(sublist, (list, tuple)) else [sublist])]
         formation_cat_type = pd.CategoricalDtype(categories=formation_order, ordered=True)
-        self.surface_points['formation'] = self.surface_points['formation'].astype(formation_cat_type)
+        # On a copy: writing the categorical column into the caller's DataFrame turned every
+        # formation outside the mapping (e.g. the faults) into NaN there, so a fault input built
+        # from the same DataFrame afterwards found no fault points.
+        self.surface_points = self.surface_points.assign(
+            formation=self.surface_points['formation'].astype(formation_cat_type))
         self.surface_points = self.surface_points.sort_values(by='formation').reset_index(drop=True)
         self.surface_points['formation'] = self.surface_points['formation'].astype(str)
 
