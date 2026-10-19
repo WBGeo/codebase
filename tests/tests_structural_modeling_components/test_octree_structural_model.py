@@ -579,3 +579,19 @@ def test_lattice_cache_evaluates_each_lattice_point_once():
     np.testing.assert_array_equal(again, np.concatenate([first[4:], first[3::-1]]))
     assert field.points == len(off)  # only the off-lattice points were evaluated again
     assert cached.scalar_values == field.scalar_values
+
+
+def test_detailed_report_shows_the_octree_cells_per_level(capsys):
+    """The report's grid part: settings and equivalent grid, then stored cells per level once computed."""
+    from core.structural_modeling_components.structural_objects.structural_objects import grid_report_lines
+    grid = octree_grid()
+    assert grid_report_lines(grid, None)[-1] == "  └─ Cells: not computed"
+    frame = compute(grid).structural_frame
+    lines = grid_report_lines(grid, frame.cells)
+    assert "equivalent regular grid 16×16×16 = 4,096 cells" in lines[1]
+    assert "Gap mitigation: balance_mesh_depth_adjacency · cell balance: none" in lines[2]
+    per_level = np.bincount(frame.cells.level, minlength=grid.max_level + 1)
+    assert lines[-1] == "  └─ Cells per level: " + " · ".join(f"L{lv} {n:,}" for lv, n in enumerate(per_level))
+    assert grid_report_lines(grid.equivalent_regular_grid(), None)[1] == "• Grid resolution: (16, 16, 16)"
+    frame.detailed_report()
+    assert "Cells per level" in capsys.readouterr().out

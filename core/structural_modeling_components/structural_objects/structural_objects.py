@@ -46,6 +46,36 @@ BoolArray = NpNDArrayBool
 MeshDict = Dict[str, NpNDArrayFp64]
 
 
+def grid_report_lines(grid: Optional[ModelGrid], cells: Optional[OctreeCells]) -> List[str]:
+    """
+    The grid part of a frame's ``detailed_report``, as printable lines.
+
+    Regular grid: extent and resolution. Octree: extent, base resolution, max
+    level and the equivalent regular grid, the gap-mitigation and cell-balance
+    settings, and, once computed, the stored cells per level and their share of
+    the finest cells.
+    """
+    if grid is None:
+        return ["• Grid: Not set"]
+    if not isinstance(grid, OctreeGrid):
+        return [f"• Grid extent: {grid.extent}", f"• Grid resolution: {grid.resolution}"]
+    finest = tuple(int(n) for n in grid.finest_resolution)
+    n_finest = int(np.prod(finest))
+    lines = [
+        f"• Grid extent: {grid.extent}",
+        f"• Octree: base resolution {tuple(grid.base_resolution)}, max level {grid.max_level} "
+        f"(equivalent regular grid {'×'.join(map(str, finest))} = {n_finest:,} cells)",
+        f"  ├─ Gap mitigation: {grid.gap_mitigation.value} · cell balance: {grid.cell_balance.value}",
+    ]
+    if cells is None:
+        lines.append("  └─ Cells: not computed")
+        return lines
+    levels = np.bincount(np.asarray(cells.level, dtype=np.int64), minlength=grid.max_level + 1)
+    lines.append(f"  ├─ Cells: {len(cells):,} ({100 * len(cells) / n_finest:.1f} % of the finest cells)")
+    lines.append("  └─ Cells per level: " + " · ".join(f"L{level} {count:,}" for level, count in enumerate(levels)))
+    return lines
+
+
 class _PerCellResults:
     """
     Grid-independent access to per-cell result arrays, shared by both frames.
@@ -564,9 +594,8 @@ class StructuralFrame(_PerCellResults, BaseModel):
         print("📦 Structural Frame — Detailed Report")
         print("─────────────────────────────────────")
         print(f"• Number of structural groups: {len(self.structural_groups)}")
-        if isinstance(self.grid, OctreeGrid):
-            print(f"• Octree: base resolution {self.grid.base_resolution}, max level {self.grid.max_level}, "
-                  f"cells: {len(self.cells) if self.cells is not None else 'not computed'}")
+        for line in grid_report_lines(self.grid, self.cells):
+            print(line)
         print(f"• Total surface points: {len(self.surface_points)} entries")
         if self.orientations is not None:
             print(f"• Total orientations: {len(self.orientations)} entries\n")
@@ -1044,16 +1073,8 @@ class FaultFrame(_PerCellResults, BaseModel):
         print("────────────────────────────────")
         print(f"• Number of faults: {len(self.fault_elements)}")
 
-        if isinstance(self.grid, OctreeGrid):
-            print(f"• Grid extent: {self.grid.extent}")
-            print(f"• Octree: base resolution {self.grid.base_resolution}, max level {self.grid.max_level} "
-                  f"(finest equivalent {self.grid.finest_resolution})")
-            print(f"• Cells: {len(self.cells) if self.cells is not None else 'not computed'}")
-        elif self.grid:
-            print(f"• Grid extent: {self.grid.extent}")
-            print(f"• Grid resolution: {self.grid.resolution}")
-        else:
-            print("• Grid: Not set")
+        for line in grid_report_lines(self.grid, self.cells):
+            print(line)
 
         if self.fault_surface_points_df is not None:
             print(f"• Surface points: {len(self.fault_surface_points_df)} entries")
