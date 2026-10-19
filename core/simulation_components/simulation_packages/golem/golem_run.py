@@ -225,7 +225,7 @@ def _stream_process(command, heartbeat_seconds: float = 10.0, *, stream_output: 
         if stream_output:
             print(*args, **kwargs)
     emit("\n" + "=" * 72, flush=True)
-    emit("Starting GOLEM Docker/MPI simulation", flush=True)
+    emit("Starting GOLEM simulation", flush=True)
     emit("Command:", shlex.join(command), flush=True)
     emit("=" * 72, flush=True)
 
@@ -395,7 +395,7 @@ def run_simulation_golem(
         CustomGolemBuilder,
     ],
     image_name: Optional[str] = None,
-    golem_binary: Optional[str] = '/golem/golem-opt',
+    golem_binary: str = "/golem/golem-opt",
     output_dir: Optional[str] = None,
     nproc: int = 4,
     temporary: bool = True,
@@ -428,6 +428,12 @@ def run_simulation_golem(
         raise ValueError("nproc must be >= 1")
 
     create_docker = image_name is not None
+    if create_docker and shutil.which("docker") is None:
+        raise RuntimeError("Docker CLI not found, but image_name was given. Install Docker or omit "
+                           "image_name to run GOLEM on the host.")
+    if not create_docker and shutil.which("mpiexec") is None:
+        raise RuntimeError("mpiexec not found on PATH; it is required to run GOLEM on the host. "
+                           "Pass image_name to run GOLEM in Docker instead.")
 
     project = Path(workspace_dir).resolve()
     project.mkdir(parents=True, exist_ok=True)
