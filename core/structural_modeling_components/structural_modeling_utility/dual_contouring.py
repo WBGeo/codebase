@@ -97,9 +97,13 @@ class DualContourMesh:
     Attributes:
         vertices: Vertex coordinates, shape ``(V, 3)``.
         faces: Vertex indices of the triangles, shape ``(F, 3)``; normals point
-            toward increasing field values.
+            toward increasing field values. Each quad is split into two
+            triangles: with ``Q = F // 2`` quads, quad ``q`` is triangles ``q``
+            and ``q + Q`` (see :func:`restrict_to_kept_cells`).
         vertex_cells: Max-level cell index ``(i, j, k)`` each vertex belongs to,
             shape ``(V, 3)``.
+        vertex_rows: Row of each vertex's cell in the ``cell_ijk`` the mesh was
+            contoured on, shape ``(V,)``.
         vertex_at_group_boundary: Whether a vertex's cell touches a cell of
             another group (shares a face, an edge or a corner), shape ``(V,)``.
         n_missing_quads: Crossing edges inside the extent that got no quad
@@ -109,6 +113,7 @@ class DualContourMesh:
     vertices: FloatArray
     faces: IntArray
     vertex_cells: IntArray
+    vertex_rows: IntArray
     vertex_at_group_boundary: npt.NDArray[np.bool_]
     n_missing_quads: int
 
@@ -360,16 +365,44 @@ def dual_contour(
         increasing = (vb[idx] > va[idx])[complete]
         quads = np.where(increasing[:, None], quads, quads[:, ::-1])
         faces = np.concatenate([quads[:, [0, 1, 2]], quads[:, [0, 2, 3]]], axis=0)
-        vertex_cells = ijk[has_vertex]
+        vertex_rows = np.flatnonzero(has_vertex)
         boundary = at_group_boundary[has_vertex]
         if cell_kept is not None:
             vertices, faces, used = select_faces(vertices, faces, np.ones(faces.shape[0], dtype=bool))
-            vertex_cells, boundary = vertex_cells[used], boundary[used]
+            vertex_rows, boundary = vertex_rows[used], boundary[used]
         meshes.append(DualContourMesh(
-            vertices=vertices, faces=faces.astype(np.int64), vertex_cells=vertex_cells,
-            vertex_at_group_boundary=boundary, n_missing_quads=n_missing,
+            vertices=vertices, faces=faces.astype(np.int64), vertex_cells=ijk[vertex_rows],
+            vertex_rows=vertex_rows, vertex_at_group_boundary=boundary, n_missing_quads=n_missing,
         ))
     return meshes
+
+
+def restrict_to_kept_cells(mesh: DualContourMesh, cell_kept: npt.NDArray[np.bool_]) -> DualContourMesh:
+    """
+    The mesh with only the quads all 4 of whose cells are kept.
+
+    The same mesh as :func:`dual_contour` with ``cell_kept`` gives, without a
+    second contouring pass: a quad's 4 vertices are its 4 cells' vertices, so
+    a quad is kept if all of them are. Only for meshes as :func:`dual_contour`
+    returns them (or restricted by this function), whose triangles ``q`` and
+    ``q + F // 2`` form quad ``q``.
+
+    Args:
+        mesh: A mesh from :func:`dual_contour`.
+        cell_kept: Mask of the cells the mesh was contoured on, shape ``(M,)``.
+
+    Returns:
+        The kept quads with only the vertices they use, in their original
+        order. ``n_missing_quads`` is the unrestricted mesh's.
+    """
+    kept_vertex = np.asarray(cell_kept, dtype=bool)[mesh.vertex_rows]
+    n_quads = mesh.faces.shape[0] // 2
+    kept_quad = kept_vertex[mesh.faces[:n_quads]].all(axis=1) & kept_vertex[mesh.faces[n_quads:]].all(axis=1)
+    vertices, faces, used = select_faces(mesh.vertices, mesh.faces, np.concatenate([kept_quad, kept_quad]))
+    return DualContourMesh(
+        vertices=vertices, faces=faces, vertex_cells=mesh.vertex_cells[used], vertex_rows=mesh.vertex_rows[used],
+        vertex_at_group_boundary=mesh.vertex_at_group_boundary[used], n_missing_quads=mesh.n_missing_quads,
+    )
 
 
 def _unique_rows(rows: IntArray) -> Tuple[IntArray, IntArray]:
@@ -468,6 +501,6 @@ def interior_open_edges(mesh: DualContourMesh, grid: OctreeGrid, padding: int = 
 def _empty_mesh() -> DualContourMesh:
     return DualContourMesh(
         vertices=np.zeros((0, 3)), faces=np.zeros((0, 3), dtype=np.int64),
-        vertex_cells=np.zeros((0, 3), dtype=np.int64), vertex_at_group_boundary=np.zeros(0, dtype=bool),
-        n_missing_quads=0,
+        vertex_cells=np.zeros((0, 3), dtype=np.int64), vertex_rows=np.zeros(0, dtype=np.int64),
+        vertex_at_group_boundary=np.zeros(0, dtype=bool), n_missing_quads=0,
     )

@@ -21,6 +21,7 @@ from core.structural_modeling_components.structural_modeling_utility.dual_contou
     contour_cells,
     dual_contour,
     interior_open_edges,
+    restrict_to_kept_cells,
     select_faces,
     padding_shell,
 )
@@ -148,6 +149,21 @@ def test_keeping_every_cell_gives_the_unmasked_mesh():
                         cell_kept=np.ones(len(cells), dtype=bool))[0]
     np.testing.assert_array_equal(kept.vertices, plain.vertices)
     np.testing.assert_array_equal(kept.faces, plain.faces)
+
+
+def test_restricting_the_unmasked_mesh_equals_contouring_with_the_cell_mask():
+    """MASKED is taken from UNMASKED; it must be exactly what contouring with the mask gives."""
+    g = grid()
+    cells, groups = _sphere_cells(g)
+    kept_cells = cells.centers(g)[:, 0] < 0.5
+    plain = dual_contour(g, cells.ijk, groups, lambda p, _: sphere(p), [0.33])[0]
+    masked = dual_contour(g, cells.ijk, groups, lambda p, _: sphere(p), [0.33], cell_kept=kept_cells)[0]
+    restricted = restrict_to_kept_cells(plain, kept_cells)
+    np.testing.assert_array_equal(restricted.vertices, masked.vertices)
+    np.testing.assert_array_equal(restricted.faces, masked.faces)
+    np.testing.assert_array_equal(restricted.vertex_cells, masked.vertex_cells)
+    np.testing.assert_array_equal(restricted.vertex_rows, masked.vertex_rows)
+    np.testing.assert_array_equal(restricted.vertex_at_group_boundary, masked.vertex_at_group_boundary)
 
 
 def test_a_cell_mask_keeps_only_quads_whose_four_cells_are_kept():

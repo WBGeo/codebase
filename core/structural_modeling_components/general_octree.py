@@ -73,6 +73,7 @@ from core.structural_modeling_components.structural_modeling_utility.dual_contou
     DualContourMesh,
     contour_cells,
     dual_contour,
+    restrict_to_kept_cells,
     select_faces,
     padding_shell,
 )
@@ -435,7 +436,8 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
     own field, so the surfaces end half a cell before the faults that affect the
     group and run through the others. (The regular grid contours the field
     assembled from all domains instead, across the faults.) UNMASKED uses
-    no masks. MASKED keeps a quad only if none of its 4 cells is eroded, i.e.
+    no masks. MASKED is taken from UNMASKED, without contouring again: it keeps
+    a quad only if none of its 4 cells is eroded, i.e.
     lies where the age mask of any younger group is True at the cell center (the
     per-cell form of the erosion mask in ``general.extract_meshes``), and then
     only the triangles none of whose vertices is eroded: a DC vertex can lie up
@@ -472,9 +474,8 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
         values = lambda p, c: _group_values(by_domain, p, c)  # noqa: E731
         unmasked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, field_bounds=bounds)
         not_eroded = ~masks[:group_idx].any(axis=0)
-        masked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, cell_kept=not_eroded,
-                              field_bounds=bounds)
-        masked = [_drop_eroded_triangles(frame, fields, group_idx, mesh) for mesh in masked]
+        masked = [_drop_eroded_triangles(frame, fields, group_idx, restrict_to_kept_cells(mesh, not_eroded))
+                  for mesh in unmasked]
         extended = dual_contour(grid, padded_ijk, _component_of_domains(frame, group_idx, padded_domains),
                                 values, isovalues, padding=_FIT_PADDING_CELLS, field_bounds=bounds)
         for elem, mesh, masked_mesh, extended_mesh in zip(elements, unmasked, masked, extended):
@@ -506,6 +507,7 @@ def _drop_eroded_triangles(
     eroded = _age_masks_at(frame, fields, mesh.vertices)[:group_idx].any(axis=0)
     vertices, faces, used = select_faces(mesh.vertices, mesh.faces, ~eroded[mesh.faces].any(axis=1))
     return dataclasses.replace(mesh, vertices=vertices, faces=faces, vertex_cells=mesh.vertex_cells[used],
+                               vertex_rows=mesh.vertex_rows[used],
                                vertex_at_group_boundary=mesh.vertex_at_group_boundary[used])
 
 
