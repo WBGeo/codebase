@@ -154,7 +154,18 @@ def _section_cells(frame: StructuralFrame | FaultFrame, axis: int, index: int) -
 
 
 def _draw_section_cells(ax, frame: StructuralFrame | FaultFrame, axis: int, index: int) -> None:
-    """Outline the cells a slice cuts, above the background image and below lines and points."""
+    """
+    Outline the cells a slice cuts, above the background image and below lines and points.
+
+    An octree's cells exist only once the model is computed; before that this
+    warns and draws nothing (a regular grid's cells are known from the start).
+    """
+    if isinstance(frame.grid, OctreeGrid) and frame.cells is None:
+        step = ("the fault model (compute_fault_domains)" if isinstance(frame, FaultFrame)
+                else "the structural model (compute_structural_model)")
+        warnings.warn(f"show_grid=True: the cells of an OctreeGrid exist only after {step} has been computed; "
+                      f"plotting without cell outlines.", stacklevel=3)
+        return
     ax.add_collection(PolyCollection(_section_cells(frame, axis, index), facecolors="none",
                                      edgecolors="#333333", linewidths=0.3, alpha=0.7, zorder=1))
 
@@ -363,6 +374,7 @@ def plot_structural_model_3D(
     pv.Plotter
         The PyVista plotter instance (useful when show=False).
     """
+    fault_mesh_type_requested = fault_mesh_type is not None
     fault_mesh_type = fault_mesh_type if fault_mesh_type is not None else mesh_type
 
     pv.global_theme.allow_empty_mesh = True
@@ -370,6 +382,8 @@ def plot_structural_model_3D(
 
     # ---------- plot structural meshes, points, orientations ----------
     legend_entries = []  # [(group_name, [(• elem, color), ...]), ...] in youngest->oldest order
+    computed = frame.lith_block is not None and np.size(frame.lith_block) > 0
+    drew_surface = False
 
     for group in frame.structural_groups:  # order preserved: youngest->oldest
         group_entries = []
@@ -380,6 +394,7 @@ def plot_structural_model_3D(
             # meshes (per domain)
             if show_surface_meshes:
                 if mesh_type in elem.vertices and mesh_type in elem.edges:
+                    drew_surface = True
                     plotter.add_mesh(
                         pv.PolyData(elem.vertices[mesh_type],
                                     np.insert(elem.edges[mesh_type], 0, 3, axis=1).ravel()),
@@ -406,6 +421,15 @@ def plot_structural_model_3D(
 
         legend_entries.append((group.name, group_entries))
 
+    if show_surface_meshes and computed and not drew_surface:
+        available = sorted({str(t.value) for g in frame.structural_groups for e in g.structural_elements
+                            for t in e.vertices})
+        warnings.warn(
+            f"mesh_type={mesh_type.value!r}: no element has this surface mesh"
+            + (f"; available: {', '.join(available)}." if available
+               else "; the model was computed without surface meshes (extract_meshes=False).")
+            + " Plotting without surfaces.", stacklevel=2)
+
     # ---------- plot fault meshes ----------
     if frame.fault_frame is not None:
         # add a "Faults" header in legend (bold/black achievable only approximately in pyvista legend)
@@ -415,6 +439,12 @@ def plot_structural_model_3D(
 
         for fault in frame.fault_frame.fault_elements:
             if fault_mesh_type not in fault.vertices or fault_mesh_type not in fault.edges:
+                if fault_mesh_type_requested:  # the default follows mesh_type and may have no fault equivalent
+                    warnings.warn(
+                        f"fault_mesh_type={fault_mesh_type.value!r}: fault '{fault.name}' has no such mesh "
+                        f"(fault MASKED and EXTENDED_MASKED exist only after compute_structural_model); "
+                        f"showing UNMASKED instead.", stacklevel=2)
+                    fault_mesh_type_requested = False  # warn once
                 fault_mesh_type = FaultMeshType.UNMASKED  # fallback if requested type not present
             fv = fault.vertices[fault_mesh_type]
             ff = fault.edges[fault_mesh_type]
@@ -438,9 +468,13 @@ def plot_structural_model_3D(
         legend_entries = [("Faults", fault_entries)] + legend_entries
 
     # ---------- lithology block: the cell faces on the outer walls ----------
-    if show_lith_block and frame.lith_block is not None and np.size(frame.lith_block) > 0:
+    if show_lith_block and computed:
         plotter.add_mesh(_wall_faces(frame), scalars="rgb", rgb=True, show_edges=True,
                          edge_color="#333333", line_width=0.5)
+    elif show_lith_block:
+        warnings.warn("show_lith_block=True: there is no lithology block before the structural model has been "
+                      "computed (compute_structural_model); plotting without it.", stacklevel=2)
+        show_lith_block = False  # no basement legend entry either
 
     # ---------- legend like before (youngest at top; group bold-ish) ----------
     # flatten & reverse (PyVista renders top-down)
@@ -547,8 +581,8 @@ def plot_structural_model_2D(
         )
         if has_result is False:
             warnings.warn(
-                "show_result=True but no lithology block found. "
-                "Plotting input data only.",
+                "show_result=True but no lithology block found: the structural model "
+                "has not been computed yet (compute_structural_model). Plotting input data only.",
                 UserWarning
             )
         else:
@@ -829,7 +863,7 @@ def plot_fault_model_3D(
         if show_input_data and fault_frame.fault_surface_points_df is not None:
             df_points = fault_frame.get_surface_points_for_element(fname)
             if df_points is not None and not df_points.empty:
-                cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values)
+                cloud = pv.PolyData(df_points[["X", "Y", "Z"]].values.astype(np.float64))
                 plotter.add_points(
                     cloud,
                     color=fcol,
@@ -851,6 +885,13 @@ def plot_fault_model_3D(
                 for i in range(len(start)):
                     arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
                     plotter.add_mesh(arrow, color=fcol)
+
+    # Computed, but no fault has the requested mesh (before computing there are none at all).
+    available = sorted({str(t.value) for f in faults for t in (f.vertices or {})})
+    if show_surface_meshes and available and not fault_meshes:
+        warnings.warn(f"mesh_type={mesh_type.value!r}: no fault has this mesh; available: {', '.join(available)} "
+                      f"(fault MASKED and EXTENDED_MASKED exist only after compute_structural_model). "
+                      f"Plotting without fault surfaces.", stacklevel=2)
 
     # -------------------------
     # (B2) Crosscut lines -- exact surface-surface intersection (optional)
@@ -996,9 +1037,10 @@ def plot_fault_model_2D(
     has_result = show_results and domain_map is not None and np.size(domain_map) > 0
     if show_results and not has_result:
         warnings.warn(
-            "show_results=True but no domain_map found (e.g. a cross-cutting "
-            "fault model, where domaining is skipped) -- domain blocks won't "
-            "be plotted. Fault contours still will be, if show_fault_contours.",
+            "show_results=True but no domain_map found: the fault model has not "
+            "been computed yet (compute_fault_domains), or it is cross-cutting, "
+            "where domaining is skipped -- domain blocks won't be plotted. Fault "
+            "contours still will be, if show_fault_contours.",
             UserWarning,
         )
 

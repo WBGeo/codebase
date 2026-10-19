@@ -117,3 +117,24 @@ def test_frame_section_plots_run_on_both_grids(results, kind):
     frame = results[kind]
     frame.plot_scalar_field_section(group_nr=1, axis="y", index=3)
     frame.plot_age_mask_section(group_nr=0, axis="x", index=3)
+
+
+@pytest.fixture(scope="module")
+def uncomputed():
+    """Model 2's fault and structural frames on an octree, built but not computed (no cells yet)."""
+    from test_octree_faulted_structural_model import MODELS, _integration_module, octree_grid
+    elements, faults = _integration_module(MODELS["model2"][0])._build_input_data()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return (gf.build_fault_frame(faults, octree_grid()),
+                general.build_structural_frame(input_data_elements=elements, grid=octree_grid()))
+
+
+def test_show_grid_before_computing_warns_and_plots_without_outlines(uncomputed):
+    """An octree's cells exist only after computing: show_grid warns instead of failing."""
+    fault_frame, frame = uncomputed
+    for plot, f in [(viz.plot_fault_model_2D, fault_frame), (viz.plot_structural_model_2D, frame)]:
+        with pytest.warns(UserWarning, match="show_grid=True: the cells of an OctreeGrid exist only after"):
+            plot(f, show_grid=True)
+        assert all(not _outlines(ax) for ax in plt.gcf().axes)
+        plt.close("all")

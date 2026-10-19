@@ -118,3 +118,18 @@ def test_fault_model_3d_plots_its_domains_on_both_grids(results, kind):
         np.testing.assert_allclose(sum(block.volume for block in blocks), np.prod(size), rtol=1e-9)
     finally:
         plotter.close()
+
+
+def test_show_lith_block_before_computing_warns_and_plots_the_rest():
+    """There is no lithology before computing: show_lith_block warns and the plot still renders."""
+    from test_octree_faulted_structural_model import MODELS, _integration_module, octree_grid
+    elements, _ = _integration_module(MODELS["model2"][0])._build_input_data()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        frame = general.build_structural_frame(input_data_elements=elements, grid=octree_grid())
+    with pytest.warns(UserWarning, match="show_lith_block=True: there is no lithology block"):
+        plotter = viz.plot_structural_model_3D(frame, show_lith_block=True, off_screen=True, show=False)
+    try:
+        assert plotter.renderer.actors  # the input points
+    finally:
+        plotter.close()
