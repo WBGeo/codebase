@@ -238,6 +238,22 @@ def dual_contour(
     corner_values = corner_values[corner_inverse].reshape(-1, 8)                # (M, 8)
     del corner_unique, corner_inverse, corner_points, corner_group
 
+    # From here on only the cells with a crossing: the 4 cells of a quad all contain
+    # its crossing edge, so cells whose corners lie on one side of every isovalue
+    # (e.g. cells refined for another group's surfaces) give neither vertices nor
+    # quads. The look-up of neighbours below still sees all cells.
+    all_ijk, all_groups = ijk, groups
+    crossed = np.zeros(ijk.shape[0], dtype=bool)
+    for isovalue in isovalues:
+        above = corner_values > isovalue if strictly_above else corner_values >= isovalue
+        crossed |= above.any(axis=1) & ~above.all(axis=1)
+    cell_rows = np.flatnonzero(crossed)
+    if cell_rows.size == 0:
+        return [_empty_mesh() for _ in isovalues]
+    ijk, groups, kept = ijk[cell_rows], groups[cell_rows], kept[cell_rows]
+    cell_point, group_rank, corner_values = cell_point[cell_rows], group_rank[cell_rows], corner_values[cell_rows]
+    del crossed
+
     # Edges: key = (lower-end lattice point, axis, group); each cell has 12.
     edge_keys = ((cell_point[:, None] + corner_step[_EDGES[:, 0]][None, :]) * 3
                  + _EDGE_AXIS[None, :]) * n_groups + group_rank[:, None]         # (M, 12)
@@ -274,12 +290,13 @@ def dual_contour(
         across = axis != a
         on_wall |= across & ((lo_pt[:, a] == -padding) | (lo_pt[:, a] == n_finest[a] + padding))
 
-    # Look-up of all cells by position, to tell another group's cell from no cell:
-    # a dense array of cell rows over the lattice where it fits, else a sorted search.
-    keys = linear_cell_index(ijk + padding, n_lattice)
+    # Look-up of all cells by position (rows of all_ijk), to tell another group's cell
+    # from no cell: a dense array of cell rows over the lattice where it fits, else a
+    # sorted search.
+    keys = linear_cell_index(all_ijk + padding, n_lattice)
     if int(np.prod(n_lattice)) <= _DENSE_LOOKUP_MAX_ENTRIES:
         row_at = np.full(int(np.prod(n_lattice)), -1, dtype=np.int32)
-        row_at[keys] = np.arange(ijk.shape[0], dtype=np.int32)
+        row_at[keys] = np.arange(all_ijk.shape[0], dtype=np.int32)
 
         def rows_at(k: IntArray) -> IntArray:
             return row_at[k]
@@ -292,7 +309,7 @@ def dual_contour(
             return np.where(sorted_keys[pos] == k, order[pos], -1)
 
     def find(points_ijk: IntArray) -> IntArray:
-        """Row of the cell at each position, -1 where there is none."""
+        """Row (in all_ijk) of the cell at each position, -1 where there is none."""
         shifted = points_ijk + padding
         inside = np.all((shifted >= 0) & (shifted < n_lattice), axis=1)
         k = linear_cell_index(np.where(inside[:, None], shifted, 0), n_lattice)
@@ -301,7 +318,7 @@ def dual_contour(
     at_group_boundary = np.zeros(ijk.shape[0], dtype=bool)
     for step in _NEIGHBOUR_STEPS:
         neighbour = find(ijk + step)
-        at_group_boundary |= (neighbour >= 0) & (groups[np.maximum(neighbour, 0)] != groups)
+        at_group_boundary |= (neighbour >= 0) & (all_groups[np.maximum(neighbour, 0)] != groups)
     slot_offsets = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.int64)  # (o1, o2) per slot
 
     h = _GRADIENT_STEP_CELLS * spacing
@@ -386,13 +403,13 @@ def dual_contour(
         increasing = (vb[idx] > va[idx])[complete]
         quads = np.where(increasing[:, None], quads, quads[:, ::-1])
         faces = np.concatenate([quads[:, [0, 1, 2]], quads[:, [0, 2, 3]]], axis=0)
-        vertex_rows = np.flatnonzero(has_vertex)
+        vertex_rows = cell_rows[has_vertex]                                     # rows of cell_ijk
         boundary = at_group_boundary[has_vertex]
         if cell_kept is not None:
             vertices, faces, used = select_faces(vertices, faces, np.ones(faces.shape[0], dtype=bool))
             vertex_rows, boundary = vertex_rows[used], boundary[used]
         meshes.append(DualContourMesh(
-            vertices=vertices, faces=faces.astype(np.int64), vertex_cells=ijk[vertex_rows],
+            vertices=vertices, faces=faces.astype(np.int64), vertex_cells=all_ijk[vertex_rows],
             vertex_rows=vertex_rows, vertex_at_group_boundary=boundary, n_missing_quads=n_missing,
         ))
     return meshes
