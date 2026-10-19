@@ -14,7 +14,8 @@ dispatches here when the frame's grid is an OctreeGrid:
      field of their cell's domain.
   3) Extract the UNMASKED, MASKED and EXTENDED surface meshes of every element
      by dual contouring on the refined octree, per merged fault-domain component.
-     MASKED keeps a quad only if none of its 4 cells is eroded by a younger group;
+     MASKED keeps a quad only if none of its 4 cells is eroded by a younger group,
+     and of that only the triangles whose vertices are not eroded themselves;
      EXTENDED also runs on a max-level shell around the extent, so it crosses the
      model box. COMBINED contours the lithology id itself.
   4) Coarsen back to the cells the stored result needs: merge cells wherever the
@@ -38,6 +39,7 @@ the pointwise equivalents of ``run_interpolation_with_fault_domains``,
 from __future__ import annotations
 
 import copy
+import dataclasses
 import logging
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
@@ -48,7 +50,11 @@ from core.object_components import StructuralModelResults
 from core.structural_modeling_components.interpolator_functions.finite_difference import (
     fit_group_finite_differences,
 )
-from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6, FittedField
+from core.structural_modeling_components.interpolator_functions.fitted_field import (
+    Extent6,
+    FittedField,
+    snap_to_isovalues,
+)
 from core.structural_modeling_components.interpolator_functions.geoinr import fit_group_geo_inr
 from core.structural_modeling_components.interpolator_functions.ordinary_kriging import fit_group_ordinary_kriging
 from core.structural_modeling_components.interpolator_functions.piecewise_linear import (  # noqa: F401
@@ -64,6 +70,7 @@ from core.structural_modeling_components.interpolator_functions.universal_krigin
     fit_group_universal_kriging,
 )
 from core.structural_modeling_components.structural_modeling_utility.dual_contouring import (
+    DualContourMesh,
     contour_cells,
     dual_contour,
     select_faces,
@@ -402,13 +409,20 @@ def _evaluate_groups(
 
 
 def _group_values(by_domain: Dict[int, Optional[FittedField]], points: FloatArray, domains: IntArray) -> FloatArray:
-    """One group's field at the points, each with its domain's field; zero where a domain has none."""
+    """
+    One group's field at the points, each with its domain's field; zero where a domain has none.
+
+    Values within rounding of one of the field's isovalues are set to it exactly
+    (see :func:`snap_to_isovalues`), so every use of the field (refinement
+    labels, masks, lithology, dual contouring) puts them on the same side, the
+    one the regular grid puts them on.
+    """
     values = np.zeros(points.shape[0], dtype=np.float64)
     for d in np.unique(domains):
         field = by_domain.get(int(d))
         if field is not None:
             at = domains == d
-            values[at] = field.evaluate(points[at])
+            values[at] = snap_to_isovalues(field.evaluate(points[at]), field.scalar_values.values())
     return values
 
 
@@ -423,7 +437,9 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
     assembled from all domains instead, across the faults.) UNMASKED uses
     no masks. MASKED keeps a quad only if none of its 4 cells is eroded, i.e.
     lies where the age mask of any younger group is True at the cell center (the
-    per-cell form of the erosion mask in ``general.extract_meshes``). EXTENDED
+    per-cell form of the erosion mask in ``general.extract_meshes``), and then
+    only the triangles none of whose vertices is eroded: a DC vertex can lie up
+    to half a cell from its cell's center, past the erosion surface. EXTENDED
     uses no masks and adds a max-level shell of ``_FIT_PADDING_CELLS`` finest
     cells around the extent, whose cells take the domain of the nearest
     boundary cell (the regular grid's edge-padded domain map).
@@ -458,6 +474,7 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
         not_eroded = ~masks[:group_idx].any(axis=0)
         masked = dual_contour(grid, dc_cells.ijk, components, values, isovalues, cell_kept=not_eroded,
                               field_bounds=bounds)
+        masked = [_drop_eroded_triangles(frame, fields, group_idx, mesh) for mesh in masked]
         extended = dual_contour(grid, padded_ijk, _component_of_domains(frame, group_idx, padded_domains),
                                 values, isovalues, padding=_FIT_PADDING_CELLS, field_bounds=bounds)
         for elem, mesh, masked_mesh, extended_mesh in zip(elements, unmasked, masked, extended):
@@ -480,6 +497,25 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
         elem.set_mesh(GeoMeshType.COMBINED, mesh.vertices, mesh.faces.astype(np.int32))
 
 
+def _drop_eroded_triangles(
+        frame: StructuralFrame, fields: GroupFields, group_idx: int, mesh: DualContourMesh
+) -> DualContourMesh:
+    """The mesh without the triangles that have a vertex where a group younger than ``group_idx`` is present."""
+    if group_idx == 0 or mesh.faces.shape[0] == 0:
+        return mesh
+    eroded = _age_masks_at(frame, fields, mesh.vertices)[:group_idx].any(axis=0)
+    vertices, faces, used = select_faces(mesh.vertices, mesh.faces, ~eroded[mesh.faces].any(axis=1))
+    return dataclasses.replace(mesh, vertices=vertices, faces=faces, vertex_cells=mesh.vertex_cells[used],
+                               vertex_at_group_boundary=mesh.vertex_at_group_boundary[used])
+
+
+def _age_masks_at(frame: StructuralFrame, fields: GroupFields, points: FloatArray) -> BoolArray:
+    """Every group's age mask at the points, each in its own fault domain, shape ``(n_groups, M)``."""
+    domains = _point_domains(frame, points)
+    _, masks = _lithology_and_masks(frame, _evaluate_groups(frame, fields, points, domains), domains)
+    return masks
+
+
 def _extract_fault_masked_meshes(frame: StructuralFrame, fields: GroupFields, stored_masks: BoolArray) -> None:
     """
     Every fault's MASKED and EXTENDED_MASKED meshes: its UNMASKED and EXTENDED
@@ -488,9 +524,9 @@ def _extract_fault_masked_meshes(frame: StructuralFrame, fields: GroupFields, st
     As in ``general.extract_meshes``: a mesh is kept where that group's age mask
     is False, and whole if there is no such group. MASKED is also kept whole if
     the group's mask covers the whole model (checked on the stored cells);
-    EXTENDED_MASKED is not, and is then empty. A triangle is kept if the
-    max-level cells of all 3 of its vertices pass, with the mask evaluated at
-    those cells' centers (in the padding shell for EXTENDED vertices).
+    EXTENDED_MASKED is not, and is then empty. A triangle is kept if all 3 of
+    its vertices pass, each both at the vertex itself and at the center of the
+    max-level cell containing it (in the padding shell for EXTENDED vertices).
     """
     activity = frame.fault_activity_verbose or {}
     for fault in frame.fault_frame.fault_elements:
@@ -508,7 +544,8 @@ def _extract_fault_masked_meshes(frame: StructuralFrame, fields: GroupFields, st
             if keep_whole:
                 kept_vertex = np.ones(vertices.shape[0], dtype=bool)
             else:
-                kept_vertex = ~_age_mask_at_vertex_cells(frame, fields, vertices)[group_idx]
+                kept_vertex = ~(_age_mask_at_vertex_cells(frame, fields, vertices)[group_idx]
+                                | _age_masks_at(frame, fields, vertices)[group_idx])
             kept_vertices, kept_faces, _ = select_faces(vertices, faces, kept_vertex[faces].all(axis=1))
             fault.set_mesh(target, kept_vertices, kept_faces.astype(np.int32))
 
@@ -523,10 +560,7 @@ def _age_mask_at_vertex_cells(frame: StructuralFrame, fields: GroupFields, verti
     ijk = np.floor((vertices - grid.origin) / grid.finest_spacing).astype(np.int64)
     n_finest = np.array(grid.finest_resolution, dtype=np.int64)
     ijk = np.clip(ijk, -_FIT_PADDING_CELLS, n_finest - 1 + _FIT_PADDING_CELLS)
-    centers = grid.cell_centers(grid.max_level, ijk)
-    domains = _point_domains(frame, centers)
-    _, masks = _lithology_and_masks(frame, _evaluate_groups(frame, fields, centers, domains), domains)
-    return masks
+    return _age_masks_at(frame, fields, grid.cell_centers(grid.max_level, ijk))
 
 
 def _lithology_and_masks(

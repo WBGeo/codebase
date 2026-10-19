@@ -10,9 +10,11 @@ import logging
 import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import core.structural_modeling_components.general as general
+from core.object_components import InputData_StructuralElements
 import core.structural_modeling_components.general_faults as gf
 import core.structural_modeling_components.general_octree as general_octree
 from core.structural_modeling_components.structural_modeling_utility.dual_contouring import (
@@ -367,11 +369,38 @@ def test_masked_surfaces_stop_at_the_unconformity(unconformity_result):
         faces = elem.edges[GeoMeshType.MASKED]
         assert faces.dtype == np.int32 and 0 < len(masked) < len(unmasked)
         assert {tuple(v) for v in masked} <= {tuple(v) for v in unmasked}
-        # Below the unconformity at z = 0.62, up to it within a cell, and complete beneath it.
-        assert masked[:, 2].max() < 0.62 + cell[2]
+        # Below the unconformity at z = 0.62 (not even a vertex past it, within the fit's
+        # accuracy), up to it within a cell, and complete beneath it.
+        assert masked[:, 2].max() < 0.62 + 0.01
         assert masked[:, 2].max() > 0.62 - 2 * cell[2]
         below = unmasked[:, 2] < 0.62 - 2 * cell[2]
         assert {tuple(v) for v in unmasked[below]} <= {tuple(v) for v in masked}
+
+
+def test_flat_surfaces_on_a_corner_plane_give_a_regular_mesh():
+    """
+    Horizons at z = 0.25 and 0.5 lie exactly on planes of cell corners, where the
+    fitted field equals the isovalue only up to rounding. Snapped to the isovalue,
+    every crossing falls into the same cell layer: each vertex sits at its cell's
+    center in x and y (a regular triangulation), none is pulled toward a neighbour.
+    """
+    xs = np.linspace(0.05, 0.95, 7)
+    rows = [{"X": float(x), "Y": float(y), "Z": z, "formation": name}
+            for name, z in (("top", 0.5), ("bottom", 0.25)) for x in xs for y in xs]
+    data = InputData_StructuralElements(
+        name="flat", mapping_object={"Series": ("top", "bottom")}, surface_points=pd.DataFrame(rows),
+        orientations=pd.DataFrame([dict(row, G_x=0.0, G_y=0.0, G_z=1.0) for row in rows]))
+    grid = OctreeGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), base_resolution=(2, 2, 2), max_level=4)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        frame = general.build_structural_frame(input_data_elements=data, grid=grid)
+        result = general.compute_structural_model(frame, extract_meshes=True).structural_frame
+    cell = result.grid.finest_spacing
+    for elem in result.structural_groups[0].structural_elements:
+        vertices = elem.vertices[GeoMeshType.UNMASKED]
+        np.testing.assert_allclose(vertices[:, 2], {"top": 0.5, "bottom": 0.25}[elem.name], atol=1e-6)
+        in_cell = vertices[:, :2] / cell[:2] - 0.5
+        np.testing.assert_allclose(in_cell, np.round(in_cell), atol=1e-6)
 
 
 def test_extended_surfaces_cross_the_box_and_contain_the_unmasked_surfaces(unconformity_result):

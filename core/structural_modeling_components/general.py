@@ -84,6 +84,7 @@ from core.structural_modeling_components.interpolator_functions.piecewise_linear
 from core.structural_modeling_components.interpolator_functions.universal_kriging import (
     interpolate_group_universal_kriging
 )
+from core.structural_modeling_components.interpolator_functions.fitted_field import snap_to_isovalues
 
 # -----------------------------------------------------------------------------
 # Constants
@@ -357,6 +358,8 @@ def run_interpolation_with_fault_domains(
 
             # Preserve existing behavior: transpose to expected axis order
             scalar_field_sub = scalar_field_sub.transpose(2, 1, 0)
+            # Values within rounding of an isovalue become it, as on the octree.
+            scalar_field_sub = snap_to_isovalues(scalar_field_sub, scalar_values.values())
 
             # Place result into the padded accumulator
             if bbox is not None and len(domain_ids) > 1:

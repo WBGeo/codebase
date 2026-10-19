@@ -9,7 +9,7 @@ during refinement, so they use ``fit_group_*`` functions that return a
 
 from __future__ import annotations
 
-from typing import Any, Dict, Protocol, Tuple, Union
+from typing import Any, Dict, Iterable, Protocol, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -21,6 +21,37 @@ from scipy.spatial.distance import cdist
 
 FloatArray = npt.NDArray[np.floating]
 Extent6 = Tuple[float, float, float, float, float, float]
+
+# Relative tolerance within which a field value counts as its isovalue (snap_to_isovalues).
+# Group fields have their isovalues at 1..n, about 0.1 apart per finest cell, and
+# rounding errors near 1e-15, so this is far above rounding and far below a cell.
+ISOVALUE_SNAP: float = 1e-9
+
+
+def snap_to_isovalues(values: FloatArray, isovalues: Iterable[float]) -> npt.NDArray[np.float64]:
+    """
+    The values, with those within ``ISOVALUE_SNAP * max(1, |isovalue|)`` of an isovalue set to it.
+
+    A surface that runs exactly through sample points (e.g. a flat horizon at a
+    round depth on a plane of octree cell corners or regular cell centers) has
+    the isovalue there only up to rounding, and the sign of that rounding error
+    decides point by point which side of the surface they are on: the dual
+    contouring of the octree scrambled such surfaces, and lithology ids along
+    them were noise. Snapped values equal the isovalue, so ``>=`` puts all of
+    them on one side. Both grid types snap, so they decide such ties alike.
+
+    Args:
+        values: Field values, any shape; not changed.
+        isovalues: The isovalues to snap to.
+
+    Returns:
+        A float64 copy of ``values`` with the snapped entries.
+    """
+    snapped = np.array(values, dtype=np.float64)
+    for iso in isovalues:
+        close = np.abs(snapped - iso) <= ISOVALUE_SNAP * max(1.0, abs(float(iso)))
+        snapped[close] = iso
+    return snapped
 
 
 class FittedField(Protocol):
