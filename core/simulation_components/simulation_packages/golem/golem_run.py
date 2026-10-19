@@ -395,7 +395,7 @@ def run_simulation_golem(
         CustomGolemBuilder,
     ],
     image_name: Optional[str] = None,
-    golem_binary: Optional[str] = '/opt/golem/golem-opt',
+    golem_binary: Optional[str] = '/golem/golem-opt',
     output_dir: Optional[str] = None,
     nproc: int = 4,
     temporary: bool = True,
