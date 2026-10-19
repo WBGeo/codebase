@@ -14,7 +14,8 @@ architecture provides two solver pipelines:
     finite-element simulations, supporting the built-in hydrothermal
     workflow as well as user-supplied SfePy problems.
 -   **GOLEM/MOOSE** for hydrothermal and simple-reservoir simulations,
-    as well as user-supplied GOLEM/MOOSE problems, executed through local Docker, a native GOLEM installation, or the DSL shared-workspace MPI sidecar.
+    as well as user-supplied GOLEM/MOOSE problems, executed either in a
+    Docker container or by a GOLEM installation on the host.
 
 Both pipelines follow the same general Workbench pattern:
 
@@ -109,10 +110,13 @@ execution defined by the supplied Python input.
 
 **GOLEM** is external to the WBGeo Python environment. The GOLEM runner
 stages the mesh and input file, validates their compatibility, executes
-GOLEM/MOOSE through the selected Docker/native/sidecar MPI backend, collects the Exodus output, and
-converts it back to WBGeo's common result representation.
+GOLEM/MOOSE in a freshly created docker container or via MPI , collects
+the Exodus output, and converts it back to WBGeo's common result representation.
 
-> **Execution environments:** Set `execution_mode="docker"`, `"local"`, or `"sidecar"` on `run_simulation_golem()`, or use `GOLEM_EXECUTION_MODE`. The DSL sidecar uses the existing shared workspace and MPI configuration; it is not a general SLURM `srun` backend. 
+> **Execution environments:** If `image_name` is passed to
+> `run_simulation_golem()`, GOLEM runs inside a temporary container of that
+> Docker image. Otherwise GOLEM is started on the host with `mpiexec`
+> (see [Choose where GOLEM runs](#choose-where-golem-runs-docker-or-host)).
 
 ------------------------------------------------------------------------
 
@@ -822,17 +826,16 @@ All three GOLEM builders connect to the same runner through the common
 
 Important runner inputs are:
 
--   **`problem`**: GOLEM problem produced by one of the GOLEM builders.
--   **`image_name`** *(Docker only)*: Docker image containing GOLEM.
--   **`project_dir`**: Local project/staging directory; in Docker mode it is also bind-mounted into the container.
--   **`docker_dir`** *(Docker only)*: Corresponding path inside the container.
--   **`output_dir`** *(optional)*: Host destination for final results.
--   **`nproc`**: Number of MPI processes.
--   **`keep_files_dir`** *(optional)*: Directory in which
-    staged/generated files can be retained for debugging.
--   **`execution_mode`** *(optional)*: `"docker"`, `"local"`, `"sidecar"`, or `"auto"` (default). Explicit argument overrides `GOLEM_EXECUTION_MODE`.
-
-The runner supports `docker`, `local`, and `sidecar` execution modes. `project_dir` is still a required argument; `image_name` and `docker_dir` matter only for Docker execution. Native MPI execution is supported, but SLURM `srun` scheduling is not implemented.
+| Argument        | Default                        | Meaning                                                                                                                                                                                                                                                           |
+|-----------------|--------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `problem`       | —                              | GOLEM problem produced by one of the GOLEM builders.                                                                                                                                                                                                              |
+| `image_name`    | `None`                         | Docker image containing GOLEM. If set, GOLEM runs in a container of this image; if `None`, GOLEM runs on the host.                                                                                                                                                |
+| `golem_binary`  | `"/golem/golem-opt"`           | Path of the GOLEM executable inside the image (Docker) or on the host.                                                                                                                                                                                            |
+| `output_dir`    | `<workspace_dir>/golem_output` | Host directory receiving the results.                                                                                                                                                                                                                             |
+| `nproc`         | `4`                            | Number of MPI processes.                                                                                                                                                                                                                                          |
+| `temporary`     | `True`                         | `True`: stage the run in a fresh `golem_run_*` subdirectory of `workspace_dir` and delete it afterwards (the generated input and mesh are kept in `output_dir`). `False`: stage and run directly in `workspace_dir` and keep all files there, e.g. for debugging. |
+| `workspace_dir` | `<system temp>/wbgeo_golem`    | Host directory used for staging (and, without Docker, for execution).                                                                                                                                                                                             |
+| `stream_output` | `False`                        | Print GOLEM's output live. The output is always saved to `golem_stdout.txt`.                                                                                                                                                                                      |
 
 Example call in the codebase:
 
@@ -840,8 +843,6 @@ Example call in the codebase:
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    project_dir="/path/to/projects",
-    docker_dir="/projects",
     output_dir="/path/to/output",
     nproc=4,
 )
@@ -857,74 +858,89 @@ The GOLEM runner performs the following operations:
     validation; external mesh files receive generic input-structure
     validation because no `MeshResults` metadata is available.
 4.  Replaces the matching mesh placeholder (`${GOLEM_MESH_FILE}`) with the path visible to the selected GOLEM execution environment.
-5.  Executes GOLEM using Docker/MPI, native MPI, or the configured DSL shared-workspace MPI sidecar.
+5.  Executes GOLEM with `mpiexec`, either in a Docker container or on the host.
 6.  Copies the complete GOLEM working output back to `output_dir`, while
     removing internal `*_cp` checkpoint directories. The checkpoint cleanup
     scans the copied output tree once, after all output items are staged.
 7.  Loads the resulting Exodus database into `SimulationResults` and
     preserves the native Exodus/output-directory paths for later export.
-10. Cleans temporary staging resources (and the Docker container when applicable) while retaining the
+8.  Cleans temporary staging resources (and the Docker container when applicable) while retaining the
     user-facing outputs.
 
-#### Choose where GOLEM runs: Docker, native computer, or DSL
+#### Choose where GOLEM runs: Docker or host
 
-The **same GOLEM problem builder** works with all three execution modes. The examples below assume `problem_golem` has already been constructed as shown in the preceding sections. Set `GOLEM_EXECUTION_MODE` explicitly in local examples to make the selected backend clear.
+The **same GOLEM problem builder** works in both modes; only the
+arguments of `run_simulation_golem()` differ. The examples below assume
+`problem_golem` has already been constructed as shown in the preceding
+sections.
 
-| Environment | `execution_mode` | Required setup |
+| Environment | Arguments | Required setup |
 | --- | --- | --- |
-| Workbench on your computer; GOLEM in local Docker | `"docker"` | Docker CLI/daemon, image `moose-dev:fixed`, project bind mount |
-| Workbench and GOLEM installed on the same computer | `"local"` | `GOLEM_BINARY` points to executable GOLEM; `mpiexec` is on `PATH` |
-| Workbench in DSL `py_runner`, GOLEM in `golem_runner` | `"sidecar"` | `GOLEM_BINARY`, shared `GOLEM_WORKSPACE`, working MPI/SSH configuration in deployed images |
+| GOLEM in a Docker container | `image_name=...` (and `golem_binary` if the image keeps GOLEM elsewhere) | Docker CLI and a running Docker daemon |
+| GOLEM installed on the host | no `image_name`; `golem_binary=...` | `mpiexec` on `PATH`, executable GOLEM binary |
 
-**Example A — local Docker on macOS**
+**Example A — GOLEM in Docker**
 
 ```python
-import os
 from pathlib import Path
 from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
 
-os.environ["GOLEM_EXECUTION_MODE"] = "docker"
-cwd = Path.cwd()
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    project_dir="${GOLEM_PROJECT_DIR}",
-    docker_dir="/projects",
-    output_dir=str(cwd / "examples/case_studies/Groß_Schoenebeck/golem_output"),
+    output_dir=str(Path.cwd() / "golem_output"),
     nproc=4,
 )
 ```
 
-The host `project_dir` is mounted at `/projects` inside the temporary GOLEM container. The runner expects the executable at `/projects/golem/golem-opt`, stages the mesh and `.i` file into the container, and copies outputs back. Change the host path and image name for another Docker installation. The `GOLEM_BINARY` variable is not required in this mode.
+The runner stages the mesh and `.i` file on the host, creates a
+temporary container from the image, copies the staged files into it
+(`docker cp`, no bind mount), runs
+`mpiexec -n <nproc> --allow-run-as-root <golem_binary> -i wbgeo.i` there,
+copies the working directory back into `output_dir`, and removes the
+container. The image's entrypoint must be a shell that accepts `-c`
+(the WBGeo GOLEM image uses `bash -l -c`, which also sets up Open MPI).
+In the WBGeo GOLEM image the executable is `/golem/golem-opt`, which is
+the default `golem_binary`.
 
-**Example B — native GOLEM on another computer**
+**Example B — GOLEM installed on the host**
 
 ```python
-import os
 from pathlib import Path
 from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
 
-os.environ["GOLEM_EXECUTION_MODE"] = "local"
-os.environ["GOLEM_BINARY"] = "/absolute/path/to/golem-opt"  # replace with actual executable
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
-    project_dir=str(Path.home() / "golem_projects"),
+    golem_binary="/absolute/path/to/golem-opt",  # replace with the actual executable
     output_dir=str(Path.cwd() / "golem_native_output"),
     nproc=4,
 )
 ```
 
-Install a compatible MPI runtime so `mpiexec` is on `PATH`, and make sure `GOLEM_BINARY` is executable. No Docker image or `docker_dir` is needed. The runner copies results from its temporary working directory into `output_dir`.
+Install a compatible MPI runtime so that `mpiexec` is on `PATH`, and make
+sure `golem_binary` is executable. GOLEM runs inside the staging
+directory, and its results are copied into `output_dir`.
+`--allow-run-as-root` (Open MPI) is only added when running as root, so
+other MPI implementations such as MPICH also work.
 
-**DSL server — deployment explanation (not a codebase example)**
+**Workbench / DSL deployment**
 
-On DSL, Workbench runs in the `py_runner` container and GOLEM is provided by the separate `golem_runner` container. The original Docker Compose deployment supplies `GOLEM_BINARY=/golem/golem-opt` and `GOLEM_WORKSPACE=/shared_golem_workspace` to `py_runner`, and configures a shared workspace and SSH-key volume. The updated runner recognizes this environment in `auto` mode, or the deployment can explicitly set `GOLEM_EXECUTION_MODE: "sidecar"` under `py_runner.environment`.
+The `Run GOLEM Simulation` Workbench component always runs GOLEM on the
+host of the Python runner. It reads two environment variables:
 
-The DSL configuration relies on MPI/SSH setup in the deployed images. By default the runner retains the existing `mpiexec` behavior. An explicit `GOLEM_MPI_HOST=golem_runner` should be used only if remote MPI launch and shared paths have been verified. This deployment is not Docker-out-of-Docker and does not require mounting a Docker socket in `py_runner`. The DSL deployment is described here for context; there is no DSL Python usage example because it is not part of the local codebase workflow.
+-   `GOLEM_BINARY` — the GOLEM executable (default `/golem/golem-opt`).
+-   `GOLEM_WORKSPACE` — the staging directory (default: system temp
+    directory).
 
-**Environment selection:** `execution_mode` takes priority over `GOLEM_EXECUTION_MODE`. In `auto` mode, `GOLEM_BINARY` + `GOLEM_WORKSPACE` selects `sidecar`; `GOLEM_BINARY` alone selects `local`; neither selects `docker`. Prefer explicit selection on developer machines to avoid inheriting unrelated environment variables. `GOLEM_DOCKER_IMAGE` sets the default image if `image_name` is omitted.
+In the `docker-compose.yml` deployment, Workbench runs in the
+`py_runner` container next to a `golem_runner` container.
+`GOLEM_WORKSPACE=/shared_golem_workspace` is a volume shared by both
+containers, and both share an SSH-key volume used by the `mpiexec`
+setup of the deployed images. Each run gets its own `golem_run_*`
+subdirectory of the workspace.
 
-For local Docker and native Python examples, see the snippets above. These snippets require a valid GOLEM problem object and a correctly configured solver; they are not standalone physics models.
+These snippets require a valid GOLEM problem object and a correctly
+configured solver; they are not standalone physics models.
 
 ### 3. Export the results
 
@@ -970,8 +986,6 @@ Example call in the codebase:
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    project_dir="/path/to/projects",
-    docker_dir="/projects",
     output_dir="/path/to/my_golem_output",
     nproc=4,
 )
@@ -1250,35 +1264,22 @@ topology, and numerical fields. It includes:
 
 The important architectural distinction is therefore at the **build and
 run stages**. SfePy executes natively in the WBGeo Python environment,
-while GOLEM is executed through one of the Docker, native MPI, or DSL sidecar MPI modes. SLURM `srun` is not currently implemented. After execution, both solver pipelines are represented as `SimulationResults` and can use the common WBGeo visualisation and export layer.
-
-\`\`\`
+while GOLEM is executed with MPI either in a Docker container or on the host. SLURM `srun` is not currently implemented. After execution, both solver pipelines are represented as `SimulationResults` and can use the common WBGeo visualisation and export layer.
 
 
 ### GOLEM runner options and portable examples
 
-Set `GOLEM_PROJECT_DIR` to the host directory containing `golem/golem-opt`
-before running the case-study or synthetic examples. For example:
-
-```bash
-export GOLEM_PROJECT_DIR="/path/to/projects"
-```
-
-The Python examples use `project_dir=os.environ["GOLEM_PROJECT_DIR"]`;
-the variable must be set in the environment launching Python.
+The case-study and synthetic examples run GOLEM in the WBGeo GOLEM
+Docker image, so Docker must be installed and running. No GOLEM
+installation or project directory on the host is required; staging
+files are written to the system temp directory unless `workspace_dir`
+is given.
 
 `run_simulation_golem(..., stream_output=False)` captures solver output
 without displaying it live. Set `stream_output=True` to print live output
 and progress messages. This is independent of the builder's
 `print_linear_residuals` setting.
 
-`GOLEM_EXECUTION_MODE` accepts `auto`, `docker`, `local`, and `sidecar`.
-`GOLEM_BINARY` names the native or sidecar executable. In sidecar mode,
-`GOLEM_SIDECAR_BINARY` overrides `GOLEM_BINARY` when present.
-`GOLEM_WORKSPACE` must be shared between the Python and GOLEM containers.
-`GOLEM_MPI_HOST` optionally adds `--host <hostname>` to the sidecar
-`mpiexec` command; the MPI/SSH deployment must still be tested live.
-
 Checkpoint directories ending in `_cp` are removed from returned results
-for automatically generated GOLEM problems in every execution mode.
+for automatically generated GOLEM problems in both execution modes.
 `CustomGolemBuilder` checkpoints are preserved to support restarts.
