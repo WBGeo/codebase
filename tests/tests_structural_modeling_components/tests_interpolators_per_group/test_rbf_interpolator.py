@@ -269,7 +269,8 @@ def test_uses_grid_coordinates_when_available_and_transposes_output():
     # Asserts constructor wiring
     assert captured["kernel"] == "linear"
     assert captured["smoothing"] == 0.25
-    assert captured["epsilon"] == 2.0
+    # "linear" is scale-invariant, so the shape parameter is not passed on
+    assert captured["epsilon"] is None
     assert captured["neighbors"] == 7
 
     # Must use provided grid_coordinates
@@ -335,3 +336,42 @@ def test_real_rbfi_smoke_runs_and_returns_correct_shape():
     assert mapping == {"old": 1.0, "young": 2.0}
     assert field.shape == grid.resolution
     assert np.isfinite(field).all()
+
+
+@pytest.mark.parametrize(
+    "kernel, expected_epsilon",
+    [
+        ("thin_plate_spline", None),
+        ("linear", None),
+        ("cubic", None),
+        ("quintic", None),
+        ("multiquadric", 2.0),
+        ("inverse_multiquadric", 2.0),
+        ("inverse_quadratic", 2.0),
+        ("gaussian", 2.0),
+    ],
+)
+def test_epsilon_is_only_passed_for_kernels_that_use_it(kernel, expected_epsilon):
+    group = FakeGroup("G", ["young", "old"], params=FakeParams(kernel=kernel, epsilon=2.0))
+    grid = FakeGrid(resolution=(2, 1, 3), use_grid_coordinates=True)
+    sdf = surface_df(["young", "old"])
+
+    import core.structural_modeling_components.interpolator_functions.radial_basis_function as mod
+
+    captured = {}
+
+    class DummyRBF:
+        def __init__(self, coords, vals, kernel, smoothing, epsilon, neighbors):
+            captured["epsilon"] = epsilon
+
+        def __call__(self, points):
+            return np.zeros(points.shape[0], dtype=float)
+
+    orig = mod.RBFInterpolator
+    mod.RBFInterpolator = DummyRBF
+    try:
+        interpolate_group_radial_basis_function(group=group, grid=grid, group_surface_points_df=sdf)
+    finally:
+        mod.RBFInterpolator = orig
+
+    assert captured["epsilon"] == expected_epsilon

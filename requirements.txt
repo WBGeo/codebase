@@ -24,7 +24,9 @@ Jinja2==3.1.4
 kiwisolver>=1.4.9
 lazy_loader==0.4
 liquid_earth_sdk==2025.1.0
-LoopStructural==1.6.3
+loop-common==0.0.2
+loop-interpolation==0.0.2
+LoopStructural==1.8.2
 lz4==4.3.3
 MarkupSafe==3.0.2
 matplotlib==3.8.4
