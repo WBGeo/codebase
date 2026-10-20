@@ -48,7 +48,13 @@ test:
     when: always
   variables: # Change pip's cache directory to be inside the project directory because we can only cache local items.
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-
+    # prevent thread oversubscription
+    OMP_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
+    NUMBA_NUM_THREADS: "1"
+    
+    
 # deploy coverage report & pages
 pages:
   image: python:3.12
