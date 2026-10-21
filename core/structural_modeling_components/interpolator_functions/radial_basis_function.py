@@ -22,6 +22,9 @@ import warnings
 from scipy.interpolate import RBFInterpolator
 
 from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+    RBF_KERNELS_USING_EPSILON,
+)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -219,7 +222,8 @@ def _fit_rbf(
         vals,
         kernel=params.kernel,
         smoothing=params.smoothing,
-        epsilon=params.epsilon,
+        # scale-invariant kernels are evaluated without the shape parameter
+        epsilon=params.epsilon if params.kernel in RBF_KERNELS_USING_EPSILON else None,
         neighbors=params.neighbors,  # None => all points
     )
     return rbfi, scalar_values_by_element

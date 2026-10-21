@@ -171,6 +171,23 @@ def test_raises_when_df_contains_unknown_formations():
         )
 
 
+def test_raises_when_interpolation_params_missing(monkeypatch):
+    group = FakeGroup("G", ["young", "old"])
+    group._params = None
+    grid = FakeGrid()
+
+    sdf = surface_df(["young", "old"])
+    odf = orientations_df(["young", "old"])
+
+    import core.structural_modeling_components.interpolator_functions.piecewise_linear as mod
+    monkeypatch.setattr(mod, "GeologicalModel", DummyGeologicalModel)
+
+    with pytest.raises(ValueError, match="Missing interpolation params"):
+        interpolate_group_piecewise_linear(
+            group=group, grid=grid, group_surface_points_df=sdf, group_orientations_points_df=odf
+        )
+
+
 # --- Core tests ---------------------------------------------------------------
 
 def test_scalar_values_mapping_is_oldest_1_youngest_n_and_transpose_behavior(monkeypatch):

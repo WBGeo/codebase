@@ -926,7 +926,7 @@ def test_validate_fails_when_orientations_required_but_absent():
     grid = make_grid((4, 3, 2))
     for method in (
         InterpolationMethod.FINITE_DIFFERENCES,
-        # InterpolationMethod.PIECEWISE_LINEAR,  # excluded pending parameter tuning
+        InterpolationMethod.PIECEWISE_LINEAR,
         InterpolationMethod.UNIVERSAL_COKRIGING,
     ):
         frame = _make_validate_frame(grid, method, has_orientations=False)
@@ -955,7 +955,7 @@ def test_validate_collects_multiple_violations():
     g1.set_interpolation_method(InterpolationMethod.FINITE_DIFFERENCES)
     g1.scalar_field = np.zeros(grid.resolution, dtype=float)
 
-    # Group 2: FDI, no orientations (PLI excluded pending parameter tuning)
+    # Group 2: FDI, no orientations
     e2 = StructuralElement(name="b")
     g2 = StructuralGroup(name="G2", structural_elements=[e2])
     g2.update_interpolation_context(_ctx)

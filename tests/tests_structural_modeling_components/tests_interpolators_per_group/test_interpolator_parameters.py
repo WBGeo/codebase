@@ -9,6 +9,10 @@ import numpy as np
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (  # type: ignore
     InterpolationContext,
     InterpolationMethod,
+    VariogramModel,
+    RBFKernel,
+    LoopSolver,
+    RBF_KERNELS_USING_EPSILON,
     OKParams,
     RBFParams,
     UKParams,
@@ -36,7 +40,7 @@ def test_interpolation_method_enum_values_are_strings():
     assert InterpolationMethod.UNIVERSAL_KRIGING.value == "Universal Kriging"
     # LoopStructural backends exist in the enum
     assert InterpolationMethod.FINITE_DIFFERENCES.value == "Finite Differences"
-    # assert InterpolationMethod.PIECEWISE_LINEAR.value == "Piecewise Linear"  # excluded pending parameter tuning
+    assert InterpolationMethod.PIECEWISE_LINEAR.value == "Piecewise Linear"
 
 
 def test_pydantic_param_models_have_expected_defaults():
@@ -66,7 +70,7 @@ def test_pydantic_param_models_have_expected_defaults():
     assert fdi.tol is None
 
     pli = PLIParams()
-    assert pli.nelements == 5_000
+    assert pli.nelements == 2_000
     assert pli.solver == "cg"
     assert pli.damp is True
     assert pli.tol is None
@@ -125,6 +129,67 @@ def test_default_rbf_params_kernel_and_smoothing_defaults():
     rbf = default_rbf_params(ctx)
     assert rbf.kernel == "thin_plate_spline"
     assert math.isclose(rbf.smoothing, 0.05)
+
+
+def test_default_rbf_params_always_sets_epsilon_as_inverse_length():
+    ctx = InterpolationContext(data_scale=(100.0, 50.0, 25.0), n_points=10, mean_nn_distance=2.0)
+    assert math.isclose(default_rbf_params(ctx).epsilon, 1.0 / (5.0 * 2.0))
+
+    # coincident points give a zero nearest-neighbour distance; epsilon must stay finite
+    ctx_zero = InterpolationContext(data_scale=(100.0, 50.0, 25.0), n_points=10, mean_nn_distance=0.0)
+    eps = default_rbf_params(ctx_zero).epsilon
+    assert eps is not None and math.isfinite(eps) and eps > 0
+
+
+# -----------------------------------------------------------------------------
+# Enum-typed options
+# -----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "params_cls, field, enum_cls",
+    [
+        (OKParams, "variogram_model", VariogramModel),
+        (UKParams, "variogram_model", VariogramModel),
+        (RBFParams, "kernel", RBFKernel),
+        (FDIParams, "solver", LoopSolver),
+        (PLIParams, "solver", LoopSolver),
+    ],
+)
+def test_enum_fields_accept_every_option_and_store_plain_strings(params_cls, field, enum_cls):
+    assert params_cls.model_fields[field].annotation is enum_cls
+    for option in enum_cls:
+        for given in (option, option.value):
+            value = getattr(params_cls(**{field: given}), field)
+            assert type(value) is str and value == option.value
+
+
+@pytest.mark.parametrize(
+    "params_cls, field",
+    [
+        (OKParams, "variogram_model"),
+        (UKParams, "variogram_model"),
+        (RBFParams, "kernel"),
+        (FDIParams, "solver"),
+        (PLIParams, "solver"),
+    ],
+)
+def test_enum_fields_reject_unknown_options(params_cls, field):
+    with pytest.raises(ValueError):
+        params_cls(**{field: "not_an_option"})
+
+    # also when changed after construction, as configure_interpolation_params does
+    params = params_cls()
+    with pytest.raises(ValueError):
+        setattr(params, field, "not_an_option")
+    setattr(params, field, list(params_cls.model_fields[field].annotation)[-1].value)
+
+
+def test_variogram_models_exclude_those_with_a_different_parameter_list():
+    assert {m.value for m in VariogramModel} == {"gaussian", "spherical", "exponential", "hole-effect"}
+
+
+def test_rbf_kernels_using_epsilon_is_a_subset_of_the_kernels():
+    assert RBF_KERNELS_USING_EPSILON < {k.value for k in RBFKernel}
+    assert "thin_plate_spline" not in RBF_KERNELS_USING_EPSILON
 
 
 def test_default_uk_params_neighbors_rule_matches_ok():

@@ -11,7 +11,7 @@ from core.object_components import InputData_StructuralElements, InputData_Fault
 from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.interpolator_functions import interpolator_parameters
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import \
-  InterpolationMethod, OKParams, RBFParams, UCKParams, GeoINRParams, FDIParams, UKParams, \
+  InterpolationMethod, OKParams, RBFParams, UCKParams, GeoINRParams, FDIParams, PLIParams, UKParams, \
   InterpolationParameterSet
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
   plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
@@ -25,6 +25,7 @@ class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
   uck: typing.Optional[UCKParams] = None
   geoinr: typing.Optional[GeoINRParams] = None
   fdi: typing.Optional[FDIParams] = None
+  pli: typing.Optional[PLIParams] = None
   uk: typing.Optional[UKParams] = None
 
   def get_params(self) -> InterpolationParameterSet | None:
@@ -38,6 +39,8 @@ class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
       return self.geoinr
     elif self.method == InterpolationMethod.FINITE_DIFFERENCES:
       return self.fdi
+    elif self.method == InterpolationMethod.PIECEWISE_LINEAR:
+      return self.pli
     elif self.method == InterpolationMethod.UNIVERSAL_KRIGING:
       return self.uk
     else:
@@ -128,6 +131,11 @@ def structural_modeling_smart_options(data_elements: InputData_StructuralElement
                                                             (InterpolationMethod.FINITE_DIFFERENCES,
                                                              'fdi', FDIParams,
                                                              interpolator_parameters.default_fdi_params(
+                                                               frame[
+                                                                 key].context) if frame is not None else None),
+                                                            (InterpolationMethod.PIECEWISE_LINEAR,
+                                                             'pli', PLIParams,
+                                                             interpolator_parameters.default_pli_params(
                                                                frame[
                                                                  key].context) if frame is not None else None),
                                                             (InterpolationMethod.UNIVERSAL_KRIGING,
