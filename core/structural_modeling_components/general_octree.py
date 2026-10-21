@@ -58,7 +58,7 @@ from core.structural_modeling_components.interpolator_functions.fitted_field imp
 )
 from core.structural_modeling_components.interpolator_functions.geoinr import fit_group_geo_inr
 from core.structural_modeling_components.interpolator_functions.ordinary_kriging import fit_group_ordinary_kriging
-from core.structural_modeling_components.interpolator_functions.piecewise_linear import (  # noqa: F401
+from core.structural_modeling_components.interpolator_functions.piecewise_linear import (
     fit_group_piecewise_linear,
 )
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
@@ -111,7 +111,7 @@ GroupFields = List[Dict[int, Optional[FittedField]]]
 fit_dispatch: Dict[InterpolationMethod, Callable[..., FittedField]] = {
     InterpolationMethod.RADIAL_BASIS_FUNCTION: fit_group_radial_basis_function,
     InterpolationMethod.FINITE_DIFFERENCES: fit_group_finite_differences,
-    # InterpolationMethod.PIECEWISE_LINEAR: fit_group_piecewise_linear,  # excluded pending parameter tuning
+    InterpolationMethod.PIECEWISE_LINEAR: fit_group_piecewise_linear,
     InterpolationMethod.GEOINR: fit_group_geo_inr,
     InterpolationMethod.ORDINARY_KRIGING: fit_group_ordinary_kriging,
     InterpolationMethod.UNIVERSAL_KRIGING: fit_group_universal_kriging,

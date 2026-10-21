@@ -74,6 +74,7 @@ def compute(model: str, grid, method: InterpolationMethod) -> StructuralModelRes
     ("model9", InterpolationMethod.UNIVERSAL_KRIGING),
     ("model2", InterpolationMethod.RADIAL_BASIS_FUNCTION),
     ("model2", InterpolationMethod.UNIVERSAL_COKRIGING),
+    ("model2", InterpolationMethod.PIECEWISE_LINEAR),
     ("model2_fault_below_unconformity", InterpolationMethod.RADIAL_BASIS_FUNCTION),
 ], ids=lambda p: f"{p[0]}-{p[1].name}")
 def results(request) -> tuple[StructuralModelResults, StructuralModelResults]:

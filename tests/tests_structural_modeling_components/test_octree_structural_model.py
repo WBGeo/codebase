@@ -97,6 +97,7 @@ def compute(grid, method=InterpolationMethod.RADIAL_BASIS_FUNCTION) -> Structura
 DETERMINISTIC_METHODS = [
     InterpolationMethod.RADIAL_BASIS_FUNCTION,
     InterpolationMethod.FINITE_DIFFERENCES,
+    InterpolationMethod.PIECEWISE_LINEAR,
     InterpolationMethod.ORDINARY_KRIGING,
     InterpolationMethod.UNIVERSAL_KRIGING,
     InterpolationMethod.UNIVERSAL_COKRIGING,
