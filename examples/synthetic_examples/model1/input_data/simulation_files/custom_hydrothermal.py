@@ -319,13 +319,37 @@ functions = {
 }
 
 materials = {
-    # GOLEM energy equation divided throughout by rho_f*c_f = 2.4e6.
-    # This improves conditioning without changing its mathematical solution.
-    'therm0': ({'k_eff': 1.9375e-05, 'rho_c_eff': 1.5625},),
+    'therm0': ({
+        'k_eff': 1.9375e-05,
+        'rho_c_eff': 1.5625,
+        'porosity': 0.10,
+        'permeability': 1e-13,
+        'density': 3000.0,
+        'heat_capacity': 1300.0,
+        'viscosity': 1.0e-3,
+    },),
     'darcy0': 'velocity_fn_0',
-    'therm1': ({'k_eff': 4.791666666666667e-06, 'rho_c_eff': 0.5333333333333333},),
+
+    'therm1': ({
+        'k_eff': 4.791666666666667e-06,
+        'rho_c_eff': 0.5333333333333333,
+        'porosity': 0.30,
+        'permeability': 1e-11,
+        'density': 1000.0,
+        'heat_capacity': 800.0,
+        'viscosity': 1.0e-3,
+    },),
     'darcy1': 'velocity_fn_1',
-    'therm2': ({'k_eff': 7.916666666666667e-06, 'rho_c_eff': 1.3333333333333333},),
+
+    'therm2': ({
+        'k_eff': 7.916666666666667e-06,
+        'rho_c_eff': 1.3333333333333333,
+        'porosity': 0.20,
+        'permeability': 1e-12,
+        'density': 2000.0,
+        'heat_capacity': 1700.0,
+        'viscosity': 1.0e-3,
+    },),
     'darcy2': 'velocity_fn_2',
 }
 

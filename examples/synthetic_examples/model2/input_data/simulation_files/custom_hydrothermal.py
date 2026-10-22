@@ -375,18 +375,55 @@ functions = {
 # Normalize every energy term by rho_f*c_f. This improves conditioning but
 # does not alter the solution; the normalized advection coefficient is q.
 _rho_c_fluid = 4.186e6
+# Scalar plotting metadata does not alter the governing equations.
 materials = {
-    'therm0': ({'k_eff': 2.8799999999999994 / _rho_c_fluid, 'rho_c_eff': 2299300.0 / _rho_c_fluid},),
+    'therm0': ({
+        'k_eff': 2.8799999999999994 / _rho_c_fluid,
+        'rho_c_eff': 2299300 / _rho_c_fluid,
+        'porosity': 0.05,
+        'permeability': 1e-15,
+        'viscosity': 1.0e-3,
+    },),
     'darcy0': 'velocity_fn_0',
-    'therm1': ({'k_eff': 2.215 / _rho_c_fluid, 'rho_c_eff': 2497900.0 / _rho_c_fluid},),
+    'therm1': ({
+        'k_eff': 2.215 / _rho_c_fluid,
+        'rho_c_eff': 2497900 / _rho_c_fluid,
+        'porosity': 0.15,
+        'permeability': 1e-14,
+        'viscosity': 1.0e-3,
+    },),
     'darcy1': 'velocity_fn_1',
-    'therm2': ({'k_eff': 2.215 / _rho_c_fluid, 'rho_c_eff': 2497900.0 / _rho_c_fluid},),
+    'therm2': ({
+        'k_eff': 2.215 / _rho_c_fluid,
+        'rho_c_eff': 2497900 / _rho_c_fluid,
+        'porosity': 0.15,
+        'permeability': 1e-14,
+        'viscosity': 1.0e-3,
+    },),
     'darcy2': 'velocity_fn_2',
-    'therm3': ({'k_eff': 1.79 / _rho_c_fluid, 'rho_c_eff': 2412900.0 / _rho_c_fluid},),
+    'therm3': ({
+        'k_eff': 1.79 / _rho_c_fluid,
+        'rho_c_eff': 2412900 / _rho_c_fluid,
+        'porosity': 0.15,
+        'permeability': 1e-14,
+        'viscosity': 1.0e-3,
+    },),
     'darcy3': 'velocity_fn_3',
-    'therm4': ({'k_eff': 1.79 / _rho_c_fluid, 'rho_c_eff': 2412900.0 / _rho_c_fluid},),
+    'therm4': ({
+        'k_eff': 1.79 / _rho_c_fluid,
+        'rho_c_eff': 2412900 / _rho_c_fluid,
+        'porosity': 0.15,
+        'permeability': 1e-14,
+        'viscosity': 1.0e-3,
+    },),
     'darcy4': 'velocity_fn_4',
-    'therm12': ({'k_eff': 0.502 / _rho_c_fluid, 'rho_c_eff': 2337720.0 / _rho_c_fluid},),
+    'therm12': ({
+        'k_eff': 0.502 / _rho_c_fluid,
+        'rho_c_eff': 2337720 / _rho_c_fluid,
+        'porosity': 0.02,
+        'permeability': 1e-19,
+        'viscosity': 1.0e-3,
+    },),
     'darcy12': 'velocity_fn_12',
 }
 

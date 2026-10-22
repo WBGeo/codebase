@@ -26,9 +26,9 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
 
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+from core.simulation_components.simulation_packages.sfepy.sfepy_run import run_simulation_sfepy
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     GolemHydrothermalProblemBuilder,
     GolemFaultProperties,
@@ -293,12 +293,9 @@ refinement = Refinement(
 
 # save the mesh
 #buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
-#with open("filename_model1___mesh.exo", "wb") as f:
+#with open("filename_model1_with_objects_mesh.exo", "wb") as f:
 #     f.write(buf.getvalue())
 
-#buf = export_mesh_results_to_exodus(mesh_implicit_structured, type='imp')
-#with open("filename_model1__im_mesh.exo", "wb") as f:
-#     f.write(buf.getvalue())
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
@@ -356,7 +353,11 @@ builder = HydrothermalProblemBuilder(
 
 # Pre-flight check: confirms rock_properties landed on the right cells.
 plot_builder_materials(builder)
-
+plot_builder_materials(
+    builder=builder,
+    property_name="porosity",
+    show_plotter=True,
+)
 #%%
 
 data_by_time = run_simulation_sfepy(builder)
@@ -427,7 +428,12 @@ custom_builder = CustomSfepyBuilder(
 )
 
 #%%
-
+plot_builder_materials(custom_builder)
+plot_builder_materials(
+    builder=custom_builder,
+    property_name="porosity",
+    show_plotter=True,
+)
 custom_data_by_time = run_simulation_sfepy(custom_builder)
 
 #%%
@@ -487,8 +493,7 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 ##problem_golem_results = run_simulation_golem(
 ##    problem=problem_golem,
 ##    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-##    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-##    docker_dir="/projects",
+##    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
 
 ##    output_dir=(
 ##        cwd
@@ -534,10 +539,6 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 # Run the custom GOLEM hydrothermal input for Model 1.
 # ------------------------------------------------------------------------------
 
-from core.simulation_components.simulation_visualization.golem_material_preview import (
-    plot_golem_materials,
-)
-
 
 
 # Running hydrothermal problem using golem from a costum file
@@ -559,15 +560,21 @@ custom_problem = CustomGolemBuilder(
 )
 
 # Plot material assignments BEFORE running GOLEM
-plot_golem_materials(custom_problem, show_edges=True)
-
+plot_builder_materials(custom_problem, show_edges=True)
+plot_builder_materials(
+    builder=custom_problem,
+    property_name="porosity_initial",
+    show_plotter=True,
+)
 custom_golem_results = run_simulation_golem(
     problem=custom_problem,
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    workspace_dir="/projects",
+    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
     output_dir=cwd + "/examples/synthetic_examples/model1/golem_custom_output",
     nproc=4,
+    temporary=True,
     stream_output=True,
+
 )
 
 #custom_initial_time = min(custom_golem_results.nodes_by_time.keys())
@@ -600,18 +607,18 @@ custom_golem_results = run_simulation_golem(
 
 # Simple reservoir problem solving with builder using Golem
 
-##reservoir_problem = GolemSimpleReservoirProblemBuilder(
-##    geomodel_result=structural_model_result,
+reservoir_problem = GolemSimpleReservoirProblemBuilder(
+    geomodel_result=structural_model_result,
 
     # --------------------------------------------------------------
     # Unstructured mesh inputs
     # --------------------------------------------------------------
-##    mesh_size=50.0,
-##    curve_mesh_size=5.0,
-##    mapping_litho="automatic_centers",
-##    gmsh_flag=False,
-    # z_threshold=None,
-    # merge_file=None,
+    mesh_size=50.0,
+    curve_mesh_size=5.0,
+    mapping_litho="automatic_centers",
+    gmsh_flag=False,
+    z_threshold=None,
+    merge_file=None,
     #
     # Any other create_unstructured_mesh_data() input can be passed as:
     # unstructured_mesh_options={"your_argument": your_value},
@@ -620,115 +627,133 @@ custom_golem_results = run_simulation_golem(
     # Refinement inputs
     # Defaults reproduce the original simple-reservoir refinement.
     # --------------------------------------------------------------
-##    well_refine_size_min=5.0,
-##    well_refine_size_max=30.0,
-##    well_refine_dist_min=10.0,
-##    well_refine_dist_max=60.0,
+    well_refine_size_min=5.0,
+    well_refine_size_max=30.0,
+    well_refine_dist_min=10.0,
+    well_refine_dist_max=60.0,
 
-##    fracture_refine_size_min=5.0,
-##    fracture_refine_size_max=30.0,
-##    fracture_refine_dist_min=10.0,
-##    fracture_refine_dist_max=60.0,
+    fracture_refine_size_min=5.0,
+    fracture_refine_size_max=30.0,
+    fracture_refine_dist_min=10.0,
+    fracture_refine_dist_max=60.0,
 
-    # Scale refinement lengths when the structural model extent changes.
-##    scale_refinement_with_model=True,
 
     # --------------------------------------------------------------
     # One common material for ALL 3D reservoir blocks
     # --------------------------------------------------------------
-##    rock_porosity=0.1,
-##    rock_permeability=1.0e-15,
-##    rock_density=2.6e3,
-##    rock_thermal_conductivity=3.0,
-##    rock_heat_capacity=950.0,
+    rock_porosity=0.1,
+    rock_permeability=1.0e-15,
+    rock_density=2.6e3,
+    rock_thermal_conductivity=3.0,
+    rock_heat_capacity=950.0,
 
     # Fracture
-##    fracture_porosity=1.0,
-##    fracture_aperture=1.0e-4,
+    fracture_porosity=1.0,
+    fracture_aperture=1.0e-4,
 
     # Well
-##    well_porosity=1.0,
-##    well_permeability=3.12e-4,
-##    well_scaling_factor=0.05,
+    well_porosity=1.0,
+    well_permeability=3.12e-4,
+    well_scaling_factor=0.05,
 
     # Fluid
-##    fluid_density=1.0e3,
-##    fluid_viscosity=1.0e-3,
-##    fluid_heat_capacity=4.2e3,
-##    fluid_thermal_conductivity=0.65,
-##    fluid_modulus=2.5e9,
+    fluid_density=1.0e3,
+    fluid_viscosity=1.0e-3,
+    fluid_heat_capacity=4.2e3,
+    fluid_thermal_conductivity=0.65,
+    fluid_modulus=2.5e9,
 
     # --------------------------------------------------------------
     # Initial / boundary / source inputs from simple_reservoir.i
     # --------------------------------------------------------------
-##    initial_pressure=1.0e7,
-##    initial_temperature=150.0,
-##    boundary_pressure=1.0e7,
-##    boundary_temperature=150.0,
-##    injection_temperature=70.0,
+    initial_pressure=1.0e7,
+    initial_temperature=150.0,
+    boundary_pressure=1.0e7,
+    boundary_temperature=150.0,
+    injection_temperature=70.0,
 
     # None means: use the automatically scaled reference positions.
-##    injection_point=None,
-##    extraction_point=None,
-##    injection_rate=3.0,
-##    extraction_rate=3.0,
-##    source_start_time=0.0,
-##    source_end_time=None,
+    injection_point=None,
+    extraction_point=None,
+    injection_rate=3.0,
+    extraction_rate=3.0,
 
     # --------------------------------------------------------------
     # Transient solve
     # 19 solve times + INITIAL -> 20 Exodus states
     # --------------------------------------------------------------
-##    start_time=0.0,
-##    time_sequence=[
-##        1.0,
-##        86400.0,
-##        604800.0,
-##        2592000.0,
-##        7776000.0,
-##        15552000.0,
-##        31536000.0,
-##        63072000.0,
-##        126144000.0,
-##        315360000.0,
-##        630720000.0,
-##        946080000.0,
-##        1261440000.0,
-##        1576800000.0,
-##        1892160000.0,
-##        2207520000.0,
-##        2522880000.0,
-##        2838240000.0,
-##        3153600014.0,
-##    ],
-##    end_time=None,
-##    automatic_scaling=True,
-##    compute_scaling_once=False,
+    start_time=0.0,
+    time_sequence=[
+        1.0,
+        86400.0,
+        604800.0,
+        2592000.0,
+        7776000.0,
+        15552000.0,
+        31536000.0,
+        63072000.0,
+        126144000.0,
+        315360000.0,
+        630720000.0,
+        946080000.0,
+        1261440000.0,
+        1576800000.0,
+        1892160000.0,
+        2207520000.0,
+        2522880000.0,
+        2838240000.0,
+        3153600014.0,
+    ],
+    end_time=None,
 
-##    print_linear_residuals=True,
+    print_linear_residuals=True,
 ##    print_nonlinear_converged_reason=True,
-##    perf_graph=True,
-##)
+)
 
 # The mesh and mesh genrating parameters and input file for golem are available from the builder if you want to save them:
 ##mesh_model1_simple_reservoir = reservoir_problem.mesh_results
 ##reservoir_problem.build_input_file("model1_generated_reservoir.i")
 ##reservoir_problem.build_mesh_generation_file("model1_generated_reservoir_mesh.py")
 
-# Run the simulation using Golem
-##model1_simple_reservoir_results = run_simulation_golem(
-##    problem=reservoir_problem,
-##    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-##    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-##    docker_dir="/projects",
-##    output_dir=(
-##        cwd
-##        + "/examples/synthetic_examples/model1/"
-##          "golem_simple_reservoir_output"
-##    ),
-##    nproc=4,
-##)
 
+# Preview-only values: match the constants passed to the builder above.
+# This does not change GOLEM materials or the simulation itself.
+reservoir_problem.preview_material_porosity = {
+    "rock": 0.1,
+    "fracture": 1.0,
+    "well": 1.0,
+}
+
+# Show the full model with transparent rock and visible fractures/wells.
+plot_builder_materials(
+    builder=reservoir_problem,
+    show_edges=False,
+    opacity=0.12,
+    show_plotter=True,
+)
+
+# Show the configured porosity distribution across the assigned blocks.
+plot_builder_materials(
+    builder=reservoir_problem,
+    property_name="porosity",
+    cmap="plasma",
+    opacity=0.25,
+    show_plotter=True,
+)
+
+
+# Run Golem simulation
+model1_simple_reservoir_results = run_simulation_golem(
+    problem=reservoir_problem,
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
+    output_dir=(
+        cwd
+        + "/examples/synthetic_examples/model1/"
+          "golem_simple_reservoir_output"
+    ),
+    nproc=4,
+)
 # Visualisation of results
 ##reservoir_initial_time = min(model1_simple_reservoir_results.nodes_by_time.keys())
 ##reservoir_final_time = max(model1_simple_reservoir_results.nodes_by_time.keys())
@@ -836,8 +861,7 @@ custom_golem_results = run_simulation_golem(
 #            print_linear_residuals=True,
 #        ),
 #        image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#        project_dir=os.environ["GOLEM_PROJECT_DIR"],
-#        docker_dir="/projects",
+#        workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
 #        output_dir=(
 #            cwd
 #            + "/examples/synthetic_examples/model1/"

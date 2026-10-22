@@ -44,6 +44,8 @@ os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 # SECTION 1: Structural geological model
 # SECTION 2: Mesh generation and mesh utilities
 # SECTION 3: Groß Schönebeck GOLEM simulation
+#     ├── Steady-state simulation
+#     └── Transient simulation
 
 #
 # Each section starts and ends with a large banner so the workflow is easier to
@@ -112,8 +114,8 @@ frame.detailed_report()
 #%%
 
 # Plot the input data (2D and 3D possible)
-plot_structural_model_2D(frame)
-plot_structural_model_3D(frame)
+#plot_structural_model_2D(frame)
+#plot_structural_model_3D(frame)
 
 #%%
 
@@ -140,8 +142,8 @@ structural_model_result = general.compute_structural_model(
 #%%
 
 # Plot the results (2D and 3D possible)
-plot_structural_model_2D(structural_model_result.structural_frame)
-plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
+#plot_structural_model_2D(structural_model_result.structural_frame)
+#plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
 
 #%%
 
@@ -362,7 +364,7 @@ with open("filename_Gross_Schoenebeck_SM_n.exo", "wb") as f:
 # Solving steady state of the problem using custom golem input file.
 reservoir_input_path = (
     cwd
-    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_full_t.i"
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/steady_state.i"
 )
 
 with open(reservoir_input_path, "r") as f:
@@ -377,11 +379,11 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
         print_linear_residuals=True,
     ),
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    workspace_dir=os.environ["GOLEM_PROJECT_DIR"],
+    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
     output_dir=(
         cwd
         + "/examples/case_studies/Groß_Schoenebeck/"
-          "golem_GS_steady_output_t_Xinye"
+          "GS_steady_state"
     ),
     nproc=4,
     stream_output=True,  # Show live GOLEM output (opt-in)
@@ -394,7 +396,7 @@ model_GS_Xindyu_transient_results = run_simulation_golem(
 
 reservoir_input_trans_path = (
     cwd
-    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/transient_circ_t.i"
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/transient_state.i"
 )
 
 with open(reservoir_input_trans_path, "r") as f:
@@ -414,16 +416,16 @@ model_GS_Xindyu_sready_results = run_simulation_golem(
         auxiliary_files_dir=reservoir_auxiliary_files_dir,
         mesh_file=cwd
         + "/examples/case_studies/Groß_Schoenebeck/"
-          "golem_GS_steady_output_t_Xinye/wbgeo_out.e",
+          "GS_steady_state/wbgeo_out.e",
         geomodel_result=structural_model_result,
         print_linear_residuals=True,
     ),
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    workspace_dir="/projects",
+    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
     output_dir=(
         cwd
         + "/examples/case_studies/Groß_Schoenebeck/"
-          "golem_GS_transient_output_t_Xinye"
+          "GS_transient_state"
     ),
     nproc=3,
     stream_output=True,  # Show live GOLEM output (opt-in)
@@ -434,6 +436,3 @@ model_GS_Xindyu_sready_results = run_simulation_golem(
 
 #%%
 
-# ------------------------------------------------------------------------------
-# END SECTION 3: GROSS SCHÖNEBECK GOLEM SIMULATION
-# ==============================================================================

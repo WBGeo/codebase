@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from core.object_components import SimulationResults
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     RockUnitProperties, FluidProperties, HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem,
     map_mat_id_to_lithology,
 )
@@ -259,8 +259,9 @@ def test_export_simulation_results_calls_through(monkeypatch):
     sentinel_buf = object()
     received = {}
 
-    def fake_export(sim, fmt):
+    def fake_export(sim, fmt, golem_output_dir):
         received["sim"], received["format"] = sim, fmt
+        received["golem_output_dir"] = golem_output_dir
         return sentinel_buf
 
     monkeypatch.setattr(swc, "_export_simulation_results", fake_export)
@@ -269,6 +270,7 @@ def test_export_simulation_results_calls_through(monkeypatch):
     assert result is sentinel_buf
     assert received["sim"] is sim
     assert received["format"] == "vtk"
+    assert received["golem_output_dir"] == ""
 
 
 

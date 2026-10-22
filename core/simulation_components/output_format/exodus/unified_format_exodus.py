@@ -17,15 +17,7 @@ logger = logging.getLogger(__name__)
 # LOAD EXODUS FILE
 #################
 
-@wbgeo_component(
-  description='load single Exodus results file (time-aware)',
-  title='Load Exodus file',
-  color="#e5d016",
-  border_color='#000000',
-  group='simulation_components',
-  identifier='wbgeo::load_exodus_file',
-  return_name='results',
-)
+
 def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
   # =====================================================
   # INPUT NORMALIZATION

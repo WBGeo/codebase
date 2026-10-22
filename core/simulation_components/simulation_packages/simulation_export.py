@@ -6,8 +6,7 @@ import os
 import shutil
 import tempfile
 import zipfile
-
-from vtkmodules.vtkIOExodus import vtkExodusIIWriter
+from pathlib import Path
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_visualization.simulation_visualization import build_grid_from_class
@@ -15,7 +14,7 @@ from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 
 
 def export_simulation_results(
-    sim: SimulationResults, format: str = "vtk"
+    sim: SimulationResults, format: str = "auto", golem_output_dir: str = ""
 ) -> BasicallyABufferedFile:
     """Export all time steps from SFePy or GOLEM SimulationResults.
 
@@ -25,17 +24,79 @@ def export_simulation_results(
     ``"native"``) returns a ZIP of the complete GOLEM output directory,
     including the Exodus result and any CSV/log/generated files.
     """
-    fmt = format.strip().lower()
-    if fmt in {"vtk"}:
+    fmt = (format or "auto").strip().lower()
+    solver = str(getattr(sim, "source_solver", "") or "").strip().lower()
+    native_dir = _find_golem_output_dir(sim, golem_output_dir)
+    if fmt in {"auto", "default"}:
+        if solver == "golem" or native_dir is not None:
+            return _export_golem_output_directory(sim, native_dir)
+        if solver == "sfepy" or getattr(sim, "sfepy_stdout", None):
+            return _export_simulation_results_to_vtk(sim)
+        raise ValueError(
+            "Cannot identify the solver or find GOLEM's native output directory. "
+            "Specify golem_output_dir in the DSL export component, or choose "
+            "format='vtk' for SfePy. The exporter will not silently convert "
+            "unidentified GOLEM results into VTK."
+        )
+    if fmt == "vtk":
         return _export_simulation_results_to_vtk(sim)
     if fmt in {"exodus", "exo", "e", "ex2"}:
-        return _export_simulation_results_to_exodus(sim)
+        return _export_simulation_results_to_exodus(sim, native_dir)
     if fmt in {"golem", "native", "golem_zip", "output_dir"}:
-        return _export_golem_output_directory(sim)
+        return _export_golem_output_directory(sim, native_dir)
     raise NotImplementedError(
         f"Unsupported simulation export format {format!r}. "
-        "Supported formats are 'vtk', 'exodus', and 'golem'."
+        "Supported formats are 'auto', 'vtk', 'exodus', and 'golem'."
     )
+
+
+def _native_files(directory: Path):
+    return sorted(
+        (p for p in directory.rglob("*")
+         if p.is_file() and p.suffix.lower() in {".e", ".exo", ".ex2"}
+         and not any(part.endswith("_cp") for part in p.relative_to(directory).parts)),
+        key=lambda p: str(p),
+    )
+
+
+def _find_golem_output_dir(sim: SimulationResults, override: str = ""):
+    """Resolve native outputs, even when Workbench discarded dynamic metadata.
+
+    Never choose arbitrarily among multiple GOLEM runs.
+    """
+    if override.strip():
+        candidate = Path(override).expanduser().resolve()
+        if not candidate.is_dir():
+            raise FileNotFoundError(f"GOLEM output directory does not exist: {candidate}")
+        if not _native_files(candidate):
+            raise FileNotFoundError(f"No Exodus file in GOLEM output directory: {candidate}")
+        return candidate
+
+    for attr in ("source_output_dir", "source_exodus_file"):
+        value = getattr(sim, attr, None)
+        if value:
+            candidate = Path(value).expanduser().resolve()
+            if candidate.is_file():
+                candidate = candidate.parent
+            if candidate.is_dir() and _native_files(candidate):
+                return candidate
+
+    # The Workbench GOLEM run component saves outputs to
+    # Path.cwd()/golem_output/<unique run id>.
+    base = Path.cwd() / "golem_output"
+    if not base.is_dir():
+        return None
+    candidates = [p for p in base.iterdir() if p.is_dir() and _native_files(p)]
+    if len(candidates) == 1:
+        return candidates[0].resolve()
+    if len(candidates) > 1:
+        raise ValueError(
+            f"Found {len(candidates)} GOLEM output directories under {base}. "
+            "Cannot safely associate a simulation result with one run after "
+            "serialization. Set golem_output_dir explicitly to the correct "
+            "directory in the Export Simulation Results component."
+        )
+    return None
 
 
 def _times(sim: SimulationResults):
@@ -85,58 +146,46 @@ def _export_simulation_results_to_vtk(
 
 
 def _export_simulation_results_to_exodus(
-    sim: SimulationResults,
+    sim: SimulationResults, source_dir: Path | None = None
 ) -> BasicallyABufferedFile:
-    """Return GOLEM's original multi-time-step Exodus result unchanged.
-
-    GOLEM already writes one native Exodus database (normally ``wbgeo.e``)
-    containing all time steps.  Re-writing the unified ``SimulationResults``
-    would lose that native one-file representation, so Exodus export is only
-    available when the result object came from GOLEM and retains its source
-    Exodus path.
-    """
+    """Return a native GOLEM Exodus file without VTK conversion."""
     source = getattr(sim, "source_exodus_file", None)
-    if not source or not os.path.isfile(source):
-        raise ValueError(
-            "Exodus export requires a GOLEM SimulationResults object with its "
-            "native source Exodus file. SFePy results should be exported as VTK."
-        )
-
-    with open(source, "rb") as stream:
-        buf = io.BytesIO(stream.read())
-    buf.seek(0)
-    buf.filename = os.path.basename(source) or "wbgeo.e"
+    candidate = Path(source).resolve() if source else None
+    if candidate is None or not candidate.is_file():
+        directory = source_dir or _find_golem_output_dir(sim)
+        if directory is None:
+            raise FileNotFoundError("No accessible GOLEM output directory found.")
+        files = _native_files(directory)
+        if not files:
+            raise FileNotFoundError(f"No Exodus file in {directory}")
+        candidate = max(files, key=lambda p: p.stat().st_mtime)
+    buf = io.BytesIO(candidate.read_bytes())
+    buf.filename = candidate.name
     return buf
 
 
 def _export_golem_output_directory(
-    sim: SimulationResults,
+    sim: SimulationResults, source_dir: Path | None = None
 ) -> BasicallyABufferedFile:
-    """ZIP the complete preserved GOLEM output directory.
-
-    This is the recommended GOLEM export when the run may create additional
-    files such as CSV tables. The archive contains exactly the user-facing
-    files preserved by ``run_simulation_golem()`` in its output directory.
-    Internal ``*_cp`` checkpoint directories have already been filtered by
-    the runner.
-    """
-    source_dir = getattr(sim, "source_output_dir", None)
-    if not source_dir or not os.path.isdir(source_dir):
-        raise ValueError(
-            "GOLEM output-directory export requires a GOLEM SimulationResults "
-            "object that retains its source output directory."
+    """ZIP preserved native GOLEM outputs, including Exodus and CSV files."""
+    directory = source_dir or _find_golem_output_dir(sim)
+    if directory is None:
+        raise FileNotFoundError(
+            "Cannot locate GOLEM output files. Set golem_output_dir to the "
+            "directory containing the .e/.exo and .csv files."
         )
-
-    source_dir = os.path.abspath(source_dir)
+    directory = directory.resolve()
+    if not _native_files(directory):
+        raise FileNotFoundError(f"No native GOLEM Exodus file in {directory}")
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(source_dir):
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        for root, dirs, files in os.walk(directory):
             dirs[:] = sorted(d for d in dirs if not d.endswith("_cp"))
-            for filename in sorted(files):
-                path = os.path.join(root, filename)
-                arcname = os.path.relpath(path, source_dir)
-                zf.write(path, arcname)
-
+            for name in sorted(files):
+                path = Path(root) / name
+                if path.is_symlink() or not path.is_file():
+                    continue
+                archive.write(path, path.relative_to(directory).as_posix())
     buf.seek(0)
     buf.filename = "golem_results.zip"
     return buf

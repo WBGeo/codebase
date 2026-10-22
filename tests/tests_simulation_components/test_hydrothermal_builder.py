@@ -7,7 +7,7 @@ import pytest
 from pydantic_core import to_jsonable_python
 
 from core.object_components import MeshResults, MeshType
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder,
     RockUnitProperties,
     FluidProperties,
@@ -243,7 +243,7 @@ def test_builder_invalid_linear_solver_raises(model1_implicit_mesh, model1_struc
 
 
 def test_builder_accepts_all_linear_solvers(monkeypatch, model1_implicit_mesh, model1_structural_result):
-    import core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder as builder_module
+    import core.simulation_components.simulation_packages.sfepy.sfepy_model_builder as builder_module
 
     # Test solver selection independently of optional PETSc installation.
     original_find_spec = builder_module.importlib.util.find_spec
@@ -524,7 +524,7 @@ def test_fault_zone_pressure_input_file_includes_fault_material(
 def test_petsc_solver_fails_early_when_petsc4py_missing(
     monkeypatch, model1_implicit_mesh, model1_structural_result,
 ):
-    import core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder as builder_module
+    import core.simulation_components.simulation_packages.sfepy.sfepy_model_builder as builder_module
 
     original_find_spec = builder_module.importlib.util.find_spec
     monkeypatch.setattr(
@@ -540,7 +540,7 @@ def test_petsc_solver_fails_early_when_petsc4py_missing(
 
 
 def test_petsc_missing_dependency_fails_early(monkeypatch, model1_implicit_mesh, model1_structural_result):
-    import core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder as builder_module
+    import core.simulation_components.simulation_packages.sfepy.sfepy_model_builder as builder_module
 
     original_find_spec = builder_module.importlib.util.find_spec
     monkeypatch.setattr(

@@ -29,7 +29,7 @@ import numpy as np
 from core.object_components import MeshResults, SimulationResults
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results, SfepyOutputType
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder,
     CustomSfepyBuilder,
     MESH_TYPE_CODES,

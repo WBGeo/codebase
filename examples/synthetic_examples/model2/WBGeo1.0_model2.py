@@ -27,11 +27,11 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_abaqus)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
-    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement,
+    LinearSourceRefinement, FunctionSourceRefinement, LinearShaftRefinement, TriangulationRefinement,
     FaultRefinement, ExtraPlaneRefinement)
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (run_simulation_sfepy,export_simulation_results,)
+from core.simulation_components.simulation_packages.sfepy.sfepy_run import (run_simulation_sfepy,export_simulation_results,)
 
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
@@ -48,9 +48,6 @@ from core.simulation_components.simulation_packages.golem.golem_run import (
     run_simulation_golem,
 )
 
-from core.simulation_components.simulation_visualization.golem_material_preview import (
-    plot_golem_materials,
-)
 
 
 #%%
@@ -291,14 +288,14 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 # Optional: Example of how to include objects (only works for unstructured mesh)
 
 # # Load engineering objects
-# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_wells.csv")
-# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_shafts.csv")
-# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_sources.csv")
-# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_planes.csv")
-# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_ellipses.csv")
-# csv_files=(cwd + "/examples/synthetic_examples/Model2/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
+#wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_wells.csv")
+#shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_shafts.csv")
+#sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_sources.csv")
+#planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_planes.csv")
+#ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_ellipses.csv")
+#csv_files=(cwd + "/examples/synthetic_examples/Model2/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
 #           cwd + "/examples/synthetic_examples/Model2/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
-# triangulations= load_triangulations_planes_from_csv(csv_files)
+#triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
@@ -309,6 +306,8 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 #refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
 #refinement.triangulations = TriangulationRefinement(SizeMin=8.0, SizeMax=90.0, DistMin=50.0, DistMax=100.0)
 #refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
+#refinement.faults = FaultRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
+
 #refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
 #refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
 #    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
@@ -356,10 +355,32 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 #        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
 
 
+# # Explicit unstructured mesh with objects
+#mesh_unstructured_with_objects = create_unstructured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     tolerance=50,
+#     mesh_size=50,
+#     curve_mesh_size=5,
+#     DISTANCE_THRESHOLD = 40,
+#     PROJECTION_THRESHOLD = 60,
+#     EXTRUSION_FACTOR = 80,
+#     z_threshold = 10,
+#     wells=wells,
+#     sources=sources,
+#     shafts=shafts,
+#     triangulations=triangulations,
+#     extra_planes=planes,
+#     ellipses=ellipses,
+#     gmsh_flag= True,
+#         # to save original gmsh configuration (defaut is False)
+#     refinement=refinement,
+#)
 #
 # # Plot the resulting mesh
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
-
+#buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+#with open("filename_model2_with_objects_mesh.exo", "wb") as f:
+#     f.write(buf.getvalue())
 #%%
 
 
@@ -412,31 +433,36 @@ builder = HydrothermalProblemBuilder(
 
 #%%
 
-# Pre-flight check: confirms the fault zone and rock_properties landed on the right cells.
+# Pre-flight check: confirms rock_properties landed on the right cells.
 plot_builder_materials(builder)
+plot_builder_materials(
+    builder=builder,
+    property_name="porosity",
+    show_plotter=True,
+)
 
 #%%
 
-data_by_time = run_simulation_sfepy(builder)
+#data_by_time = run_simulation_sfepy(builder)
 
 #%%
 
 # Visualize simulation results
-final_time = max(data_by_time.nodes_by_time.keys())
-plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=False)
-plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=False)
+#final_time = max(data_by_time.nodes_by_time.keys())
+#plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=False)
+#plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=False)
 
 # normal=(0, 1, 0): the fault plane is Y-invariant, so this actually cuts across it.
-plot_cross_section_2D(
-    data_by_time, "T", origin=(1250, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
-)
+#plot_cross_section_2D(
+#    data_by_time, "T", origin=(1250, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+#)
 
 #%%
 # save the outputs as zip file
 
-buf = export_simulation_results(data_by_time , format="vtk")
-with open("simulation_results.zip", "wb") as f:
-    f.write(buf.getvalue())
+#buf = export_simulation_results(data_by_time , format="vtk")
+#with open("simulation_results.zip", "wb") as f:
+#    f.write(buf.getvalue())
 
 # ------------------------------------------------------------------------------
 # END SECTION 3: SFEPY - GENERATED HYDROTHERMAL MODEL
@@ -495,7 +521,14 @@ custom_builder = CustomSfepyBuilder(
 )
 
 #%%
-
+# Pre-flight check: confirms rock_properties landed on the right cells.
+plot_builder_materials(custom_builder)
+plot_builder_materials(
+    builder=custom_builder,
+    property_name="porosity",
+    show_plotter=True,
+)
+#
 custom_data_by_time = run_simulation_sfepy(custom_builder)
 
 #%%
@@ -565,7 +598,12 @@ problem_golem = GolemHydrothermalProblemBuilder(
     num_steps=3,
 )
 # Plot material assignments BEFORE running GOLEM
-plot_golem_materials(problem_golem, show_edges=True)
+plot_builder_materials(problem_golem, show_edges=True)
+plot_builder_materials(
+    builder=problem_golem,
+    property_name="porosity",
+    show_plotter=True,
+)
 
 # copy the input file to a diectory
 problem_golem.build_input_file("/tmp/wbgeo_golem_model2.i")
@@ -576,8 +614,8 @@ problem_golem.build_input_file("/tmp/wbgeo_golem_model2.i")
 problem_golem_results = run_simulation_golem(
     problem=problem_golem,
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    workspace_dir='/projects',
-
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
+    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
     output_dir=(
         cwd
         + "/examples/synthetic_examples/model2/"
@@ -625,47 +663,57 @@ with open("simulation_golem_results.zip", "wb") as f:
 # ------------------------------------------------------------------------------
 
 # Running golem from a costum file
-#custom_input_path = (
-#    cwd
-#    + "/examples/synthetic_examples/model2/input_data/simulation_files/"
-#      "custom_hydrothermal.i"
-#)
+custom_input_path = (
+    cwd
+    + "/examples/synthetic_examples/model2/input_data/simulation_files/"
+      "custom_hydrothermal.i"
+)
 
-#with open(custom_input_path, encoding="utf-8") as f:
-#    custom_input_file_contents = f.read()
+with open(custom_input_path, encoding="utf-8") as f:
+    custom_input_file_contents = f.read()
 
+# Create the custom GOLEM problem
+custom_golem_problem = CustomGolemBuilder(
+    input_file_contents=custom_input_file_contents,
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+    print_linear_residuals=True,
+)
+# Plot material assignments BEFORE running GOLEM
+plot_builder_materials(custom_golem_problem, show_edges=True)
 
-#custom_golem_results = run_simulation_golem(
-#    problem=CustomGolemBuilder(
-#        input_file_contents=custom_input_file_contents,
-#        mesh_results=mesh_explicit_unstructured,
-#        geomodel_result=structural_model_result,
-#        print_linear_residuals=True,
-#    ),
+plot_builder_materials(
+    builder=custom_golem_problem,
+    property_name="porosity_initial",
+    show_plotter=True,
+)
+# Run the GOLEM simulation
+custom_golem_results = run_simulation_golem(
+    problem=custom_golem_problem,
 
-#    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-#    docker_dir="/projects",
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 
-#    output_dir=(
-#        cwd
-#        + "/examples/synthetic_examples/model2/"
-#          "golem_custom_output"
-#    ),
+    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
+    output_dir=(
+        cwd
+        + "/examples/synthetic_examples/model2/"
+          "golem_custom_output"
+    ),
 
-#    nproc=4,
-#)
+    nproc=4,
+)
 
-#custom_initial_time = min(custom_golem_results.nodes_by_time.keys())
-#custom_final_time = max(custom_golem_results.nodes_by_time.keys())
+custom_initial_time = min(custom_golem_results.nodes_by_time.keys())
+custom_final_time = max(custom_golem_results.nodes_by_time.keys())
 
 # Visualize GOLEM's native result names.
-#plot_variable_at_a_time(custom_golem_results, "temperature", time=custom_initial_time, cmap="coolwarm", show_edges=True)
-#plot_variable_at_a_time(custom_golem_results, "temperature", time=custom_final_time, cmap="coolwarm", show_edges=True)
-#plot_variable_at_a_time(custom_golem_results, "pore_pressure", time=custom_final_time, cmap="coolwarm", show_edges=True)
-#plot_cross_section_2D(
-#    custom_golem_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
-#)
+plot_variable_at_a_time(custom_golem_results, "temperature", time=custom_initial_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(custom_golem_results, "temperature", time=custom_final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(custom_golem_results, "pore_pressure", time=custom_final_time, cmap="coolwarm", show_edges=True)
+plot_cross_section_2D(
+    custom_golem_results, "temperature", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm"
+)
 
 
 # ------------------------------------------------------------------------------
@@ -769,7 +817,6 @@ with open("simulation_golem_results.zip", "wb") as f:
 #    problem=reservoir_problem_model2,
 #    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
 #    project_dir=os.environ["GOLEM_PROJECT_DIR"],
-#    docker_dir="/projects",
 #    output_dir=(
 #        cwd + "/examples/synthetic_examples/model2/golem_universal_reservoir_output"
 #    ),
@@ -921,7 +968,7 @@ model2_custom_reservoir_results = run_simulation_golem(
         print_linear_residuals=True,
     ),
     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-    workspace_dir="/projects",
+    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
     output_dir=(
         cwd
         + "/examples/synthetic_examples/model2/"

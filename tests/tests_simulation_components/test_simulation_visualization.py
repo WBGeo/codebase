@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from core.object_components import SimulationResults
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import RockUnitProperties, FluidProperties
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import RockUnitProperties, FluidProperties
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     build_grid_from_class, _variable_label, _format_rock_properties, _in_plane_axes,
 )

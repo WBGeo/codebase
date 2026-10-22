@@ -95,12 +95,12 @@ class UnstructuredMeshTestCase(unittest.TestCase):
 
         mesh_generated = create_unstructured_mesh_data(
             geomodel_result=self.geomodel_result,
-            wells=self.wells,
-            sources=self.sources,
+            #wells=self.wells,
+            #sources=self.sources,
             shafts=self.shafts,
-            triangulations=self.triangulations,
-            extra_planes=self.planes,
-            ellipses=self.ellipses,
+            #triangulations=self.triangulations,
+            #extra_planes=self.planes,
+            #ellipses=self.ellipses,
             mesh_size=75,
             curve_mesh_size=5
         )

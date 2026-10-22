@@ -13,7 +13,7 @@ import pathlib
 import shutil
 import typing
 import uuid
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pydantic
 from py_api_wbgeo import smartcontrols
@@ -22,12 +22,12 @@ from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, 
 from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartInputFormData
 
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem, RockUnitProperties, FluidProperties,
     enumerate_rock_units, check_mesh_has_known_type, check_mesh_has_lithology_mapping,
     check_mesh_has_no_engineering_objects,
 )
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_run import (
     run_simulation_sfepy as _run_simulation_sfepy,
 )
 from core.simulation_components.simulation_packages.simulation_export import (
@@ -40,7 +40,6 @@ from core.simulation_components.simulation_packages.golem.golem_model_builder im
 from core.simulation_components.simulation_packages.golem.golem_run import (
     run_simulation_golem as _run_simulation_golem,
 )
-from core.simulation_components.simulation_visualization.golem_material_preview import plot_golem_materials
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials,
 )
@@ -243,7 +242,7 @@ SmartGolemHydrothermalOptions = typing.Annotated[
                 "to give cells near any fault their own separate material "
                 "(from the options' Fault Zone Properties group) instead of "
                 "treating them as ordinary lithology.",
-    title='Build Hydrothermal Problem',
+    title='Build Sfepy Hydrothermal Problem',
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
@@ -289,7 +288,7 @@ def build_hydrothermal_problem(
     :param linear_solver_i_max: Max iterations for the iterative linear solver.
     :param linear_solver_eps_r: Relative residual tolerance for the iterative linear solver.
     :return: The problem definition, wrapped in the shared SfepyProblem envelope so it can
-        connect into the same Run Simulation component as Build Custom SfePy Problem's output.
+        connect into the same Run Simulation component as Build Sfepy Custom Problem's output.
 
     Raises:
         ValueError: mesh_results has no known mesh_type, or no lithology mapping
@@ -341,7 +340,7 @@ def build_hydrothermal_problem(
                 "cannot catch wrong material properties or malformed "
                 "equations -- sfepy-run's own region resolution remains the "
                 "final authority at run time.",
-    title='Build Custom SfePy Problem',
+    title='Build Sfepy Custom Problem',
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
@@ -354,7 +353,7 @@ def build_hydrothermal_problem(
     # collapsed into a single node -- see docs/developers/components.md's
     # is_object_type row) purely from the presence of a
     # BasicallyABufferedFile parameter, confirmed live via
-    # objectType=true/typeMagic=2 vs Build Hydrothermal Problem's
+    # objectType=true/typeMagic=2 vs Build SfepyHydrothermal Problem's
     # objectType=false/typeMagic=0. Forcing False matches Build
     # Hydrothermal Problem's normal (non-collapsed) presentation.
     is_object_type=False,
@@ -378,12 +377,12 @@ def build_custom_sfepy_problem(
         fault_zone_n_voxels is set.
     :param fault_zone_n_voxels: If set, gives cells within this many structural-grid voxels
         of any active fault's trace their own group id (see the returned CustomSfepyBuilder's
-        fault_group_id) -- the same "damage zone" cell selection Build Hydrothermal Problem
+        fault_group_id) -- the same "damage zone" cell selection Build SfepyHydrothermal Problem
         uses, referenceable from the custom file as 'cells of group N'. No material/equation
         is auto-generated for it; that's entirely up to the custom file. None (default)
         leaves only the mesh's real lithology groups available, exactly like today.
     :return: The custom problem definition, wrapped in the shared SfepyProblem envelope so it
-        can connect into the same Run Simulation component as Build Hydrothermal Problem's
+        can connect into the same Run Simulation component as Build Sfepy Hydrothermal Problem's
         output. Not restricted to hydrothermal physics -- the file can define any SfePy
         physics; only the mesh/region bookkeeping is validated, not the equations themselves.
 
@@ -421,13 +420,13 @@ def build_custom_sfepy_problem(
 
 
 @wbgeo_component(
-    description='Runs the given problem definition (from either Build '
-                'Hydrothermal Problem or Build Custom SfePy Problem) -- the '
+    description='Runs the given problem definition (from either Build Sfepy '
+                'Hydrothermal Problem or Build Sfepy Custom Problem) -- the '
                 'two-stage SfePy hydrothermal solve (steady-state pressure, '
                 'then transient advective-conductive heat transport) for a '
                 'Hydrothermal problem, or a single sfepy-run invocation for a '
                 'Custom SfePy problem.',
-    title='Run Simulation',
+    title='Run Sfepy Simulation',
     color='pink',
     border_color='#000000',
     group='Simulation',
@@ -436,7 +435,7 @@ def build_custom_sfepy_problem(
 )
 def run_simulation(problem: SfepyProblem) -> SimulationResults:
     """
-    :param problem: Problem definition from Build Hydrothermal Problem or Build Custom SfePy Problem.
+    :param problem: Problem definition from Build Sfepy Hydrothermal Problem or Build Sfepy Custom Problem.
     :return: Simulation results for every solved/saved time step.
     """
     return _run_simulation_sfepy(problem.inner())
@@ -468,12 +467,12 @@ def build_golem_hydrothermal_problem(
     p_bottom: float = 1.0e6,
     t_top: float = 10.0,
     t_bottom: float = 60.0,
-    initial_pressure: Optional[float] = None,
-    initial_temperature: Optional[float] = None,
+    initial_pressure: Optional[float] = 0,
+    initial_temperature: Optional[float] = 0,
     start_time: float = 0.0,
-    end_time: Optional[float] = None,
-    dt: float = 86400.0,
-    num_steps: int = 365,
+    end_time: Optional[float] = 5e11,
+    dt: float = 1.667e11,
+    num_steps: int = 3,
     output_interval: int = 1,
     print_linear_residuals: bool = True,
 ) -> GolemProblem:
@@ -530,7 +529,31 @@ def build_golem_simple_reservoir_problem(
     mesh_size: float = 30.0,
     curve_mesh_size: float = 5.0,
     mapping_litho: str = "automatic_centers",
-    gmsh_flag: bool = False,
+    z_threshold: Optional[float] = None,
+    well_refine_size_min: float = 5.0,
+    well_refine_size_max: float = 30.0,
+    well_refine_dist_min: float = 10.0,
+    well_refine_dist_max: float = 60.0,
+    fracture_refine_size_min: float = 5.0,
+    fracture_refine_size_max: float = 30.0,
+    fracture_refine_dist_min: float = 10.0,
+    fracture_refine_dist_max: float = 60.0,
+    rock_porosity: float = 0.1,
+    rock_permeability: float = 1.0e-15,
+    rock_density: float = 2.6e3,
+    rock_thermal_conductivity: float = 3.0,
+    rock_heat_capacity: float = 950.0,
+    fracture_porosity: float = 1.0,
+    fracture_aperture: float = 1.0e-4,
+    geological_fault_aperture: float = 1.0,
+    well_porosity: float = 1.0,
+    well_permeability: float = 3.12e-4,
+    well_scaling_factor: float = 0.05,
+    fluid_density: float = 1.0e3,
+    fluid_viscosity: float = 1.0e-3,
+    fluid_heat_capacity: float = 4.2e3,
+    fluid_thermal_conductivity: float = 0.65,
+    fluid_modulus: float = 2.5e9,
     initial_pressure: float = 1.0e7,
     initial_temperature: float = 150.0,
     boundary_pressure: float = 1.0e7,
@@ -538,18 +561,14 @@ def build_golem_simple_reservoir_problem(
     injection_temperature: float = 70.0,
     injection_rate: float = 3.0,
     extraction_rate: float = 3.0,
-    source_start_time: float = 0.0,
-    source_end_time: Optional[float] = None,
     start_time: float = 0.0,
     end_time: Optional[float] = None,
-    print_linear_residuals: bool = True,
 ) -> GolemProblem:
     """
     :param geomodel_result: Structural model used to place/scale the reservoir geometry.
     :param mesh_size: Target unstructured volume-mesh size.
     :param curve_mesh_size: Target mesh size on well curves.
     :param mapping_litho: Lithology mapping mode passed to the unstructured mesher.
-    :param gmsh_flag: Forwarded to the unstructured mesh builder.
     :param initial_pressure: Initial reservoir pressure.
     :param initial_temperature: Initial reservoir temperature.
     :param boundary_pressure: Reservoir boundary pressure.
@@ -557,8 +576,6 @@ def build_golem_simple_reservoir_problem(
     :param injection_temperature: Injection-fluid temperature.
     :param injection_rate: Injection rate.
     :param extraction_rate: Extraction rate.
-    :param source_start_time: Start time for injection/extraction sources.
-    :param source_end_time: End time for sources; defaults inside the builder when None.
     :param start_time: Simulation start time.
     :param end_time: Simulation end time; defaults inside the builder when None.
     :param print_linear_residuals: Include GOLEM linear residual output.
@@ -569,7 +586,31 @@ def build_golem_simple_reservoir_problem(
         mesh_size=mesh_size,
         curve_mesh_size=curve_mesh_size,
         mapping_litho=mapping_litho,
-        gmsh_flag=gmsh_flag,
+        z_threshold=z_threshold,
+        well_refine_size_min=well_refine_size_min,
+        well_refine_size_max=well_refine_size_max,
+        well_refine_dist_min=well_refine_dist_min,
+        well_refine_dist_max=well_refine_dist_max,
+        fracture_refine_size_min=fracture_refine_size_min,
+        fracture_refine_size_max=fracture_refine_size_max,
+        fracture_refine_dist_min=fracture_refine_dist_min,
+        fracture_refine_dist_max=fracture_refine_dist_max,
+        rock_porosity=rock_porosity,
+        rock_permeability=rock_permeability,
+        rock_density=rock_density,
+        rock_thermal_conductivity=rock_thermal_conductivity,
+        rock_heat_capacity=rock_heat_capacity,
+        fracture_porosity=fracture_porosity,
+        fracture_aperture=fracture_aperture,
+        geological_fault_aperture=geological_fault_aperture,
+        well_porosity=well_porosity,
+        well_permeability=well_permeability,
+        well_scaling_factor=well_scaling_factor,
+        fluid_density=fluid_density,
+        fluid_viscosity=fluid_viscosity,
+        fluid_heat_capacity=fluid_heat_capacity,
+        fluid_thermal_conductivity=fluid_thermal_conductivity,
+        fluid_modulus=fluid_modulus,
         initial_pressure=initial_pressure,
         initial_temperature=initial_temperature,
         boundary_pressure=boundary_pressure,
@@ -577,11 +618,8 @@ def build_golem_simple_reservoir_problem(
         injection_temperature=injection_temperature,
         injection_rate=injection_rate,
         extraction_rate=extraction_rate,
-        source_start_time=source_start_time,
-        source_end_time=source_end_time,
         start_time=start_time,
         end_time=end_time,
-        print_linear_residuals=print_linear_residuals,
     ))
 
 
@@ -589,7 +627,7 @@ def build_golem_simple_reservoir_problem(
     description="Wraps a user-supplied complete GOLEM/MOOSE input file (.i) "
                 "instead of auto-generating one. The input must use "
                 "${GOLEM_MESH_FILE} in its FileMeshGenerator block.",
-    title='Build Custom GOLEM Problem',
+    title='Build GOLEM Custom Problem',
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
@@ -671,20 +709,20 @@ def run_golem_simulation(
 
 
 @wbgeo_component(
-    description='Exports simulation results from SfePy or GOLEM (all time steps) to '
-                'downloadable simulation results in VTK or Exodus format (zipped time series).',
+    description='Exports SfePy as VTK/PVD ZIP and GOLEM as native output ZIP (Exodus, CSV and other output files) by default. Explicit formats: auto, vtk, exodus, golem.',
     title='Export Simulation Results',
     group='Export',
     identifier='wbgeo::export_simulation_results',
     return_name='file',
 )
-def export_simulation_results(simulation_result: SimulationResults, format: str = "vtk") -> BasicallyABufferedFile:
+def export_simulation_results(simulation_result: SimulationResults, format: str = "auto", golem_output_dir: str = "") -> BasicallyABufferedFile:
     """
     :param simulation_result: Simulation results from Run Simulation or Run GOLEM Simulation.
-    :param format: Export format: "vtk" or "exodus".
+    :param format: "auto" (SfePy VTK ZIP / GOLEM native output ZIP), "vtk", "exodus", or "golem".
+    :param golem_output_dir: Optional exact GOLEM output directory, needed when multiple GOLEM runs exist and solver metadata was lost.
     :return: A downloadable file containing the exported results.
     """
-    return _export_simulation_results(simulation_result, format)
+    return _export_simulation_results(simulation_result, format, golem_output_dir)
 
 
 # -----------------------------------------------------------------------------
@@ -713,18 +751,20 @@ def inspect_sfepy_problem_plot_materials(problem: SfepyProblem, _inspector: Insp
                              'be inferred safely and produce an informative error.')
 @wbgeo_inspector()
 def inspect_golem_problem_plot_materials(problem: GolemProblem, _inspector: InspectorHelper):
-    plot_golem_materials(problem.inner())
+    plot_builder_materials(problem.inner())
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_variable_at_a_time',
                  title='Plot Variable (Final Time)',
-                 description='Plots the selected simulation variable at the final time step. '
-                             'Leave var_name blank to select a default field automatically '
-                             '(T when present). Works with GOLEM and SfePy results.')
+                 description='Plots "T" at the final solved time step if present, else '
+                             'whatever variable the result actually has -- a custom SfePy '
+                             'problem is not restricted to hydrothermal physics.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_variable_at_a_time(
-    simulation_result: SimulationResults, _inspector: InspectorHelper, var_name: str = ""):
-    # A blank input preserves the visualization function's automatic field selection.
+    simulation_result: SimulationResults, _inspector: InspectorHelper):
+    # var_name/time left at their defaults ("T" if present else whatever
+    # field exists, at the final time step) -- see
+    # simulation_visualization.plot_variable_at_a_time/_default_var_name.
     #
     # show_edges=False (rather than the codebase default's usual True) and
     # a capped off_screen/window_size/no-antialiasing render: this is the
@@ -733,27 +773,20 @@ def inspect_simulation_result_plot_variable_at_a_time(
     # colors -- confirmed to be disproportionately expensive under the
     # Workbench container's software (no GPU/display) rendering, unlike
     # every flat-colored 3D plot here (Plot Mesh in 3D, Plot Materials).
-    plot_kwargs = {
-        "cmap": "coolwarm",
-        "show_edges": False,
-        "off_screen": True,
-        "window_size": (800, 600),
-        "anti_aliasing": False,
-    }
-    selected_var = var_name.strip()
-    if selected_var:
-        plot_kwargs["var_name"] = selected_var
-    plot_variable_at_a_time(simulation_result, **plot_kwargs)
+    plot_variable_at_a_time(
+        simulation_result, cmap="coolwarm", show_edges=False,
+        off_screen=True, window_size=(800, 600), anti_aliasing=False,
+    )
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_cross_section_2D',
                  title='Plot Cross Section 2D',
-                 description='Plots a cross-section of the selected simulation variable, comparing '
-                             'the initial and final time steps. Leave var_name blank for '
-                             'automatic field selection (T when present).')
+                 description='Plots a cross-section of "T" if present, else whatever '
+                             'variable the result actually has, comparing the initial and '
+                             'final time steps.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_cross_section_2D(
-    simulation_result: SimulationResults, _inspector: InspectorHelper, var_name: str = ""):
+    simulation_result: SimulationResults, _inspector: InspectorHelper):
     # plot_cross_section_2D's own default origin=(0, 0, 0) sits right on the
     # domain boundary -- mesh nodes are cell-centered (inset from the
     # nominal domain edges), so that default slice can miss every node and
@@ -761,9 +794,9 @@ def inspect_simulation_result_plot_cross_section_2D(
     # regardless of the model's actual extent.
     first_time = min(simulation_result.nodes_by_time.keys())
     origin = tuple(simulation_result.nodes_by_time[first_time].mean(axis=0))
-    plot_cross_section_2D(
-        simulation_result, var_name=var_name.strip() or None, origin=origin, cmap="coolwarm"
-    )
+    # var_name left at its default ("T" if present else whatever field
+    # exists) -- see simulation_visualization._default_var_name.
+    plot_cross_section_2D(simulation_result, origin=origin, cmap="coolwarm")
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_stdout',

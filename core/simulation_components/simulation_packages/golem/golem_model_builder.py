@@ -22,7 +22,7 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     LinearWellRefinement,
     ExtraPlaneRefinement,
 )
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     FluidProperties,
     RockUnitProperties,
 )
@@ -328,9 +328,9 @@ class GolemHydrothermalProblemBuilder:
     # HydrothermalProblemBuilder. A number retains support for a constant IC.
     initial_temperature: Optional[float] = None
     start_time: float = 0.0
-    end_time: Optional[float] = None
-    dt: float = 86400.0
-    num_steps: int = 365
+    end_time: Optional[float] = 5e11
+    dt: float = 1.667e11
+    num_steps: int = 3
     output_interval: int = 1
     print_linear_residuals: bool = True
 

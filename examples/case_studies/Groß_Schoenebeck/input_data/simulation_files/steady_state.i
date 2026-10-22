@@ -60,15 +60,15 @@
     type = ParsedFunction
     expression = 'a*b*(z-c)'
     symbol_names = 'a b c'
-    symbol_values = '2.5e-03 9.8065 65'
+    symbol_values = '2.4863e-03 9.8065 65'
   []
   [top_shear_x]
     type = ParsedFunction
-    expression = '5.28'
+    expression = '4.105'
   []
   [top_shear_y]
     type = ParsedFunction
-    expression = '-9.17'
+    expression = '-7.5486'
   []
 []
 
@@ -304,7 +304,6 @@
     boundary = 'top'
     variable = disp_z
   []
-  # Diagnostic horizontal tractions representing the surface-relative
   # tangential component of the original vertical load on the inclined top
   [load_x_top]
     type = FunctionNeumannBC
@@ -328,25 +327,25 @@
     type = DirichletBC
     variable = disp_x
     boundary = 'east'
-    value = 0.10
+    value = 0.0938
   []
   [disp_x_west]
     type = DirichletBC
     variable = disp_x
     boundary = 'west'
-    value = -0.10
+    value = -0.0938
   []
   [disp_y_north]
     type = DirichletBC
     variable = disp_y
     boundary = 'north'
-    value = -0.64
+    value = -0.618
   []
   [disp_y_south]
     type = DirichletBC
     variable = disp_y
     boundary = 'south'
-    value = 0.64
+    value = 0.618
   []
 []
 

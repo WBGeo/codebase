@@ -13,6 +13,8 @@ consistent look across the codebase's 3D plots, rather than this package's
 own ad-hoc defaults.
 """
 import inspect
+import ast
+import re
 import logging
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -24,7 +26,7 @@ from scipy.interpolate import griddata
 
 from core.meshing_components.mesh_format.vtk.VTK_format import VTKInputs
 from core.object_components import SimulationResults
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     CustomSfepyBuilder,
     HydrothermalProblemBuilder,
     RockUnitProperties,
@@ -714,7 +716,7 @@ def _sample_point_on_mesh(
     if var_name not in mesh.point_data and var_name not in mesh.cell_data:
         raise ValueError(f"Variable '{var_name}' not found.")
 
-    pt = pv.PolyData(np.array([point]))
+    pt = pv.PolyData(np.asarray([point], dtype=float))
     sampled = pt.sample(mesh)
     if sampled.n_points == 0 or not np.any(sampled["vtkValidPointMask"]):
         logger.warning("Point %s is outside mesh bounds %s", point, mesh.bounds)
@@ -788,11 +790,12 @@ def plot_variable_time_series(
 # Pre-flight material-assignment check (before running a solve)
 # ----------------------------------------------------------------------
 
-def plot_builder_materials(
+def _plot_sfepy_builder_materials(
     builder: Union[HydrothermalProblemBuilder, CustomSfepyBuilder],
     style: str = "surface",
-    show_edges: bool = True,
+    show_edges: bool = False,
     show_plotter: bool = True,
+    opacity: float = 0.65,
 ) -> pv.Plotter:
     """
     Plot builder.mesh_results in 3D, one solid color per distinct material
@@ -891,18 +894,9 @@ def plot_builder_materials(
     if fault_name is not None:
         color_by_name[fault_name] = _FAULT_ZONE_COLOR
 
-    if not is_custom:
-        properties_by_name: Dict[str, RockUnitProperties] = dict(builder.rock_properties)
-        if fault_name is not None:
-            properties_by_name[fault_name] = builder.fault_zone_properties
-
     def legend_entry(name: str) -> Tuple[str, str, str]:
-        """(material_name, legend_label, color) for one material -- label includes rock properties when available."""
-        if is_custom:
-            label = f"• {name}"
-        else:
-            label = f"• {name}  ({_format_rock_properties(properties_by_name[name])})"
-        return name, label, color_by_name[name]
+        """Use the same concise material-only legend for both SfePy builders."""
+        return name, f"• {name}", color_by_name[name]
 
     # (header, [(material_name, legend_label, color), ...])
     sections: List[Tuple[str, List[Tuple[str, str, str]]]] = []
@@ -920,7 +914,7 @@ def plot_builder_materials(
         for name, _label, color in entries:
             cell_ids = np.where(materials == name)[0]
             sub = grid.extract_cells(cell_ids)
-            plotter.add_mesh(sub, show_edges=show_edges, style=style, color=color)
+            plotter.add_mesh(sub, show_edges=show_edges, style=style, color=color, opacity=opacity)
 
     flat_legend: List[Tuple[str, str]] = []
     for header, entries in sections:
@@ -940,3 +934,729 @@ def plot_builder_materials(
     if show_plotter:
         plotter.show()
     return plotter
+
+
+# ----------------------------------------------------------------------
+# GOLEM pre-flight material preview (merged from golem_material_preview.py)
+# ----------------------------------------------------------------------
+import re
+import shlex
+from core.simulation_components.simulation_packages.golem.golem_input_parser import locate_blocks
+from core.simulation_components.simulation_packages.golem.golem_model_builder import (
+    CustomGolemBuilder, GolemHydrothermalProblemBuilder,
+    GolemSimpleReservoirProblemBuilder,
+)
+
+def _section_parameters(lines, section):
+    """Read scalar assignments in a MOOSE section, without evaluating expressions."""
+    result = {}
+    for line in lines[section.start + 1:section.end]:
+        match = re.match(r"^\s*([A-Za-z_][\w]*)\s*=\s*(.*?)\s*$", line)
+        if not match:
+            continue
+        value = match.group(2).split("#", 1)[0].strip()
+        try:
+            tokens = shlex.split(value)
+        except ValueError:
+            tokens = [value]
+        result[match.group(1)] = " ".join(tokens)
+    return result
+
+
+def _numeric_literal(value):
+    """Only accept actual numeric literals; don't pretend expressions are constants."""
+    if value is None or not re.fullmatch(
+        r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", value
+    ):
+        return None
+    return float(value)
+
+
+def _custom_material_details(content: str, block_count: int):
+    """Discover any explicitly assigned custom materials and resolvable values.
+
+    A material may cover several mesh blocks. Property names are discovered
+    rather than hardcoded. UserObject references are followed only if the
+    referenced object declares a literal `value`; no MOOSE evaluation occurs.
+    """
+    lines, sections = locate_blocks(content)
+    parents = {i for i, b in enumerate(sections) if b.depth == 0 and b.name == "Materials"}
+    material_sections = [b for b in sections if b.parent in parents]
+    if not material_sections:
+        raise ValueError("Custom GOLEM input has no [Materials] subsections to preview.")
+
+    user_parents = {i for i, b in enumerate(sections) if b.depth == 0 and b.name == "UserObjects"}
+    user_objects = {b.name: _section_parameters(lines, b)
+                    for b in sections if b.parent in user_parents}
+
+    renamed = {}
+    for section in sections:
+        if section.name == "Materials" or section.parent in parents:
+            continue
+        params = _section_parameters(lines, section)
+        if params.get("type") != "RenameBlockGenerator":
+            continue
+        old_ids = params.get("old_block", "").split()
+        new_names = params.get("new_block", "").split()
+        if len(old_ids) != len(new_names):
+            raise ValueError("RenameBlockGenerator old_block/new_block counts differ.")
+        for number, label in zip(old_ids, new_names):
+            renamed[label] = int(number)
+
+    assignments = {}
+    summaries = {}
+    for section in material_sections:
+        params = _section_parameters(lines, section)
+        if "block" not in params:
+            raise ValueError(f"Material [{section.name}] has no explicit block assignment; cannot preview safely.")
+        resolved = []
+        for key, raw in params.items():
+            if key in ("block", "type"):
+                continue
+            numeric = _numeric_literal(raw)
+            if numeric is not None:
+                resolved.append(f"{key}={numeric:g}")
+            elif key.endswith("_uo") and raw in user_objects:
+                uo_value = _numeric_literal(user_objects[raw].get("value"))
+                if uo_value is not None:
+                    resolved.append(f"{key[:-3]}={uo_value:g}")
+        # Use line breaks to keep legends readable even with many parameters.
+        # PyVista legends can be crowded; show a limited number and report the rest.
+        shown = resolved[:6]
+        if len(resolved) > 6:
+            shown.append(f"+{len(resolved) - 6} more")
+        summary = " | ".join(shown)
+        for token in params["block"].split():
+            try:
+                block_id = int(token)
+            except ValueError:
+                if token not in renamed:
+                    raise ValueError(f"Material [{section.name}] references unresolved block {token!r}.")
+                block_id = renamed[token]
+            if not 1 <= block_id <= block_count:
+                raise ValueError(f"Material [{section.name}] references block {block_id}, outside 1..{block_count}.")
+            previous = assignments.get(block_id)
+            if previous is not None and previous != section.name:
+                raise ValueError(f"Block {block_id} is assigned to both [{previous}] and [{section.name}].")
+            assignments[block_id] = section.name
+            summaries[block_id - 1] = summary
+    if not assignments:
+        raise ValueError("No explicit material block assignments found in custom GOLEM input.")
+    entries = [(block_id - 1, f"Material: {label}", "rock")
+               for block_id, label in sorted(assignments.items())]
+    return entries, summaries
+
+
+def _custom_material_entries(content: str, block_count: int):
+    """Compatibility API: return the original three-column material entries."""
+    return _custom_material_details(content, block_count)[0]
+
+
+def _material_property_summary(properties):
+    """SfePy-compatible rock summary, with a safe fallback for GOLEM properties."""
+    if properties is None:
+        return ""
+    rock_fields = ("porosity", "permeability", "k_solid", "rho_c_solid")
+    if all(getattr(properties, field, None) is not None for field in rock_fields):
+        return (
+            f"poro={properties.porosity:g} "
+            f"perm={properties.permeability:.1e}m2 "
+            f"k_s={properties.k_solid:g}W/mK "
+            f"rhoc={properties.rho_c_solid:.1e}J/m3K"
+        )
+    # GOLEM fault properties may have different field names. Show only
+    # actual scalar values rather than guessing units or inventing values.
+    values = (properties.model_dump() if hasattr(properties, "model_dump")
+              else vars(properties) if hasattr(properties, "__dict__") else {})
+    parts = []
+    for key, value in values.items():
+        if key.startswith("_") or key == "name" or isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            parts.append(f"{key}={value:.3g}")
+    return " ".join(parts)
+
+
+def _rock_properties_for_name(builder, name):
+    properties = getattr(builder, "rock_properties", None)
+    if isinstance(properties, dict):
+        return properties.get(name)
+    return None
+
+
+def _numeric_properties(obj):
+    """Return actual finite scalar fields, without evaluating model expressions."""
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        data = obj
+    elif hasattr(obj, "model_dump"):
+        data = obj.model_dump()
+    elif hasattr(obj, "__dict__"):
+        data = vars(obj)
+    else:
+        return {}
+    return {k: float(v) for k, v in data.items()
+            if not isinstance(v, bool) and isinstance(v, (int, float, np.number))
+            and np.isfinite(v)}
+
+
+def _custom_numeric_properties(content, block_count):
+    """Resolve literal GOLEM material values and literal-valued UserObjects."""
+    lines, sections = locate_blocks(content)
+    material_parents = {i for i, b in enumerate(sections)
+                        if b.depth == 0 and b.name == "Materials"}
+    user_parents = {i for i, b in enumerate(sections)
+                    if b.depth == 0 and b.name == "UserObjects"}
+    users = {b.name: _section_parameters(lines, b)
+             for b in sections if b.parent in user_parents}
+    renamed = {}
+    for b in sections:
+        params = _section_parameters(lines, b)
+        if params.get("type") == "RenameBlockGenerator":
+            old, new = params.get("old_block", "").split(), params.get("new_block", "").split()
+            if len(old) != len(new):
+                raise ValueError("RenameBlockGenerator old_block/new_block counts differ.")
+            renamed.update({name: int(number) for number, name in zip(old, new)})
+    result = {}
+    for b in sections:
+        if b.parent not in material_parents:
+            continue
+        params = _section_parameters(lines, b)
+        if "block" not in params:
+            raise ValueError(f"Material [{b.name}] has no explicit block assignment.")
+        values = {}
+        for key, raw in params.items():
+            if key in ("block", "type"):
+                continue
+            val = _numeric_literal(raw)
+            if val is not None:
+                values[key] = val
+            elif key.endswith("_uo") and raw in users:
+                val = _numeric_literal(users[raw].get("value"))
+                if val is not None:
+                    values[key[:-3]] = val
+        for token in params["block"].split():
+            idx = int(token) if token.lstrip("+-").isdigit() else renamed.get(token)
+            if idx is None or not 1 <= idx <= block_count:
+                raise ValueError(f"Unresolved material block {token!r} in [{b.name}].")
+            result.setdefault(idx - 1, {}).update(values)
+    return result
+
+
+def _plot_block_property(grid, offsets, entries, properties_by_index, property_name,
+                         *, cmap="viridis", opacity=0.65, show_plotter=True):
+    """Map a material's scalar constant to each of its mesh cells."""
+    available = sorted({key for props in properties_by_index.values() for key in props})
+    if property_name not in available:
+        raise ValueError(
+            f"Material property {property_name!r} is not available as a numeric "
+            f"constant. Available properties: {', '.join(available) or '(none)'}. "
+            "Temperature/pressure-dependent or expression-based values require "
+            "evaluated simulation output, not a pre-solve material preview."
+        )
+    values = np.full(grid.n_cells, np.nan, dtype=float)
+    for index, _label, _category in entries:
+        if not 0 <= index < len(offsets):
+            raise ValueError(f"Material block index {index} is outside the mesh.")
+        value = properties_by_index.get(index, {}).get(property_name)
+        if value is not None:
+            start, stop = offsets[index]
+            values[start:stop] = value
+    valid = np.isfinite(values)
+    if not np.any(valid):
+        raise ValueError(f"No mesh cells have a numeric value for {property_name!r}.")
+    part = grid.extract_cells(np.flatnonzero(valid))
+    part.cell_data[property_name] = values[valid]
+    plotter = pv.Plotter(off_screen=not show_plotter)
+    plotter.add_mesh(part, scalars=property_name, cmap=cmap, show_edges=False,
+                     opacity=opacity, scalar_bar_args={"title": property_name})
+    plotter.show_bounds(location="furthest", grid=True)
+    _apply_camera_convention(plotter)
+    if show_plotter:
+        plotter.show()
+    return plotter
+
+
+def plot_golem_materials(builder, *, show_edges: bool = False, show_plotter: bool = True,
+                         property_name: Optional[str] = None, cmap: str = "viridis",
+                         opacity: float = 0.65) -> pv.Plotter:
+    """Color actual GOLEM material blocks, including faults/fractures/wells.
+
+    The builder's own material-block classifications are used. The six trailing
+    exterior-boundary blocks of unstructured WBGeo meshes are not materials.
+    """
+    if not isinstance(builder, (CustomGolemBuilder, GolemHydrothermalProblemBuilder,
+                                GolemSimpleReservoirProblemBuilder)):
+        raise TypeError(f"Unsupported GOLEM builder: {type(builder).__name__}")
+    if isinstance(builder, CustomGolemBuilder):
+        meshes = builder.referenced_meshes()
+        if not meshes:
+            raise ValueError("Custom GOLEM preview requires a WBGeo MeshResults object, not an external mesh file.")
+        mesh = next(iter(meshes.values()))
+    else:
+        mesh = builder.mesh_results
+    grid = VTKInputs(mesh.nodes, mesh.elements).create_mesh()
+    blocks = mesh.elements
+    offsets = []
+    cursor = 0
+    for block in blocks:
+        count = len(block.data)
+        offsets.append((cursor, cursor + count))
+        cursor += count
+    if grid.n_cells != cursor:
+        raise ValueError(
+            f"Mesh cell count mismatch: VTK has {grid.n_cells}, "
+            f"but mesh blocks contain {cursor}; cannot safely color assignments."
+        )
+
+    # (zero-based block index, displayed material label, visual category)
+    entries = []
+    property_by_index = {}
+    custom_summaries = {}
+    if isinstance(builder, CustomGolemBuilder):
+        entries, custom_summaries = _custom_material_details(builder.input_file_contents, len(blocks))
+    elif isinstance(builder, GolemHydrothermalProblemBuilder):
+        for index in builder.volume_blocks:
+            lith_id = builder.block_lithology[index]
+            name = builder._rock_name(lith_id)
+            entries.append((index, f"Rock: {name}", "rock"))
+            property_by_index[index] = _rock_properties_for_name(builder, name)
+        for ordinal, index in enumerate(builder.fault_blocks):
+            fault_props = builder._fault_property(ordinal)
+            name = fault_props.name
+            entries.append((index, f"Fault: {name}", "fault"))
+            property_by_index[index] = fault_props
+    else:
+        entries.extend((block_id - 1, "Reservoir rock", "rock") for block_id in builder.volume_blocks)
+        entries.extend((block_id - 1, "Geological fault", "fault") for block_id in builder.geological_fault_blocks)
+        entries.extend((block_id - 1, "Reservoir fracture", "fracture") for block_id in builder.fracture_blocks)
+        entries.extend((block_id - 1, "Well", "well") for block_id in builder.well_blocks)
+
+        # Optional static porosity preview supplied by the model script.
+        # This is a visualization-only mapping, not evaluated GOLEM output.
+        preview = getattr(builder, "preview_material_porosity", None)
+        if preview is not None:
+            category_blocks = {
+                "rock": builder.volume_blocks,
+                "fracture": builder.fracture_blocks,
+                "well": builder.well_blocks,
+            }
+            for category, block_ids in category_blocks.items():
+                if category in preview:
+                    for block_id in block_ids:
+                        property_by_index[block_id - 1] = {
+                            "porosity": float(preview[category])
+                        }
+
+    if not entries:
+        raise ValueError("No GOLEM material blocks were identified for preview.")
+    if property_name is not None:
+        if isinstance(builder, CustomGolemBuilder):
+            numeric_by_index = _custom_numeric_properties(builder.input_file_contents, len(blocks))
+        else:
+            numeric_by_index = {idx: _numeric_properties(props)
+                                for idx, props in property_by_index.items()}
+        return _plot_block_property(grid, offsets, entries, numeric_by_index,
+                                    property_name, cmap=cmap, opacity=opacity,
+                                    show_plotter=show_plotter)
+
+    # Align geological colors with the SfePy/structural-model preview.
+    palette = {"fault": _FAULT_ZONE_COLOR, "fracture": "#ff7f0e", "well": "#111111"}
+    rock_colors = ["#4e79a7", "#59a14f", "#b07aa1", "#76b7b2", "#edc948", "#9c755f"]
+    if isinstance(builder, GolemSimpleReservoirProblemBuilder):
+        # High-contrast small features against a pale, transparent rock volume.
+        palette.update({"fracture": "#ff1744", "well": "#ffd600", "fault": "#7c3aed"})
+        rock_colors = ["#d9e2e8"]
+    rock_labels = list(dict.fromkeys(label for _, label, category in entries if category == "rock"))
+    colors = {label: rock_colors[i % len(rock_colors)] for i, label in enumerate(rock_labels)}
+    geomodel = getattr(builder, "geomodel_result", None)
+    if geomodel is not None:
+        frame = getattr(geomodel, "structural_frame", None)
+        if frame is not None:
+            structural_colors = {"basement": "#808080"}
+            for group in frame.structural_groups:
+                for elem in group.structural_elements:
+                    structural_colors[elem.name] = elem.color
+            for label in rock_labels:
+                rock_name = label.split(": ", 1)[-1]
+                if rock_name in structural_colors:
+                    colors[label] = structural_colors[rock_name]
+    # Custom GOLEM input names blocks rather than lithologies. When exactly
+    # three rock blocks are present (Model 1), match their vertical order to
+    # basement / rock1 / rock2, using the same colors as the SfePy preview.
+    # This only affects preview colors; it does not change GOLEM assignments.
+    if isinstance(builder, CustomGolemBuilder) and len(rock_labels) == 3:
+        block_heights = []
+        for index, label, category in entries:
+            if category != "rock":
+                continue
+            start, stop = offsets[index]
+            if start < stop:
+                center_z = float(grid.extract_cells(range(start, stop)).center[2])
+                block_heights.append((center_z, label))
+        if len(block_heights) == 3:
+            frame = getattr(getattr(builder, "geomodel_result", None), "structural_frame", None)
+            lith_colors = {"basement": "#808080", "rock1": "#b8e3bd", "rock2": "#006b22"}
+            if frame is not None:
+                for group in frame.structural_groups:
+                    for elem in group.structural_elements:
+                        lith_colors[elem.name] = elem.color
+            for (_, label), lithology in zip(sorted(block_heights), ("basement", "rock1", "rock2")):
+                colors[label] = lith_colors[lithology]
+
+    plotter = pv.Plotter(off_screen=not show_plotter)
+    legend = {}
+    for index, label, category in entries:
+        if not 0 <= index < len(offsets):
+            raise ValueError(f"GOLEM material block index {index} is outside the mesh.")
+        start, stop = offsets[index]
+        if start == stop:
+            continue
+        color = colors[label] if category == "rock" else palette[category]
+        part = grid.extract_cells(range(start, stop))
+        plotter.add_mesh(
+            part,
+            color=color,
+            style="surface",
+            show_edges=show_edges,
+            opacity=opacity if category == "rock" else 1.0,
+            line_width=1.0,
+        )
+        # Match the concise SfePy-style legend: material/block names only,
+        # without numerical properties or redundant Rock/Fault prefixes.
+        display_name = label.split(": ", 1)[-1]
+        legend.setdefault(display_name, color)
+
+    if legend:
+        plotter.add_legend(
+            labels=[(f"• {name}", color) for name, color in legend.items()],
+            loc="lower right",
+            face="rectangle",
+            size=(0.32, min(0.03 * len(legend), 0.65)),
+        )
+    plotter.show_bounds(location="furthest", grid=True)
+    _apply_camera_convention(plotter)
+    if show_plotter:
+        plotter.show()
+    return plotter
+
+
+def _custom_sfepy_static_properties(builder, property_name):
+    """Read literal SfePy material coefficients without executing the input file.
+
+    Only direct numeric constants in the module-level `materials` mapping are
+    supported. Material-to-group associations are inferred from equation
+    references to any coefficient, not necessarily the requested property.
+    """
+    content = builder.input_file_contents
+    tree = ast.parse(content)
+    material_defs = {}
+    region_groups = {}
+    equations = {}
+    constants = {}
+
+    def scalar(node):
+        """Evaluate only arithmetic of numeric literals and known scalar constants."""
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            return float(node.value)
+        if isinstance(node, ast.Name) and node.id in constants:
+            return constants[node.id]
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            v = scalar(node.operand)
+            return -v if isinstance(node.op, ast.USub) else v
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)):
+            a, b = scalar(node.left), scalar(node.right)
+            if isinstance(node.op, ast.Add): return a + b
+            if isinstance(node.op, ast.Sub): return a - b
+            if isinstance(node.op, ast.Mult): return a * b
+            if isinstance(node.op, ast.Div): return a / b
+            return a ** b
+        raise ValueError("not a static scalar")
+
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        value = node.value
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            name = target.id
+            if name not in ("materials", "regions", "equations"):
+                try:
+                    result = scalar(value)
+                    if np.isfinite(result):
+                        constants[name] = result
+                except (ValueError, TypeError, ZeroDivisionError, OverflowError):
+                    pass
+            if name == "materials" and isinstance(value, ast.Dict):
+                # Parse material entries independently: a single expression or
+                # callback must not make the entire dictionary unreadable.
+                material_defs = {}
+                for key, definition in zip(value.keys, value.values):
+                    try:
+                        mat_name = ast.literal_eval(key)
+                    except (ValueError, TypeError, SyntaxError, MemoryError):
+                        continue
+                    if not isinstance(definition, (ast.Tuple, ast.List)) or not definition.elts:
+                        continue
+                    fields_node = definition.elts[0]
+                    if not isinstance(fields_node, ast.Dict):
+                        continue
+                    fields = {}
+                    for field_key, field_value in zip(fields_node.keys, fields_node.values):
+                        try:
+                            field_name = ast.literal_eval(field_key)
+                            number = scalar(field_value)
+                            if np.isfinite(number):
+                                fields[field_name] = number
+                        except (ValueError, TypeError, SyntaxError, MemoryError,
+                                ZeroDivisionError, OverflowError):
+                            continue
+                    material_defs[mat_name] = fields
+            elif name == "regions":
+                if isinstance(value, ast.Dict):
+                    for key_node, definition_node in zip(value.keys, value.values):
+                        try:
+                            region_name = ast.literal_eval(key_node)
+                            selector_node = (definition_node.elts[0]
+                                             if isinstance(definition_node, (ast.Tuple, ast.List))
+                                             and definition_node.elts else definition_node)
+                            selector = ast.literal_eval(selector_node)
+                        except (ValueError, TypeError, SyntaxError, MemoryError):
+                            continue
+                        match = re.fullmatch(r"cells of group\s+(\d+)", str(selector).strip())
+                        if match:
+                            region_groups[region_name] = int(match.group(1))
+            elif name == "equations":
+                try:
+                    equations = ast.literal_eval(value)
+                except (ValueError, TypeError, SyntaxError, MemoryError):
+                    pass
+    numeric = material_defs
+    available = sorted({key for fields in numeric.values() for key in fields})
+    if property_name not in available:
+        raise ValueError(f"Custom SfePy property {property_name!r} is unavailable as a literal "
+                         f"numeric material coefficient. Available: {', '.join(available) or '(none)'}")
+    # Establish material -> region independently of the requested property.
+    # Properties such as porosity are valid metadata even when the equation
+    # references only thermN.k_eff and thermN.rho_c_eff.
+    material_groups = {}
+    for equation in equations.values():
+        if not isinstance(equation, str):
+            continue
+        # Match term.region(material.field, ...) including multiline equations.
+        for region, material in re.findall(
+            r"\b(?:dw_\w+|ev_\w+)\.\w+\.(\w+)\s*\(\s*(\w+)\.\w+",
+            equation,
+        ):
+            if region not in region_groups or material not in numeric:
+                continue
+            material_groups.setdefault(material, set()).add(region_groups[region])
+
+    # A material may be used in several regions, but each region must have
+    # an unambiguous value for the requested property.
+    per_group = {}
+    for material, groups in material_groups.items():
+        value = numeric[material].get(property_name)
+        if value is None:
+            continue
+        for group_id in groups:
+            if group_id in per_group and per_group[group_id] != value:
+                raise ValueError(
+                    f"Conflicting {property_name!r} values in SfePy group {group_id}."
+                )
+            per_group[group_id] = value
+    if not per_group:
+        raise ValueError(
+            f"{property_name!r} exists in custom SfePy materials, but no "
+            "material containing it can be linked to a 'cells of group N' "
+            "region through the equations."
+        )
+    return per_group
+
+
+def plot_builder_materials(
+    builder,
+    style: str = "surface",
+    show_edges: bool = False,
+    show_plotter: bool = True,
+    property_name: Optional[str] = None,
+    cmap: str = "viridis",
+    opacity: float = 0.65,
+) -> pv.Plotter:
+    """Preview material assignments for generated/custom SfePy and GOLEM builders.
+
+    SfePy retains its structural-model colors, cell-level fault-zone masks,
+    and grouped legend. GOLEM retains its explicit block classifications,
+    fracture/well display, and custom input material parsing. Both default
+    to no visible cell edges; SfePy and GOLEM rocks are semi-transparent,
+    and GOLEM uses structural lithology colors when available.
+    """
+    if isinstance(builder, (
+        CustomGolemBuilder,
+        GolemHydrothermalProblemBuilder,
+        GolemSimpleReservoirProblemBuilder,
+    )):
+        if style != "surface":
+            raise ValueError("GOLEM material preview currently supports style='surface' only.")
+        return plot_golem_materials(
+            builder, show_edges=show_edges, show_plotter=show_plotter,
+            property_name=property_name, cmap=cmap, opacity=opacity,
+        )
+
+    if isinstance(builder, (HydrothermalProblemBuilder, CustomSfepyBuilder)):
+        if property_name is not None:
+            is_custom = is_custom_sfepy_builder(builder)
+            custom_values = (_custom_sfepy_static_properties(builder, property_name)
+                             if is_custom else None)
+            mesh = builder.mesh_results
+            grid = VTKInputs(mesh.nodes, mesh.elements).create_mesh()
+            if is_custom:
+                materials = np.concatenate([
+                    np.full(len(builder.mesh_results.elements[i].data), i, dtype=int)
+                    for i in builder.mat_id_to_lithology
+                ])
+            else:
+                materials = np.asarray(builder.compute_cell_materials())
+            # compute_cell_materials() labels the SfePy *volume* groups only.
+            # A Gmsh mesh can also carry boundary triangles/lines; VTKInputs
+            # includes these in the plotted grid. Never equate their counts.
+            blocks = list(mesh.elements)
+            block_sizes = [len(block.data) for block in blocks]
+            total_cells = sum(block_sizes)
+            if total_cells != grid.n_cells:
+                raise ValueError(
+                    "Cannot map material values: VTK cell order/count differs "
+                    f"from source mesh ({grid.n_cells} vs {total_cells})."
+                )
+            # Prefer the exact mesh-block IDs that the builder uses for its
+            # material assignments, preserving their iteration order.
+            mapping = getattr(builder, "mat_id_to_lithology", None)
+            if mapping:
+                selected = list(mapping)
+            else:
+                # Fallback: select 3-D element blocks by their meshio type.
+                volume_types = {"tetra", "tetra10", "hexahedron", "hexahedron20",
+                                "wedge", "wedge15", "pyramid", "pyramid13",
+                                "voxel"}
+                selected = [i for i, block in enumerate(blocks)
+                            if getattr(block, "type", "") in volume_types]
+            if sum(block_sizes[i] for i in selected) != len(materials):
+                raise ValueError(
+                    "Cannot map SfePy material labels to volume mesh blocks: "
+                    f"{len(materials)} material values, "
+                    f"{sum(block_sizes[i] for i in selected)} selected volume cells, "
+                    f"{total_cells} total cells. Selected blocks: {selected}."
+                )
+            material_cells = []
+            start = 0
+            ranges = []
+            for count in block_sizes:
+                ranges.append((start, start + count))
+                start += count
+            for i in selected:
+                lo, hi = ranges[i]
+                material_cells.append(np.arange(lo, hi, dtype=np.int64))
+            material_cells = np.concatenate(material_cells) if material_cells else np.empty(0, dtype=np.int64)
+            # Only volume cells have rock-property assignments. Boundary
+            # elements are intentionally excluded from the scalar preview.
+            volume_grid = grid.extract_cells(material_cells)
+            if volume_grid.n_cells != len(materials):
+                raise ValueError("Extracted volume cell count does not match material values.")
+            vals = np.full(volume_grid.n_cells, np.nan)
+            def _volume_fault_mask(raw_mask):
+                mask = np.asarray(raw_mask, dtype=bool).reshape(-1)
+                if mask.size == total_cells:
+                    return mask[material_cells]
+                if mask.size == volume_grid.n_cells:
+                    return mask
+                raise ValueError(
+                    f"Unexpected SfePy damage-zone mask length {mask.size}; "
+                    f"expected {total_cells} mesh cells or {volume_grid.n_cells} volume cells."
+                )
+            fault_overlay_mask = None
+            if is_custom:
+                # The custom builder's mat_id_to_lithology describes rock
+                # blocks; the damage zone is a cell-level override, not a
+                # separate mesh block. Apply the same mask as the categorical
+                # preview, rather than expecting a block with fault_group_id.
+                for group_id, value in custom_values.items():
+                    vals[materials == group_id] = value
+                fault_mask = getattr(builder, "fault_zone_cell_mask", None)
+                fault_group_id = getattr(builder, "fault_group_id", None)
+                if fault_mask is not None and fault_group_id is not None:
+                    fault_mask = _volume_fault_mask(fault_mask)
+                    # An empty mask means no damage zone: keep the original
+                    # host-rock property assignment unchanged. Likewise, if
+                    # the custom input has no fault coefficient for this
+                    # property, retain the pre-existing plotting behavior.
+                    if np.any(fault_mask) and fault_group_id in custom_values:
+                        vals[fault_mask] = custom_values[fault_group_id]
+                        fault_overlay_mask = fault_mask.copy()
+            else:
+                properties = dict(builder.rock_properties)
+                if builder.fault_zone_properties is not None:
+                    properties[builder.fault_zone_properties.name] = builder.fault_zone_properties
+                available = sorted({k for p in properties.values() for k in _numeric_properties(p)})
+                if property_name not in available:
+                    raise ValueError(f"Property {property_name!r} is unavailable. "
+                                     f"Available: {', '.join(available) or '(none)'}")
+                for name, prop in properties.items():
+                    value = _numeric_properties(prop).get(property_name)
+                    if value is not None:
+                        vals[materials == name] = value
+                # The fault damage-zone mask is authoritative for the
+                # generated SfePy builder too. Enforce it after host-rock
+                # assignments so the fault is visible even if the material
+                # labels have not been overwritten by compute_cell_materials.
+                fault_mask = getattr(builder, "fault_zone_cell_mask", None)
+                fault_props = getattr(builder, "fault_zone_properties", None)
+                if fault_mask is not None and fault_props is not None:
+                    fault_mask = _volume_fault_mask(fault_mask)
+                    # Only override cells when a real damage zone exists and
+                    # the fault material defines the requested property.
+                    # Otherwise preserve the previous rock-only plot.
+                    fault_value = _numeric_properties(fault_props).get(property_name)
+                    if np.any(fault_mask) and fault_value is not None:
+                        vals[fault_mask] = fault_value
+                        fault_overlay_mask = fault_mask.copy()
+            valid = np.isfinite(vals)
+            if not valid.any():
+                raise ValueError(f"No SfePy cells have {property_name!r}.")
+            sub = volume_grid.extract_cells(np.flatnonzero(valid))
+            sub.cell_data[property_name] = vals[valid]
+            plotter = pv.Plotter(off_screen=not show_plotter)
+            # Rendering a single volume grid shows only its external surface:
+            # an internal damage zone is hidden by the surrounding rock, except
+            # where it intersects the outer boundary. Render the fault cells as
+            # a separate actor so their full 3-D envelope remains visible.
+            plotter.add_mesh(sub, scalars=property_name, cmap=cmap,
+                             show_edges=show_edges, opacity=opacity,
+                             scalar_bar_args={"title": property_name})
+            if fault_overlay_mask is not None and np.any(fault_overlay_mask):
+                fault_cells = np.flatnonzero(fault_overlay_mask & valid)
+                if fault_cells.size:
+                    fault_grid = volume_grid.extract_cells(fault_cells)
+                    fault_grid.cell_data[property_name] = vals[fault_cells]
+                    plotter.add_mesh(
+                        fault_grid, scalars=property_name, cmap=cmap,
+                        clim=(float(np.nanmin(vals[valid])), float(np.nanmax(vals[valid]))),
+                        show_edges=False, opacity=min(1.0, max(opacity, 0.9)),
+                        show_scalar_bar=False,
+                    )
+            plotter.show_bounds(location="furthest", grid=True)
+            _apply_camera_convention(plotter)
+            if show_plotter:
+                plotter.show()
+            return plotter
+        return _plot_sfepy_builder_materials(
+            builder, style=style, show_edges=show_edges,
+            show_plotter=show_plotter, opacity=opacity
+        )
+
+    raise TypeError(
+        f"Unsupported builder type {type(builder).__name__!r}; expected a "
+        "generated or custom SfePy/GOLEM builder."
+    )

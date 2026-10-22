@@ -5,13 +5,13 @@ import pytest
 
 from core.object_components import SimulationResults
 from core.simulation_components.output_format.vtk.unified_format_vtk import SfepyOutputType
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties,
 )
-import core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run as sfepy_run
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import (
+import core.simulation_components.simulation_packages.sfepy.sfepy_run as sfepy_run
+from core.simulation_components.simulation_packages.simulation_export import export_simulation_results
+from core.simulation_components.simulation_packages.sfepy.sfepy_run import (
     _check_convergence,
-    export_simulation_results,
     run_simulation_sfepy,
 )
 
@@ -92,9 +92,9 @@ def _synthetic_simulation_results(num_times=2):
     return sim
 
 
-def test_export_simulation_results_default_format_is_vtk():
+def test_export_simulation_results_explicit_vtk_format():
     sim = _synthetic_simulation_results()
-    buf = export_simulation_results(sim)
+    buf = export_simulation_results(sim, format="vtk")
     assert buf.filename == "simulation_results.zip"
 
 
@@ -106,7 +106,7 @@ def test_export_simulation_results_rejects_unsupported_format():
 
 def test_export_simulation_results_zip_contains_pvd_and_one_vtk_per_step():
     sim = _synthetic_simulation_results(num_times=3)
-    buf = export_simulation_results(sim)
+    buf = export_simulation_results(sim, format="vtk")
     with zipfile.ZipFile(buf) as zf:
         names = zf.namelist()
     assert "results.pvd" in names
@@ -118,7 +118,7 @@ def test_export_simulation_results_zip_contains_pvd_and_one_vtk_per_step():
 def test_export_simulation_results_raises_for_no_time_steps():
     sim = SimulationResults()
     with pytest.raises(ValueError, match="no time steps"):
-        export_simulation_results(sim)
+        export_simulation_results(sim, format="vtk")
 
 
 # -----------------------------------------------------------------------------
@@ -213,7 +213,7 @@ def test_hydrothermal_builder_default_solver_is_petsc(
     Keep this as a cheap configuration test rather than making every SfePy
     end-to-end test require petsc4py/PETSc in CI.
     """
-    import core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder as builder_module
+    import core.simulation_components.simulation_packages.sfepy.sfepy_model_builder as builder_module
 
     # Verify the default without requiring PETSc in the test environment.
     original_find_spec = builder_module.importlib.util.find_spec
@@ -506,3 +506,27 @@ def test_run_simulation_sfepy_custom_builder_fault_zone_end_to_end(
     final_time = max(result.nodes_by_time.keys())
     T = result.node_data_by_time[final_time]["T"]
     assert float(T.mean()) == pytest.approx(35.0, abs=1e-6)
+
+
+def test_export_auto_requires_identifiable_solver(monkeypatch, tmp_path):
+    """Do not silently treat unknown results as SfePy when GOLEM metadata is missing."""
+    monkeypatch.chdir(tmp_path)
+    sim = _synthetic_simulation_results()
+    with pytest.raises(ValueError, match="Cannot identify the solver"):
+        export_simulation_results(sim, format="auto")
+
+
+def test_export_golem_zips_native_exodus_and_csv(tmp_path):
+    """Native GOLEM export includes the full solver output directory."""
+    output_dir = tmp_path / "golem_run"
+    output_dir.mkdir()
+    (output_dir / "solution.e").write_bytes(b"synthetic exodus")
+    (output_dir / "history.csv").write_text("time,pressure\n0,1\n")
+    (output_dir / "golem_stdout.txt").write_text("GOLEM completed")
+    sim = _synthetic_simulation_results()
+    buf = export_simulation_results(sim, format="golem", golem_output_dir=str(output_dir))
+    with zipfile.ZipFile(buf) as archive:
+        names = archive.namelist()
+        assert any(name.endswith("solution.e") for name in names)
+        assert any(name.endswith("history.csv") for name in names)
+        assert any(name.endswith("golem_stdout.txt") for name in names)

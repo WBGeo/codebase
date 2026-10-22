@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from pydantic_core import to_jsonable_python
 
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     CustomSfepyBuilder,
     map_mat_id_to_lithology,
 )
@@ -154,7 +154,7 @@ def test_custom_file_can_reference_fault_group(model2_implicit_mesh, model2_faul
 
 def test_surface_cell_is_not_rejected_as_engineering_object(model1_implicit_mesh):
     """The dimension-based guard rejects lines/vertices, not surface cells."""
-    from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
         check_mesh_has_no_engineering_objects,
     )
 

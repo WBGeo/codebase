@@ -82,15 +82,7 @@ def _geometry_matches(last_geometry, nodes, cells, celltypes) -> bool:
 ####################
 # LOAD VTK RESULTS
 ###################
-@wbgeo_component(
-    description='load VTK results',
-    title='Load VTK results',
-    color="#e5d016",
-    border_color='#000000',
-    group='simulation_components',
-    identifier='wbgeo::load_VTK_results',
-    return_name='results',
-)
+
 def load_vtk_results(sim_input: Union[SfepyOutputType, str]) -> SimulationResults:
 
     # NORMALIZE INPUT (SfepyOutputType OR DIRECT PATH)
