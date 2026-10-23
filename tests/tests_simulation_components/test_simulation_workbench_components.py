@@ -414,7 +414,6 @@ def test_build_golem_simple_reservoir_problem_forwards_without_real_meshing(
         mesh_size=20.0,
         curve_mesh_size=3.0,
         mapping_litho="automatic_centers",
-        gmsh_flag=False,
         initial_pressure=1.2e7,
         initial_temperature=145.0,
         boundary_pressure=1.1e7,
@@ -422,11 +421,8 @@ def test_build_golem_simple_reservoir_problem_forwards_without_real_meshing(
         injection_temperature=65.0,
         injection_rate=4.5,
         extraction_rate=4.0,
-        source_start_time=5.0,
-        source_end_time=900.0,
         start_time=10.0,
         end_time=1000.0,
-        print_linear_residuals=False,
     )
 
     assert isinstance(result, GolemProblem)
@@ -439,7 +435,6 @@ def test_build_golem_simple_reservoir_problem_forwards_without_real_meshing(
     assert received["mesh_size"] == pytest.approx(20.0)
     assert received["curve_mesh_size"] == pytest.approx(3.0)
     assert received["mapping_litho"] == "automatic_centers"
-    assert received["gmsh_flag"] is False
     assert received["initial_pressure"] == pytest.approx(1.2e7)
     assert received["initial_temperature"] == pytest.approx(145.0)
     assert received["boundary_pressure"] == pytest.approx(1.1e7)
@@ -447,11 +442,8 @@ def test_build_golem_simple_reservoir_problem_forwards_without_real_meshing(
     assert received["injection_temperature"] == pytest.approx(65.0)
     assert received["injection_rate"] == pytest.approx(4.5)
     assert received["extraction_rate"] == pytest.approx(4.0)
-    assert received["source_start_time"] == pytest.approx(5.0)
-    assert received["source_end_time"] == pytest.approx(900.0)
     assert received["start_time"] == pytest.approx(10.0)
     assert received["end_time"] == pytest.approx(1000.0)
-    assert received["print_linear_residuals"] is False
 
 
 def test_build_custom_golem_problem_reads_input_file(
@@ -595,16 +587,16 @@ def test_run_golem_simulation_unwraps_all_problem_types_without_running_docker(
 
     assert result is sentinel_result
     assert received["problem"] is fake_inner
-    assert received["image_name"] is None
-    assert received["project_dir"] == ""
-    assert received["docker_dir"] == ""
+    assert received["image_name"] == os.environ.get("GOLEM_IMAGE")
+    assert received["golem_binary"] == os.environ.get("GOLEM_BINARY", "/golem/golem-opt")
+    assert received["workspace_dir"].startswith(os.environ.get("GOLEM_WORKSPACE", "golem_workspace") + "/")
+    assert received["temporary"] is True
     # The runner now supplies an absolute, unique per-run output directory.
     output_dir = pathlib.Path(received["output_dir"])
     assert output_dir.is_absolute()
     assert output_dir.parent.name == "golem_output"
     assert re.fullmatch(r"[0-9a-f]{32}", output_dir.name)
     assert received["nproc"] == 6
-    assert received["keep_files_dir"] is None
 
 
 def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkeypatch):
@@ -626,16 +618,16 @@ def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkey
 
     assert result is sentinel_result
     assert received["problem"] is fake_inner
-    assert received["image_name"] is None
-    assert received["project_dir"] == ""
-    assert received["docker_dir"] == ""
+    assert received["image_name"] == os.environ.get("GOLEM_IMAGE")
+    assert received["golem_binary"] == os.environ.get("GOLEM_BINARY", "/golem/golem-opt")
+    assert received["workspace_dir"].startswith(os.environ.get("GOLEM_WORKSPACE", "golem_workspace") + "/")
+    assert received["temporary"] is True
     # The runner now supplies an absolute, unique per-run output directory.
     output_dir = pathlib.Path(received["output_dir"])
     assert output_dir.is_absolute()
     assert output_dir.parent.name == "golem_output"
     assert re.fullmatch(r"[0-9a-f]{32}", output_dir.name)
     assert received["nproc"] == 4
-    assert received["keep_files_dir"] is None
 
 
 # -----------------------------------------------------------------------------

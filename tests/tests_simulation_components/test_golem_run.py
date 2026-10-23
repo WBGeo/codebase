@@ -841,9 +841,8 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
 # Three-mode runner regression tests (no actual GOLEM, Docker or SSH required)
 # -----------------------------------------------------------------------------
 
-@pytest.mark.parametrize("golem_image", ["WithDockerImage", None])
 def test_direct_golem_modes_execute_and_copy_results(
-    golem_image, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
 ):
     builder = GolemHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
@@ -883,7 +882,7 @@ def test_direct_golem_modes_execute_and_copy_results(
     returned = golem_run.run_simulation_golem(
       builder, workspace_dir=str(tmp_path / "project"),
       output_dir=str(output), nproc=2,
-      image_name=golem_image,
+      image_name=None,
       golem_binary=str(binary)
     )
     assert returned is result
@@ -897,9 +896,8 @@ def test_direct_golem_modes_execute_and_copy_results(
     assert not any(item[0][0] == "docker" for item in commands)
 
 
-@pytest.mark.parametrize("golem_image", ["exampleImage:version", None])
 def test_direct_modes_failure_reports_diagnostics_and_skips_result_loading(
-    golem_image, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
 ):
     """Exercise the real local/sidecar runner failure branch without GOLEM or MPI."""
     builder = GolemHydrothermalProblemBuilder(
@@ -979,9 +977,8 @@ def test_checkpoint_cleanup_is_outside_copy_loop():
             "Checkpoint recursive scanning must not be repeated for every copied item"
         )
 
-@pytest.mark.parametrize("golem_image", ["WithDockerImage", None])
 def test_direct_modes_remove_generated_checkpoints_but_keep_other_outputs(
-    golem_image, monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
+    monkeypatch, model1_implicit_mesh, model1_structural_result, tmp_path
 ):
     """G.2: local/sidecar must match Docker's generated-problem cleanup."""
     builder = GolemHydrothermalProblemBuilder(
@@ -1016,7 +1013,7 @@ def test_direct_modes_remove_generated_checkpoints_but_keep_other_outputs(
     output = tmp_path / "results"
     assert golem_run.run_simulation_golem(
         builder, workspace_dir=str(tmp_path / "project"), output_dir=str(output),
-      image_name=golem_image,
+      image_name=None,
       golem_binary=str(binary)
     ) is result
     assert (output / "wbgeo.e").exists()
