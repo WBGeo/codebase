@@ -92,8 +92,10 @@ class RockUnitProperties(BaseModel):
 #:                  floating-point precision), no tuning needed. Does not
 #:                  scale to very large meshes -- expect multi-minute solves
 #:                  at full production resolution. Use for small/debug meshes.
-#: - "iterative" -- scipy_iterative (BiCGStab, ILU-preconditioned + diagonal
-#:                  scaling). DEFAULT. Scales much better to large meshes.
+#: - "iterative" -- scipy_iterative (LGMRES, ILU-preconditioned + diagonal
+#:                  scaling; a zero-pivot ILU is retried with a small
+#:                  preconditioner-only diagonal shift, then falls back to
+#:                  Jacobi). DEFAULT. Scales much better to large meshes.
 #:                  As with any iterative method, verify convergence (check
 #:                  the printed residual) for new rock/fluid parameter sets
 #:                  or a manually-supplied `t1` that deviates a lot from the
@@ -698,13 +700,28 @@ def setup_precond(mtx, context):
     d[d == 0] = 1.0
     Dinv = sp.diags(1.0 / d)
     scaled = (Dinv @ mtx).tocsc()
-    ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2)
+    try:
+        ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2,
+                         permc_spec='COLAMD')
+    except RuntimeError:
+        # Retry zero-pivot ILU with a preconditioner-only diagonal shift.
+        shift = 1e-12 * max(float(abs(scaled.diagonal()).max()), 1.0)
+        shifted = scaled + shift * sp.eye(scaled.shape[0], format='csc')
+        try:
+            ilu = spla.spilu(shifted, drop_tol=1e-4, fill_factor=10,
+                             permc_spec='COLAMD', diag_pivot_thresh=0.0)
+        except RuntimeError:
+            import logging
+            logging.getLogger(__name__).warning('ILU is singular; using Jacobi')
+            return spla.LinearOperator(
+                mtx.shape, matvec=lambda b: Dinv @ b, dtype=mtx.dtype,
+            )
     def solve(b):
         return ilu.solve(Dinv @ b)
-    return spla.LinearOperator(mtx.shape, solve)
+    return spla.LinearOperator(mtx.shape, matvec=solve, dtype=mtx.dtype)
 '''
         ls_block = f"""    'ls': ('ls.scipy_iterative', {{
-        'method': 'bicgstab',
+        'method': 'lgmres',
         'i_max': {self.linear_solver_i_max!r},
         'eps_r': {self.linear_solver_eps_r!r},
         'setup_precond': setup_precond,
