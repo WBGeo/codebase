@@ -278,21 +278,20 @@ refinement.triangulations = TriangulationRefinement(SizeMin=15.0, SizeMax=105.0,
 
 # create big model wit traslate to center
 
-#mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#    geomodel_result=structural_model_result,
-#    wells=wells,
-#    triangulations=triangulations,
-#    mesh_size=75,
-#    curve_mesh_size=5,
-#    gmsh_flag=True,
-#    refinement=refinement,
-#    rotation_angle=0,
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    wells=wells,
+    triangulations=triangulations,
+    mesh_size=75,
+    curve_mesh_size=5,
+    gmsh_flag=True,
+    refinement=refinement,
+    rotation_angle=0,
 
-#)
-#buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
-#with open("filename_Gross_Schoenebeck_BM_rotate_0.exo", "wb") as f:
-#    f.write(buf.getvalue())
-
+)
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects , type='unstr')
+with open("filename_Gross_Schoenebeck_BM_rotate_0.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 
 
