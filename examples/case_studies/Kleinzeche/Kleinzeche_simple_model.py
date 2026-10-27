@@ -317,8 +317,6 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
     PROJECTION_THRESHOLD=4,
     EXTRUSION_FACTOR=4.8,
     z_threshold=1,
-    mapping_litho= 'manual',
-    merge_file = cwd + "/examples/case_studies/Kleinzeche/input_data/block_groups.csv", # Only if mapping_litho='manual'
 
     #refinement= refinement
 )

@@ -171,9 +171,6 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
     tolerance=5,
     mesh_size=40,
     curve_mesh_size=5,
-    mapping_litho ='manual',
-    merge_file = cwd + "/examples/synthetic_examples/model6/input_data/block_groups.csv", # Only if mapping_litho='manual'
-
 )
 
 # Explicit structured mesh
