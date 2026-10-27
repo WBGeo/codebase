@@ -45,6 +45,7 @@ class GeoMeshType(StrEnum):
     UNMASKED = "unmasked"
     COMBINED = "combined"
     EXTENDED = "extended"
+    EXTENDED_MASKED = "extended_masked"
 
 
 class FaultMeshType(StrEnum):
