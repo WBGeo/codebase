@@ -31,7 +31,8 @@ from typing import (
     TypeAlias,
     cast,
     Callable,
-    Any
+    Any,
+    NamedTuple,
 )
 
 import matplotlib.pyplot as plt
@@ -39,6 +40,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from matplotlib.colors import to_hex
+from scipy.ndimage import binary_dilation
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults, FaultModelResults
 from core.structural_modeling_components.general_faults import check_fault_model_not_crosscutting
@@ -88,6 +90,16 @@ from core.structural_modeling_components.interpolator_functions.universal_krigin
 # surfaces naturally cross the model bounding box — required for GMSH fragment.
 _SURFACE_PADDING_CELLS: int = 2
 
+# Extra cells around each fault-domain component's bounding box when it is
+# interpolated, so the component's field also exists just across its faults.
+# The extended masked meshes use this to overshoot the fault (see below).
+_COMPONENT_MARGIN_CELLS: int = 2
+
+# Number of cells by which extended masked meshes overshoot fault-domain
+# boundaries and unconformities, so they reliably intersect the fault and
+# unconformity surfaces in GMSH fragmentation. Must be < _COMPONENT_MARGIN_CELLS.
+_EXTENDED_MASKED_OVERSHOOT_CELLS: int = 1
+
 # -----------------------------------------------------------------------------
 # Typing helpers
 # -----------------------------------------------------------------------------
@@ -97,6 +109,28 @@ BoolArray: TypeAlias = npt.NDArray[np.bool_]
 
 Extent6: TypeAlias = Tuple[float, float, float, float, float, float]
 BBox6: TypeAlias = Tuple[int, int, int, int, int, int]  # (kx0, kx1, ky0, ky1, kz0, kz1) in XYZ index space
+
+
+class ComponentScalarField(NamedTuple):
+    """Scalar field of one group, interpolated for one connected component of fault domains.
+
+    Attributes
+    ----------
+    domain_ids : tuple of int
+        Fault-domain IDs that are merged into this component for the group.
+    bbox : BBox6
+        Index range ``(kx0, kx1, ky0, ky1, kz0, kz1)`` (inclusive) of ``field`` in the
+        padded grid.
+    field : np.ndarray
+        Scalar field (XYZ) on the ``bbox`` part of the padded grid. Unlike the
+        group's ``extended_scalar_field``, it is not cut at the component's domains.
+    scalar_values : dict of str to float
+        Scalar value of each element of the group in this component's field.
+    """
+    domain_ids: Tuple[int, ...]
+    bbox: BBox6
+    field: FloatArray
+    scalar_values: Dict[str, float]
 
 
 class DomainMapProvider(Protocol):
@@ -235,7 +269,7 @@ def run_interpolation_with_fault_domains(
         fault_frame: FaultFrame | None,
         *,
         crop_to_domain: bool = True,
-) -> None:
+) -> Dict[str, list[ComponentScalarField]]:
     """
     Interpolate structural groups inside fault domains, respecting fault activity.
 
@@ -250,7 +284,15 @@ def run_interpolation_with_fault_domains(
         Provider of a 3D ``domain_map`` with integer domain identifiers.
         When no faults exist, callers may pass an object that only exposes ``domain_map``.
     crop_to_domain : bool, default True
-        Crop computation to minimal bounding box for speed.
+        Crop computation to the component's bounding box (plus
+        ``_COMPONENT_MARGIN_CELLS``) for speed.
+
+    Returns
+    -------
+    dict of str to list of ComponentScalarField
+        Per group name, the scalar field of every interpolated component, before
+        the components are combined into the group's scalar field. Used for the
+        extended masked meshes in :func:`extract_all_meshes_per_domain`.
     """
     p = _SURFACE_PADDING_CELLS
     padded_grid = _build_padded_grid(frame.grid, p)
@@ -276,8 +318,11 @@ def run_interpolation_with_fault_domains(
         else None
     )
 
+    component_fields: Dict[str, list[ComponentScalarField]] = {}
+
     for group_idx, group in enumerate(frame.structural_groups):
         group_formations = [e.name for e in group.structural_elements]
+        component_fields[group.name] = []
 
         # Determine which domains are effectively merged for this group (fault activity).
         # If we do not have a real FaultFrame (or fault_activity is unavailable), treat all domains as connected.
@@ -334,7 +379,11 @@ def run_interpolation_with_fault_domains(
                 ys = np.where(comp_mask.any(axis=(0, 2)))[0]
                 zs = np.where(comp_mask.any(axis=(0, 1)))[0]
                 if xs.size and ys.size and zs.size:
-                    bbox = (int(xs[0]), int(xs[-1]), int(ys[0]), int(ys[-1]), int(zs[0]), int(zs[-1]))
+                    m = _COMPONENT_MARGIN_CELLS
+                    nx, ny, nz = padded_domain_map.shape
+                    bbox = (max(int(xs[0]) - m, 0), min(int(xs[-1]) + m, nx - 1),
+                            max(int(ys[0]) - m, 0), min(int(ys[-1]) + m, ny - 1),
+                            max(int(zs[0]) - m, 0), min(int(zs[-1]) + m, nz - 1))
                     use_grid = build_subgrid_from_bbox(padded_grid, bbox)
 
             # Pick interpolator
@@ -364,6 +413,14 @@ def run_interpolation_with_fault_domains(
             comp_vox_mask = np.isin(padded_domain_map, comp_ids_arr)
             padded_acc = np.where(comp_vox_mask, padded_field, padded_acc)
 
+            full_bbox: BBox6 = (0, padded_acc.shape[0] - 1, 0, padded_acc.shape[1] - 1, 0, padded_acc.shape[2] - 1)
+            component_fields[group.name].append(ComponentScalarField(
+                domain_ids=tuple(int(d) for d in comp_ids_arr),
+                bbox=bbox if bbox is not None and len(domain_ids) > 1 else full_bbox,
+                field=scalar_field_sub,
+                scalar_values={name: float(v) for name, v in scalar_values.items()},
+            ))
+
             # Store scalar values per element
             for elem in group.structural_elements:
                 if elem.name not in scalar_values:
@@ -375,6 +432,8 @@ def run_interpolation_with_fault_domains(
         # Store extended scalar field (full padded) and regular scalar field (trimmed center)
         group.extended_scalar_field = padded_acc
         group.scalar_field = padded_acc[p:-p, p:-p, p:-p]
+
+    return component_fields
 
 
 # --- 2) Age masks per domain --------------------------------------------------
@@ -534,18 +593,80 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
 # --- 4) Extract per-domain “masked” meshes for each element -------------------
 
 
-def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
+def _below_younger_groups_padded(frame: StructuralFrame, group_idx: int) -> Optional[BoolArray]:
+    """
+    Region of the padded grid below the base of every group younger than ``group_idx``.
+
+    The base of a group is where its extended scalar field reaches the scalar value of
+    its oldest element (the same rule as the group masks). Groups are ordered youngest
+    first. Returns None if no younger group has an extended scalar field.
+    """
+    region: Optional[BoolArray] = None
+    for younger in frame.structural_groups[:group_idx]:
+        esf = younger.extended_scalar_field
+        sval = younger.structural_elements[-1].get_scalar_value() if younger.structural_elements else None
+        if esf is None or sval is None:
+            continue
+        below = ~(esf >= sval)
+        region = below if region is None else region & below
+    return region
+
+
+def _keep_faces_in_mask(
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        mask: BoolArray,
+        extent: Extent6,
+        spacing: Tuple[float, float, float],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Keep the triangles of every marching-cubes cube that touches a True cell of ``mask``.
+
+    ``mask`` is cell-centred on ``extent`` (the same convention as the scalar fields).
+    A marching-cubes cube spans the cell centres ``i..i+1`` along each axis and is kept
+    when any of its 8 corner cells is True, so the triangles of a cube are kept or
+    dropped together and the cut follows cube boundaries. Unlike the ``mask`` argument
+    of marching cubes, which drops every cube touching a False cell, this keeps the
+    surface up to and slightly beyond the mask boundary.
+    """
+    if len(faces) == 0:
+        return vertices, faces
+    nx, ny, nz = mask.shape
+    touches = np.zeros((max(nx - 1, 1), max(ny - 1, 1), max(nz - 1, 1)), dtype=bool)
+    for a, b, c in itertools.product((0, 1), repeat=3):
+        touches |= mask[a:a + nx - 1 or None, b:b + ny - 1 or None, c:c + nz - 1 or None]
+    centroids = vertices[faces].mean(axis=1)
+    first_centre = np.array(extent[::2]) + np.array(spacing) / 2
+    cube = np.floor((centroids - first_centre) / np.array(spacing)).astype(int)
+    cube = np.clip(cube, 0, np.array(touches.shape) - 1)
+    kept = faces[touches[cube[:, 0], cube[:, 1], cube[:, 2]]]
+    used, new_faces = np.unique(kept, return_inverse=True)
+    return vertices[used], new_faces.reshape(-1, 3)
+
+
+def extract_all_meshes_per_domain(
+        frame: StructuralFrame,
+        component_fields: Optional[Dict[str, list[ComponentScalarField]]] = None,
+) -> None:
     """
     Extract and store per-domain masked and unmasked surface meshes for every element.
 
     Masked meshes stop at unconformities and domain boundaries.
     Unmasked meshes go through unconformities.
     Combined meshes come from the final lithology block.
+    Extended meshes come from the padded scalar field and cross the model box.
+    Extended masked meshes are one piece per fault-domain component, each from that
+    component's own scalar field, cut at its faults and at unconformities with an
+    overshoot of ``_EXTENDED_MASKED_OVERSHOOT_CELLS``, and crossing the model box.
+    They are only extracted when ``component_fields`` is given.
 
     Parameters
     ----------
     frame : StructuralFrame
         Frame with groups/elements and per-domain values.
+    component_fields : dict of str to list of ComponentScalarField, optional
+        Per-component scalar fields as returned by
+        :func:`run_interpolation_with_fault_domains`.
     """
     # Use the fault frame stored inside the structural frame
     fault_frame = frame.fault_frame
@@ -657,6 +778,51 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
             )
             elem.set_mesh(GeoMeshType.EXTENDED, verts, faces)
 
+    # ---- extended masked meshes (per-component scalar fields) ----
+    # One piece per element and fault-domain component, from the component's own
+    # field, so the pieces on both sides of a fault never have to be cut apart.
+    # Each piece is kept inside its domains and below the base of all younger
+    # groups, both grown by the overshoot so it reliably crosses the fault and
+    # the unconformity.
+    if component_fields is not None:
+        p = _SURFACE_PADDING_CELLS
+        o = _EXTENDED_MASKED_OVERSHOOT_CELLS
+        dx, dy, dz = frame.grid.spacing
+        x0, _, y0, _, z0, _ = frame.grid.extent
+        padded_dom_map = np.pad(np.asarray(dom_map), p, mode="edge")
+        for group_idx, group in enumerate(frame.structural_groups):
+            below_younger = _below_younger_groups_padded(frame, group_idx)
+            keep_age = (binary_dilation(below_younger, iterations=o) if below_younger is not None
+                        else np.ones(padded_dom_map.shape, dtype=bool))
+            pieces: Dict[str, Tuple[list[np.ndarray], list[np.ndarray]]] = {
+                elem.name: ([], []) for elem in group.structural_elements
+            }
+            for comp in component_fields.get(group.name, []):
+                kx0, kx1, ky0, ky1, kz0, kz1 = comp.bbox
+                sub = np.s_[kx0:kx1 + 1, ky0:ky1 + 1, kz0:kz1 + 1]
+                in_domain = np.isin(padded_dom_map, comp.domain_ids)
+                mc_mask = (binary_dilation(in_domain, iterations=o) & keep_age)[sub]
+                sub_extent: Extent6 = (
+                    x0 + (kx0 - p) * dx, x0 + (kx1 + 1 - p) * dx,
+                    y0 + (ky0 - p) * dy, y0 + (ky1 + 1 - p) * dy,
+                    z0 + (kz0 - p) * dz, z0 + (kz1 + 1 - p) * dz,
+                )
+                for elem in group.structural_elements:
+                    sval = comp.scalar_values.get(elem.name)
+                    if sval is None or not mc_mask.any():
+                        continue
+                    verts, faces = marching_cubes_per_element(comp.field, sval, frame.grid.spacing, sub_extent,
+                                                              mask=None)
+                    verts, faces = _keep_faces_in_mask(verts, faces, mc_mask, sub_extent, frame.grid.spacing)
+                    pieces[elem.name][0].append(verts)
+                    pieces[elem.name][1].append(faces)
+            for elem in group.structural_elements:
+                verts_list, faces_list = pieces[elem.name]
+                if not verts_list:
+                    verts_list, faces_list = [np.empty((0, 3))], [np.empty((0, 3), dtype=int)]
+                combined_vertices, combined_faces = combine_meshes(verts_list, faces_list)
+                elem.set_mesh(GeoMeshType.EXTENDED_MASKED, combined_vertices, combined_faces)
+
     # ---- combined meshes from lithology block ----
     lith_block = frame.get_LithBlock()
     if lith_block is None:
@@ -704,17 +870,16 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
                 x0, x1, y0, y1, z0, z1 = frame.grid.extent
                 p = _SURFACE_PADDING_CELLS
                 padded_extent = (x0 - p*dx, x1 + p*dx, y0 - p*dy, y1 + p*dy, z0 - p*dz, z1 + p*dz)
-                # Derive the padded age mask from the group's extended scalar field so the
-                # mask boundary follows the actual scalar field extrapolation rather than
-                # being artificially forced to True at the border.
-                if index >= 0:
-                    grp = frame.structural_groups[index]
-                    esf = grp.extended_scalar_field
-                    sval_pad = grp.structural_elements[-1].get_scalar_value()
-                    if esf is not None and sval_pad is not None:
-                        padded_mask = ~(esf >= sval_pad)
-                    else:
-                        padded_mask = np.pad(mc_fault_mask, p, mode='edge')
+                # Derive the padded age mask from the younger groups' extended scalar fields
+                # so the mask boundary follows the actual scalar field extrapolation rather
+                # than being artificially forced to True at the border. Like the extended
+                # masked meshes of the elements, the fault overshoots the unconformity so
+                # it reliably intersects it.
+                below_younger = _below_younger_groups_padded(frame, index + 1)
+                if below_younger is not None:
+                    padded_mask = binary_dilation(below_younger, iterations=_EXTENDED_MASKED_OVERSHOOT_CELLS)
+                elif index >= 0:
+                    padded_mask = np.pad(mc_fault_mask, p, mode='edge')
                 else:
                     padded_mask = np.ones(fault.extended_scalar_field.shape, dtype=bool)
                 verts_ext, faces_ext = marching_cubes_per_element(
@@ -722,8 +887,10 @@ def extract_all_meshes_per_domain(frame: StructuralFrame) -> None:
                     fault.scalar_value,
                     frame.grid.spacing,
                     padded_extent,
-                    mask=padded_mask,
+                    mask=None,
                 )
+                verts_ext, faces_ext = _keep_faces_in_mask(verts_ext, faces_ext, padded_mask, padded_extent,
+                                                           frame.grid.spacing)
                 fault.set_mesh(FaultMeshType.EXTENDED_MASKED, verts_ext, faces_ext)
 
 
@@ -784,7 +951,7 @@ def compute_structural_model(
 
     # 1) per-domain interpolation, store results into per-domain slots
     logger.info("Interpolation per domain ...")
-    run_interpolation_with_fault_domains(
+    component_fields = run_interpolation_with_fault_domains(
         frame=frame,
         fault_frame=ff,
     )
@@ -800,7 +967,7 @@ def compute_structural_model(
     # 4) per-domain meshes (optional)
     if extract_meshes:
         logger.info("Extracting per-domain masked meshes ...")
-        extract_all_meshes_per_domain(frame=frame)
+        extract_all_meshes_per_domain(frame=frame, component_fields=component_fields)
 
     logger.info("Pipeline complete.")
 
