@@ -358,3 +358,64 @@ class TestRefinementFields(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSourcePointSize(unittest.TestCase):
+
+    def test_linear_refinement_uses_size_min(self):
+        from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
+        from core.meshing_components.explicit.unstructured.refinement_mesh import LinearSourceRefinement
+        refinement = Refinement(sources=LinearSourceRefinement(SizeMin=4.0, SizeMax=50.0, DistMin=10.0, DistMax=80.0))
+        self.assertEqual(source_point_size(refinement), 4.0)
+
+    def test_function_refinement_is_evaluated_at_distance_zero(self):
+        from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
+        from core.meshing_components.explicit.unstructured.refinement_mesh import FunctionSourceRefinement
+        refinement = Refinement(sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))"))
+        self.assertAlmostEqual(source_point_size(refinement), 5.0)
+
+    def test_no_source_refinement_or_unknown_function_gives_none(self):
+        from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
+        from core.meshing_components.explicit.unstructured.refinement_mesh import FunctionSourceRefinement
+        self.assertIsNone(source_point_size(None))
+        self.assertIsNone(source_point_size(Refinement()))
+        self.assertIsNone(source_point_size(Refinement(sources=FunctionSourceRefinement(expression="Step(DIST)"))))
+
+
+class TestFaultRefinementUsesAllFaults(unittest.TestCase):
+
+    def setUp(self):
+        import gmsh
+        gmsh.finalize() if gmsh.isInitialized() else None
+        gmsh.initialize()
+        gmsh.option.setNumber("General.Terminal", 0)
+
+    def tearDown(self):
+        import gmsh
+        gmsh.finalize()
+
+    def test_fragments_of_every_fault_reach_the_refinement(self):
+        import gmsh
+        import core.meshing_components.explicit.unstructured.create_grid_fragment_surface as cgfs
+
+        def vertical_plane(x):
+            occ = gmsh.model.occ
+            pts = [occ.addPoint(x, y, z) for y, z in ((-1, -1), (11, -1), (11, 11), (-1, 11))]
+            loop = occ.addCurveLoop([occ.addLine(pts[i], pts[(i + 1) % 4]) for i in range(4)])
+            return occ.addPlaneSurface([loop])
+
+        surfaces = [vertical_plane(3.0), vertical_plane(7.0)]
+        gmsh.model.occ.synchronize()
+        captured = {}
+
+        def capture(**kwargs):
+            captured.update(kwargs)
+            return None
+
+        with patch.object(cgfs, "build_combined_mesh_callback", side_effect=capture):
+            cgfs.fragment_surfaces(surfaces, [0, 10, 0, 10, 0, 10], {"F1": 0, "F2": 1}, [], [], [], [],
+                                   mesh_size=5.0, curve_mesh_size=5.0,
+                                   refinement=Refinement(faults=FaultRefinement(SizeMin=1.0, SizeMax=5.0)))
+
+        fault_x = sorted({round(gmsh.model.getBoundingBox(2, tag)[0], 6) for dim, tag in captured["fault_fragments"]})
+        self.assertEqual(fault_x, [3.0, 7.0])

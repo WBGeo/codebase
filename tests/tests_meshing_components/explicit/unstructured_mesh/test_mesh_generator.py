@@ -5,6 +5,61 @@ import tempfile
 import gmsh
 import numpy as np
 from core.meshing_components.explicit.unstructured.mesh_data import mesh_generator
+from core.meshing_components.explicit.unstructured.refinement_fields import apply_background_fields, build_refinement_fields
+from core.meshing_components.explicit.unstructured.refinement_mesh import LinearSourceRefinement, Refinement
+
+class TestMeshGeneratorSources(unittest.TestCase):
+    """Sources are passed as physical group tags (2000, 2001, ... as in fragment_surfaces);
+    their point entities must be embedded, not points with the group tag's number."""
+
+    def setUp(self):
+        gmsh.finalize() if gmsh.isInitialized() else None
+        gmsh.initialize()
+        gmsh.option.setNumber("General.Terminal", 0)
+
+    def tearDown(self):
+        gmsh.finalize()
+
+    def test_source_point_is_a_mesh_node(self):
+        occ = gmsh.model.occ
+        box = occ.addBox(0, 0, 0, 10, 10, 10)
+        plane = occ.addRectangle(0, 0, 5, 10, 10)  # two volumes
+        point = occ.addPoint(3, 3, 2)
+        ov, ovv = occ.fragment([(3, box)], [(2, plane), (0, point)])
+        occ.synchronize()
+        source_point = [t for d, t in ovv[2] if d == 0][0]
+        group = gmsh.model.addPhysicalGroup(0, [source_point], 2000)
+        self.assertEqual(gmsh.model.getEntities(0).count((0, 2000)), 0)  # no point entity with the group's number
+
+        nodes, cells, _ = mesh_generator(ov, [0, 10, 0, 10, 0, 10], [], [group], [], [], [],
+                                         grid_litho=None, mesh_size=2.0, mapping_litho="none")
+
+        self.assertLess(np.linalg.norm(np.asarray(nodes) - [3.0, 3.0, 2.0], axis=1).min(), 1e-9)
+
+    def _nodes_near_source(self, source_mesh_size):
+        occ = gmsh.model.occ
+        box = occ.addBox(0, 0, 0, 100, 100, 100)
+        point = occ.addPoint(30, 30, 30)
+        ov, ovv = occ.fragment([(3, box)], [(0, point)])
+        occ.synchronize()
+        group = gmsh.model.addPhysicalGroup(0, [t for d, t in ovv[1] if d == 0], 2000)
+        # the source refinement field, as fragment_surfaces sets it up
+        refinement = Refinement(sources=LinearSourceRefinement(SizeMin=2.0, SizeMax=30.0, DistMin=5.0, DistMax=40.0))
+        apply_background_fields(build_refinement_fields(list(zip([(3, box), (0, point)], ovv)), None, [point],
+                                                        refinement=refinement))
+        nodes, _, _ = mesh_generator(ov, [0, 100, 0, 100, 0, 100], [], [group], [], [], [], grid_litho=None,
+                                     mesh_size=30.0, mapping_litho="none", source_mesh_size=source_mesh_size)
+        return int((np.linalg.norm(np.asarray(nodes) - [30.0, 30.0, 30.0], axis=1) < 15.0).sum())
+
+    def test_source_refinement_needs_the_source_mesh_size(self):
+        coarse = self._nodes_near_source(None)
+        gmsh.finalize()
+        gmsh.initialize()
+        gmsh.option.setNumber("General.Terminal", 0)
+        fine = self._nodes_near_source(2.0)
+
+        self.assertGreater(fine, 5 * max(coarse, 1))
+
 
 class TestMeshGeneratorFromMshReference(unittest.TestCase):
 

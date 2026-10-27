@@ -1346,6 +1346,8 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
     # FIND FAULT SURFACES
     #########################
     counter=0
+    # Fragments of all fault surfaces, for fault refinement
+    fault_surf: List[Tuple[int, int]] = []
     if reference_surface_positions_or_tags:
 
         for _, reference_position_or_tag in reference_surface_positions_or_tags.items():
@@ -1381,7 +1383,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surfac
 
                     if i == reference_position_or_tag + 1:
                         values = list(zipped_list[i][1])
-                        fault_surf = values
+                        fault_surf.extend(values)
 
     # Filter to get only 3D volumes from ov
     fragmented_volumes : List[Tuple[int, int]] = [entity for entity in ov if entity[0] == 3]

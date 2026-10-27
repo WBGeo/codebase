@@ -20,6 +20,7 @@ from core.meshing_components.explicit.unstructured.structural_surfaces import bu
 from core.meshing_components.explicit.unstructured.domain_geometry import (
     domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
 )
+from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
                                                                LinearSourceRefinement,FunctionSourceRefinement,)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
@@ -644,7 +645,8 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
 def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Optional[List[int]],
     source_tag: Optional[List[int]], shaft_tags: Optional[List[int]], tri_group_tags: Optional[List[int]], tri_surface_tags: Optional[List[int]],
     grid_litho: pd.DataFrame, mesh_size: float = 20.0, curve_mesh_size: float = 5.0,
-    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value, merge_file: Optional[str] = None) -> MeshResults:
+    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value, merge_file: Optional[str] = None,
+    source_mesh_size: Optional[float] = None) -> MeshResults:
 
   """
     Generate an unstructured 3D tetrahedral mesh using Gmsh and export it
@@ -657,6 +659,8 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
         ov (List[Tuple[int, int]]): Gmsh entities defined as (dimension, tag), typically volume entities resulting from prior fragmentation.
         well_tags (List[int] or None): Gmsh physical group tags associated with wells (dimension = 1).
         source_tag (List[int] or None): Physical group tags of embedded source points (dimension = 0).
+        source_mesh_size (float, optional): Mesh size at the source points (from the source refinement).
+            Without it, the 3D mesher does not refine around the sources even if a refinement field is set.
         shaft_tags (List[int] or None): Physical group tags identifying shaft volumes (dimension = 3).
         tri_group_tags (List[int]): Physical group tags assigned to triangulated *groups* (intermediate grouping before surface tagging).
         tri_surface_tags (List[int]): Physical group tags assigned to triangulated surfaces created from input point sets.
@@ -706,15 +710,24 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   gmsh.model.occ.synchronize()
 
 ##############################
-# Embed sources into all volumes
+# Embed sources into their volumes
 ##############################
+  # source_tag holds physical group tags; embed each group's point entity into
+  # the volume that contains it (OCC fragment usually did that already).
   if source_tag:
 
-    for volume_tag in volumes:
+    for s_tag in source_tag:
 
-        for s_tag in source_tag:
+        for point_tag in gmsh.model.getEntitiesForPhysicalGroup(0, s_tag):
 
-            gmsh.model.mesh.embed(0, [s_tag], 3, volume_tag)
+            xyz = gmsh.model.getValue(0, point_tag, [])
+
+            for volume_tag in volumes:
+
+                if gmsh.model.isInside(3, volume_tag, xyz):
+
+                    gmsh.model.mesh.embed(0, [point_tag], 3, volume_tag)
+                    break
 
   ############################################################
   # Specify global mesh size and mesh the partitioned model
@@ -722,6 +735,13 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
 
   gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
+
+  if source_tag and source_mesh_size is not None:
+
+    for s_tag in source_tag:
+
+        source_points = [(0, p) for p in gmsh.model.getEntitiesForPhysicalGroup(0, s_tag)]
+        gmsh.model.mesh.setSize(source_points, min(source_mesh_size, mesh_size))
 
   gmsh.option.setNumber("General.Verbosity", 4)
 
@@ -2883,6 +2903,7 @@ def create_unstructured_mesh_data(
         nodes, cells, cell_data = mesh_generator(ov, extent_arr, well_tags, source_tag, shaft_tags, tri_group_tags,
             tri_surface_tags, grid_litho, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,
             boundary_tags=boundary_tags, gmsh_flag=gmsh_flag, mapping_litho=mapping_litho, merge_file=merge_file,
+            source_mesh_size=source_point_size(refinement),
         )
         # 1. Clip generated mesh to the requested domain BEFORE boundary sets.
         # This also removes unused nodes and remaps all cell connectivity.
