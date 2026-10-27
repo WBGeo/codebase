@@ -16,6 +16,7 @@ from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults, MeshType
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
+from core.meshing_components.explicit.unstructured.structural_surfaces import build_grid_litho, import_structural_surfaces
 from core.meshing_components.explicit.unstructured.domain_geometry import (
     domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
 )
@@ -125,6 +126,27 @@ LithoMappingModeType = typing.Annotated[
         name="LithoMappingMode",
         identifier="LithoMappingModeType",
         controlled="Select|automatic_centers|automatic_corners|manual|none"
+    ),
+]
+
+
+class SurfaceSource(StrEnum):
+    # One surface per piece of the structural model's extended_masked meshes:
+    # every element and fault-domain component has its own piece, already cut at
+    # its faults and unconformities, so no cleaning is needed (see
+    # structural_surfaces.py). The default.
+    EXTENDED_MASKED = "extended_masked"
+    # The original route: the extended meshes are cleaned near faults, split,
+    # extruded towards the faults (data_preparation) and re-fitted as height
+    # fields z = f(x, y) (create_surface_grid).
+    RECONSTRUCTED = "reconstructed"
+
+SurfaceSourceType = typing.Annotated[
+    SurfaceSource,
+    AnnotatedScriptType(
+        name="SurfaceSource",
+        identifier="SurfaceSourceType",
+        controlled="Select|extended_masked|reconstructed"
     ),
 ]
 
@@ -2513,6 +2535,7 @@ def create_unstructured_mesh_data(
     xt: Optional[float] = None,
     yt: Optional[float] = None,
     zt: Optional[float] = None,
+    surface_source: SurfaceSourceType = SurfaceSource.EXTENDED_MASKED.value,
 
 ) -> MeshResults:
     """
@@ -2540,6 +2563,16 @@ def create_unstructured_mesh_data(
             - 'xAxis' (optional): x-axis vector of the ellipse plane (if not provided, auto-generated)
         triangulations (np.ndarray or list of tuples, optional): Array of 3D points [(x, y, z), ...] representing additional
                                    plane coordinates used for surface triangulation. If provided, these points are used to generate Delaunay
+        surface_source (str): How the geological and fault surfaces are taken from the structural model
+            (ignored in CSV mode).
+            Options:
+                - "extended_masked" : one surface per piece of the structural model's extended masked
+                  meshes -- every element and fault domain has its own piece, already cut at its faults
+                  and unconformities -- fitted as a plane or one B-spline surface in the piece's own plane
+                  (default). Requires a structural model computed with extended masked meshes.
+                - "reconstructed" : the extended meshes are cleaned near faults, split, extruded towards
+                  the faults and re-fitted as height fields z = f(x, y). Uses tolerance, smooth,
+                  DISTANCE_THRESHOLD, PROJECTION_THRESHOLD, EXTRUSION_FACTOR and z_threshold.
         tolerance (float): Distance threshold to identify boarder of mesh.
         mesh_size (int): Default mesh size for surface and volume meshing (default is 30).
         curve_mesh_size (int): Mesh size applied to curves (default is 5).
@@ -2571,6 +2604,15 @@ def create_unstructured_mesh_data(
     """
 
     # normalize
+    if isinstance(surface_source, str):
+        try:
+            surface_source = SurfaceSource(surface_source.lower())
+        except ValueError:
+            raise ValueError(
+                f"Invalid surface_source='{surface_source}'. "
+                f"Valid options are: {[m.value for m in SurfaceSource]}"
+            )
+
     if isinstance(mapping_litho, str):
         try:
             mapping_litho = LithoMappingMode(mapping_litho.lower())
@@ -2773,7 +2815,7 @@ def create_unstructured_mesh_data(
                 len(ref_surface_indices),
                 list(ref_surface_indices.keys()),
             )
-        else:
+        elif surface_source == SurfaceSource.RECONSTRUCTED:
             cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(
                 geomodel_result,
                 DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
@@ -2782,22 +2824,31 @@ def create_unstructured_mesh_data(
                 z_threshold=z_threshold,
             )
 
-        ########################
-        # Surface interpolation
-        ########################
-        interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth,)
-
-        ##################
-        # Import surfaces
-        ##################
         surfaces_original: List[int]
-        bounds: Tuple[float, float, float, float, float, float]
 
-        surfaces_original, bounds = import_surfaces(
-            interpolated_s,
-            extent_arr,
-            tolerance=tolerance,
-        )
+        if not csv_mode and surface_source == SurfaceSource.EXTENDED_MASKED:
+            ##########################################################
+            # Surfaces straight from the extended masked meshes: one
+            # plane or B-spline surface per piece, no cleaning needed
+            ##########################################################
+            grid_litho = build_grid_litho(geomodel_result)
+            surfaces_original, ref_surface_indices = import_structural_surfaces(geomodel_result)
+        else:
+            ########################
+            # Surface interpolation
+            ########################
+            interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth,)
+
+            ##################
+            # Import surfaces
+            ##################
+            bounds: Tuple[float, float, float, float, float, float]
+
+            surfaces_original, bounds = import_surfaces(
+                interpolated_s,
+                extent_arr,
+                tolerance=tolerance,
+            )
 
         gmsh.model.occ.synchronize()
 

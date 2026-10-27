@@ -317,7 +317,30 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
 
 #### Mesh generation parameters
 
--   **`tolerance`**: The maximum allowable deviation (in model
+-   **`surface_source`** *(optional)*: How the geological and fault
+    surfaces are taken from the structural model (ignored with
+    `surface_csv_dir`). The supported modes are:
+
+    -   `"extended_masked"` *(default)* --- uses the structural model's
+        `extended_masked` surface meshes. For every formation and fault
+        domain there is a separate surface piece, interpolated in that
+        domain alone, already cut at its faults and at unconformities
+        and overshooting both by about one grid cell. Each piece becomes
+        one Gmsh surface: a plane if it is flat, otherwise one B-spline
+        surface fitted in the piece's own plane (so steep and vertical
+        layers are represented as well). The pieces need no cleaning,
+        so `tolerance`, `smooth`, `DISTANCE_THRESHOLD`,
+        `PROJECTION_THRESHOLD`, `EXTRUSION_FACTOR` and `z_threshold` are
+        not used. Requires a structural model computed with
+        `extended_masked` meshes; for results computed with an older
+        version, recompute the structural model or use
+        `"reconstructed"`.
+    -   `"reconstructed"` --- the previous approach: the `extended`
+        surface meshes are cleaned near faults, split, extruded towards
+        the faults and re-fitted as height fields z = f(x, y), controlled
+        by the parameters below.
+
+-   **`tolerance`** *(`"reconstructed"` only)*: The maximum allowable deviation (in model
     coordinate units) when adjusting surface boundaries to match the
     model extent. During interpolation, surface coordinates can shift
     slightly due to numerical precision or grid discretisation, so the
@@ -338,7 +361,7 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     along curved regions and coarser meshing where the geometry is
     nearly flat.
 
--   **`DISTANCE_THRESHOLD`**: A distance threshold used to identify and
+-   **`DISTANCE_THRESHOLD`** *(`"reconstructed"` only)*: A distance threshold used to identify and
     remove geological surface points that lie close to fault surfaces.
     For each geological surface, points within `DISTANCE_THRESHOLD` of
     any fault surface are treated as overlapping the fault and are
@@ -348,7 +371,7 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     surfaces. A small value may leave overlapping regions incompletely
     removed; a large value can remove valid geometry near faults.
 
--   **`PROJECTION_THRESHOLD`**: The search radius around a fault surface
+-   **`PROJECTION_THRESHOLD`** *(`"reconstructed"` only)*: The search radius around a fault surface
     used to find nearby layer points for extrusion. After points near
     faults are removed (see `DISTANCE_THRESHOLD`), gaps appear between
     the geological surfaces and the fault planes; nearby points are
@@ -359,11 +382,11 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     curvature far from the fault get selected, which can distort the
     geometry near the fault.
 
--   **`EXTRUSION_FACTOR`**: How far each point found within
+-   **`EXTRUSION_FACTOR`** *(`"reconstructed"` only)*: How far each point found within
     `PROJECTION_THRESHOLD` is pushed along the direction perpendicular
     to its surface normal, in model units.
 
--   **`z_threshold`**: The vertical tolerance used to identify surfaces
+-   **`z_threshold`** *(`"reconstructed"` only)*: The vertical tolerance used to identify surfaces
     that are effectively flat across a fault (i.e. the fault produces no
     meaningful vertical offset there). If a surface's total vertical
     variation is smaller than `z_threshold`, the fault is treated as
@@ -401,7 +424,7 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     explicit `extent` is supplied, that extent takes precedence and is
     used unchanged.
 
--   **`smooth`**: The smoothing parameter for the Radial Basis Function
+-   **`smooth`** *(`"reconstructed"` only)*: The smoothing parameter for the Radial Basis Function
     (RBF) interpolation used to rebuild surfaces. Larger values produce
     smoother surfaces by reducing small-scale noise; smaller values
     preserve more detail from the original surface geometry.
