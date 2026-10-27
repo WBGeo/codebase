@@ -59,11 +59,11 @@ If the geological model includes faults, they must be modelled before the strati
 Fault interpolation currently uses Universal Co-Kriging exclusively, so **both surface points and orientations are required for every fault**. The result is a `FaultModelResults` object containing:
 
 - A **surface mesh** for each fault (the boundary between hanging wall and footwall).
-- A **domain map** that partitions every voxel in the grid into strictly separate, non-overlapping fault blocks. Stratigraphic groups that are active for a given fault will be interpolated independently in each of its domains; groups that post-date the fault are not affected by the domain split.
+- A **domain map** that partitions every voxel in the grid into strictly separate, non-overlapping fault blocks. Stratigraphic groups that are active for a given fault will be interpolated independently in each of its domains; groups that post-date the fault are not affected by the domain split. The domain map is only computed if no faults cross-cut (see limitations below).
 
 **Limitations of the fault model:**
 
-- **Cross-cutting faults are not supported.** Each pair of faults is tested for isovalue-band overlap after interpolation. If two fault surfaces intersect within the model domain the computation raises an error. Ensure faults are geometrically compatible before running the model.
+- **Cross-cutting faults are not supported for structural modeling.** Each pair of faults is tested for isovalue-band overlap after interpolation. If two fault surfaces intersect within the model domain, the fault model is still computed and can be inspected (the 3D plot highlights the line where the faults cross), but the result is flagged `cross_cutting=True`, has no domain map, and is rejected by `Compute Structural Model` / `build_structural_frame` with an error. Fix the fault geometry and recompute the fault model.
 - **Every fault must split the grid.** A fault whose scalar field does not actually separate the domain into two non-empty sides will raise an error. Faults that are entirely outside the grid extent, or whose surface does not reach across the domain, cannot be modelled.
 
 ### 4. Build the structural model
@@ -82,12 +82,12 @@ The computation runs the following steps in sequence:
 2. **Interpolation** — each stratigraphic group is interpolated independently. When faults are active for a group, the interpolation is run completely separately in each fault domain using only the data points that fall within that domain. The resulting scalar fields are then stitched together.
 3. **Age masks** — a boolean mask is computed per group that represents its depositional extent: the oldest group underlies the entire domain (mask is True everywhere), while younger groups are only present where they were deposited. When assembling the lithology block, younger groups take precedence over older ones wherever their mask is True — this is what produces unconformable contacts between groups.
 4. **Lithology block** — the scalar fields and age masks are combined into a single 3D integer array where each voxel is assigned to a formation.
-5. **Surface meshes** — isosurfaces are extracted from the scalar fields using marching cubes. Four mesh types are stored per element: `masked` (respects unconformities and fault domains), `unmasked` (full isosurface through the entire grid), `combined` (derived from the lithology block), and `extended` (extrapolated beyond the grid boundary, used as input for 3D mesh generation).
+5. **Surface meshes** — isosurfaces are extracted from the scalar fields using marching cubes. Five mesh types are stored per element: `masked` (respects unconformities and fault domains), `unmasked` (full isosurface through the entire grid), `combined` (derived from the lithology block), `extended` (extrapolated beyond the grid boundary, used as input for 3D mesh generation), and `extended_masked` (extrapolated beyond the grid boundary like `extended`, but one separate piece per fault domain, cut at the faults and at the base of younger groups; see [Output](#output)).
 
 **Limitations of the structural model:**
 
 - **Group interactions are limited to unconformities.** The only geometric relationship supported between stratigraphic groups is that a younger group erodes the top of an older one. There is no support for intrusions, cross-cutting bodies, or any other non-erosional contact geometry between groups.
-- **Sufficient data required in every active fault domain.** When a fault is active for a group, the interpolation in each fault domain uses only the data points that fall within that domain. If a domain contains too few surface points — or none at all — the result in that domain will be unreliable or empty. Methods that additionally require orientations (UCK, FDI, GeoINR) need orientation data in every active domain as well.
+- **Sufficient data required in every active fault domain.** When a fault is active for a group, the interpolation in each fault domain uses only the data points that fall within that domain. If a domain contains too few surface points — or none at all — the result in that domain will be unreliable or empty. Methods that additionally require orientations (UCK, FDI, PLI, GeoINR) need orientation data in every active domain as well.
 
 ---
 
@@ -102,9 +102,20 @@ All methods produce the same output format (scalar field + per-element isovalues
 | **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK plus `drift_terms` |
 | **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None currently exposed |
 | **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
+| **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
 | **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
 
-Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and sill for kriging methods, `nelements` for FDI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
+Three of these parameters take one of a fixed set of options. An unknown option is rejected when it is set.
+
+| Parameter | Methods | Options (default first) |
+|---|---|---|
+| `kernel` | RBF | `thin_plate_spline`, `linear`, `cubic`, `quintic`, `multiquadric`, `inverse_multiquadric`, `inverse_quadratic`, `gaussian` |
+| `variogram_model` | OK, UK | `gaussian`, `spherical`, `exponential`, `hole-effect` |
+| `solver` | FDI, PLI | `cg`, `lsmr`, `admm` |
+
+The RBF shape parameter `epsilon` is only used by the kernels `multiquadric`, `inverse_multiquadric`, `inverse_quadratic` and `gaussian`; the other kernels ignore it. It is an inverse length (larger values make the kernel more local) and always has a default, so these kernels can be selected without setting it.
+
+Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and sill for kriging methods, `nelements` for FDI and PLI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
 
 ---
 
@@ -149,7 +160,7 @@ structural_model_result.structural_frame.detailed_report()
 `Plot Model Result 3D` — `plot_structural_model_3D(frame, ...)`:
 
 - **`frame`**: The `StructuralFrame` to visualise, e.g. `structural_model_result.structural_frame`.
-- **`mesh_type`** *(optional)*: Which geological surface mesh to render — `"masked"`, `"unmasked"`, `"combined"`, or `"extended"` (see [Output](#output)). Default `"masked"`.
+- **`mesh_type`** *(optional)*: Which geological surface mesh to render — `"masked"`, `"unmasked"`, `"combined"`, `"extended"`, or `"extended_masked"` (see [Output](#output)). Default `"masked"`.
 - **`fault_mesh_type`** *(optional)*: Mesh type for fault surfaces. Defaults to `mesh_type` if not set.
 - **`show_surface_meshes`** *(optional)*: Render the per-element surface meshes. Default `True`.
 - **`show_points`** *(optional)*: Render input surface points. Default `True`.
@@ -199,6 +210,9 @@ fault_model_result.fault_frame.detailed_report()
 - **`show_input_data`** *(optional)*: Render input surface points and orientation arrows. Default `True`.
 - **`show_domain_map`** *(optional)*: Render translucent fault domain blocks. Default `True`.
 - **`domain_opacity`** *(optional)*: Opacity of the domain blocks. Default `0.15`.
+- **`highlight_crosscuts`** *(optional)*: Highlight the line where two fault surfaces cross. Has no effect if no faults cross or if `show_surface_meshes` is `False`. Default `True`.
+- **`crosscut_color`** *(optional)*: Color of the highlighted crosscut lines. Default `"red"`.
+- **`crosscut_line_width`** *(optional)*: Line width of the highlighted crosscut lines. Default `6.0`.
 - **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
 - **`show`** *(optional)*: If `True`, opens the interactive window immediately. Default `True`.
 
@@ -229,8 +243,9 @@ plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)
 
 - **Scalar fields** — one 3D float array per stratigraphic group, shaped `(nx, ny, nz)`.
 - **Lithology block** — a 3D integer array shaped `(nx, ny, nz)`, where each voxel holds the formation ID of the youngest formation present at that location (0 = basement / no formation).
-- **Surface meshes** — vertices and triangle faces per formation, stored under the mesh type keys `masked`, `unmasked`, `combined`, `extended`.
-- **Fault surface meshes** — `masked`, `unmasked`, `extended` and `extended_masked` meshes for each fault element.
+- **Surface meshes** — vertices and triangle faces per formation, stored under the mesh type keys `masked`, `unmasked`, `combined`, `extended`, `extended_masked`.
+  - `extended_masked` is meant as input for 3D mesh generation of faulted models. Each fault domain contributes its own piece, extracted from the scalar field interpolated in that domain alone, so the pieces on both sides of a fault never have to be separated afterwards. The pieces are stored together in one mesh but share no vertices, so they can be split into connected components. Each piece is cut at the faults and at the base of all younger groups, and reaches about one grid cell beyond both, so it reliably intersects the fault and unconformity surfaces. Like `extended`, the pieces reach beyond the model boundary.
+- **Fault surface meshes** — `masked`, `unmasked`, `extended` and `extended_masked` meshes for each fault element. The fault's `extended_masked` mesh is cut at the base of all groups younger than the youngest group the fault offsets, and reaches about one grid cell beyond it.
 - **All intermediate results** — scalar values per element, age masks per group, and the fault domain map are stored on the structural frame within the result object and can be accessed programmatically for further analysis or visualisation.
 
 The `StructuralModelResults` object is the direct input to the meshing components.

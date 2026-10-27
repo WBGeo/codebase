@@ -14,7 +14,7 @@ WBGeo is an open-source workbench for geoscientific workflows — covering struc
 
 The fastest way to explore WBGeo is through the **hosted demo** — no installation required. Try the visual interface (visual DSL) directly in your browser:
 
-[View Hosted Demo](https://wbgeo-demo.cloud.luepg.es/gui/Home){ .md-button .md-button--primary }
+[View Hosted Demo](https://wbgeo.demos.se.rwth-aachen.de/gui/Home){ .md-button .md-button--primary }
 
 To run WBGeo locally, follow the installation guide:
 

@@ -140,9 +140,16 @@ class FaultModelResults:
 
         Attributes:.
             fault_frame (FaultFrame): The fault frame of the model.
+            cross_cutting (bool): True if any two faults in fault_frame cross-cut
+                (overlapping isovalue bands). When True, fault_frame.domain_map,
+                domain_masks, and each fault's domain_pairs/separated_domains were
+                never computed (left at their None defaults) -- fault surfaces are
+                still available for inspection, but this result cannot be wired
+                into Compute Structural Model (see build_structural_frame).
     """
     # TODO: ALEX: This is the simplest version I could think of - does this work for you
     fault_frame: FaultFrame  # this is a deepcopy of the structural frame object
+    cross_cutting: bool = False
 
 class MeshType(StrEnum):
     """

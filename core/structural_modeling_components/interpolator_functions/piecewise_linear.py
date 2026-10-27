@@ -159,11 +159,9 @@ def interpolate_group_piecewise_linear(
         # backward compatibility
         model.set_model_data(data_combined)
 
-    # Stratigraphic column: preserve original order (group.structural_elements)
-    stratigraphic_column: Dict[str, Dict[str, Dict[str, float]]] = {group.name: {}}
-    for i, rock in enumerate(group.structural_elements):
-        stratigraphic_column[group.name][rock.name] = {"min": i, "max": i + 1, "id": i}
-    model.set_stratigraphic_column(stratigraphic_column)
+    # No stratigraphic column is set: LoopStructural only reads it in
+    # evaluate_model()/fault topology, neither of which is used here -- we only
+    # evaluate this one feature's scalar field and assign lithology ourselves.
 
     # --- parameters (PLI) ---
     params = group.get_interpolation_params() if hasattr(group, "get_interpolation_params") else None
@@ -171,10 +169,17 @@ def interpolate_group_piecewise_linear(
         raise ValueError(f"Missing interpolation params for group '{group.name}' (required for PLI)")
 
     # Create the foliation / feature (PLI)
+    #
+    # buffer=0.2 (LoopStructural's own default -- do not drop to 0.0): PLI's
+    # tetrahedral support has mesh nodes right at the domain edge with little
+    # to no nearby constraint when there's no margin, which solves to NaN for
+    # some of them under LoopStructural >=1.8 (confirmed directly: with this
+    # exact data, buffer=0.0 produces NaNs in the outermost grid slice,
+    # buffer=0.2 does not). finite_difference.py uses the same buffer.
     create_kwargs: Dict[str, Any] = dict(
         interpolatortype="PLI",
         nelements=params.nelements,
-        buffer=0.0,
+        buffer=0.2,
         solver=params.solver,
         damp=params.damp,
     )
@@ -184,11 +189,19 @@ def interpolate_group_piecewise_linear(
     _ = model.create_and_add_foliation(group.name, **create_kwargs)
 
     # Evaluate on grid
+    #
+    # scale=True (not False): GeologicalModel.data's setter unconditionally
+    # rescales input X/Y/Z into the model's internal frame (subtract origin,
+    # divide by scale_factor) before the interpolator is built/solved -- so
+    # evaluation must undo that same transform on the query points, via
+    # GeologicalModel.scale(), or this samples the solved field at the wrong
+    # locations whenever the grid's origin isn't (0,0,0) (or scale_factor
+    # isn't 1). finite_difference.py already does this correctly.
     regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
     sf_flat = model.evaluate_feature_value(
         group.name,
         regular_grid,
-        scale=False,
+        scale=True,
     )
 
     # Match previous implementation: reshape then transpose
