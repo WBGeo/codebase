@@ -15,6 +15,7 @@ from core.object_components import MeshResults, StructuralModelResults, ExtentDa
     color='#cc9999',
     border_color='#000000',
     group='Meshing',
+    positionInGroup=20,
     identifier='wbgeo::create_structured_implicit_mesh_meshio',
     return_name='Mesh',
 )

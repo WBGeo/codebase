@@ -246,6 +246,7 @@ SmartGolemHydrothermalOptions = typing.Annotated[
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
+    positionInGroup=89,
     identifier='wbgeo::simulation_build_hydrothermal_problem',
     return_name='hydrothermal_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping],
@@ -344,6 +345,7 @@ def build_hydrothermal_problem(
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
+    positionInGroup=88,
     identifier='wbgeo::simulation_build_custom_sfepy_problem',
     return_name='sfepy_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping, check_mesh_has_no_engineering_objects],
@@ -430,6 +432,7 @@ def build_custom_sfepy_problem(
     color='pink',
     border_color='#000000',
     group='Simulation',
+    positionInGroup=80,
     identifier='wbgeo::simulation_run',
     return_name='simulation_result',
 )
@@ -455,6 +458,7 @@ def run_simulation(problem: SfepyProblem) -> SimulationResults:
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
+    positionInGroup=100,
     identifier='wbgeo::simulation_build_golem_hydrothermal_problem',
     return_name='golem_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping],
@@ -521,6 +525,7 @@ def build_golem_hydrothermal_problem(
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
+    positionInGroup=99,
     identifier='wbgeo::simulation_build_golem_simple_reservoir_problem',
     return_name='golem_problem',
 )
@@ -631,6 +636,7 @@ def build_golem_simple_reservoir_problem(
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
+    positionInGroup=98,
     identifier='wbgeo::simulation_build_custom_golem_problem',
     return_name='golem_problem',
     input_checks=[check_mesh_has_known_type],
@@ -671,6 +677,7 @@ def build_custom_golem_problem(
     color='pink',
     border_color='#000000',
     group='Simulation',
+    positionInGroup=90,
     identifier='wbgeo::simulation_run_golem',
     return_name='simulation_result',
 )
@@ -711,7 +718,8 @@ def run_golem_simulation(
 @wbgeo_component(
     description='Exports SfePy as VTK/PVD ZIP and GOLEM as native output ZIP (Exodus, CSV and other output files) by default. Explicit formats: auto, vtk, exodus, golem.',
     title='Export Simulation Results',
-    group='Export',
+    group='Simulation',
+    positionInGroup=0,
     identifier='wbgeo::export_simulation_results',
     return_name='file',
 )
@@ -761,7 +769,10 @@ def inspect_golem_problem_plot_materials(problem: GolemProblem, _inspector: Insp
                              'problem is not restricted to hydrothermal physics.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_variable_at_a_time(
-    simulation_result: SimulationResults, _inspector: InspectorHelper):
+    simulation_result: SimulationResults,
+    var_name: Optional[str] = None,
+    time: Optional[float] = None,
+):
     # var_name/time left at their defaults ("T" if present else whatever
     # field exists, at the final time step) -- see
     # simulation_visualization.plot_variable_at_a_time/_default_var_name.
@@ -774,7 +785,10 @@ def inspect_simulation_result_plot_variable_at_a_time(
     # Workbench container's software (no GPU/display) rendering, unlike
     # every flat-colored 3D plot here (Plot Mesh in 3D, Plot Materials).
     plot_variable_at_a_time(
-        simulation_result, cmap="coolwarm", show_edges=False,
+        simulation_result,
+        var_name=var_name,
+        time=time,
+        cmap="coolwarm", show_edges=False,
         off_screen=True, window_size=(800, 600), anti_aliasing=False,
     )
 
