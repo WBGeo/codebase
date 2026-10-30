@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 import matplotlib
 matplotlib.use("Agg")  # headless -- no display needed/available in CI
+from matplotlib.quiver import Quiver
+
+from core.structural_modeling_components.structural_modeling_visualization import structural_modeling_visualization as viz
 
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
+    _orientation_arrow_length,
+    plot_structural_model_3D,
     plot_fault_model_2D,
     plot_fault_model_3D,
 )
@@ -128,3 +135,84 @@ def test_plot_fault_model_3D_highlight_crosscuts_can_be_disabled():
 
     crosscut_actors = [name for name in plotter.renderer.actors if "crosscut" in name]
     assert crosscut_actors == []
+
+
+def _fault_frame_with_orientations(extent, gradient) -> FaultFrame:
+    grid = RegularGrid(extent=extent, resolution=(4, 4, 4))
+    ff = FaultFrame(fault_elements=[FaultElement("F1", color="#ff0000")])
+    ff.set_grid(grid)
+    center = [(extent[0] + extent[1]) / 2, (extent[2] + extent[3]) / 2, (extent[4] + extent[5]) / 2]
+    ff.fault_surface_points_df = pd.DataFrame(
+        {"X": [center[0]], "Y": [center[1]], "Z": [center[2]], "formation": ["F1"]}
+    )
+    ff.fault_orientations_df = pd.DataFrame(
+        {"X": [center[0]], "Y": [center[1]], "Z": [center[2]],
+         "G_x": [gradient[0]], "G_y": [gradient[1]], "G_z": [gradient[2]], "formation": ["F1"]}
+    )
+    return ff
+
+
+@pytest.mark.parametrize("size", [50.0, 5000.0])
+def test_orientation_arrow_length_is_proportional_to_model_size(size):
+    # the same model in m and in cm must give the same picture
+    grid = RegularGrid(extent=(0, size, 0, size, 0, size), resolution=(4, 4, 4))
+    assert _orientation_arrow_length(grid, None) == pytest.approx(0.05 * size * np.sqrt(3))
+
+
+def test_orientation_arrow_length_without_grid_uses_points_and_never_returns_zero():
+    assert _orientation_arrow_length(None, np.array([[0.0, 0, 0], [30.0, 40.0, 0]])) == pytest.approx(2.5)
+    assert _orientation_arrow_length(None, np.array([[5.0, 5.0, 5.0]])) == 1.0
+
+
+@pytest.mark.parametrize("gradient_length", [0.01, 1.0, 100.0])
+def test_fault_model_2D_arrow_length_ignores_gradient_length(gradient_length):
+    size = 50.0
+    ff = _fault_frame_with_orientations((0, size, 0, size, 0, size), (gradient_length, 0.0, 0.0))
+
+    plot_fault_model_2D(ff, axis="y", show_results=False, show_fault_contours=False)
+
+    quiver = next(c for c in _last_figure().axes[0].collections if isinstance(c, Quiver))
+    expected = 0.05 * size * np.sqrt(3)
+    assert np.hypot(quiver.U, quiver.V)[0] / quiver.scale == pytest.approx(expected)
+
+
+def _record_arrow_scales(monkeypatch) -> list[float]:
+    scales = []
+    real_arrow = viz.pv.Arrow
+
+    def recording_arrow(*args, **kwargs):
+        scales.append(kwargs["scale"])
+        return real_arrow(*args, **kwargs)
+
+    monkeypatch.setattr(viz.pv, "Arrow", recording_arrow)
+    return scales
+
+
+@pytest.mark.parametrize("size", [50.0, 5000.0])
+def test_fault_model_3D_arrow_length_follows_model_size(monkeypatch, size):
+    scales = _record_arrow_scales(monkeypatch)
+    ff = _fault_frame_with_orientations((0, size, 0, size, 0, size), (100.0, 0.0, 0.0))
+
+    plot_fault_model_3D(ff, show=False, notebook=True)
+
+    assert scales == [pytest.approx(0.05 * size * np.sqrt(3))]
+
+
+@pytest.mark.parametrize("size", [50.0, 5000.0])
+def test_structural_model_3D_arrow_length_follows_model_size(monkeypatch, size):
+    scales = _record_arrow_scales(monkeypatch)
+    ori = pd.DataFrame({"X": [size / 2], "Y": [size / 2], "Z": [size / 2],
+                        "G_x": [0.0], "G_y": [0.0], "G_z": [1.0], "formation": ["rock"]})
+    element = SimpleNamespace(name="rock", color="#00ff00", vertices={}, edges={})
+    frame = SimpleNamespace(
+        structural_groups=[SimpleNamespace(name="G", structural_elements=[element])],
+        orientations=ori,
+        get_surface_points_for_element=lambda name: None,
+        get_orientations_for_element=lambda name: ori,
+        fault_frame=None,
+        grid=RegularGrid(extent=(0, size, 0, size, 0, size), resolution=(4, 4, 4)),
+    )
+
+    plot_structural_model_3D(frame, show_surface_meshes=False, off_screen=True, show=False)
+
+    assert scales == [pytest.approx(0.05 * size * np.sqrt(3))]

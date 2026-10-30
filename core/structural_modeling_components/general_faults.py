@@ -35,6 +35,7 @@ from core.structural_modeling_components.structural_objects.structural_objects i
 )
 
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import marching_cubes
+from core.structural_modeling_components.structural_modeling_utility.surface_mesh_gradients import normalize_vectors
 
 # -----------------------------------------------------------------------------
 # Constants
@@ -210,13 +211,16 @@ def interpolate_group_universal_cokriging_for_faults(
         name_id_map=None,
     )
 
+    # GemPy treats G_x/G_y/G_z as gradient values, so differing lengths would weight the points differently
+    unit_gradients = normalize_vectors(fault_orientations_points_df[["G_x", "G_y", "G_z"]].to_numpy(dtype=float))
+
     orientation_data = gp.data.orientations.OrientationsTable.from_arrays(
         x=fault_orientations_points_df.X.to_numpy(),
         y=fault_orientations_points_df.Y.to_numpy(),
         z=fault_orientations_points_df.Z.to_numpy(),
-        G_x=fault_orientations_points_df.G_x.to_numpy(),
-        G_y=fault_orientations_points_df.G_y.to_numpy(),
-        G_z=fault_orientations_points_df.G_z.to_numpy(),
+        G_x=unit_gradients[:, 0],
+        G_y=unit_gradients[:, 1],
+        G_z=unit_gradients[:, 2],
         names=fault_orientations_points_df.formation.to_numpy(),
         nugget=np.zeros(len(fault_orientations_points_df)),
         name_id_map=surface_data.name_id_map,
