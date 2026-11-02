@@ -3,6 +3,7 @@ import typing
 import re
 from pathlib import Path
 import gmsh
+from py_api_wbgeo import smartcontrols
 
 logger = logging.getLogger(__name__)
 import meshio
@@ -19,9 +20,13 @@ from core.meshing_components.explicit.unstructured.create_clean_surface import d
 from core.meshing_components.explicit.unstructured.domain_geometry import (
     domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
 )
-from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
-                                                               LinearSourceRefinement,FunctionSourceRefinement,)
-from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
+from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement,
+                                                                           FunctionWellRefinement,
+                                                                           LinearSourceRefinement,
+                                                                           FunctionSourceRefinement,
+                                                                           LinearShaftRefinement,
+                                                                           FunctionShaftRefinement, GeneralRefinement)
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
 from enum import Enum, StrEnum
 
 
@@ -1771,6 +1776,76 @@ TriangulationData = typing.Annotated[typing.Union[NDArray[np.float64], Dict[int,
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
 WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
 
+
+def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kind: str, label: str):
+    # Create the labeled option between none, linear, and function
+    return smartcontrols.CtrlGroup(id=kind, inner=[
+        smartcontrols.CtrlSelect(label=label, id='ref' + kind,
+                                 options=["None", "Linear", "Function"],
+                                 defaultValue="None"),
+        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Linear\"",
+                             when_true=[smartcontrols.CtrlGroup(id=f"{kind}.linear", inner=smartcontrols.smart_group_from_type(linearT, None))],
+                             when_false=[]
+                             ),
+        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Function\"",
+                             when_true=[smartcontrols.CtrlGroup(id=f"{kind}.function", inner=smartcontrols.smart_group_from_type(functionT, None))],
+                             when_false=[]
+                             )
+    ])
+
+
+def __internal_refinement_to_data(data, kind: str, linearT: typing.Type, functionT: typing.Type):
+    # turn the __internal_refinement_form back into a given type
+    if data is None or kind not in data:
+        return None
+    data = data[kind]
+    if f"ref{kind}" not in data:
+        return None
+    if data[f"ref{kind}"] == "Linear":
+        return linearT(**data["linear"])
+    if data[f"ref{kind}"] == "Function":
+        return functionT(**data["function"])
+    return None
+
+@wbgeo_component(identifier='wbgeo:__internal__refined_form_well' ,
+                 title='__internal__refined_form_well' )
+def __internal__refined_form() -> smartcontrols.CtrlGroup:
+    return smartcontrols.CtrlGroup(id='root', inner=[
+        __internal_refinement_form(LinearWellRefinement, FunctionWellRefinement, 'well', 'Well Refinement:'),
+        __internal_refinement_form(LinearSourceRefinement, FunctionSourceRefinement, 'source', 'Source Refinement:'),
+        __internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'),
+        smartcontrols.CtrlLabel(label='general, triangulations, ellipses, and extra_plane refinement not yet supported'),
+    ])
+
+@wbgeo_component(identifier='wbgeo:__internal__refined_options_to_data_well',
+                 title='__internal__refined_options_to_data_well')
+def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData) -> typing.Optional[Refinement]:
+    data = smartcontrols.form_data_as_dict(_input)
+    if "root" not in data:
+        return None
+    ret = Refinement()
+    ret.wells = __internal_refinement_to_data(data, 'well', LinearWellRefinement, FunctionWellRefinement)
+    ret.sources = __internal_refinement_to_data(data, 'source', LinearSourceRefinement, FunctionSourceRefinement)
+    ret.shafts = __internal_refinement_to_data(data, 'shafts', LinearShaftRefinement, LinearShaftRefinement)
+
+    # general
+    # triangulations
+    # ellipses
+    # extra_planes
+
+    if (ret.wells is None and ret.sources is None and ret.shafts and
+            ret.general is None and ret.triangulations is None
+            and ret.ellipses is None and ret.extra_planes is None):
+        return None # if everything is empty -> None
+
+    return ret
+
+
+SmartRefinement = typing.Annotated[
+    Refinement, smartcontrols.SmartInput(inputs=['refinement'],
+                                    to_form=__internal__refined_form,
+                                    to_data=__internal__refined_options_to_data)]
+
 @wbgeo_component(description='Loads a well from a wells.CSV file',
                  title='Load Well',  # The title shown in the GUI
                  color=MESH_ENGINEERING_COLOR,  # the color of the components
@@ -2508,7 +2583,7 @@ def create_unstructured_mesh_data(
     gmsh_flag: bool = False,
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     merge_file: Optional[str] = None,
-    refinement: Optional[Refinement] = None,
+    refinement: Optional[SmartRefinement] = None,
     rotation_angle: Optional[float] = None,
     rotation_angle_translate: Optional[float] = None,
     xt: Optional[float] = None,
@@ -2564,7 +2639,7 @@ def create_unstructured_mesh_data(
                 - "manual"   : merge lithology blocks using information provided by user
         merge_file (str, optional): Directory path containing merge definition file.
             Used only when mapping_litho="manual".
-        refinement (Refinement, optional): Adaptive mesh refinement settings. Supports local refinement around wells, sources, faults, ellipses,
+        refinement (Refinement, optional): Adaptive mesh refinement settings. Supports local refinement around wells,sources, faults, ellipses ,
             and triangulated surfaces through GMSH background mesh fields.
 
     Returns:
