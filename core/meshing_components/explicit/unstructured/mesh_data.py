@@ -2164,7 +2164,7 @@ def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = 
     return out
 
 TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]], AnnotatedScriptType(name='path',
-        color='aqua', identifier='wbgeo::triangulations_planes_csv', controlled='RemoteFile|endswith=.csv')]
+        color='aqua', identifier='wbgeo::triangulations_planes_csv', controlled='RemoteFileList|endswith=.csv')]
 
 @wbgeo_component(
     description='Load planes coordinates from a CSV to do triangulations',
@@ -2494,7 +2494,7 @@ def create_unstructured_mesh_data(
     shafts: Optional[ShaftData] = None,
     extra_planes: Optional[PlaneData] = None,
     ellipses: Optional[EllipseData] = None,
-    triangulations: Optional[TriangulationsPlanesData] = None,
+    triangulations: Optional[TriangulationData] = None,
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,
