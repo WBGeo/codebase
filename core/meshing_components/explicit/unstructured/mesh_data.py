@@ -1784,11 +1784,11 @@ def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kin
                                  options=["None", "Linear", "Function"],
                                  defaultValue="None"),
         smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Linear\"",
-                             when_true=[smartcontrols.CtrlGroup(id=f"{kind}.linear", inner=smartcontrols.smart_group_from_type(linearT, None))],
+                             when_true=[smartcontrols.CtrlGroup(id=f"linear", inner=smartcontrols.smart_group_from_type(linearT, None))],
                              when_false=[]
                              ),
         smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Function\"",
-                             when_true=[smartcontrols.CtrlGroup(id=f"{kind}.function", inner=smartcontrols.smart_group_from_type(functionT, None))],
+                             when_true=[smartcontrols.CtrlGroup(id=f"function", inner=smartcontrols.smart_group_from_type(functionT, None))],
                              when_false=[]
                              )
     ])
@@ -1809,12 +1809,19 @@ def __internal_refinement_to_data(data, kind: str, linearT: typing.Type, functio
 
 @wbgeo_component(identifier='wbgeo:__internal__refined_form_well' ,
                  title='__internal__refined_form_well' )
-def __internal__refined_form() -> smartcontrols.CtrlGroup:
-    return smartcontrols.CtrlGroup(id='root', inner=[
-        __internal_refinement_form(LinearWellRefinement, FunctionWellRefinement, 'well', 'Well Refinement:'),
-        __internal_refinement_form(LinearSourceRefinement, FunctionSourceRefinement, 'source', 'Source Refinement:'),
-        __internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'),
-        smartcontrols.CtrlLabel(label='general, triangulations, ellipses, and extra_plane refinement not yet supported'),
+def __internal__refined_form(wells: Optional[WellData] = None,
+                             sources: Optional[SourcesData] = None,
+                             shafts: Optional[ShaftData] = None, ) -> smartcontrols.CtrlGroup:
+    inner = []
+    if wells is not None:
+        inner.append(__internal_refinement_form(LinearWellRefinement, FunctionWellRefinement, 'well', 'Well Refinement:'))
+    if sources is not None:
+        inner.append(__internal_refinement_form(LinearSourceRefinement, FunctionSourceRefinement, 'source', 'Source Refinement:'))
+    if shafts is not None:
+        inner.append(__internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'))
+    return smartcontrols.CtrlGroup(id='root', inner=inner + [
+        smartcontrols.CtrlLabel(
+            label='general, triangulations, ellipses, and extra_plane refinement not yet supported'),
     ])
 
 @wbgeo_component(identifier='wbgeo:__internal__refined_options_to_data_well',
@@ -1823,6 +1830,7 @@ def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData
     data = smartcontrols.form_data_as_dict(_input)
     if "root" not in data:
         return None
+    data = data["root"]
     ret = Refinement()
     ret.wells = __internal_refinement_to_data(data, 'well', LinearWellRefinement, FunctionWellRefinement)
     ret.sources = __internal_refinement_to_data(data, 'source', LinearSourceRefinement, FunctionSourceRefinement)
@@ -1842,7 +1850,7 @@ def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData
 
 
 SmartRefinement = typing.Annotated[
-    Refinement, smartcontrols.SmartInput(inputs=['refinement'],
+    Refinement, smartcontrols.SmartInput(inputs=['wells', 'sources', 'shafts'],
                                     to_form=__internal__refined_form,
                                     to_data=__internal__refined_options_to_data)]
 
