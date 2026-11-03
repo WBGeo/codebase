@@ -5,7 +5,6 @@
 # Importing necessary libraries
 import pandas as pd
 import os
-from core.simulation_components.simulation_packages.golem.simulation_run import run_golem_with_image
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 
@@ -25,11 +24,11 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
-from core.simulation_components.simulation_visualization.simulation_visualization import (
-    plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
-from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results
-from core.simulation_components.output_format.exodus.unified_format_exodus import load_exodus_results
 
+from core.meshing_components.explicit.unstructured.refinement_mesh import (
+    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
+    LinearSourceRefinement, FunctionSourceRefinement, LinearShaftRefinement, TriangulationRefinement,
+    FaultRefinement, ExtraPlaneRefinement)
 
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,ExtraPlaneRefinement,
@@ -175,10 +174,6 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
     tolerance=50,
     mesh_size=20,
     curve_mesh_size=10,
-    DISTANCE_THRESHOLD=50,
-    PROJECTION_THRESHOLD=60,
-    EXTRUSION_FACTOR=120,
-    z_threshold=10,
 )
 
 # Explicit structured mesh
@@ -212,22 +207,22 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # Optional: Example of how to include objects (only works for unstructured mesh)
 
 # # Load engineering objects
-# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_wells.csv")
-# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_shafts.csv")
-# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_sources.csv")
-# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_planes.csv")
-# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_ellipses.csv")
+wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_wells.csv")
+shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_shafts.csv")
+sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_sources.csv")
+planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_planes.csv")
+ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model5/input_data/engineering_objects/model_5_ellipses.csv")
 
 
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
-# refinement = Refinement()
-# refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-# refinement.shafts = LinearShaftRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
-# refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
-# refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
+refinement = Refinement()
+refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.shafts = LinearShaftRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
+refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
 # refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
 #    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
 
@@ -274,23 +269,19 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 
 
 # # Explicit unstructured mesh with objects
-# mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
-#     wells=wells,
-#     sources=sources,
-#     shafts=shafts,
-#     extra_planes=planes,
-#     tolerance=50,
-#     mesh_size=20,
-#     curve_mesh_size=10,
-#     DISTANCE_THRESHOLD=50,
-#     PROJECTION_THRESHOLD=60,
-#     EXTRUSION_FACTOR=120,
-#     z_threshold=10,
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+     geomodel_result=structural_model_result,
+     wells=wells,
+     sources=sources,
+     shafts=shafts,
+     extra_planes=planes,
+     tolerance=50,
+     mesh_size=20,
+     curve_mesh_size=10,
 #     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
 #     mapping_litho='automatic_centers', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: auto)
-#     refinement=refinement,
-# )
+     refinement=refinement,
+ )
 #
 # save the mesh
 # buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')

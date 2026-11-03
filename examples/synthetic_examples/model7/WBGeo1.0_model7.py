@@ -29,7 +29,9 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
-
+from core.meshing_components.explicit.unstructured.refinement_mesh import (
+    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,ExtraPlaneRefinement,
+    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement, LinearShaftRefinement, FunctionShaftRefinement, GeneralRefinement)
 #%%
 
 cwd = os.getcwd()
@@ -208,14 +210,17 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 # Implicit structured mesh
 mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
-# Explicit unstructured mesh
-# NOTE: Currently, the unstructured mesh does not support models
-# with faults where different layers on both sides of the fault lie on nearly same surface.
 
 # Explicit structured mesh
 # NOTE: Currently structured mesh does not support models with faults
 #                                                        refinement_data=[10, 10, 10])
-
+# Explicit unstructured mesh
+mesh_explicit_unstructured = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    tolerance=50,
+    mesh_size=30,
+    curve_mesh_size=10,
+)
 #%%
 
 # Plot the meshing results
@@ -233,6 +238,91 @@ plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=Tru
 #    f.write(buf.getvalue())
 
 #%%
+# Optional: Example of how to include objects (only works for unstructured mesh)
+
+# # Load engineering objects
+wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model7/input_data/engineering_objects/model_7_wells.csv")
+shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model7/input_data/engineering_objects/model_7_shafts.csv")
+sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model7/input_data/engineering_objects/model_7_sources.csv")
+planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model7/input_data/engineering_objects/model_7_planes.csv")
+ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model7/input_data/engineering_objects/model_7_ellipses.csv")
+
+
+# --- Optional: adaptive mesh refinement around objects ---
+# Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
+#
+refinement = Refinement()
+refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.shafts = LinearShaftRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
+refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
+# refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
+#    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
+
+# Available refinement types per object:
+#
+#   wells / sources / shafts:             LinearWellRefinement, FunctionWellRefinement
+#                                         LinearSourceRefinement, FunctionSourceRefinement
+#                                         LinearShaftRefinement, FunctionShaftRefinement
+#
+#       Linear refinement:                SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#       Function refinement:              expression = a function using the DIST variable
+#
+#   faults / ellipses / triangulations:   FaultRefinement, EllipseRefinement, TriangulationRefinement
+#   extra planes:                         ExtraPlaneRefinement
+#
+#                                         SizeMin and SizeMax = element sizes
+#                                         DistMin and DistMax = transition distances
+#
+#   general point / line refinement:      GeneralRefinement
+#
+#                                         One coordinate = point refinement
+#                                         Two coordinates = line-segment refinement
+#
+#       Linear refinement:                SizeMin = minimum element size at the point or line
+#                                         DistMax = distance over which the element size
+#                                         increases linearly from SizeMin to mesh_size
+#
+#       Function refinement:              expression = a function using the DIST variable
+
+
+
+# The same configuration can be created in one Refinement instance like below:
+#refinement = Refinement(
+#    wells=LinearWellRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+#    shafts=LinearShaftRefinement( SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0,),
+#    sources=FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))",),
+#    ellipses=EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0,),
+#    extra_planes=ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0,),
+#    general=[
+#        GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),], SizeMin=4.0, DistMax=300.0,),
+#        GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),], expression="2 + 85*(1 - exp(-DIST/100))",),],)
+
+
+# # Explicit unstructured mesh with objects
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+     geomodel_result=structural_model_result,
+     wells=wells,
+     sources=sources,
+     shafts=shafts,
+     extra_planes=planes,
+     ellipses= ellipses,
+     tolerance=5,
+     mesh_size=70,
+    curve_mesh_size=10,
+#     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
+#     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
+#     merge_file = cwd + "/examples/synthetic_examples/model6/input_data/block_groups_complete.csv", # Only if mapping_litho='manual'
+     refinement=refinement,
+ )
+#
+# save the mesh
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+with open("filename_example_mesh.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 # ------------------------------------------------------------------------------
 # END SECTION 2: MESH GENERATION AND MESH UTILITIES

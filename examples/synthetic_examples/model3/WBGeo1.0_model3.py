@@ -25,15 +25,10 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_gmsh, export_mesh_results_to_stl,
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
-from core.meshing_components.explicit.unstructured.refinement_mesh import (
-    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
-    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
-from core.meshing_components.explicit.unstructured.refinement_mesh import (
-    Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
-    LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+from core.simulation_components.simulation_packages.sfepy.sfepy_run import (run_simulation_sfepy,export_simulation_results,)
+
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
@@ -229,10 +224,6 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
     tolerance=50,
     mesh_size=30,
     curve_mesh_size=10,
-    DISTANCE_THRESHOLD=40,
-    PROJECTION_THRESHOLD=60,
-    EXTRUSION_FACTOR=80,
-    z_threshold=10,
 )
 
 # Explicit structured mesh
@@ -327,10 +318,6 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 #     tolerance=50,
 #     mesh_size=30,
 #     curve_mesh_size=5,
-#     DISTANCE_THRESHOLD=40,
-#     PROJECTION_THRESHOLD=60,
-#     EXTRUSION_FACTOR=80,
-#     z_threshold=10,
 #     gmsh_flag= True,  # to save original gmsh configuration (defaut is False)
 #     mapping_litho='automatic_centers', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
 #     refinement=refinement,
