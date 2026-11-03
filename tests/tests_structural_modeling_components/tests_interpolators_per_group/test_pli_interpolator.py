@@ -250,3 +250,48 @@ def test_passes_pli_params_into_create_and_add_foliation(monkeypatch):
     assert kwargs["solver"] == "cg"
     assert kwargs["damp"] is False
     assert kwargs["tol"] == 1e-5
+
+
+class _FaceNaNModel:
+    """Like LoopStructural's PLI: NaN exactly on the mesh face x = 0.5 and outside [0, 1]^3, else x + y + z."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def evaluate_feature_value(self, name, points, scale=True):
+        self.calls += 1
+        p = np.asarray(points, dtype=float)
+        values = p.sum(axis=1)
+        values[(p[:, 0] == 0.5) | np.any((p < 0.0) | (p > 1.0), axis=1)] = np.nan
+        return values
+
+
+def test_points_on_a_support_mesh_face_are_evaluated_minimally_shifted():
+    from core.structural_modeling_components.interpolator_functions.fitted_field import (
+        LoopStructuralFittedField,
+        evaluate_loopstructural_feature,
+    )
+
+    points = np.array([[0.25, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.0, 0.25], [2.0, 0.5, 0.5]])
+    model = _FaceNaNModel()
+    values = evaluate_loopstructural_feature(model, "G", points, scale=True)
+
+    np.testing.assert_allclose(values[:3], points[:3].sum(axis=1), atol=1e-8)  # face points filled
+    assert np.isnan(values[3])                                                 # outside stays NaN
+    assert model.calls == 3  # once, then shifted one way and the other for the point outside
+    # the octree's fitted field uses the same guard
+    field = LoopStructuralFittedField(_FaceNaNModel(), "G", True, {"a": 1.0})
+    np.testing.assert_allclose(field.evaluate(points[:3]), points[:3].sum(axis=1), atol=1e-8)
+
+
+def test_grid_evaluation_has_no_nan_on_a_support_mesh_face(monkeypatch):
+    """interpolate_group_piecewise_linear fills cell centers that lie on a support mesh face."""
+    import core.structural_modeling_components.interpolator_functions.piecewise_linear as pli
+
+    monkeypatch.setattr(pli, "_fit_pli_model", lambda *args: (_FaceNaNModel(), {"a": 1.0}))
+    grid = FakeGrid(resolution=(3, 2, 2))
+    grid.grid_coordinates = grid.grid_coordinates * 0.25  # x = 0, 0.25, 0.5: one plane on the face
+    field, _ = pli.interpolate_group_piecewise_linear(
+        group=FakeGroup("G", ["a"]), grid=grid,
+        group_surface_points_df=surface_df(["a"]), group_orientations_points_df=orientations_df(["a"]))
+    assert not np.isnan(field).any()

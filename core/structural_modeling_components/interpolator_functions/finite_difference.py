@@ -46,6 +46,7 @@ from LoopStructural import GeologicalModel
 from core.structural_modeling_components.interpolator_functions.fitted_field import (
     Extent6,
     LoopStructuralFittedField,
+    evaluate_loopstructural_feature,
 )
 
 # -----------------------------------------------------------------------------
@@ -103,12 +104,9 @@ def interpolate_group_finite_differences(
         group, grid.extent, group_surface_points_df, group_orientations_points_df)
 
     # Evaluate on grid
+    # Same NaN guard as PLI, so both LoopStructural interpolators evaluate alike.
     regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
-    sf_flat = model.evaluate_feature_value(
-        group.name,
-        regular_grid,
-        scale=True,
-    )
+    sf_flat = evaluate_loopstructural_feature(model, group.name, regular_grid, scale=True)
 
     # Match previous implementation: reshape then transpose
     scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T

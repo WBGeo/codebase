@@ -79,6 +79,51 @@ class FittedField(Protocol):
         ...
 
 
+# Shift, relative to the points' coordinate size, for LoopStructural points that evaluate
+# to NaN (see evaluate_loopstructural_feature): far above rounding, far below any cell.
+LOOPSTRUCTURAL_NAN_NUDGE: float = 1e-9
+
+# Direction of that shift: no two components in a simple ratio, so a point shifted
+# off one face of the support mesh does not land on another (axis-aligned or diagonal).
+_NUDGE_DIRECTION: npt.NDArray[np.float64] = np.array([1.0, 0.7548776662, 0.5698402910])
+
+
+def evaluate_loopstructural_feature(model: Any, feature_name: str, points: FloatArray, scale: bool) -> FloatArray:
+    """
+    A LoopStructural feature's values at points, without the NaNs at support mesh faces.
+
+    LoopStructural's PLI returns NaN for points that lie exactly on a face of its
+    tetrahedral support mesh, which happens when a grid's cell centers line up
+    with the mesh (e.g. model 2 with fault-domain components fitted over their
+    bounding box plus margin). Those points are evaluated again, shifted by
+    ``LOOPSTRUCTURAL_NAN_NUDGE`` times the coordinate size along a fixed
+    direction, then along the opposite one; points still NaN (outside the mesh)
+    stay NaN.
+
+    Args:
+        model: The fitted ``GeologicalModel``.
+        feature_name: Name of the feature to evaluate.
+        points: Point coordinates, shape ``(M, 3)``.
+        scale: Passed on to ``evaluate_feature_value``.
+
+    Returns:
+        Values of shape ``(M,)``.
+    """
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    values = np.asarray(model.evaluate_feature_value(feature_name, points, scale=scale), dtype=np.float64).reshape(-1)
+    nan = np.flatnonzero(np.isnan(values))
+    if nan.size:
+        step = LOOPSTRUCTURAL_NAN_NUDGE * max(1.0, float(np.abs(points).max())) * _NUDGE_DIRECTION
+        for shift in (step, -step):
+            values[nan] = np.asarray(
+                model.evaluate_feature_value(feature_name, points[nan] + shift, scale=scale),
+                dtype=np.float64).reshape(-1)
+            nan = nan[np.isnan(values[nan])]
+            if nan.size == 0:
+                break
+    return values
+
+
 class LoopStructuralFittedField:
     """
     A foliation of a fitted LoopStructural ``GeologicalModel`` (FDI, PLI), evaluable anywhere.
@@ -95,8 +140,7 @@ class LoopStructuralFittedField:
 
     def evaluate(self, xyz: FloatArray) -> FloatArray:
         """Feature values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
-        points = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
-        return np.asarray(self._model.evaluate_feature_value(self._feature_name, points, scale=self._scale))
+        return evaluate_loopstructural_feature(self._model, self._feature_name, xyz, self._scale)
 
 
 class KrigingFittedField:
