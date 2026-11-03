@@ -5,7 +5,7 @@ HydrothermalProblemBuilder -- with the EXACT rock/fault-zone properties and
 num_steps that examples/synthetic_examples/model2/WBGeo1.0_model2.py's own
 HydrothermalProblemBuilder call uses (include_flow=False, so no pressure/
 velocity stage at all), at that script's own full official resolution
-(125, 50, 50) and mesh settings. This is a true drop-in equivalent:
+(100, 40, 40) and mesh settings. This is a true drop-in equivalent:
 WBGeo1.0_model2.py builds its structural_model_result/mesh_explicit_unstructured
 once and runs both builders against the identical objects, so this isn't a
 same-technique demo at different settings -- it solves the literal same
@@ -56,7 +56,7 @@ with the exact parameters below, so mat_id numbering lines up (this is
 exactly what WBGeo1.0_model2.py's own structural_model_result/
 mesh_explicit_unstructured already are):
 
-    grid = RegularGrid(extent=(0, 2500, 0, 1000, 0, 1000), resolution=(125, 50, 50))
+    grid = RegularGrid(extent=(0, 2500, 0, 1000, 0, 1000), resolution=(100, 40, 40))
     data_faults = InputData_FaultElements(
         name="Faults_Model_2", fault_names=["fault"],
         fault_surface_points=pd.read_csv(".../model2_surface_points_df.csv"),

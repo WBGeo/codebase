@@ -261,6 +261,68 @@ def test_run_interpolation_with_fault_domains_calls_interpolator_and_sets_scalar
     assert group.extended_scalar_field.shape == expected_padded_res
 
 
+def test_run_interpolation_with_fault_domains_returns_full_padded_component_without_faults(monkeypatch):
+    """Without faults every group has one component covering the whole padded grid."""
+    grid = make_grid((3, 2, 2))
+    frame = make_frame_one_group(grid)
+
+    class TmpFF:
+        domain_map = np.zeros(grid.resolution, dtype=int)
+
+    def fake_interp(*, group, grid, group_surface_points_df, group_orientations_points_df):
+        x, y, z = grid.resolution
+        return np.ones((z, y, x), dtype=float), {"e1": 1.0, "e2": 2.0}
+
+    monkeypatch.setitem(mod.interpolate_dispatch, InterpolationMethod.RADIAL_BASIS_FUNCTION, fake_interp)
+
+    component_fields = mod.run_interpolation_with_fault_domains(frame=frame, fault_frame=TmpFF())
+
+    p = mod._SURFACE_PADDING_CELLS
+    nx, ny, nz = (r + 2 * p for r in grid.resolution)
+    (comp,) = component_fields["G1"]
+    assert comp.domain_ids == (0,)
+    assert comp.bbox == (0, nx - 1, 0, ny - 1, 0, nz - 1)
+    assert comp.field.shape == (nx, ny, nz)
+    assert comp.scalar_values == {"e1": 1.0, "e2": 2.0}
+
+
+def test_run_interpolation_with_fault_domains_crops_components_with_margin(monkeypatch):
+    """With an active fault each domain is interpolated on its bbox grown by _COMPONENT_MARGIN_CELLS."""
+    grid = RegularGrid(extent=(0.0, 10.0, 0.0, 2.0, 0.0, 2.0), resolution=(10, 2, 2))
+    frame = make_frame_one_group(grid)
+    frame.surface_points = pd.DataFrame(
+        {"X": [1.5, 2.5, 7.5, 8.5], "Y": [0.5] * 4, "Z": [0.5, 1.5, 0.5, 1.5], "formation": ["e1", "e2"] * 2}
+    )
+    frame.fault_activity = {"F": 0}
+
+    class TmpFF:
+        domain_map = np.where(np.arange(10)[:, None, None] < 5, 0, 1) * np.ones((10, 2, 2), dtype=int)
+        fault_elements = [FakeFault("F", {(0, 1)})]
+
+    grids_seen = []
+
+    def fake_interp(*, group, grid, group_surface_points_df, group_orientations_points_df):
+        grids_seen.append(grid.resolution)
+        x, y, z = grid.resolution
+        return np.zeros((z, y, x), dtype=float), {"e1": 1.0, "e2": 2.0}
+
+    monkeypatch.setitem(mod.interpolate_dispatch, InterpolationMethod.RADIAL_BASIS_FUNCTION, fake_interp)
+
+    component_fields = mod.run_interpolation_with_fault_domains(frame=frame, fault_frame=TmpFF())
+
+    p, m = mod._SURFACE_PADDING_CELLS, mod._COMPONENT_MARGIN_CELLS
+    nx, ny, nz = 10 + 2 * p, 2 + 2 * p, 2 + 2 * p
+    comps = {c.domain_ids: c for c in component_fields["G1"]}
+    assert set(comps) == {(0,), (1,)}
+    # domain 0 covers padded x indices 0..(5 + p - 1), domain 1 the rest
+    assert comps[(0,)].bbox == (0, 5 + p - 1 + m, 0, ny - 1, 0, nz - 1)
+    assert comps[(1,)].bbox == (5 + p - m, nx - 1, 0, ny - 1, 0, nz - 1)
+    for comp in comps.values():
+        kx0, kx1, ky0, ky1, kz0, kz1 = comp.bbox
+        assert comp.field.shape == (kx1 - kx0 + 1, ky1 - ky0 + 1, kz1 - kz0 + 1)
+    assert sorted(grids_seen) == sorted(c.field.shape for c in comps.values())
+
+
 # -----------------------------------------------------------------------------
 # compute_structural_model (mock the big steps; pure orchestration)
 # -----------------------------------------------------------------------------
@@ -275,7 +337,7 @@ def test_compute_structural_model_orchestrates_steps(monkeypatch):
     monkeypatch.setattr(mod, "run_interpolation_with_fault_domains", lambda **kw: calls.append("interp"))
     monkeypatch.setattr(mod, "set_scalar_masks_per_domain", lambda fr: calls.append("masks"))
     monkeypatch.setattr(mod, "compute_lithology_block_with_domains", lambda fr: calls.append("lith") or np.zeros(grid.resolution, dtype=int))
-    monkeypatch.setattr(mod, "extract_all_meshes_per_domain", lambda frame: calls.append("meshes"))
+    monkeypatch.setattr(mod, "extract_all_meshes_per_domain", lambda frame, component_fields=None: calls.append("meshes"))
 
     res = mod.compute_structural_model(frame, extract_meshes=True, verbose=False)
 
@@ -844,6 +906,132 @@ def test_extract_meshes_extended_skipped_when_no_extended_scalar_field(monkeypat
 
     with pytest.raises(KeyError):
         elems[0].get_mesh("extended")
+
+
+# Helpers for the extended masked meshes: 10 x 4 x 10 grid with 1 m cells, a fault
+# at x = 5 separating domain 0 (x < 5) and domain 1 (x > 5).
+
+_EM_GRID = RegularGrid(extent=(0.0, 10.0, 0.0, 4.0, 0.0, 10.0), resolution=(10, 4, 10))
+
+
+def _padded_cell_centres():
+    p = mod._SURFACE_PADDING_CELLS
+    nx, ny, nz = (r + 2 * p for r in _EM_GRID.resolution)
+    return np.meshgrid(np.arange(nx) - p + 0.5, np.arange(ny) - p + 0.5, np.arange(nz) - p + 0.5, indexing="ij")
+
+
+def _em_group(name: str, elem_name: str, sval: float, esf: np.ndarray) -> tuple[StructuralGroup, StructuralElement]:
+    p = mod._SURFACE_PADDING_CELLS
+    e = StructuralElement(name=elem_name)
+    e.set_scalar_value(sval)
+    g = StructuralGroup(name=name, structural_elements=[e])
+    g.extended_scalar_field = esf
+    g.set_scalar_field(esf[p:-p, p:-p, p:-p])
+    g.set_mask(esf[p:-p, p:-p, p:-p] >= sval)
+    return g, e
+
+
+def _em_frame(groups: list[StructuralGroup]) -> StructuralFrame:
+    frame = StructuralFrame(structural_groups=groups)
+    frame.grid = _EM_GRID
+    frame.fault_frame = _FakeFaultFrame(np.where(np.arange(10)[:, None, None] < 5, 0, 1) * np.ones((10, 4, 10), dtype=int))
+    return frame
+
+
+def test_extract_meshes_extended_masked_one_piece_per_domain_overshooting_the_fault():
+    """Each component gives its own piece from its own field, crossing the fault by at most the overshoot."""
+    x, _, z = _padded_cell_centres()
+    group, elem = _em_group("G", "layer", 4.0, np.where(x < 5, z, z - 2.0))
+    frame = _em_frame([group])
+    p, o = mod._SURFACE_PADDING_CELLS, mod._EXTENDED_MASKED_OVERSHOOT_CELLS
+    nx, ny, nz = x.shape
+    sub = np.s_[3:, :, :]  # domain 1 component on a cropped bbox, to check the index offsets
+    component_fields = {"G": [
+        mod.ComponentScalarField(domain_ids=(0,), bbox=(0, nx - 1, 0, ny - 1, 0, nz - 1), field=z,
+                                 scalar_values={"layer": 4.0}),
+        mod.ComponentScalarField(domain_ids=(1,), bbox=(3, nx - 1, 0, ny - 1, 0, nz - 1), field=(z - 2.0)[sub],
+                                 scalar_values={"layer": 4.0}),
+    ]}
+
+    mod.extract_all_meshes_per_domain(frame, component_fields=component_fields)
+
+    verts, faces = elem.get_mesh("extended_masked")
+    assert len(faces) > 0
+    footwall, hanging_wall = verts[np.isclose(verts[:, 2], 4.0)], verts[np.isclose(verts[:, 2], 6.0)]
+    assert len(footwall) + len(hanging_wall) == len(verts)
+    # both pieces cross the fault at x = 5, but by no more than the overshoot (+ one MC cell)
+    assert 5.0 < footwall[:, 0].max() <= 5.0 + o + 1
+    assert 5.0 - o - 1 <= hanging_wall[:, 0].min() < 5.0
+    # the cut edge is straight, not a sawtooth: every row along the fault reaches equally far
+    rows = np.round(footwall[:, 1], 6)
+    assert len({footwall[rows == y, 0].max() for y in np.unique(rows)}) == 1
+    # and both still cross the model box in y (padded grid)
+    assert footwall[:, 1].min() < 0.0 and footwall[:, 1].max() > 4.0
+    assert hanging_wall[:, 0].max() > 10.0
+    # the pieces do not share vertices, so they stay separate connected components
+    assert not np.intersect1d(np.unique(faces[np.isclose(verts[faces[:, 0], 2], 4.0)]),
+                              np.unique(faces[np.isclose(verts[faces[:, 0], 2], 6.0)])).size
+
+
+def test_extract_meshes_extended_masked_trimmed_at_the_base_of_younger_groups():
+    """Older groups' pieces stop at the base of the younger groups, plus the overshoot."""
+    x, _, z = _padded_cell_centres()
+    young, _ = _em_group("Young", "young_base", 8.0, z)      # base at z = 8
+    old, old_elem = _em_group("Old", "vertical", 5.0, x)     # vertical surface at x = 5
+    frame = _em_frame([young, old])
+    o = mod._EXTENDED_MASKED_OVERSHOOT_CELLS
+    full = (0, x.shape[0] - 1, 0, x.shape[1] - 1, 0, x.shape[2] - 1)
+    component_fields = {
+        "Young": [mod.ComponentScalarField((0, 1), full, z, {"young_base": 8.0})],
+        "Old": [mod.ComponentScalarField((0, 1), full, x, {"vertical": 5.0})],
+    }
+
+    mod.extract_all_meshes_per_domain(frame, component_fields=component_fields)
+
+    verts, _ = old_elem.get_mesh("extended_masked")
+    assert np.allclose(verts[:, 0], 5.0)
+    assert verts[:, 2].min() < 0.0                          # still crosses the bottom of the box
+    assert 8.0 < verts[:, 2].max() <= 8.0 + o + 1           # overshoots the unconformity, but not further
+    # the youngest group is not trimmed
+    young_verts, _ = young.structural_elements[0].get_mesh("extended_masked")
+    assert young_verts[:, 0].min() < 0.0 and young_verts[:, 0].max() > 10.0
+
+
+def test_extract_meshes_extended_masked_skipped_without_component_fields():
+    x, _, z = _padded_cell_centres()
+    group, elem = _em_group("G", "layer", 4.0, z)
+    mod.extract_all_meshes_per_domain(_em_frame([group]))
+
+    with pytest.raises(KeyError):
+        elem.get_mesh("extended_masked")
+
+
+def test_extract_meshes_fault_extended_masked_overshoots_the_base_of_all_younger_groups(monkeypatch):
+    """The fault's extended masked mesh ends at the base of every group younger than the
+    youngest group it cuts, plus the overshoot."""
+    monkeypatch.setattr(mod, "marching_cubes", lambda *a, **kw: (
+        [np.zeros((1, 3))] * 3, [np.zeros((1, 3), dtype=int)] * 3
+    ))
+    x, _, z = _padded_cell_centres()
+    p, o = mod._SURFACE_PADDING_CELLS, mod._EXTENDED_MASKED_OVERSHOOT_CELLS
+    top, _ = _em_group("Top", "top_base", 7.0, z)  # base at z = 7, deeper than the base of "Mid" ...
+    mid, _ = _em_group("Mid", "mid_base", 9.0, z)  # ... although "Mid" lies directly above "Cut"
+    cut, _ = _em_group("Cut", "layer", 3.0, z)
+    frame = _em_frame([top, mid, cut])
+    fault = FaultElement("F")
+    fault.scalar_value = 5.0
+    fault.extended_scalar_field = x
+    fault.scalar_field = x[p:-p, p:-p, p:-p]
+    frame.fault_frame.fault_elements = [fault]
+    frame.fault_activity = {"F": 2}  # cuts "Cut" only
+    frame.lith_block = np.zeros(_EM_GRID.resolution, dtype=int)
+
+    mod.extract_all_meshes_per_domain(frame)
+
+    verts, _ = fault.get_mesh("extended_masked")
+    assert np.allclose(verts[:, 0], 5.0)
+    assert verts[:, 2].min() < 0.0
+    assert 7.0 < verts[:, 2].max() <= 7.0 + o + 1
 
 
 # -----------------------------------------------------------------------------

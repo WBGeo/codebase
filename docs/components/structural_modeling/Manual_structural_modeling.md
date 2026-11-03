@@ -82,7 +82,7 @@ The computation runs the following steps in sequence:
 2. **Interpolation** — each stratigraphic group is interpolated independently. When faults are active for a group, the interpolation is run completely separately in each fault domain using only the data points that fall within that domain. The resulting scalar fields are then stitched together.
 3. **Age masks** — a boolean mask is computed per group that represents its depositional extent: the oldest group underlies the entire domain (mask is True everywhere), while younger groups are only present where they were deposited. When assembling the lithology block, younger groups take precedence over older ones wherever their mask is True — this is what produces unconformable contacts between groups.
 4. **Lithology block** — the scalar fields and age masks are combined into a single 3D integer array where each voxel is assigned to a formation.
-5. **Surface meshes** — isosurfaces are extracted from the scalar fields using marching cubes. Four mesh types are stored per element: `masked` (respects unconformities and fault domains), `unmasked` (full isosurface through the entire grid), `combined` (derived from the lithology block), and `extended` (extrapolated beyond the grid boundary, used as input for 3D mesh generation).
+5. **Surface meshes** — isosurfaces are extracted from the scalar fields using marching cubes. Five mesh types are stored per element: `masked` (respects unconformities and fault domains), `unmasked` (full isosurface through the entire grid), `combined` (derived from the lithology block), `extended` (extrapolated beyond the grid boundary, used as input for 3D mesh generation), and `extended_masked` (extrapolated beyond the grid boundary like `extended`, but one separate piece per fault domain, cut at the faults and at the base of younger groups; see [Output](#output)).
 
 **Limitations of the structural model:**
 
@@ -160,7 +160,7 @@ structural_model_result.structural_frame.detailed_report()
 `Plot Model Result 3D` — `plot_structural_model_3D(frame, ...)`:
 
 - **`frame`**: The `StructuralFrame` to visualise, e.g. `structural_model_result.structural_frame`.
-- **`mesh_type`** *(optional)*: Which geological surface mesh to render — `"masked"`, `"unmasked"`, `"combined"`, or `"extended"` (see [Output](#output)). Default `"masked"`.
+- **`mesh_type`** *(optional)*: Which geological surface mesh to render — `"masked"`, `"unmasked"`, `"combined"`, `"extended"`, or `"extended_masked"` (see [Output](#output)). Default `"masked"`.
 - **`fault_mesh_type`** *(optional)*: Mesh type for fault surfaces. Defaults to `mesh_type` if not set.
 - **`show_surface_meshes`** *(optional)*: Render the per-element surface meshes. Default `True`.
 - **`show_points`** *(optional)*: Render input surface points. Default `True`.
@@ -243,8 +243,9 @@ plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)
 
 - **Scalar fields** — one 3D float array per stratigraphic group, shaped `(nx, ny, nz)`.
 - **Lithology block** — a 3D integer array shaped `(nx, ny, nz)`, where each voxel holds the formation ID of the youngest formation present at that location (0 = basement / no formation).
-- **Surface meshes** — vertices and triangle faces per formation, stored under the mesh type keys `masked`, `unmasked`, `combined`, `extended`.
-- **Fault surface meshes** — `masked`, `unmasked`, `extended` and `extended_masked` meshes for each fault element.
+- **Surface meshes** — vertices and triangle faces per formation, stored under the mesh type keys `masked`, `unmasked`, `combined`, `extended`, `extended_masked`.
+  - `extended_masked` is meant as input for 3D mesh generation of faulted models. Each fault domain contributes its own piece, extracted from the scalar field interpolated in that domain alone, so the pieces on both sides of a fault never have to be separated afterwards. The pieces are stored together in one mesh but share no vertices, so they can be split into connected components. Each piece is cut at the faults and at the base of all younger groups, and reaches about one grid cell beyond both, so it reliably intersects the fault and unconformity surfaces. Like `extended`, the pieces reach beyond the model boundary.
+- **Fault surface meshes** — `masked`, `unmasked`, `extended` and `extended_masked` meshes for each fault element. The fault's `extended_masked` mesh is cut at the base of all groups younger than the youngest group the fault offsets, and reaches about one grid cell beyond it.
 - **All intermediate results** — scalar values per element, age masks per group, and the fault domain map are stored on the structural frame within the result object and can be accessed programmatically for further analysis or visualisation.
 
 The `StructuralModelResults` object is the direct input to the meshing components.

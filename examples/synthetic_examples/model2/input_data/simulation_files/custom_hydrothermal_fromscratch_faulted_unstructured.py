@@ -67,7 +67,7 @@ and the fault-zone cell selection only line up with model2's own
 structural_model_result/mesh_explicit_unstructured (see
 WBGeo1.0_model2.py), built with:
 
-    grid = RegularGrid(extent=(0, 2500, 0, 1000, 0, 1000), resolution=(125, 50, 50))
+    grid = RegularGrid(extent=(0, 2500, 0, 1000, 0, 1000), resolution=(100, 40, 40))
     data_faults = InputData_FaultElements(name="Faults_Model_2", fault_names=["fault"],
         fault_surface_points=pd.read_csv(".../model2_surface_points_df.csv"),
         fault_orientations=pd.read_csv(".../model2_orientations_df.csv"))
