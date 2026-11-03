@@ -434,6 +434,70 @@ def test_extended_surfaces_cross_the_box_and_contain_the_unmasked_surfaces(uncon
                 np.testing.assert_allclose(extended[:, 2], {"rock4": 0.82, "rock3": 0.62}[elem.name], atol=0.01)
 
 
+def mesh_pieces(vertices, faces):
+    """The connected pieces of a mesh, as arrays of vertex indices."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    edges = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]]])
+    graph = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])), shape=(len(vertices),) * 2)
+    _, labels = connected_components(graph, directed=False)
+    return [np.flatnonzero(labels == label) for label in np.unique(labels[np.unique(faces)])]
+
+
+def test_extended_masked_surfaces_stop_past_the_base_of_the_younger_groups(unconformity_result):
+    """Without faults: one piece per element, EXTENDED for the youngest group, and EXTENDED
+    trimmed just above the unconformity (z = 0.62) for the eroded group, as on the regular grid."""
+    result, _ = unconformity_result
+    cell = result.grid.finest_spacing
+    o = general._EXTENDED_MASKED_OVERSHOOT_CELLS
+    upper, lower = result.structural_groups
+    for elem in upper.structural_elements:  # nothing younger: the whole EXTENDED mesh
+        np.testing.assert_array_equal(elem.vertices[GeoMeshType.EXTENDED_MASKED], elem.vertices[GeoMeshType.EXTENDED])
+        np.testing.assert_array_equal(elem.edges[GeoMeshType.EXTENDED_MASKED], elem.edges[GeoMeshType.EXTENDED])
+    for elem in lower.structural_elements:
+        extended = elem.vertices[GeoMeshType.EXTENDED]
+        kept = elem.vertices[GeoMeshType.EXTENDED_MASKED]
+        faces = elem.edges[GeoMeshType.EXTENDED_MASKED]
+        assert faces.dtype == np.int32 and 0 < len(kept) < len(extended) and faces.max() < len(kept)
+        assert contains(extended, kept)
+        # past the unconformity by at least about the overshoot, by at most the overshoot + one cell
+        assert 0.62 < kept[:, 2].max() <= 0.62 + (o + 1) * cell[2] + 0.01
+        assert contains(kept, extended[extended[:, 2] < 0.62 - cell[2]])
+        assert kept[:, 1].min() < -cell[1] and kept[:, 1].max() > 1 + cell[1]  # still crosses the box
+        assert len(mesh_pieces(kept, faces)) == 1
+
+
+def test_extended_masked_surfaces_are_one_piece_per_side_of_a_fault_that_cuts_them(model2_frames):
+    """Model 2, F1 (x = 0.5) cutting only the lower group: each lower element has a piece per side,
+    from that side's field, overshooting the fault by at most the overshoot (+ one cell) and not
+    sharing vertices; the upper group, which F1 doesn't cut, keeps its whole EXTENDED mesh."""
+    _, frames = model2_frames
+    frame = frames["LowerSeries"]
+    cell = frame.grid.finest_spacing
+    o = general._EXTENDED_MASKED_OVERSHOOT_CELLS
+    upper, lower = frame.structural_groups
+    for elem in upper.structural_elements:
+        np.testing.assert_array_equal(elem.vertices[GeoMeshType.EXTENDED_MASKED], elem.vertices[GeoMeshType.EXTENDED])
+    for elem in lower.structural_elements:
+        vertices = elem.vertices[GeoMeshType.EXTENDED_MASKED]
+        faces = elem.edges[GeoMeshType.EXTENDED_MASKED]
+        assert faces.dtype == np.int32 and len(faces) > 0
+        pieces = mesh_pieces(vertices, faces)
+        sides = set()
+        for piece in pieces:
+            x = vertices[piece, 0]
+            if x.min() < 0.0:  # the footwall piece, from the left wall across the fault a little
+                assert 0.5 + o * cell[0] <= x.max() <= 0.5 + (o + 1) * cell[0]
+                sides.add("left")
+            else:              # the hanging-wall piece, from the right wall
+                assert x.max() > 1.0
+                assert 0.5 - (o + 1) * cell[0] <= x.min() <= 0.5 - o * cell[0]
+                sides.add("right")
+        assert sides == {"left", "right"}, elem.name
+        # and they stop just above the unconformity at z = 0.68
+        assert vertices[:, 2].max() <= 0.68 + (o + 1) * cell[2] + 0.01
+
+
 def test_combined_surfaces_are_the_lithology_contacts(unconformity_result):
     """The boundary of 'lithology id >= the element's id', with the erosion: from the lithology itself."""
     from scipy.spatial import cKDTree
@@ -492,14 +556,17 @@ def test_fault_masked_meshes_stop_at_the_youngest_unaffected_group(model2_frames
 
     fault = frames["LowerSeries"].fault_frame.fault_elements[0]  # cut off where UpperSeries is
     cell = frames["LowerSeries"].grid.finest_spacing
+    o = general._EXTENDED_MASKED_OVERSHOOT_CELLS
     for source, target in [(FaultMeshType.UNMASKED, FaultMeshType.MASKED),
                            (FaultMeshType.EXTENDED, FaultMeshType.EXTENDED_MASKED)]:
         full = fault.vertices[source]
         kept = fault.vertices[target]
         faces = fault.edges[target]
         assert faces.dtype == np.int32 and faces.max() < len(kept)
-        assert kept[:, 2].max() < 0.68 + cell[2]
-        assert kept[:, 2].max() > 0.68 - 2 * cell[2]
+        if target == FaultMeshType.MASKED:  # stops at the unconformity
+            assert 0.68 - 2 * cell[2] < kept[:, 2].max() < 0.68 + cell[2]
+        else:  # overshoots it, as on the regular grid, but by no more than the overshoot (+ one cell)
+            assert 0.68 < kept[:, 2].max() <= 0.68 + (o + 1) * cell[2]
         below = full[:, 2] < 0.68 - 2 * cell[2]
         assert {tuple(v) for v in full[below]} <= {tuple(v) for v in kept}
     # EXTENDED_MASKED still crosses the box below the unconformity.
@@ -518,6 +585,58 @@ def test_surfaces_run_through_faults_that_do_not_affect_their_group(model2_frame
                 assert np.any((x.min(axis=1) < 0.5) & (x.max(axis=1) > 0.5)) == crosses, (elem.name, kind)
 
 
+class _HeightField:
+    """A fitted field that is the height z, with the given element scalar values."""
+
+    def __init__(self, scalar_values):
+        self.scalar_values = scalar_values
+
+    def evaluate(self, xyz):
+        return np.asarray(xyz, dtype=np.float64).reshape(-1, 3)[:, 2].copy()
+
+
+def test_fault_extended_masked_overshoots_the_base_of_all_younger_groups(monkeypatch):
+    """As on the regular grid: the fault's EXTENDED_MASKED mesh ends at the base of every group
+    younger than the youngest group it cuts, plus the overshoot, even if that base is not the
+    one directly above."""
+    from core.structural_modeling_components.structural_objects.structural_objects import (
+        FaultElement, StructuralElement, StructuralFrame, StructuralGroup)
+
+    g = OctreeGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), base_resolution=(3, 2, 3), max_level=3)
+    groups, fields = [], []
+    for name, sval in [("Top", 0.3), ("Mid", 0.5), ("Cut", 0.2)]:  # Top's base lies below Mid's
+        elem = StructuralElement(name=f"{name}_base")
+        elem.set_scalar_value(sval)
+        groups.append(StructuralGroup(name=name, structural_elements=[elem]))
+        fields.append({0: _HeightField({elem.name: sval})})
+    frame = StructuralFrame(structural_groups=groups)
+    frame.grid = g
+    fault = FaultElement("F")
+    # A vertical plane at x = 0.5 through the padded box, on a lattice finer than the cells.
+    ys, zs = np.meshgrid(np.linspace(-0.08, 1.08, 57), np.linspace(-0.08, 1.08, 57), indexing="ij")
+    vertices = np.column_stack([np.full(ys.size, 0.5), ys.ravel(), zs.ravel()])
+    idx = np.arange(ys.size).reshape(ys.shape)
+    a, b, c, d = idx[:-1, :-1].ravel(), idx[1:, :-1].ravel(), idx[1:, 1:].ravel(), idx[:-1, 1:].ravel()
+    fault.set_mesh(FaultMeshType.EXTENDED, vertices, np.concatenate([np.column_stack([a, b, c]),
+                                                                     np.column_stack([a, c, d])]))
+    frame.fault_frame = type("FakeFaultFrame", (), {"fault_elements": [fault]})()
+    frame.fault_activity = {"F": 2}  # cuts "Cut" only
+    monkeypatch.setattr(general_octree, "_point_domains",
+                        lambda frame, points: np.zeros(len(points), dtype=np.int64))
+
+    general_octree._extract_fault_masked_meshes(frame, fields, stored_masks=np.zeros((3, 1), dtype=bool))
+
+    kept = fault.vertices[FaultMeshType.EXTENDED_MASKED]
+    cell = g.finest_spacing
+    o = general._EXTENDED_MASKED_OVERSHOOT_CELLS
+    assert 0.3 < kept[:, 2].max() <= 0.3 + (o + 1) * cell[2]
+    assert kept[:, 2].min() < 0.0                                # still crosses the bottom of the box
+    assert kept[:, 1].min() < 0.0 and kept[:, 1].max() > 1.0     # and the box along y
+    # everything well below the base is kept
+    below = vertices[:, 2] < 0.3 - cell[2]
+    assert contains(kept, vertices[below])
+
+
 def test_a_fault_under_a_group_covering_the_model_has_no_extended_masked_mesh(model2_frames, monkeypatch):
     """As on the regular grid: MASKED falls back to the whole fault, EXTENDED_MASKED does not."""
     _, frames = model2_frames
@@ -525,6 +644,8 @@ def test_a_fault_under_a_group_covering_the_model_has_no_extended_masked_mesh(mo
     n_groups = len(frame.structural_groups)
     monkeypatch.setattr(general_octree, "_age_mask_at_vertex_cells",
                         lambda frame, fields, vertices: np.ones((n_groups, len(vertices)), dtype=bool))
+    monkeypatch.setattr(general_octree, "_below_younger_groups",
+                        lambda frame, fields, group_idx, points: np.zeros(len(points), dtype=bool))
     stored_masks = np.ones((n_groups, len(frame.cells)), dtype=bool)
     general_octree._extract_fault_masked_meshes(frame, fields=[], stored_masks=stored_masks)
     fault = frame.fault_frame.fault_elements[0]

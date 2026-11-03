@@ -236,16 +236,19 @@ def test_a_fault_model_on_another_grid_is_refused():
 # Helpers
 # -----------------------------------------------------------------------------
 
-def test_component_extent_pads_only_where_the_component_reaches_the_extent(results):
-    """Same fit extents as the regular grid's crop of its edge-padded domain map."""
+def test_component_extent_is_the_regular_grids_crop_with_its_margin(results):
+    """Same fit extents as the regular grid's crop of its edge-padded domain map: the
+    component's bounding box plus ``_COMPONENT_MARGIN_CELLS``, within the padded box."""
     octree, regular = results[0].structural_frame, results[1].structural_frame
     domain_ids = general_octree._domain_ids(octree)
-    p = general._SURFACE_PADDING_CELLS
+    p, m = general._SURFACE_PADDING_CELLS, general._COMPONENT_MARGIN_CELLS
     padded_grid = general._build_padded_grid(regular.grid, p)
     padded_map = np.pad(regular.cell_domain_ids(), p, mode="edge")
+    n = padded_map.shape
     for d in domain_ids:
         xs, ys, zs = (np.flatnonzero(np.any(padded_map == d, axis=axes)) for axes in ((1, 2), (0, 2), (0, 1)))
-        sub = general.build_subgrid_from_bbox(padded_grid, (xs[0], xs[-1], ys[0], ys[-1], zs[0], zs[-1]))
+        bbox = tuple(v for a, s in enumerate((xs, ys, zs)) for v in (max(s[0] - m, 0), min(s[-1] + m, n[a] - 1)))
+        sub = general.build_subgrid_from_bbox(padded_grid, bbox)
         np.testing.assert_allclose(general_octree._component_extent(octree, [int(d)], domain_ids),
                                    sub.extent, atol=1e-12)
 

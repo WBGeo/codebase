@@ -18,7 +18,10 @@ dispatches here when the frame's grid is an OctreeGrid:
      MASKED keeps a quad only if none of its 4 cells is eroded by a younger group,
      and of that only the triangles whose vertices are not eroded themselves;
      EXTENDED also runs on a max-level shell around the extent, so it crosses the
-     model box. COMBINED contours the lithology id itself.
+     model box. EXTENDED_MASKED is one piece per component, contoured with the
+     component's field on its cells plus a band into the neighbouring domains,
+     and kept up to a small overshoot past its faults and the base of the
+     younger groups. COMBINED contours the lithology id itself.
   4) Coarsen back to the cells the stored result needs: merge cells wherever the
      final model doesn't change, so the result keeps as few cells as possible.
      That is: the lithology and the age masks are the same, and no fault that
@@ -28,8 +31,9 @@ dispatches here when the frame's grid is an OctreeGrid:
   5) Evaluate fields, age masks and lithology at the final cell centers and store
      them in the usual attributes, one value per cell (see ``StructuralFrame``).
   6) With faults, the MASKED and EXTENDED_MASKED meshes of every fault: its
-     UNMASKED and EXTENDED triangles where the youngest group the fault does not
-     affect is absent.
+     UNMASKED triangles where the youngest group the fault does not affect is
+     absent, and its EXTENDED triangles below the base of every group younger
+     than the youngest group it affects, plus a small overshoot.
 
 Current scope: interpolators listed in ``fit_dispatch``; all surface mesh types.
 The domain components, their fit extents, the age mask and lithology rules are
@@ -145,9 +149,9 @@ def compute_structural_model_octree(
         ``build_structural_frame``, optionally with a fault frame computed on the
         same grid.
     extract_meshes : bool, default True
-        Extract each element's UNMASKED, MASKED, EXTENDED and COMBINED surface
-        meshes by dual contouring, and each fault's MASKED and EXTENDED_MASKED
-        meshes.
+        Extract each element's UNMASKED, MASKED, EXTENDED, EXTENDED_MASKED and
+        COMBINED surface meshes by dual contouring, and each fault's MASKED and
+        EXTENDED_MASKED meshes.
 
     Returns
     -------
@@ -416,10 +420,14 @@ def _component_extent(frame: StructuralFrame, comp_ids: List[int], domain_ids: I
     The extent a domain component is fitted over.
 
     With a single domain, ``fit_extent``. Otherwise the bounding box of the
-    component's finest cells, padded by ``_FIT_PADDING_CELLS`` finest cells on
-    the sides where it reaches the extent: the regular grid crops its edge-padded
-    domain map the same way (``build_subgrid_from_bbox``).
+    component's finest cells, grown by ``general._COMPONENT_MARGIN_CELLS`` finest
+    cells on every side (so the field also exists just across the component's
+    faults, which its EXTENDED_MASKED meshes overshoot) and limited to the
+    extent padded by ``_FIT_PADDING_CELLS``: the regular grid crops its
+    edge-padded domain map the same way (``build_subgrid_from_bbox``).
     """
+    from core.structural_modeling_components.general import _COMPONENT_MARGIN_CELLS
+
     grid = frame.grid
     if len(domain_ids) <= 1:
         return fit_extent(grid)
@@ -430,8 +438,8 @@ def _component_extent(frame: StructuralFrame, comp_ids: List[int], domain_ids: I
     lower = (ijk * size).min(axis=0)
     upper = ((ijk + 1) * size).max(axis=0)
     n_finest = np.array(grid.finest_resolution, dtype=np.int64)
-    lower = np.where(lower == 0, -_FIT_PADDING_CELLS, lower)
-    upper = np.where(upper == n_finest, n_finest + _FIT_PADDING_CELLS, upper)
+    lower = np.maximum(lower - _COMPONENT_MARGIN_CELLS, -_FIT_PADDING_CELLS)
+    upper = np.minimum(upper + _COMPONENT_MARGIN_CELLS, n_finest + _FIT_PADDING_CELLS)
     lo = grid.origin + lower * grid.finest_spacing
     hi = grid.origin + upper * grid.finest_spacing
     return tuple(float(v) for pair in zip(lo, hi) for v in pair)
@@ -496,8 +504,9 @@ def _group_values(by_domain: Dict[int, Optional[FittedField]], points: FloatArra
 
 def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: OctreeCells) -> None:
     """
-    Every element's UNMASKED, MASKED and EXTENDED meshes, its group's field at the
-    element's isovalue, and its COMBINED mesh.
+    Every element's UNMASKED, MASKED, EXTENDED and EXTENDED_MASKED meshes, its
+    group's field at the element's isovalue, and its COMBINED mesh
+    (EXTENDED_MASKED: see :func:`_extended_masked_meshes`).
 
     Dual contouring runs per merged domain component of the group, each with its
     own field, so the surfaces end half a cell before the faults that affect the
@@ -533,6 +542,7 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
     padded_ijk = np.concatenate([dc_cells.ijk.astype(np.int64), shell])
     padded_domains = np.concatenate([domains, _point_domains(frame, grid.cell_centers(grid.max_level, shell))])
     inside = np.arange(len(padded_ijk)) < len(dc_cells)  # the cells in the extent come first
+    cell_domains = _CellDomainCache(frame)  # shared by the EXTENDED_MASKED extraction of all groups
     for group_idx, group in enumerate(frame.structural_groups):
         elements = [e for e in group.structural_elements if e.get_scalar_value() is not None]
         by_domain = fields[group_idx]
@@ -548,13 +558,17 @@ def _extract_element_meshes(frame: StructuralFrame, fields: GroupFields, cells: 
         not_eroded = ~masks[:group_idx].any(axis=0)
         masked = [_drop_eroded_triangles(frame, fields, group_idx, restrict_to_kept_cells(mesh, not_eroded))
                   for mesh in unmasked]
-        for elem, mesh, masked_mesh, extended_mesh in zip(elements, unmasked, masked, extended):
+        extended_masked = _extended_masked_meshes(frame, fields, group_idx, isovalues, padded_ijk, padded_domains,
+                                                  cell_domains)
+        for elem, mesh, masked_mesh, extended_mesh, extended_masked_mesh in zip(
+                elements, unmasked, masked, extended, extended_masked):
             if mesh.n_missing_quads:
                 logger.warning("Surface of '%s' has %d gaps where a cell next to it is coarser than max level.",
                                elem.name, mesh.n_missing_quads)
             elem.set_mesh(GeoMeshType.UNMASKED, mesh.vertices, mesh.faces.astype(np.int32))
             elem.set_mesh(GeoMeshType.MASKED, masked_mesh.vertices, masked_mesh.faces.astype(np.int32))
             elem.set_mesh(GeoMeshType.EXTENDED, extended_mesh.vertices, extended_mesh.faces.astype(np.int32))
+            elem.set_mesh(GeoMeshType.EXTENDED_MASKED, *extended_masked_mesh)
 
     def lithology(points: FloatArray, _groups: IntArray) -> FloatArray:
         point_domains = _point_domains(frame, points)
@@ -581,6 +595,202 @@ def _drop_eroded_triangles(
                                vertex_at_group_boundary=mesh.vertex_at_group_boundary[used])
 
 
+def _extended_masked_meshes(
+        frame: StructuralFrame,
+        fields: GroupFields,
+        group_idx: int,
+        isovalues: List[float],
+        padded_ijk: IntArray,
+        padded_domains: IntArray,
+        cell_domains: "_CellDomainCache",
+) -> List[Tuple[FloatArray, npt.NDArray[np.int32]]]:
+    """
+    The EXTENDED_MASKED mesh of each of a group's elements (at ``isovalues``), as
+    ``(vertices, faces)``: one piece per merged fault-domain component of the group.
+
+    The octree counterpart of the extended masked meshes in
+    ``general.extract_all_meshes_per_domain``. Each piece is dual-contoured with
+    its component's own field on the component's max-level cells (in the extent
+    and the padding shell) plus a band of max-level cells up to
+    ``general._COMPONENT_MARGIN_CELLS`` deep into the neighbouring domains
+    (:func:`_component_band`), where the component's field also exists. So the
+    surface runs on across the faults that separate the component, and pieces of
+    different components never share vertices. A quad is kept if any of its 4
+    cells lies within ``general._EXTENDED_MASKED_OVERSHOOT_CELLS`` of a cell of
+    the component and within that overshoot of a cell below the base of every
+    younger group (:func:`_near_cells_where`); the regular grid keeps a
+    marching-cubes cube by the same rule on its 8 cells. Missing quads where the
+    band ends are expected and not reported as gaps.
+    """
+    from core.structural_modeling_components.general import (
+        _COMPONENT_MARGIN_CELLS,
+        _EXTENDED_MASKED_OVERSHOOT_CELLS,
+    )
+
+    grid = frame.grid
+    domain_ids = _domain_ids(frame)
+    by_domain = fields[group_idx]
+    pieces: List[List[Tuple[FloatArray, IntArray]]] = [[] for _ in isovalues]
+    for comp_ids in _group_components(frame, group_idx):
+        in_comp = sorted(comp_ids)
+        field = by_domain.get(in_comp[0])
+        if field is None:
+            continue
+        own = np.isin(padded_domains, in_comp)
+        cell_ijk = np.concatenate([padded_ijk[own],
+                                   _component_band(frame, in_comp, _COMPONENT_MARGIN_CELLS, cell_domains)])
+        values = lambda p, _g, f=field: snap_to_isovalues(f.evaluate(p), f.scalar_values.values())  # noqa: E731
+        meshes = dual_contour(grid, cell_ijk, np.zeros(len(cell_ijk), dtype=np.int64), values, isovalues,
+                              padding=_FIT_PADDING_CELLS,
+                              field_bounds=_component_extent(frame, in_comp, domain_ids))
+        for i, mesh in enumerate(meshes):
+            if mesh.faces.shape[0] == 0:
+                continue
+            centers = grid.cell_centers(grid.max_level, mesh.vertex_cells)
+            o = _EXTENDED_MASKED_OVERSHOOT_CELLS
+            keep_cell = (
+                _near_cells_where(frame, centers, lambda p: np.isin(cell_domains.at_points(p), in_comp), o)
+                & _near_cells_where(frame, centers, lambda p: _below_younger_groups(frame, fields, group_idx, p), o)
+            )
+            # Quad q is triangles q and q + Q: keep or drop both, by any of its 4 cells.
+            n_quads = mesh.faces.shape[0] // 2
+            quad_kept = keep_cell[mesh.faces[:n_quads]].any(axis=1) | keep_cell[mesh.faces[n_quads:]].any(axis=1)
+            vertices, faces, _ = select_faces(mesh.vertices, mesh.faces, np.concatenate([quad_kept, quad_kept]))
+            pieces[i].append((vertices, faces))
+
+    result = []
+    for element_pieces in pieces:
+        if not element_pieces:
+            result.append((np.empty((0, 3), dtype=np.float64), np.empty((0, 3), dtype=np.int32)))
+            continue
+        offsets = np.cumsum([0] + [v.shape[0] for v, _ in element_pieces[:-1]])
+        vertices = np.concatenate([v for v, _ in element_pieces])
+        faces = np.concatenate([f + off for (_, f), off in zip(element_pieces, offsets)])
+        result.append((vertices, faces.astype(np.int32)))
+    return result
+
+
+def _component_band(frame: StructuralFrame, comp_ids: List[int], depth: int,
+                    cell_domains: "_CellDomainCache") -> IntArray:
+    """
+    The max-level cells outside a fault-domain component, within ``depth`` cells of it.
+
+    "Within" counts the 26 neighbours of a cell as one step; the cells lie in the
+    extent padded by ``_FIT_PADDING_CELLS`` (shell cells take the domain of the
+    nearest boundary cell). The component's boundary runs along faults, whose
+    cells the fault model refined to max level, so the band is grown from the
+    fault model's max-level cells next to a cell on the other side of the boundary.
+    Empty without faults or if the component has all domains.
+
+    Returns:
+        Cell indices of shape ``(B, 3)``, unique.
+    """
+    ff = frame.fault_frame
+    if ff is None or set(comp_ids) >= set(map(int, _domain_ids(frame))):
+        return np.empty((0, 3), dtype=np.int64)
+    grid = frame.grid
+    lattice = _PaddedLattice(grid)
+
+    def in_comp(ijk: IntArray) -> BoolArray:
+        return np.isin(cell_domains.of_cells(ijk), comp_ids)
+
+    fine = ff.cells.level == grid.max_level
+    fault_ijk = ff.cells.ijk[fine].astype(np.int64)
+    fault_in = np.isin(np.asarray(ff.domain_map, dtype=np.int64)[fine], comp_ids)
+    # Fault-model cells with a neighbour on the other side of the component's boundary ...
+    around = (fault_ijk[:, None, :] + _NEIGHBOURHOOD[None, :, :]).reshape(-1, 3)
+    around_in = in_comp(lattice.clip(around)).reshape(fault_ijk.shape[0], -1)
+    boundary = fault_ijk[(around_in != fault_in[:, None]).any(axis=1)]
+    if boundary.size == 0:
+        return np.empty((0, 3), dtype=np.int64)
+    # ... and the component's cells among them and their neighbours, from which the band is measured.
+    near_boundary = lattice.grow(boundary, 1)
+    seeds = near_boundary[in_comp(near_boundary)]
+    candidates = lattice.grow(seeds, depth)
+    return candidates[~in_comp(candidates)]
+
+
+# A cell and its 26 neighbours (sharing a face, an edge or a corner), as index steps.
+_NEIGHBOURHOOD: IntArray = np.stack(
+    np.meshgrid(*[np.arange(-1, 2)] * 3, indexing="ij"), axis=-1).reshape(-1, 3).astype(np.int64)
+
+
+class _PaddedLattice:
+    """
+    The max-level cells of the extent padded by ``_FIT_PADDING_CELLS``, addressed by one int64 key each.
+
+    Keys run x-major like ``(i, j, k)`` rows, so sorting keys orders cells as a
+    row-wise ``np.unique(..., axis=0)`` would, only much faster.
+    """
+
+    def __init__(self, grid: OctreeGrid) -> None:
+        n_finest = np.array(grid.finest_resolution, dtype=np.int64)
+        self.low = np.full(3, -_FIT_PADDING_CELLS, dtype=np.int64)
+        self.high = n_finest - 1 + _FIT_PADDING_CELLS
+        self._size = self.high - self.low + 1
+
+    def inside(self, ijk: IntArray) -> BoolArray:
+        return np.all((ijk >= self.low) & (ijk <= self.high), axis=1)
+
+    def clip(self, ijk: IntArray) -> IntArray:
+        return np.clip(ijk, self.low, self.high)
+
+    def keys(self, ijk: IntArray) -> IntArray:
+        s = ijk - self.low
+        return (s[:, 0] * self._size[1] + s[:, 1]) * self._size[2] + s[:, 2]
+
+    def cells(self, keys: IntArray) -> IntArray:
+        rest, k = np.divmod(keys, self._size[2])
+        i, j = np.divmod(rest, self._size[1])
+        return np.column_stack([i, j, k]) + self.low
+
+    def grow(self, ijk: IntArray, reach: int) -> IntArray:
+        """Every cell of the lattice within ``reach`` steps of the cells, unique and sorted."""
+        keys = np.unique(self.keys(ijk))
+        for _ in range(reach):
+            around = (self.cells(keys)[:, None, :] + _NEIGHBOURHOOD[None, :, :]).reshape(-1, 3)
+            keys = np.unique(self.keys(around[self.inside(around)]))
+        return self.cells(keys)
+
+
+class _CellDomainCache:
+    """
+    The fault domain of max-level cells of the padded lattice (that of their center,
+    see :func:`_point_domains`), each cell located only once.
+
+    The EXTENDED_MASKED extraction asks for the domains of the same cells around
+    the faults for every group and component. The cache is a sorted key array
+    with the domains, so it grows with the cells asked for, not with the lattice.
+    """
+
+    def __init__(self, frame: StructuralFrame) -> None:
+        self._frame = frame
+        self._lattice = _PaddedLattice(frame.grid)
+        self._keys = np.zeros(0, dtype=np.int64)
+        self._domains = np.zeros(0, dtype=np.int64)
+
+    def of_cells(self, ijk: IntArray) -> IntArray:
+        """Domains of the cells ``(M, 3)``, which must lie in the padded lattice; shape ``(M,)``."""
+        keys, inverse = np.unique(self._lattice.keys(ijk), return_inverse=True)
+        pos = np.searchsorted(self._keys, keys)
+        found = pos < self._keys.size
+        found[found] = self._keys[pos[found]] == keys[found]
+        new = keys[~found]
+        if new.size:
+            grid = self._frame.grid
+            domains = _point_domains(self._frame, grid.cell_centers(grid.max_level, self._lattice.cells(new)))
+            at = np.searchsorted(self._keys, new)
+            self._keys = np.insert(self._keys, at, new)
+            self._domains = np.insert(self._domains, at, domains)
+        return self._domains[np.searchsorted(self._keys, keys)][inverse.reshape(-1)]
+
+    def at_points(self, points: FloatArray) -> IntArray:
+        """Domains of the max-level cells containing the points (clipped to the padded lattice)."""
+        grid = self._frame.grid
+        return self.of_cells(self._lattice.clip(
+            np.floor((points - grid.origin) / grid.finest_spacing).astype(np.int64)))
+
+
 def _age_masks_at(frame: StructuralFrame, fields: GroupFields, points: FloatArray) -> BoolArray:
     """Every group's age mask at the points, each in its own fault domain, shape ``(n_groups, M)``."""
     domains = _point_domains(frame, points)
@@ -590,36 +800,100 @@ def _age_masks_at(frame: StructuralFrame, fields: GroupFields, points: FloatArra
 
 def _extract_fault_masked_meshes(frame: StructuralFrame, fields: GroupFields, stored_masks: BoolArray) -> None:
     """
-    Every fault's MASKED and EXTENDED_MASKED meshes: its UNMASKED and EXTENDED
-    triangles outside the youngest group it does not affect.
+    Every fault's MASKED and EXTENDED_MASKED meshes, from its UNMASKED and EXTENDED meshes.
 
-    As in ``general.extract_meshes``: a mesh is kept where that group's age mask
-    is False, and whole if there is no such group. MASKED is also kept whole if
-    the group's mask covers the whole model (checked on the stored cells);
-    EXTENDED_MASKED is not, and is then empty. A triangle is kept if all 3 of
-    its vertices pass, each both at the vertex itself and at the center of the
-    max-level cell containing it (in the padding shell for EXTENDED vertices).
+    As in ``general.extract_all_meshes_per_domain``, with ``group_idx`` the
+    youngest group the fault does not affect, and both meshes kept whole if
+    there is no such group:
+
+    - MASKED is kept where that group's age mask is False, and whole if the
+      group's mask covers the whole model (checked on the stored cells). A
+      triangle is kept if all 3 of its vertices pass, each both at the vertex
+      itself and at the center of the max-level cell containing it.
+    - EXTENDED_MASKED is kept below the base of every group up to ``group_idx``
+      (all groups younger than the youngest group the fault affects), plus an
+      overshoot of ``general._EXTENDED_MASKED_OVERSHOOT_CELLS`` finest cells, so it
+      reliably crosses the unconformity. A triangle is kept if all 3 of its
+      vertices lie in a max-level cell (in the padding shell for vertices outside
+      the extent) within the overshoot of a cell whose center is below these
+      bases (:func:`_near_cells_where`); the regular grid keeps a marching-cubes
+      cube by the same rule on its corner cells. If no cell is below them, the
+      mesh is empty.
     """
+    from core.structural_modeling_components.general import _EXTENDED_MASKED_OVERSHOOT_CELLS
+
     activity = frame.fault_activity_verbose or {}
     for fault in frame.fault_frame.fault_elements:
         group_idx = activity[fault.name]["youngest_group_index"] - 1 if fault.name in activity else -1
-        for source, target, keep_whole in [
-            (FaultMeshType.UNMASKED, FaultMeshType.MASKED, group_idx < 0 or stored_masks[group_idx].all()),
-            (FaultMeshType.EXTENDED, FaultMeshType.EXTENDED_MASKED, group_idx < 0),
-        ]:
+        for source, target in [(FaultMeshType.UNMASKED, FaultMeshType.MASKED),
+                               (FaultMeshType.EXTENDED, FaultMeshType.EXTENDED_MASKED)]:
             vertices = fault.vertices.get(source)
             faces = fault.edges.get(source)
             if vertices is None or faces is None:
                 continue
             vertices = np.asarray(vertices, dtype=np.float64)
             faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
-            if keep_whole:
+            if group_idx < 0 or (target == FaultMeshType.MASKED and stored_masks[group_idx].all()):
                 kept_vertex = np.ones(vertices.shape[0], dtype=bool)
-            else:
+            elif target == FaultMeshType.MASKED:
                 kept_vertex = ~(_age_mask_at_vertex_cells(frame, fields, vertices)[group_idx]
                                 | _age_masks_at(frame, fields, vertices)[group_idx])
+            else:
+                kept_vertex = _near_cells_where(
+                    frame, vertices, lambda points: _below_younger_groups(frame, fields, group_idx + 1, points),
+                    _EXTENDED_MASKED_OVERSHOOT_CELLS)
             kept_vertices, kept_faces, _ = select_faces(vertices, faces, kept_vertex[faces].all(axis=1))
             fault.set_mesh(target, kept_vertices, kept_faces.astype(np.int32))
+
+
+def _below_younger_groups(frame: StructuralFrame, fields: GroupFields, group_idx: int, points: FloatArray) -> BoolArray:
+    """
+    Whether the points lie below the base of every group younger than ``group_idx``.
+
+    The pointwise counterpart of ``general._below_younger_groups_padded``: the base
+    of a group is where its field (in the point's fault domain) reaches the scalar
+    value of its oldest element; groups are ordered youngest first. Unlike the age
+    masks, fault activity plays no role. All True if there is no younger group.
+    """
+    below = np.ones(points.shape[0], dtype=bool)
+    domains = _point_domains(frame, points)
+    for younger_idx, group in enumerate(frame.structural_groups[:group_idx]):
+        sval = group.structural_elements[-1].get_scalar_value() if group.structural_elements else None
+        if sval is None:
+            continue
+        below &= ~(_group_values(fields[younger_idx], points, domains) >= sval)
+    return below
+
+
+def _near_cells_where(
+        frame: StructuralFrame, points: FloatArray, condition: Callable[[FloatArray], BoolArray], reach: int
+) -> BoolArray:
+    """
+    Whether the max-level cell containing each point lies within ``reach`` cells of one
+    where ``condition`` holds at the cell center.
+
+    The octree counterpart of growing a voxel mask by ``reach`` cells
+    (``binary_dilation``) and looking it up: "within" counts the 26 neighbours of a
+    cell as one step. The cells are those of the padded lattice (the extent plus
+    ``_FIT_PADDING_CELLS`` finest cells on every side); cells beyond it don't count.
+    Each cell's center is evaluated once.
+    """
+    grid = frame.grid
+    lattice = _PaddedLattice(grid)
+    ijk = lattice.clip(np.floor((points - grid.origin) / grid.finest_spacing).astype(np.int64))
+    # Each distinct cell once: the cells of the points (vertices share cells), then those within reach.
+    cell_keys, cell_of_point = np.unique(lattice.keys(ijk), return_inverse=True)
+    cells = lattice.cells(cell_keys)
+    steps = np.arange(-reach, reach + 1)
+    offsets = np.stack(np.meshgrid(steps, steps, steps, indexing="ij"), axis=-1).reshape(-1, 3)
+    around = (cells[:, None, :] + offsets[None, :, :]).reshape(-1, 3)
+    in_lattice = lattice.inside(around)
+    candidate_keys, inverse = np.unique(lattice.keys(around[in_lattice]), return_inverse=True)
+    holds = np.zeros(around.shape[0], dtype=bool)
+    if candidate_keys.size:
+        centers = grid.cell_centers(grid.max_level, lattice.cells(candidate_keys))
+        holds[in_lattice] = np.asarray(condition(centers), dtype=bool)[inverse.reshape(-1)]
+    return holds.reshape(cells.shape[0], -1).any(axis=1)[cell_of_point.reshape(-1)]
 
 
 def _age_mask_at_vertex_cells(frame: StructuralFrame, fields: GroupFields, vertices: FloatArray) -> BoolArray:
