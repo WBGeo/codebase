@@ -313,10 +313,6 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
     extent=(380043, 380128, 5700896, 5700938, z_e, 125),
     mesh_size=1,
     curve_mesh_size=8,
-    DISTANCE_THRESHOLD=2.0,
-    PROJECTION_THRESHOLD=3.8,
-    EXTRUSION_FACTOR=4.5,
-    z_threshold=1,
     mapping_litho= 'none',
 )
 

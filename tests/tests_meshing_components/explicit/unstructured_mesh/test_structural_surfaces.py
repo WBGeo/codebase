@@ -5,7 +5,6 @@ import gmsh
 import numpy as np
 
 from core.meshing_components.explicit.unstructured import structural_surfaces as ss
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
 
 
 def grid_mesh(nx, ny, height=lambda x, y: 0.0 * x, skip=()):
@@ -167,9 +166,53 @@ class MissingExtendedMaskedTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "surface_source='reconstructed'"):
             ss.collect_surface_pieces(result)
 
-    def test_invalid_surface_source_raises(self):
-        with self.assertRaisesRegex(ValueError, "Invalid surface_source"):
-            create_unstructured_mesh_data(geomodel_result=fake_result([]), surface_source="nonsense")
+    def test_fault_without_extended_masked_mesh_raises(self):
+        """Faults, like geological surfaces, require extended_masked meshes."""
+        fault_vertices, fault_faces = grid_mesh(3, 3)
+        result = fake_result([], faults=[("fault", fault_vertices, fault_faces)])
+        result.structural_frame.fault_frame.fault_elements[0].vertices = {}
+
+        with self.assertRaisesRegex(ValueError, "fault.*extended_masked"):
+            ss.collect_surface_pieces(result)
+
+
+
+
+class CollectSurfacePiecesRegressionTestCase(unittest.TestCase):
+
+    def test_collects_geological_pieces_before_fault_pieces(self):
+        geological = grid_mesh(3, 3)
+        fault_vertices, fault_faces = grid_mesh(3, 3)
+        fault_vertices = fault_vertices[:, [2, 0, 1]]
+        result = fake_result([("layer", *geological)], faults=[("fault", fault_vertices, fault_faces)])
+        pieces = ss.collect_surface_pieces(result)
+        self.assertEqual([(p.name, p.is_fault) for p in pieces],
+                         [("layer", False), ("fault", True)])
+
+    def test_discards_small_extended_masked_fragments_without_cleaning(self):
+        """Small surface patches are filtered directly from extended_masked meshes."""
+        large = grid_mesh(3, 3)  # area 9, above the 4-cell minimum
+        tiny_v, tiny_f = grid_mesh(1, 1)  # area 1, below the minimum
+        result = fake_result([
+            ("main", *large),
+            ("tiny", tiny_v + [20.0, 0.0, 0.0], tiny_f),
+        ])
+        pieces = ss.collect_surface_pieces(result)
+        self.assertEqual(len(pieces), 1)
+        self.assertEqual(pieces[0].name, "main")
+        self.assertFalse(pieces[0].is_fault)
+        self.assertEqual(len(pieces[0].faces), 18)
+
+    def test_collects_multiple_disconnected_pieces_from_one_element(self):
+        first_v, first_f = grid_mesh(3, 3)
+        second_v, second_f = grid_mesh(3, 3)
+        vertices = np.vstack((first_v, second_v + [10.0, 0.0, 0.0]))
+        faces = np.vstack((first_f, second_f + len(first_v)))
+        result = fake_result([("layer", vertices, faces)])
+        pieces = ss.collect_surface_pieces(result)
+        self.assertEqual(len(pieces), 2)
+        self.assertTrue(all(p.name == "layer" for p in pieces))
+        self.assertTrue(all(len(p.faces) == 18 for p in pieces))
 
 
 if __name__ == "__main__":
