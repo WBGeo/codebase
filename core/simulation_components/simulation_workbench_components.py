@@ -42,6 +42,7 @@ from core.simulation_components.simulation_packages.golem.golem_run import (
 )
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials,
+    plot_variable_along_line, plot_variable_time_series,
 )
 
 # RemoteFile-controlled path (frontend handles it specially via the
@@ -748,8 +749,12 @@ def export_simulation_results(simulation_result: SimulationResults, format: str 
                              'pre-flight check to catch a wrong material/fault-zone '
                              'assignment before running the (possibly slow) solve.')
 @wbgeo_inspector()
-def inspect_sfepy_problem_plot_materials(problem: SfepyProblem, _inspector: InspectorHelper):
-    plot_builder_materials(problem.inner())
+def inspect_sfepy_problem_plot_materials(
+    problem: SfepyProblem,
+    var_name: Optional[str] = None,
+):
+    """Leave property_name empty for material groups; enter a numeric material property to color by value."""
+    plot_builder_materials(problem.inner(), property_name=var_name, cmap= "viridis")
 
 
 @wbgeo_component(identifier='wbgeo::inspect_golem_problem_plot_materials',
@@ -758,36 +763,46 @@ def inspect_sfepy_problem_plot_materials(problem: SfepyProblem, _inspector: Insp
                              'before running the solver. Custom input assignments cannot '
                              'be inferred safely and produce an informative error.')
 @wbgeo_inspector()
-def inspect_golem_problem_plot_materials(problem: GolemProblem, _inspector: InspectorHelper):
-    plot_builder_materials(problem.inner())
+def inspect_golem_problem_plot_materials(
+    problem: GolemProblem,
+    var_name: Optional[str] = None,
+):
+    """Leave property_name empty for material blocks; enter a numeric material property to color by value."""
+    plot_builder_materials(problem.inner(), property_name=var_name, cmap= "viridis")
+
+
+def _saved_time_for_step(simulation_result: SimulationResults, time_step: int) -> float:
+    """Translate a zero-based saved-result index into its original simulation-time key."""
+    times = sorted(simulation_result.nodes_by_time)
+    if not times:
+        raise ValueError("Simulation has no saved time steps.")
+    if not isinstance(time_step, int) or isinstance(time_step, bool) or not 0 <= time_step < len(times):
+        raise ValueError(
+            f"time_step must be an integer from 0 to {len(times) - 1} "
+            f"({len(times)} saved results); got {time_step!r}."
+        )
+    return times[time_step]
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_variable_at_a_time',
-                 title='Plot Variable (Final Time)',
-                 description='Plots "T" at the final solved time step if present, else '
-                             'whatever variable the result actually has -- a custom SfePy '
-                             'problem is not restricted to hydrothermal physics.')
+                 title='Plot Variable (Time Step)',
+                 description='Plot a simulation variable at the selected zero-based saved time step. '
+                             'Defaults to the final saved step. The time_step input is an index, '
+                             'not physical simulation time.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_variable_at_a_time(
     simulation_result: SimulationResults,
     var_name: Optional[str] = None,
-    time: Optional[float] = None,
+    time_step: Optional[int] = None,
 ):
-    # var_name/time left at their defaults ("T" if present else whatever
-    # field exists, at the final time step) -- see
-    # simulation_visualization.plot_variable_at_a_time/_default_var_name.
-    #
-    # show_edges=False (rather than the codebase default's usual True) and
-    # a capped off_screen/window_size/no-antialiasing render: this is the
-    # only 3D plot in the Workbench whose surface is colored by a
-    # continuous scalar field with a colorbar rather than flat per-block
-    # colors -- confirmed to be disproportionately expensive under the
-    # Workbench container's software (no GPU/display) rendering, unlike
-    # every flat-colored 3D plot here (Plot Mesh in 3D, Plot Materials).
+    times = sorted(simulation_result.nodes_by_time)
+    if not times:
+        raise ValueError("Simulation has no saved time steps.")
+    physical_time = times[-1] if time_step is None else _saved_time_for_step(simulation_result, time_step)
     plot_variable_at_a_time(
         simulation_result,
         var_name=var_name,
-        time=time,
+        time=physical_time,
         cmap="coolwarm", show_edges=False,
         off_screen=True, window_size=(800, 600), anti_aliasing=False,
     )
@@ -795,22 +810,89 @@ def inspect_simulation_result_plot_variable_at_a_time(
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_cross_section_2D',
                  title='Plot Cross Section 2D',
-                 description='Plots a cross-section of "T" if present, else whatever '
-                             'variable the result actually has, comparing the initial and '
-                             'final time steps.')
+                 description='Compare a variable between two zero-based saved time-step indices. '
+                             'Defaults to the first and last saved steps.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_cross_section_2D(
-    simulation_result: SimulationResults, _inspector: InspectorHelper):
-    # plot_cross_section_2D's own default origin=(0, 0, 0) sits right on the
-    # domain boundary -- mesh nodes are cell-centered (inset from the
-    # nominal domain edges), so that default slice can miss every node and
-    # raise. The mesh's own centroid is always a valid slice origin
-    # regardless of the model's actual extent.
-    first_time = min(simulation_result.nodes_by_time.keys())
-    origin = tuple(simulation_result.nodes_by_time[first_time].mean(axis=0))
-    # var_name left at its default ("T" if present else whatever field
-    # exists) -- see simulation_visualization._default_var_name.
-    plot_cross_section_2D(simulation_result, origin=origin, cmap="coolwarm")
+    simulation_result: SimulationResults,
+    _inspector: InspectorHelper,
+    var_name: Optional[str] = None,
+    time_step1: Optional[int] = None,
+    time_step2: Optional[int] = None,
+):
+    times = sorted(simulation_result.nodes_by_time)
+    if not times:
+        raise ValueError("Simulation has no saved time steps.")
+    # Use the mesh centroid so the slicing plane intersects the domain.
+    origin = tuple(simulation_result.nodes_by_time[times[0]].mean(axis=0))
+    physical_time_a = times[0] if time_step1 is None else _saved_time_for_step(simulation_result, time_step1)
+    physical_time_b = times[-1] if time_step2 is None else _saved_time_for_step(simulation_result, time_step2)
+    plot_cross_section_2D(
+        simulation_result,
+        time_a=physical_time_a,
+        time_b=physical_time_b,
+        var_name=var_name,
+        origin=origin,
+        cmap="coolwarm",
+    )
+
+AnnotatedPoint = typing.Annotated[Tuple[float, float, float], AnnotatedScriptType(identifier='wbgeo::mesh:point', name='Point', controlled='Tuple|X|Y|Z')]
+
+@wbgeo_component(
+    identifier='wbgeo::inspect_simulation_result_plot_variable_along_line',
+    title='Plot Variable Along Line',
+    description='Sample a result variable along a 3D line at a zero-based saved time step. '
+                'Line endpoints are model coordinates; defaults use the mesh bounding-box diagonal.',
+)
+@wbgeo_inspector()
+def inspect_simulation_result_plot_variable_along_line(
+    simulation_result: SimulationResults,
+    _inspector: InspectorHelper,
+    var_name: Optional[str] = None,
+    time_step: Optional[int] = None,
+    p0: Optional[AnnotatedPoint] = None,
+    p1: Optional[AnnotatedPoint] = None,
+    n_samples: int = 200,
+):
+    print(p0)
+    import sys
+    print(p0, file=sys.stderr)
+    physical_time = (None if time_step is None
+                     else _saved_time_for_step(simulation_result, time_step))
+    plot_variable_along_line(
+        simulation_result,
+        var_name=var_name,
+        time=physical_time,
+        p0=p0,
+        p1=p1,
+        n_samples=n_samples,
+    )
+
+
+@wbgeo_component(
+    identifier='wbgeo::inspect_simulation_result_plot_variable_time_series',
+    title='Plot Variable Time Series',
+    description='Plot a variable at a 3D point over saved time steps, optionally limiting '
+                'the range with zero-based inclusive start/end step indices.',
+)
+@wbgeo_inspector()
+def inspect_simulation_result_plot_variable_time_series(
+    simulation_result: SimulationResults,
+    _inspector: InspectorHelper,
+    var_name: Optional[str] = None,
+    point: Optional[AnnotatedPoint] = None,
+    time_step_start: Optional[int] = None,
+    time_step_end: Optional[int] = None,
+    decimals: int = 3,
+):
+    plot_variable_time_series(
+        simulation_result,
+        var_name=var_name,
+        point=point,
+        decimals=decimals,
+        time_step_start=time_step_start,
+        time_step_end=time_step_end,
+    )
 
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_stdout',

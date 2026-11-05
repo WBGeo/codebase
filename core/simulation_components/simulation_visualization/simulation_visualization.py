@@ -62,6 +62,11 @@ def _variable_label(var_name: str) -> str:
     return _VARIABLE_LABELS.get(var_name, var_name)
 
 
+def _time_step_index(sim: SimulationResults, time: float) -> int:
+    """Zero-based saved-step index for a simulation time key."""
+    return sorted(sim.nodes_by_time).index(time)
+
+
 def _format_rock_properties(props: RockUnitProperties) -> str:
     """
     Compact one-line summary of a RockUnitProperties for legend labels --
@@ -365,7 +370,7 @@ def plot_variable_at_a_time(
         # redundant scalar bar even though color= is a fixed solid color
         # here, not scalars=.
         plotter.add_mesh(contours, color=contour_color, line_width=2, show_scalar_bar=False)
-    plotter.add_text(f"{_variable_label(var_name)} at time {time}", font_size=20, position="upper_edge")
+    plotter.add_text(f"{_variable_label(var_name)} at time step {_time_step_index(sim, time)}", font_size=20, position="upper_edge")
     plotter.show_bounds(location="furthest", grid=True)
     _apply_camera_convention(plotter)
     plotter.show()
@@ -438,7 +443,7 @@ def plot_variable_difference(
         surf, scalars=diff_name, cmap=cmap, show_edges=show_edges, clim=(-max_abs, max_abs),
         scalar_bar_args={"title": f"Δ {_variable_label(var_name)}"},
     )
-    plotter.add_text(f"Change in {_variable_label(var_name)}: t={time_a} -> t={time_b}", font_size=18, position="upper_edge")
+    plotter.add_text(f"Change in {_variable_label(var_name)}: step {_time_step_index(sim, time_a)} -> step {_time_step_index(sim, time_b)}", font_size=18, position="upper_edge")
     plotter.show_bounds(location="furthest", grid=True)
     _apply_camera_convention(plotter)
     plotter.show()
@@ -581,7 +586,7 @@ def plot_cross_section_2D(
         last_cf = ax.contourf(UG, VG, Z, levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
         cs = ax.contour(UG, VG, Z, levels=levels, colors="k", linewidths=0.5)
         ax.clabel(cs, inline=True, fontsize=7, fmt="%.1f")
-        ax.set_title(f"t={t}")
+        ax.set_title(f"Time step {_time_step_index(sim, t)}")
         ax.set_xlabel(u_label)
         ax.set_ylabel(v_label)
         ax.set_aspect("equal")
@@ -653,7 +658,7 @@ def plot_cross_section_difference_2D(
     ax.set_ylabel(v_label)
     ax.set_aspect("equal")
     fig.colorbar(cf, ax=ax, orientation="vertical", label=f"Δ {_variable_label(var_name)}", fraction=0.046, pad=0.04)
-    fig.suptitle(f"Δ {_variable_label(var_name)} cross-section (origin={origin}, normal={normal}): t={time_a} -> t={time_b}")
+    fig.suptitle(f"Δ {_variable_label(var_name)} cross-section (origin={origin}, normal={normal}): step {_time_step_index(sim, time_a)} -> step {_time_step_index(sim, time_b)}")
     plt.show()
 
 
@@ -678,6 +683,8 @@ def plot_variable_along_line(
     and plot it against distance along the line (via PyVista's own
     pv.Line(...).sample(grid), which linearly interpolates from the mesh).
     """
+    if var_name is None:
+        var_name = _default_var_name(sim, time)
     grid = build_grid_from_class(sim, time, var_names=[var_name])
     if var_name not in grid.point_data and var_name not in grid.cell_data:
         raise _variable_not_found_error(sim, time, var_name)
@@ -694,7 +701,7 @@ def plot_variable_along_line(
     plt.plot(distances, values, "-k")
     plt.xlabel("Distance along line")
     plt.ylabel(_variable_label(var_name))
-    plt.title(f"{_variable_label(var_name)} along line at time {time}")
+    plt.title(f"{_variable_label(var_name)} along line at time step {_time_step_index(sim, time)}")
     plt.grid(True)
     plt.tight_layout()
     plt.show()
@@ -748,6 +755,8 @@ def plot_variable_time_series(
     var_name: str,
     point: Tuple[float, float, float],
     decimals: int = 3,
+    time_step_start: Optional[int] = None,
+    time_step_end: Optional[int] = None,
 ) -> None:
     """
     Sample var_name at a single point across every saved time step and plot
@@ -755,9 +764,19 @@ def plot_variable_time_series(
     plotted as a gap (NaN) rather than raising, so one bad step doesn't
     prevent seeing the rest of the series.
     """
+    if var_name is None:
+        var_name = _default_var_name(sim, time)
     times = sorted(sim.nodes_by_time.keys())
     if not times:
         raise ValueError("sim has no time steps.")
+    start = 0 if time_step_start is None else time_step_start
+    end = len(times) - 1 if time_step_end is None else time_step_end
+    for label, index in (("time_step_start", start), ("time_step_end", end)):
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(times):
+            raise ValueError(f"{label} must be an integer from 0 to {len(times) - 1}; got {index!r}.")
+    if start > end:
+        raise ValueError("time_step_start must be <= time_step_end.")
+    selected_times = times[start:end + 1]
 
     # Geometry is built once (for times[0]) and reused across every
     # subsequent timestep when it's unchanged (the common case -- see
@@ -765,7 +784,7 @@ def plot_variable_time_series(
     # saved step just to sample one point.
     mesh = _build_grid_geometry(sim, times[0])
     values = []
-    for t in times:
+    for t in selected_times:
         if not _same_geometry(sim, times[0], t):
             mesh = _build_grid_geometry(sim, t)
         _attach_time_data(mesh, sim, t, var_names=[var_name])
@@ -776,10 +795,10 @@ def plot_variable_time_series(
     values = np.array(values)
 
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(times, values, "-o", color="tab:red")
-    ax.set_xlabel("Time")
+    ax.plot(range(start, end + 1), values, "-o", color="tab:red")
+    ax.set_xlabel("Time step")
     ax.set_ylabel(_variable_label(var_name))
-    ax.set_title(f"{_variable_label(var_name)} at point {point} over time")
+    ax.set_title(f"{_variable_label(var_name)} at point {point} over time steps")
     ax.grid(True)
     ax.yaxis.set_major_formatter(FormatStrFormatter(f"%.{decimals}f"))
     plt.tight_layout()
@@ -1228,13 +1247,36 @@ def plot_golem_materials(builder, *, show_edges: bool = False, show_plotter: boo
             entries.append((index, f"Fault: {name}", "fault"))
             property_by_index[index] = fault_props
     else:
-        entries.extend((block_id - 1, "Reservoir rock", "rock") for block_id in builder.volume_blocks)
-        entries.extend((block_id - 1, "Geological fault", "fault") for block_id in builder.geological_fault_blocks)
-        entries.extend((block_id - 1, "Reservoir fracture", "fracture") for block_id in builder.fracture_blocks)
-        entries.extend((block_id - 1, "Well", "well") for block_id in builder.well_blocks)
+        # Simple-reservoir properties are scalar fields on the builder itself,
+        # not per-lithology RockUnitProperties objects. Populate the per-block
+        # mapping so property_name='rock_porosity' (etc.) can be plotted.
+        rock_properties = {
+            name: getattr(builder, name)
+            for name in (
+                "rock_porosity", "rock_permeability", "rock_density",
+                "rock_thermal_conductivity", "rock_heat_capacity",
+            )
+        }
+        material_groups = (
+            (builder.volume_blocks, "Reservoir rock", "rock", rock_properties),
+            (builder.geological_fault_blocks, "Geological fault", "fault",
+             {**rock_properties,
+              "geological_fault_aperture": builder.geological_fault_aperture}),
+            (builder.fracture_blocks, "Reservoir fracture", "fracture",
+             {"fracture_porosity": builder.fracture_porosity,
+              "fracture_aperture": builder.fracture_aperture}),
+            (builder.well_blocks, "Well", "well",
+             {"well_porosity": builder.well_porosity,
+              "well_permeability": builder.well_permeability,
+              "well_scaling_factor": builder.well_scaling_factor}),
+        )
+        for block_ids, label, category, properties in material_groups:
+            for block_id in block_ids:
+                index = block_id - 1  # Simple reservoir uses 1-based Exodus IDs.
+                entries.append((index, label, category))
+                property_by_index[index] = dict(properties)
 
-        # Optional static porosity preview supplied by the model script.
-        # This is a visualization-only mapping, not evaluated GOLEM output.
+        # Optional visualization-only porosity overrides, if explicitly given.
         preview = getattr(builder, "preview_material_porosity", None)
         if preview is not None:
             category_blocks = {
@@ -1245,9 +1287,7 @@ def plot_golem_materials(builder, *, show_edges: bool = False, show_plotter: boo
             for category, block_ids in category_blocks.items():
                 if category in preview:
                     for block_id in block_ids:
-                        property_by_index[block_id - 1] = {
-                            "porosity": float(preview[category])
-                        }
+                        property_by_index[block_id - 1]["porosity"] = float(preview[category])
 
     if not entries:
         raise ValueError("No GOLEM material blocks were identified for preview.")

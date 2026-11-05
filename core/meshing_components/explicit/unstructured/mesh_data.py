@@ -1770,7 +1770,9 @@ PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, Lis
 
 EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
 
-TriangulationData = typing.Annotated[typing.Union[NDArray[np.float64], Dict[int, NDArray[np.float64]]], AnnotatedScriptType( name='triangulation', color='aqua',
+from pydantic_numpy import NpNDArrayFp64
+
+TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name='triangulation', color='aqua',
         identifier='mesh::TriangulationData')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
