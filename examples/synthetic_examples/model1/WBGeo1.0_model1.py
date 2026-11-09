@@ -165,7 +165,7 @@ mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=struc
 
 # Explicit unstructured mesh
 mesh_explicit_unstructured = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
+    geomodel=structural_model_result,
     mesh_size=30,
     curve_mesh_size=5
 )
@@ -274,7 +274,7 @@ refinement = Refinement(
 
 # # Explicit unstructured mesh with objects
 #mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
+#     geomodel=structural_model_result,
 #     extent=(0,1000,0,1000,0,950),
 #     wells=wells,
 #     sources=sources,
@@ -834,7 +834,7 @@ model1_simple_reservoir_results = run_simulation_golem(
 #    )
 
 #mesh_model1_simple_reservoir = create_unstructured_mesh_data(
-#        geomodel_result=structural_model_result,
+#        geomodel=structural_model_result,
 #        extent=reservoir_extent,
 #        wells=reservoir_wells,
 #        extra_planes=reservoir_fracture_planes,

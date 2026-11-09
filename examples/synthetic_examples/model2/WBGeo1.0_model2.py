@@ -15,7 +15,7 @@ from core.structural_modeling_components.structural_modeling_visualization.struc
 plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_3D, plot_fault_model_2D,
 plot_fault_input_data_3D, plot_input_data_3D)
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, load_csv_surface_coordinates, \
   load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
@@ -236,7 +236,7 @@ mesh_implicit_structured= create_implicit_structured_mesh(geomodel_result=struct
 
 # Explicit unstructured mesh
 mesh_explicit_unstructured = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
+    geomodel=structural_model_result,
     tolerance=50,
     mesh_size=50,
     curve_mesh_size=5,
@@ -259,7 +259,7 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
 
 mesh_explicit_unst_from_file = create_unstructured_mesh_data(
-    surface_csv_dir= cwd+ "/examples/synthetic_examples/model2/input_data/surfaces",
+    geomodel= load_csv_surface_coordinates(cwd+ "/examples/synthetic_examples/model2/input_data/surfaces"),
 
     extent=(0, 2500, 0, 1000, 0, 1000),
 
@@ -357,7 +357,7 @@ plot_mesh_3d(mesh_explicit_unst_from_file, structural_model_result, show_plotter
 
 # # Explicit unstructured mesh with objects
 #mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel_result=structural_model_result,
+#     geomodel=structural_model_result,
 #     tolerance=50,
 #     mesh_size=50,
 #     curve_mesh_size=5,
@@ -918,7 +918,7 @@ model2_reservoir_refinement = Refinement(
 # Build a NEW mesh specifically for the custom reservoir simulation.
 
 mesh_model2_custom_reservoir = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
+    geomodel=structural_model_result,
     extent=model2_reservoir_extent,
     wells=model2_reservoir_wells,
     extra_planes=model2_reservoir_fracture_planes,

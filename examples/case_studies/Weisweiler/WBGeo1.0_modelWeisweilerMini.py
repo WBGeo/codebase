@@ -110,7 +110,7 @@ mesh_implicit= create_implicit_structured_mesh(geomodel_result=structural_model_
 
 # Implicit unstructured mesh (without engineering objects)
 mesh_explicit_unstr = create_unstructured_mesh_data(
-    geomodel_result=structural_model_result,
+    geomodel=structural_model_result,
     tolerance=700,
     mesh_size=50,
     smooth=0.02,

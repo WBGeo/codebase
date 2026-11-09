@@ -111,8 +111,14 @@
           "connected_comp": 663,
           "connected_port": "structural_model"
         },
+        "7": {
+          "fixed_value": "50"
+        },
         "8": {
-          "fixed_value": "20"
+          "fixed_value": "50"
+        },
+        "9": {
+          "fixed_value": "5"
         },
         "10": {
           "fixed_value": "40"
@@ -122,6 +128,9 @@
         },
         "12": {
           "fixed_value": "80"
+        },
+        "13": {
+          "fixed_value": "10"
         }
       }
     },

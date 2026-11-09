@@ -94,7 +94,7 @@ class UnstructuredMeshTestCase(unittest.TestCase):
     def test_unstructured_mesh_basic_properties(self):
 
         mesh_generated = create_unstructured_mesh_data(
-            geomodel_result=self.geomodel_result,
+            geomodel=self.geomodel_result,
             #wells=self.wells,
             #sources=self.sources,
             shafts=self.shafts,

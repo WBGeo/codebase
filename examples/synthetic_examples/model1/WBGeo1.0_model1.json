@@ -105,7 +105,7 @@
           "connected_comp": 542,
           "connected_port": "structural_model"
         },
-        "2": {
+        "1": {
           "connected_comp": 567,
           "connected_port": "Wells"
         }

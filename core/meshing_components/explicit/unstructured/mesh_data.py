@@ -1,6 +1,7 @@
 import logging
 import typing
 import re
+from pydantic.dataclasses import dataclass
 from pathlib import Path
 import gmsh
 from py_api_wbgeo import smartcontrols
@@ -33,75 +34,9 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (Refin
                                                                            TriangulationRefinement)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
 from enum import Enum, StrEnum
+from pydantic_numpy import NpNDArrayFp64
 
 
-
-def _load_csv_surface_coordinates(surface_csv_dir):
-    """Load surface point coordinates from CSV files for extent and meshing.
-
-    Each CSV represents one surface and contains a header with ``x``, ``y``,
-    and ``z`` columns, followed by one 3D coordinate point per row. Fault and
-    geological surfaces share this format; for example, ``fault1.csv`` and
-    ``surface_0.csv`` both contain::
-
-        x,y,z
-        1598.8658142089844,-40.0,1019.999991966042
-        1615.1783417083404,-40.0,996.7021942749328
-
-    Column names are matched case-insensitively after stripping whitespace.
-    Other columns, if present, are ignored. Non-numeric or non-finite coordinate
-    rows are discarded. Each file must retain at least three valid points.
-    CSV files are processed in filename order; hidden files and non-CSV files
-    are ignored.
-
-    Args:
-        surface_csv_dir: Directory containing one CSV file per surface.
-            A string or path-like value is accepted; ``~`` is expanded.
-
-    Returns:
-        list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
-        finite floating-point coordinate arrays of shape ``(N, 3)``.
-
-    Raises:
-        ValueError: If the directory does not exist, contains no CSV files,
-            a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
-            valid coordinate rows remain in a file.
-        pandas.errors.ParserError: If pandas cannot parse a CSV file.
-    """
-    csv_root = Path(surface_csv_dir).expanduser()
-    if not csv_root.is_dir():
-        raise ValueError(
-            f"surface_csv_dir is not a directory: {surface_csv_dir}"
-        )
-    csv_files = sorted(
-        p for p in csv_root.iterdir()
-        if p.is_file()
-        and p.suffix.lower() == ".csv"
-        and not p.name.startswith(".")
-        and not p.name.startswith("._")
-    )
-    if not csv_files:
-        raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
-
-    surfaces = []
-    for csv_path in csv_files:
-        df = pd.read_csv(csv_path)
-        columns = {str(c).strip().lower(): c for c in df.columns}
-        missing = [axis for axis in ("x", "y", "z") if axis not in columns]
-        if missing:
-            raise ValueError(
-                f"{csv_path.name} must contain x, y, z columns; missing {missing}."
-            )
-        xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
-            pd.to_numeric, errors="coerce"
-        ).to_numpy(dtype=float)
-        xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
-        if len(xyz) < 3:
-            raise ValueError(
-                f"{csv_path.name} has fewer than 3 valid x,y,z points."
-            )
-        surfaces.append((csv_path, xyz))
-    return surfaces
 
 
 MESH_ENGINEERING_COLOR = '#99b3cc'
@@ -1775,7 +1710,6 @@ PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, Lis
 
 EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
 
-from pydantic_numpy import NpNDArrayFp64
 
 TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name='triangulation', color='aqua',
         identifier='mesh::TriangulationData')]
@@ -1906,6 +1840,7 @@ SmartRefinement = typing.Annotated[
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
                  return_name='Wells',  # the name for the returned-port
+                 is_object_type=True, # render as object
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
@@ -2608,6 +2543,13 @@ def meshit_coordinate_transform(
     return transformed
 
 
+@wbgeo_type(name='Surface as described ', color='#8cb369', identifier='CSVSurfaceModelResults')
+@dataclass
+class CSVSurfaceModelResults:
+  csv_surface_coordinates: List[Tuple[Path, NpNDArrayFp64]]
+
+
+
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
                  title='Create Unstructured Explicit Mesh',  # The title shown in the GUI
@@ -2619,8 +2561,7 @@ def meshit_coordinate_transform(
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
-    geomodel_result: Optional[StructuralModelResults] = None,
-    surface_csv_dir: Optional[str] = None,
+    geomodel: typing.Union[StructuralModelResults, CSVSurfaceModelResults],
     wells: Optional[WellData] = None,
     sources: Optional[SourcesData] = None,
     shafts: Optional[ShaftData] = None,
@@ -2654,8 +2595,7 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.
-        surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.
+        geomodel (StructuralModelResults | CSVSurfaceModelResults): Structural-model input or CSVSurfaceModelResults
         rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
         rotation_angle_translate (float, optional): Rotation angle in degrees in the XY plane with additional translation. The mesh center is used as the reference point. If xt/yt/zt are omitted, the transformed mesh is centered at (0, 0, 0).
         xt, yt, zt (float, optional): Target coordinates of the transformed mesh center, used only with rotation_angle_translate. If specified, all three values must be provided together.
@@ -2703,6 +2643,7 @@ def create_unstructured_mesh_data(
         MeshResults: An instance of the MeshResults class.
     """
 
+
     # normalize
     if isinstance(mapping_litho, str):
         try:
@@ -2714,15 +2655,7 @@ def create_unstructured_mesh_data(
             )
 
     # Input route validation.
-    csv_mode = surface_csv_dir is not None
-    if csv_mode and geomodel_result is not None:
-        raise ValueError(
-            "Use either geomodel_result or surface_csv_dir, not both."
-        )
-    if not csv_mode and geomodel_result is None:
-        raise ValueError(
-            "Either geomodel_result or surface_csv_dir must be supplied."
-        )
+    csv_mode = isinstance(geomodel, CSVSurfaceModelResults)
 
     # CSV surfaces do not contain a structural lithology grid, so lithology
     # mapping is intentionally disabled for this input route.
@@ -2805,7 +2738,6 @@ def create_unstructured_mesh_data(
     else:
         extent_z_min = extent_z_max = None
 
-    csv_surface_data = None  # Load lazily; reuse for extent and mesh preparation.\n\n    # ``extent`` is backward compatible:
     #   * 6 values -> legacy axis-aligned box
     #   * 8 (x,y,z) corners -> oriented parallelepiped
     if extent is None or len(extent) == 0:
@@ -2813,12 +2745,11 @@ def create_unstructured_mesh_data(
             # Same default pattern as structural-model mode: infer the domain
             # from the geological input when no explicit extent is supplied.
             # For CSV surfaces this is the combined x/y/z min/max of all files.
-            csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
             xyz_min = np.min(
-                [xyz.min(axis=0) for _, xyz in csv_surface_data], axis=0
+                [xyz.min(axis=0) for _, xyz in geomodel.csv_surface_coordinates], axis=0
             )
             xyz_max = np.max(
-                [xyz.max(axis=0) for _, xyz in csv_surface_data], axis=0
+                [xyz.max(axis=0) for _, xyz in geomodel.csv_surface_coordinates], axis=0
             )
 
             domain_spec = np.array(
@@ -2831,7 +2762,7 @@ def create_unstructured_mesh_data(
             )
         else:
             domain_spec = np.asarray(
-                geomodel_result.structural_frame.grid.extent, dtype=float
+                geomodel.structural_frame.grid.extent, dtype=float
             )
 
         if extent_z is not None:
@@ -2873,13 +2804,11 @@ def create_unstructured_mesh_data(
         if csv_mode:
             # CSV mode deliberately bypasses data_preparation(): no overlap
             # removal, fault-side cleaning, projection, or surface extension.
-            if csv_surface_data is None:
-                csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
 
             cleaned_surfaces = []
             ref_surface_indices = {}
 
-            for csv_path, xyz in csv_surface_data:
+            for csv_path, xyz in geomodel.csv_surface_coordinates:
                 # IMPORTANT: create_surface_grid() expects exactly
                 # (surface_id, points), not extra metadata.
                 surface_id = csv_path.name
@@ -2908,7 +2837,7 @@ def create_unstructured_mesh_data(
             )
         else:
             cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(
-                geomodel_result,
+                geomodel,
                 DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
                 PROJECTION_THRESHOLD=PROJECTION_THRESHOLD,
                 EXTRUSION_FACTOR=EXTRUSION_FACTOR,
@@ -3030,3 +2959,71 @@ def create_unstructured_mesh_data(
         cell_data=cell_data,
         mesh_type=MeshType.UNSTRUCTURED,
 )
+
+# TODO: Turn this into a wbgeo component once union types are supported
+def load_csv_surface_coordinates(surface_csv_dir) -> CSVSurfaceModelResults:
+  """Load surface point coordinates from CSV files for extent and meshing.
+
+  Each CSV represents one surface and contains a header with ``x``, ``y``,
+  and ``z`` columns, followed by one 3D coordinate point per row. Fault and
+  geological surfaces share this format; for example, ``fault1.csv`` and
+  ``surface_0.csv`` both contain::
+
+      x,y,z
+      1598.8658142089844,-40.0,1019.999991966042
+      1615.1783417083404,-40.0,996.7021942749328
+
+  Column names are matched case-insensitively after stripping whitespace.
+  Other columns, if present, are ignored. Non-numeric or non-finite coordinate
+  rows are discarded. Each file must retain at least three valid points.
+  CSV files are processed in filename order; hidden files and non-CSV files
+  are ignored.
+
+  Args:
+      surface_csv_dir: Directory containing one CSV file per surface.
+          A string or path-like value is accepted; ``~`` is expanded.
+
+  Returns:
+      list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
+      finite floating-point coordinate arrays of shape ``(N, 3)``.
+
+  Raises:
+      ValueError: If the directory does not exist, contains no CSV files,
+          a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
+          valid coordinate rows remain in a file.
+      pandas.errors.ParserError: If pandas cannot parse a CSV file.
+  """
+  csv_root = Path(surface_csv_dir).expanduser()
+  if not csv_root.is_dir():
+    raise ValueError(
+      f"surface_csv_dir is not a directory: {surface_csv_dir}"
+    )
+  csv_files = sorted(
+    p for p in csv_root.iterdir()
+    if p.is_file()
+    and p.suffix.lower() == ".csv"
+    and not p.name.startswith(".")
+    and not p.name.startswith("._")
+  )
+  if not csv_files:
+    raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
+
+  surfaces = []
+  for csv_path in csv_files:
+    df = pd.read_csv(csv_path)
+    columns = {str(c).strip().lower(): c for c in df.columns}
+    missing = [axis for axis in ("x", "y", "z") if axis not in columns]
+    if missing:
+      raise ValueError(
+        f"{csv_path.name} must contain x, y, z columns; missing {missing}."
+      )
+    xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
+      pd.to_numeric, errors="coerce"
+    ).to_numpy(dtype=float)
+    xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+    if len(xyz) < 3:
+      raise ValueError(
+        f"{csv_path.name} has fewer than 3 valid x,y,z points."
+      )
+    surfaces.append((csv_path, xyz))
+  return CSVSurfaceModelResults(surfaces)
