@@ -673,11 +673,8 @@ def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_imp
     assert received["off_screen"] is True
     assert received["window_size"] == (800, 600)
     assert received["anti_aliasing"] is False
-    # time/var_name intentionally left unset here -- plot_variable_at_a_time's
-    # own defaults (final saved time step, "T" if present) apply, matching
-    # this inspector's documented behavior.
-    assert "time" not in received
-    assert "var_name" not in received
+    # The inspector forwards the final saved time to the plotting function.
+    assert received["time"] == pytest.approx(max(sim.nodes_by_time))
 
 
 @pytest.mark.integration
@@ -699,7 +696,7 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
         received.update(kwargs)
 
     monkeypatch.setattr(swc, "plot_cross_section_2D", fake_plot)
-    swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim)
+    swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None)
 
     assert received["simulation_result"] is sim
     assert received["origin"] == pytest.approx(expected_origin)
