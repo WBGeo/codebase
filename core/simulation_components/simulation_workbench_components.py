@@ -45,6 +45,8 @@ from core.simulation_components.simulation_visualization.simulation_visualizatio
     plot_variable_along_line, plot_variable_time_series,
 )
 
+AnnotatedPoint = typing.Annotated[Tuple[float, float, float], AnnotatedScriptType(identifier='wbgeo::mesh:point', name='Point', controlled='Tuple|X|Y|Z')]
+
 # RemoteFile-controlled path (frontend handles it specially via the
 # identifier; in the backend it's a plain string) -- same pattern as
 # core.loading_components.geo_input_data's CSVFileDataType/etc., and the
@@ -819,12 +821,15 @@ def inspect_simulation_result_plot_cross_section_2D(
     var_name: Optional[str] = None,
     time_step1: Optional[int] = None,
     time_step2: Optional[int] = None,
+    origin: Optional[AnnotatedPoint] = (500, 500, 500),
+    normal: AnnotatedPoint = (0, 1, 0),
 ):
     times = sorted(simulation_result.nodes_by_time)
     if not times:
         raise ValueError("Simulation has no saved time steps.")
     # Use the mesh centroid so the slicing plane intersects the domain.
-    origin = tuple(simulation_result.nodes_by_time[times[0]].mean(axis=0))
+    if not origin:
+      origin = tuple(simulation_result.nodes_by_time[times[0]].mean(axis=0))
     physical_time_a = times[0] if time_step1 is None else _saved_time_for_step(simulation_result, time_step1)
     physical_time_b = times[-1] if time_step2 is None else _saved_time_for_step(simulation_result, time_step2)
     plot_cross_section_2D(
@@ -833,10 +838,9 @@ def inspect_simulation_result_plot_cross_section_2D(
         time_b=physical_time_b,
         var_name=var_name,
         origin=origin,
+        normal=normal,
         cmap="coolwarm",
     )
-
-AnnotatedPoint = typing.Annotated[Tuple[float, float, float], AnnotatedScriptType(identifier='wbgeo::mesh:point', name='Point', controlled='Tuple|X|Y|Z')]
 
 @wbgeo_component(
     identifier='wbgeo::inspect_simulation_result_plot_variable_along_line',
@@ -854,9 +858,6 @@ def inspect_simulation_result_plot_variable_along_line(
     p1: Optional[AnnotatedPoint] = None,
     n_samples: int = 200,
 ):
-    print(p0)
-    import sys
-    print(p0, file=sys.stderr)
     physical_time = (None if time_step is None
                      else _saved_time_for_step(simulation_result, time_step))
     plot_variable_along_line(
@@ -915,9 +916,12 @@ def inspect_simulation_result_stdout(simulation_result: SimulationResults, _insp
                 return
         print("No GOLEM solver output recorded for this result.")
         return
-    if not simulation_result.sfepy_stdout:
-        print("No solver output recorded for this result.")
-        return
-    for stage, stdout in simulation_result.sfepy_stdout.items():
+    if simulation_result.sfepy_stdout:
+      for stage, stdout in simulation_result.sfepy_stdout.items():
         print(f"=== {stage} ===")
         print(stdout)
+    elif simulation_result.golem_solver_output:
+      print("=== GOLEM ===")
+      print(simulation_result.golem_solver_output)
+    else:
+      print("No solver output recorded for this result.")
