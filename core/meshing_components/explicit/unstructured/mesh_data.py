@@ -1801,13 +1801,13 @@ def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kin
     ])
 
 
-def __internal_refinement_opt_form(T: typing.Type, kind: str, label: str):
+def __internal_refinement_opt_form(T: typing.Type, kind: str, label: str, defaults = None):
   # Create an optional form
   return smartcontrols.CtrlGroup(id=kind, inner=[
     smartcontrols.CtrlBool(label=label, id='with_' + kind,
                              defaultValue=False),
     smartcontrols.CtrlIf(condition=f"'$.with_{kind}' == \"true\"",
-                         when_true=[smartcontrols.CtrlGroup(id=f"present", inner=smartcontrols.smart_group_from_type(T, None))],
+                         when_true=[smartcontrols.CtrlGroup(id=f"present", inner=smartcontrols.smart_group_from_type(T, defaults))],
                          when_false=[]
                          )
   ])
@@ -1832,7 +1832,7 @@ def __internal_refinement_opt_to_data(data, kind: str, T: typing.Type):
   if data is None or kind not in data:
     return None
   data = data[kind]
-  if f"with_{kind}" not in data or data[f"with_{kind}"] == 'False':
+  if f"with_{kind}" not in data or not data[f"with_{kind}"]:
     return None
   return T(**data["present"])
 
@@ -1857,11 +1857,11 @@ def __internal__refined_form(wells: Optional[WellData] = None,
     if shafts is not None:
         inner.append(__internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'))
     if extra_planes is not None:
-      inner.append(__internal_refinement_opt_form(ExtraPlaneRefinement, 'extra_planes', 'Extra Planes Refinement:'))
+      inner.append(__internal_refinement_opt_form(ExtraPlaneRefinement, 'extra_planes', 'Extra Planes Refinement:', ExtraPlaneRefinement()))
     if ellipses is not None:
-      inner.append(__internal_refinement_opt_form(EllipseRefinement, 'ellipses', 'Ellipses Refinement:'))
+      inner.append(__internal_refinement_opt_form(EllipseRefinement, 'ellipses', 'Ellipses Refinement:', EllipseRefinement()))
     if triangulations is not None:
-      inner.append(__internal_refinement_opt_form(TriangulationRefinement, 'triangulations', 'Triangulations Refinement:'))
+      inner.append(__internal_refinement_opt_form(TriangulationRefinement, 'triangulations', 'Triangulations Refinement:', TriangulationRefinement()))
 
 
     return smartcontrols.CtrlGroup(id='root', inner=inner + [
@@ -1885,10 +1885,6 @@ def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData
     ret.triangulations = __internal_refinement_opt_to_data(data, 'triangulations', TriangulationRefinement)
 
     # TODO: ALu: general refinements
-
-    print(ret)
-    import sys
-    print(ret, file=sys.stderr)
 
     if (ret.wells is None and ret.sources is None and ret.shafts and
             ret.general is None and ret.triangulations is None
