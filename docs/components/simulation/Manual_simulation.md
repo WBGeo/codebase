@@ -1059,6 +1059,65 @@ plot_cross_section_2D(
     cmap="coolwarm",
 )
 ```
+#### Plot a variable along a line
+> **Workbench inspector:** `Plot Variable Along Line`
+
+`plot_variable_along_line()` samples a result variable along a
+straight line between two specified points at one time step and
+plots its values against distance along the line.
+
+The relevant parameters are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`**: Variable to sample.
+- **`time`**: Time step used for sampling.
+- **`p0`**: Starting point of the line `(x, y, z)`.
+- **`p1`**: Ending point of the line `(x, y, z)`.
+- **`n_samples`** *(default: `200`)*: Number of sampling intervals
+  along the line.
+
+Example call in the codebase:
+
+```python
+plot_variable_along_line(
+    simulation_result,
+    var_name="T",
+    time=final_time,
+    p0=(0, 500, 500),
+    p1=(1000, 500, 500),
+    n_samples=200,
+)
+```
+
+#### Plot a time series at a point
+> **Workbench inspector:** `Plot Variable Time Series`
+
+`plot_variable_time_series()` samples a result variable at the same
+spatial point across all saved simulation time steps and plots the
+resulting time series.
+
+The relevant parameters are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`**: Variable to sample.
+- **`point`**: Spatial coordinates `(x, y, z)`.
+- **`decimals`** *(default: `3`)*: Number of decimal places used
+  for formatting the vertical axis.
+
+Example call in the codebase:
+
+```python
+plot_variable_time_series(
+    simulation_result,
+    var_name="T",
+    point=(500, 500, 500),
+    decimals=3,
+)
+```
+
+If the point cannot be sampled at a particular time step, the
+corresponding value is represented as a gap in the time-series plot.
+
 
 
 ### View solver output (SfePy only)
@@ -1076,6 +1135,8 @@ for stage, stdout in simulation_result.sfepy_stdout.items():
     print(f"=== {stage} ===")
     print(stdout)
 ```
+
+
 
 ### Additional simulation result plots and inspection
 
@@ -1151,34 +1212,6 @@ plot_cross_section_difference_2D(
 )
 ```
 
-#### Plot a variable along a line
-
-`plot_variable_along_line()` samples a result variable along a
-straight line between two specified points at one time step and
-plots its values against distance along the line.
-
-The relevant parameters are:
-
-- **`sim`**: The `SimulationResults` object.
-- **`var_name`**: Variable to sample.
-- **`time`**: Time step used for sampling.
-- **`p0`**: Starting point of the line `(x, y, z)`.
-- **`p1`**: Ending point of the line `(x, y, z)`.
-- **`n_samples`** *(default: `200`)*: Number of sampling intervals
-  along the line.
-
-Example call in the codebase:
-
-```python
-plot_variable_along_line(
-    simulation_result,
-    var_name="T",
-    time=final_time,
-    p0=(0, 500, 500),
-    p1=(1000, 500, 500),
-    n_samples=200,
-)
-```
 
 #### Print a variable at a point
 
@@ -1204,34 +1237,6 @@ value = print_variable_at_point(
 
 print(value)
 ```
-
-#### Plot a time series at a point
-
-`plot_variable_time_series()` samples a result variable at the same
-spatial point across all saved simulation time steps and plots the
-resulting time series.
-
-The relevant parameters are:
-
-- **`sim`**: The `SimulationResults` object.
-- **`var_name`**: Variable to sample.
-- **`point`**: Spatial coordinates `(x, y, z)`.
-- **`decimals`** *(default: `3`)*: Number of decimal places used
-  for formatting the vertical axis.
-
-Example call in the codebase:
-
-```python
-plot_variable_time_series(
-    simulation_result,
-    var_name="T",
-    point=(500, 500, 500),
-    decimals=3,
-)
-```
-
-If the point cannot be sampled at a particular time step, the
-corresponding value is represented as a gap in the time-series plot.
 
 
 ------------------------------------------------------------------------

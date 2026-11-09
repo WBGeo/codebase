@@ -660,7 +660,7 @@ def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_imp
         received.update(kwargs)
 
     monkeypatch.setattr(swc, "plot_variable_at_a_time", fake_plot)
-    swc.inspect_simulation_result_plot_variable_at_a_time(simulation_result=sim, _inspector=None)
+    swc.inspect_simulation_result_plot_variable_at_a_time(simulation_result=sim)
 
     assert received["simulation_result"] is sim
     assert received["cmap"] == "coolwarm"
@@ -699,7 +699,7 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
         received.update(kwargs)
 
     monkeypatch.setattr(swc, "plot_cross_section_2D", fake_plot)
-    swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None)
+    swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim)
 
     assert received["simulation_result"] is sim
     assert received["origin"] == pytest.approx(expected_origin)

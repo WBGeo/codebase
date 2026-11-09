@@ -48,7 +48,7 @@ def test_build_grid_from_class_point_cloud_when_no_cells():
 def test_build_grid_from_class_raises_for_unknown_time():
     sim = SimulationResults()
     sim.nodes_by_time[0.0] = np.zeros((1, 3))
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(ValueError, match="Invalid time"):
         build_grid_from_class(sim, 99.0)
 
 
