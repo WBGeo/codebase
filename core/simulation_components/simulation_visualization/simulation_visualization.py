@@ -147,7 +147,7 @@ def _build_grid_geometry(sim: SimulationResults, time: float) -> pv.Unstructured
         ValueError: `time` isn't a key in `sim.nodes_by_time`.
     """
     if time not in sim.nodes_by_time:
-        raise ValueError(f"Time {time} not found in simulation results.")
+        _validate_saved_time(sim, time)
 
     nodes = sim.nodes_by_time[time]
     cells = sim.cells_by_time.get(time, None)
@@ -269,6 +269,30 @@ def _default_var_name(sim: SimulationResults, time: float) -> str:
     return "T" if "T" in variables else variables[0]
 
 
+def _validate_saved_time(sim: SimulationResults, time: float, parameter: str = "time") -> None:
+    """Raise an informative error with all saved step indices and actual time values."""
+    times = sorted(sim.nodes_by_time)
+    if not times:
+        raise ValueError("sim has no time steps.")
+    if time not in sim.nodes_by_time:
+        available = ", ".join(f"step {i}: {t:g}" for i, t in enumerate(times))
+        raise ValueError(
+            f"Invalid {parameter}={time!r}. Available saved time steps "
+            f"(index: time value): {available}. "
+            "Pass the actual time value, not the zero-based step index."
+        )
+
+
+def _validate_cross_section_inputs(sim: SimulationResults, var_name: str,
+                                   time_a: float, time_b: float) -> None:
+    """Validate both times and point-data field before building/slicing a mesh."""
+    _validate_saved_time(sim, time_a, "time_a")
+    _validate_saved_time(sim, time_b, "time_b")
+    for time in dict.fromkeys((time_a, time_b)):
+        if var_name not in sim.node_data_by_time.get(time, {}):
+            raise _variable_not_found_error(sim, time, var_name, point_only=True)
+
+
 def _variable_not_found_error(sim: SimulationResults, time: float, var_name: str, *, point_only: bool = False) -> ValueError:
     """Explain an invalid variable name and list fields actually present at this timestep."""
     node_names = list(sim.node_data_by_time.get(time, {}))
@@ -337,6 +361,7 @@ def plot_variable_at_a_time(
         raise ValueError("sim has no time steps.")
     if time is None:
         time = max(sim.nodes_by_time.keys())
+    _validate_saved_time(sim, time)
     if var_name is None:
         var_name = _default_var_name(sim, time)
 
@@ -557,6 +582,8 @@ def plot_cross_section_2D(
     if var_name is None:
         var_name = _default_var_name(sim, time_a)
 
+    _validate_cross_section_inputs(sim, var_name, time_a, time_b)
+
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
 
     # Built once and reused for both timesteps when they share geometry
@@ -625,6 +652,8 @@ def plot_cross_section_difference_2D(
     if time_b is None:
         time_b = times[-1]
 
+    _validate_cross_section_inputs(sim, var_name, time_a, time_b)
+
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
 
     # Built once and reused for both timesteps when they share geometry
@@ -683,11 +712,13 @@ def plot_variable_along_line(
     and plot it against distance along the line (via PyVista's own
     pv.Line(...).sample(grid), which linearly interpolates from the mesh).
     """
+    _validate_saved_time(sim, time, "time")
     if var_name is None:
         var_name = _default_var_name(sim, time)
-    grid = build_grid_from_class(sim, time, var_names=[var_name])
-    if var_name not in grid.point_data and var_name not in grid.cell_data:
+    if (var_name not in sim.node_data_by_time.get(time, {})
+            and var_name not in sim.cell_data_by_time.get(time, {})):
         raise _variable_not_found_error(sim, time, var_name)
+    grid = build_grid_from_class(sim, time, var_names=[var_name])
 
     line = pv.Line(p0, p1, resolution=n_samples)
     sampled = line.sample(grid)
@@ -764,19 +795,31 @@ def plot_variable_time_series(
     plotted as a gap (NaN) rather than raising, so one bad step doesn't
     prevent seeing the rest of the series.
     """
-    if var_name is None:
-        var_name = _default_var_name(sim, time)
     times = sorted(sim.nodes_by_time.keys())
     if not times:
         raise ValueError("sim has no time steps.")
     start = 0 if time_step_start is None else time_step_start
     end = len(times) - 1 if time_step_end is None else time_step_end
+    available_steps = ", ".join(f"step {i}: {t:g}" for i, t in enumerate(times))
     for label, index in (("time_step_start", start), ("time_step_end", end)):
-        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(times):
-            raise ValueError(f"{label} must be an integer from 0 to {len(times) - 1}; got {index!r}.")
+        if isinstance(index, bool) or not isinstance(index, (int, np.integer)) or not 0 <= index < len(times):
+            raise ValueError(
+                f"Invalid {label}={index!r}. Available saved time steps "
+                f"(index: time value): {available_steps}. "
+                "For time series, pass a zero-based step index, not the physical time value."
+            )
     if start > end:
-        raise ValueError("time_step_start must be <= time_step_end.")
+        raise ValueError(
+            f"time_step_start={start} must be <= time_step_end={end}. "
+            f"Available saved time steps (index: time value): {available_steps}."
+        )
     selected_times = times[start:end + 1]
+    if var_name is None:
+        var_name = _default_var_name(sim, selected_times[0])
+    for t in selected_times:
+        if (var_name not in sim.node_data_by_time.get(t, {})
+                and var_name not in sim.cell_data_by_time.get(t, {})):
+            raise _variable_not_found_error(sim, t, var_name)
 
     # Geometry is built once (for times[0]) and reused across every
     # subsequent timestep when it's unchanged (the common case -- see
@@ -1120,6 +1163,39 @@ def _numeric_properties(obj):
             and np.isfinite(v)}
 
 
+def _canonical_fluid_name(name):
+    """Normalize fluid.<property> aliases without confusing rock density/heat capacity."""
+    aliases = {
+        "mu": "viscosity", "k_fluid": "thermal_conductivity",
+        "fluid_viscosity": "viscosity", "fluid_density": "density",
+        "fluid_heat_capacity": "heat_capacity",
+        "fluid_thermal_conductivity": "thermal_conductivity",
+        "fluid_modulus": "modulus", "rho_c_fluid": "volumetric_heat_capacity",
+        "fluid_viscosity_initial": "viscosity",
+        "fluid_density_initial": "density",
+    }
+    if name.startswith("fluid."):
+        name = name[6:]
+    return aliases.get(name, name)
+
+
+def _custom_fluid_aliases(values):
+    """Expose numeric custom GOLEM material values with fluid.* names."""
+    sources = {
+        "viscosity": ("fluid_viscosity_initial", "fluid_viscosity", "fluid_viscosity_value"),
+        "density": ("fluid_density_initial", "fluid_density", "fluid_density_value"),
+        "heat_capacity": ("fluid_heat_capacity_initial", "fluid_heat_capacity", "fluid_heat_capacity_value"),
+        "thermal_conductivity": ("fluid_thermal_conductivity_initial", "fluid_thermal_conductivity", "fluid_thermal_conductivity_value"),
+        "modulus": ("fluid_modulus", "fluid_modulus_initial"),
+    }
+    for canonical, names in sources.items():
+        for source in names:
+            if source in values:
+                values.setdefault("fluid." + canonical, values[source])
+                break
+    return values
+
+
 def _custom_numeric_properties(content, block_count):
     """Resolve literal GOLEM material values and literal-valued UserObjects."""
     lines, sections = locate_blocks(content)
@@ -1159,7 +1235,7 @@ def _custom_numeric_properties(content, block_count):
             idx = int(token) if token.lstrip("+-").isdigit() else renamed.get(token)
             if idx is None or not 1 <= idx <= block_count:
                 raise ValueError(f"Unresolved material block {token!r} in [{b.name}].")
-            result.setdefault(idx - 1, {}).update(values)
+            result.setdefault(idx - 1, {}).update(_custom_fluid_aliases(values))
     return result
 
 
@@ -1297,6 +1373,34 @@ def plot_golem_materials(builder, *, show_edges: bool = False, show_plotter: boo
         else:
             numeric_by_index = {idx: _numeric_properties(props)
                                 for idx, props in property_by_index.items()}
+
+            # Generated GOLEM hydrothermal models share one FluidProperties
+            # instance across their 3D rock and 2D fault material blocks.
+            # Simple-reservoir models instead store fluid constants directly.
+            if isinstance(builder, GolemHydrothermalProblemBuilder):
+                fluid_values = _numeric_properties(builder.fluid)
+                for index, _, _ in entries:
+                    for key, value in fluid_values.items():
+                        numeric_by_index[index]["fluid." + _canonical_fluid_name(key)] = value
+            elif isinstance(builder, GolemSimpleReservoirProblemBuilder):
+                fluid_fields = (
+                    "fluid_viscosity", "fluid_density", "fluid_heat_capacity",
+                    "fluid_thermal_conductivity", "fluid_modulus",
+                )
+                for index, _, _ in entries:
+                    for key in fluid_fields:
+                        numeric_by_index[index]["fluid." + _canonical_fluid_name(key)] = float(getattr(builder, key))
+
+        # Canonical fluid.<name> works for generated and custom GOLEM builders.
+        # Retain existing unprefixed and raw GOLEM input names for compatibility.
+        if property_name.startswith("fluid."):
+            property_name = "fluid." + _canonical_fluid_name(property_name)
+        elif property_name in ("viscosity", "mu", "k_fluid", "fluid_viscosity",
+                               "fluid_density", "fluid_heat_capacity",
+                               "fluid_thermal_conductivity", "fluid_modulus"):
+            canonical = "fluid." + _canonical_fluid_name(property_name)
+            if any(canonical in values for values in numeric_by_index.values()):
+                property_name = canonical
         return _plot_block_property(grid, offsets, entries, numeric_by_index,
                                     property_name, cmap=cmap, opacity=opacity,
                                     show_plotter=show_plotter)
@@ -1529,7 +1633,9 @@ def plot_builder_materials(
     """Preview material assignments for generated/custom SfePy and GOLEM builders.
 
     SfePy retains its structural-model colors, cell-level fault-zone masks,
-    and grouped legend. GOLEM retains its explicit block classifications,
+    and grouped legend. Generated SfePy and GOLEM fluid properties can be plotted with
+    property_name="viscosity" or "fluid.<field>"; fluid values are uniform
+    throughout the mesh because the fluid is shared by all materials. GOLEM retains its explicit block classifications,
     fracture/well display, and custom input material parsing. Both default
     to no visible cell edges; SfePy and GOLEM rocks are semi-transparent,
     and GOLEM uses structural lithology colors when available.
@@ -1617,7 +1723,38 @@ def plot_builder_materials(
                     f"expected {total_cells} mesh cells or {volume_grid.n_cells} volume cells."
                 )
             fault_overlay_mask = None
-            if is_custom:
+            # Fluid coefficients belong to the shared FluidProperties object,
+            # not to individual rock or fault RockUnitProperties.  They are
+            # spatially constant for the generated SfePy model.
+            fluid_aliases = {
+                "viscosity": "mu",
+                "thermal_conductivity": "k_fluid",
+            }
+            fluid_keys = {"mu", "viscosity", "k_fluid", "thermal_conductivity",
+                          "density", "heat_capacity", "rho_c_fluid", "fluid_modulus"}
+            fluid_property = property_name.startswith("fluid.") or property_name in (
+                "viscosity", "mu", "k_fluid", "rho_c_fluid"
+            )
+            if fluid_property:
+                if is_custom:
+                    raise ValueError(
+                        "Fluid-property preview requires a generated HydrothermalProblemBuilder; "
+                        "CustomSfepyBuilder has no structured FluidProperties object."
+                    )
+                fluid = getattr(builder, "fluid", None)
+                key = property_name.removeprefix("fluid.")
+                key = {"volumetric_heat_capacity": "rho_c_fluid",
+                       "modulus": "fluid_modulus"}.get(key, key)
+                key = fluid_aliases.get(key, key)
+                fluid_values = _numeric_properties(fluid)
+                if key not in fluid_values:
+                    raise ValueError(
+                        f"Fluid property {property_name!r} is unavailable. "
+                        f"Available: {', '.join('fluid.' + k for k in sorted(fluid_values))} "
+                        "and aliases 'viscosity', 'thermal_conductivity'."
+                    )
+                vals[:] = fluid_values[key]
+            elif is_custom:
                 # The custom builder's mat_id_to_lithology describes rock
                 # blocks; the damage zone is a cell-level override, not a
                 # separate mesh block. Apply the same mask as the categorical
