@@ -2,7 +2,7 @@
 
 ## Components
 A component is the building block of the workbench.
-They represent functions, turning inputs into one output.
+They represent functions, turning inputs into outputs.
 (In the UI, they are represented by the rounded corner blocks.
 Square corners are used to show the results of a computation.)
 
@@ -41,7 +41,7 @@ The picture shows the visualization of this component.
 | border_color   | (optional) | The border color of the component                                                                   |
 | group          | (optional) | The group this component belongs to                                                                 |
 | tags           | (optional) | For internal description                                                                            |
-| return_name    | (optional) | The name of the output port, default "result"                                                       |
+| return_name    | (optional) | The name of the output port(s), default "result"                                                    |
 | is_object_type | (optional) | Some components should be presented like the result (e.g. the loading component), defaults to False |
 
 The execution of the component MUST NOT modify/change its inputs,
@@ -60,6 +60,25 @@ Like in the following example, the number 42 is loaded:
 Similarly, when using non-`controlled` inputs, the input ports are always rendered:
 
 ![create2List.png](../img/create2List.png)
+
+
+#### Multi-Outputs
+
+By defining a fixed tuple as the output of a function,
+multiple outputs can be defined.
+Each item of the tuple is rendered as a separate output port.
+Each item's type must be a workbench compatible type, 
+i.e. either a built-in, an annotated script type, or a wbgeo type.
+
+````python
+@wbgeo_component(identifier='wbgeo::create_three_things',
+                 title='Create Three Things')
+def create_three_things() -> typing.Tuple[int, str, int]:
+   """
+   :return: returns three things
+   """
+   return 1, "example", 2
+````
 
 #### User-Feedback
 
