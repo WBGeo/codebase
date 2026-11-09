@@ -102,7 +102,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             patch(f"{MODULE}.gmsh.model.occ.synchronize"),
         ):
             kwargs = {
-                "surface_csv_dir": str(csv_dir),
+                "geomodel": load_csv_surface_coordinates(str(csv_dir)),
                 "mapping_litho": mapping_litho,
             }
             if extent is not None:
