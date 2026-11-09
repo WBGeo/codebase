@@ -20,12 +20,17 @@ from core.meshing_components.explicit.unstructured.create_clean_surface import d
 from core.meshing_components.explicit.unstructured.domain_geometry import (
     domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
 )
-from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement,
+from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement,
+                                                                           LinearWellRefinement,
                                                                            FunctionWellRefinement,
                                                                            LinearSourceRefinement,
                                                                            FunctionSourceRefinement,
                                                                            LinearShaftRefinement,
-                                                                           FunctionShaftRefinement, GeneralRefinement)
+                                                                           FunctionShaftRefinement,
+                                                                           GeneralRefinement,
+                                                                           ExtraPlaneRefinement,
+                                                                           EllipseRefinement,
+                                                                           TriangulationRefinement)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
 from enum import Enum, StrEnum
 
@@ -1796,6 +1801,18 @@ def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kin
     ])
 
 
+def __internal_refinement_opt_form(T: typing.Type, kind: str, label: str):
+  # Create an optional form
+  return smartcontrols.CtrlGroup(id=kind, inner=[
+    smartcontrols.CtrlBool(label=label, id='with_' + kind,
+                             defaultValue=False),
+    smartcontrols.CtrlIf(condition=f"'$.with_{kind}' == \"true\"",
+                         when_true=[smartcontrols.CtrlGroup(id=f"present", inner=smartcontrols.smart_group_from_type(T, None))],
+                         when_false=[]
+                         )
+  ])
+
+
 def __internal_refinement_to_data(data, kind: str, linearT: typing.Type, functionT: typing.Type):
     # turn the __internal_refinement_form back into a given type
     if data is None or kind not in data:
@@ -1809,21 +1826,47 @@ def __internal_refinement_to_data(data, kind: str, linearT: typing.Type, functio
         return functionT(**data["function"])
     return None
 
+
+def __internal_refinement_opt_to_data(data, kind: str, T: typing.Type):
+  # turn the __internal_refinement_form back into a given type
+  if data is None or kind not in data:
+    return None
+  data = data[kind]
+  if f"with_{kind}" not in data or data[f"with_{kind}"] == 'False':
+    return None
+  return T(**data["present"])
+
+
 @wbgeo_component(identifier='wbgeo:__internal__refined_form_well' ,
                  title='__internal__refined_form_well' )
 def __internal__refined_form(wells: Optional[WellData] = None,
                              sources: Optional[SourcesData] = None,
-                             shafts: Optional[ShaftData] = None, ) -> smartcontrols.CtrlGroup:
-    inner = []
+                             shafts: Optional[ShaftData] = None,
+                             extra_planes: Optional[PlaneData] = None,
+                             ellipses: Optional[EllipseData] = None,
+                             triangulations: Optional[TriangulationData] = None,
+                             ) -> smartcontrols.CtrlGroup:
+    inner: typing.List[smartcontrols.ASmartControl] = [
+      smartcontrols.CtrlLabel(
+        label='To define refinements, please connect a well/sources/etc. and execute them once, before clicking Update Controls'),
+    ]
     if wells is not None:
         inner.append(__internal_refinement_form(LinearWellRefinement, FunctionWellRefinement, 'well', 'Well Refinement:'))
     if sources is not None:
         inner.append(__internal_refinement_form(LinearSourceRefinement, FunctionSourceRefinement, 'source', 'Source Refinement:'))
     if shafts is not None:
         inner.append(__internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'))
+    if extra_planes is not None:
+      inner.append(__internal_refinement_opt_form(ExtraPlaneRefinement, 'extra_planes', 'Extra Planes Refinement:'))
+    if ellipses is not None:
+      inner.append(__internal_refinement_opt_form(EllipseRefinement, 'ellipses', 'Ellipses Refinement:'))
+    if triangulations is not None:
+      inner.append(__internal_refinement_opt_form(TriangulationRefinement, 'triangulations', 'Triangulations Refinement:'))
+
+
     return smartcontrols.CtrlGroup(id='root', inner=inner + [
         smartcontrols.CtrlLabel(
-            label='general, triangulations, ellipses, and extra_plane refinement not yet supported'),
+            label='General refinement not yet supported'), # TODO: ALu - will be added seperatly
     ])
 
 @wbgeo_component(identifier='wbgeo:__internal__refined_options_to_data_well',
@@ -1837,11 +1880,15 @@ def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData
     ret.wells = __internal_refinement_to_data(data, 'well', LinearWellRefinement, FunctionWellRefinement)
     ret.sources = __internal_refinement_to_data(data, 'source', LinearSourceRefinement, FunctionSourceRefinement)
     ret.shafts = __internal_refinement_to_data(data, 'shafts', LinearShaftRefinement, LinearShaftRefinement)
+    ret.extra_planes = __internal_refinement_opt_to_data(data, 'extra_planes', ExtraPlaneRefinement)
+    ret.ellipses = __internal_refinement_opt_to_data(data, 'ellipses', EllipseRefinement)
+    ret.triangulations = __internal_refinement_opt_to_data(data, 'triangulations', TriangulationRefinement)
 
-    # general
-    # triangulations
-    # ellipses
-    # extra_planes
+    # TODO: ALu: general refinements
+
+    print(ret)
+    import sys
+    print(ret, file=sys.stderr)
 
     if (ret.wells is None and ret.sources is None and ret.shafts and
             ret.general is None and ret.triangulations is None
@@ -2044,6 +2091,7 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
+    is_object_type=True, # render as object
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: bool = False) -> EllipseData:
     """Load ellipse definitions from a CSV file.
@@ -2129,6 +2177,7 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
                  return_name='Shafts',  # the name for the returned-port
+                 is_object_type=True, # render as object
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = False) -> ShaftData:
     """Load shaft definitions from a CSV file.
@@ -2194,6 +2243,7 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
                  return_name='planes',  # the name for the returned-port
+                 is_object_type=True, # render as object
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = False) -> PlaneData:
     """Load additional planes as grouped 3D points from a CSV file.
@@ -2259,6 +2309,7 @@ TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]],
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
+    is_object_type=True, # render as object
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_hierarchical: bool = False) -> TriangulationData:
     """Load triangulation points from one or more CSV files.
