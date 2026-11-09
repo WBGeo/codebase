@@ -907,8 +907,10 @@ def run_simulation_golem(
         # The generic simulation exporter uses this path for format="exodus" so
         # GOLEM's original multi-time-step wbgeo.e is returned unchanged instead
         # of reconstructing one Exodus file per time step.
+        # Note: the paths may no longer be available when computing it!
         simulation_results.source_exodus_file = str(result_file)
         simulation_results.source_output_dir = str(output)
+        simulation_results.golem_solver_output = transcript
         simulation_results.source_solver = "golem"
         if not simulation_results.nodes_by_time:
             raise RuntimeError(

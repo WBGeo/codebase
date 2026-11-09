@@ -443,6 +443,7 @@ class SimulationResults:
     node_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
     cell_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
     sfepy_stdout: Optional[Dict[str, str]] = None
+    golem_solver_output: Optional[str] = None
 
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],
