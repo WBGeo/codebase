@@ -35,7 +35,7 @@ services:
       RUSTFS_SECRET_KEY: g@bJ!&NS8K^!
     #volumes:   # for persisting the data to disk
     #  - "./docker/storage:/data:rw"
-  
+   
   py_runner:
     image: registry.git.rwth-aachen.de/wbgeo/container-registry/pyrunner:latest
     restart: always
@@ -51,11 +51,12 @@ services:
       GOLEM_BINARY: "/golem/golem-opt" # where golem can be found
       GOLEM_WORKSPACE: "/shared_golem_workspace" # where golem should work
       GOLEM_EXECUTION_MODE: "sidecar"
+      #PYTHONPATH: "/marziehbaes/Documents/Aug_code/codebase"
     volumes:
       # option 1, for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
       # if this file is located at the root of the "codebase" project, the defaults work
-      #      - "./core/:/usr/src/app/codebase/core/"
-      #      - "./examples/:/usr/src/app/codebase/examples/"
+      - "./core/:/usr/src/app/codebase/core/"
+      - "./examples/:/usr/src/app/codebase/examples/"
       
       # option 2 - if the codebase is in a different folder, you can also use this format
       #      - "./path/to/my/codebase/:/usr/src/app/codebase/"

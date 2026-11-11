@@ -355,6 +355,11 @@ builder = HydrothermalProblemBuilder(
 plot_builder_materials(builder)
 plot_builder_materials(
     builder=builder,
+    property_name="fluid.thermal_conductivity",
+    show_plotter=True,
+)
+plot_builder_materials(
+    builder=builder,
     property_name="porosity",
     show_plotter=True,
 )

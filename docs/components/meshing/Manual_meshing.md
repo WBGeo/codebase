@@ -789,7 +789,7 @@ refinement.wells = FunctionWellRefinement(
 Refinement around Triangulations, ellipses, faults, and extra planes can
 be done only using a linear refinement with the same parameter names as
 the other linear refinement definitions: `SizeMin`, `SizeMax`,
-`DistMin`, and `DistMax`.
+`DistMin`, and `DistMax`. Refinement around faults is only supported by the codebase. 
 
 ``` python
 refinement = Refinement()
@@ -823,7 +823,7 @@ refinement.ellipses = EllipseRefinement(
 )
 ```
 
-##### General point and line refinement
+##### General point and line refinement (Currebtly only in codebase)
 
 `GeneralRefinement` provides refinement that is independent of the
 predefined geological and engineering objects. It can be used for a
