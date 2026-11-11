@@ -400,6 +400,844 @@ The component accepts the following parameters in the Workbench:
     fracture refinement. Default `10.0`.
 -   **`fracture_refine_dist_max`** *(optional)*: Outer distance for
     fracture refinement. Default `60.0`.
+-   **`scale_refinement_with_model`** *(optional)*: When `True`, scales well and fracture refinement sizes and distances using the smallest structural-model axis scale relative to the reference 1000-unit model. When `False`, uses the specified refinement values directly. Default `True`.
+-   **`rock_porosity`** *(optional)*: Rock porosity. Default `0.1`.
+-   **`rock_permeability`** *(optional)*: Rock permeability. Default
+    `1.0e-15`.
+-   **`rock_density`** *(optional)*: Rock density. Default `2.6e3`.
+-   **`rock_thermal_conductivity`** *(optional)*: Rock thermal
+    conductivity. Default `3.0`.
+-   **`rock_heat_capacity`** *(optional)*: Rock heat capacity. Default
+    `950.0`.
+-   **`fracture_porosity`** *(optional)*: Porosity assigned to the two
+    internally generated synthetic fractures. Default `1.0`.
+-   **`fracture_aperture`** *(optional)*: Aperture of the synthetic
+    fractures. Default `1.0e-4`.
+-   **`geological_fault_aperture`** *(optional)*: Aperture/scaling
+    required by GOLEM for exported lower-dimensional geological-fault
+    blocks. Geological faults otherwise use the common rock properties
+    above. Default `1.0`.
+-   **`well_porosity`** *(optional)*: Well porosity. Default `1.0`.
+-   **`well_permeability`** *(optional)*: Well permeability. Default
+    `3.12e-4`.
+-   **`well_scaling_factor`** *(optional)*: GOLEM scaling factor used
+    for the well block. Default `0.05`.
+-   **`fluid_density`** *(optional)*: Fluid density. Default `1.0e3`.
+-   **`fluid_viscosity`** *(optional)*: Fluid dynamic viscosity. Default
+    `1.0e-3`.
+-   **`fluid_heat_capacity`** *(optional)*: Fluid heat capacity. Default
+    `4.2e3`.
+-   **`fluid_thermal_conductivity`** *(optional)*: Fluid thermal
+    conductivity. Default `0.65`.
+-   **`fluid_modulus`** *(optional)*: Fluid modulus. Default `2.5e9`.
+-   **`initial_pressure`** *(optional)*: Initial reservoir pressure.
+    Default `1.0e7`.
+-   **`initial_temperature`** *(optional)*: Initial reservoir
+    temperature. Default `150.0`.
+-   **`boundary_pressure`** *(optional)*: Reservoir boundary pressure.
+    Default `1.0e7`.
+-   **`boundary_temperature`** *(optional)*: Reservoir boundary
+    temperature. Default `150.0`.
+-   **`injection_temperature`** *(optional)*: Injected-fluid
+    temperature. Default `70.0`.
+-   **`injection_rate`** *(optional)*: Injection source rate. Default
+    `3.0`.
+-   **`extraction_rate`** *(optional)*: Extraction source rate. Default
+    `3.0`.
+-   **`source_start_time`** *(optional)*: Time at which the
+    injection/extraction sources become active. Default `0.0`.
+-   **`start_time`** *(optional)*: Simulation start time. Default `0.0`.
+-   **`end_time`** *(optional)*: Simulation end time. Default `None`.
+
+
+In the codebase, the structural model results and the following additional parameters are accepted:
+
+#### Structural-model input
+
+-   **`geomodel_result`**: Required structural model used to determine
+    the model extent and construct the reservoir geometry.
+
+#### Unstructured-mesh inputs
+
+-   **`mapping_litho`** *(optional)*: Lithology mapping method. Default
+    `"automatic_centers"`.
+-   **`gmsh_flag`** *(optional)*: Option to save the original mesh created in Gmsh. Default `False`.
+-   **`merge_file`** *(optional)*: It is required if `mapping_litho` is set to `manual`. Default `None`.
+-   **`unstructured_mesh_options`** *(optional)*: Dictionary of
+    additional keyword arguments accepted by
+    `create_unstructured_mesh_data()`. Default `None`.
+
+For example, additional meshing controls can be supplied as:
+
+``` python
+unstructured_mesh_options={
+    "tolerance": 50,
+}
+```
+
+#### Optional geometry overrides
+
+Normally, the builder uses the complete structural-model extent and
+places its reference reservoir geometry automatically. The generated
+fracture pair + a well are centred in the model while preserving the
+reference geometry relationships.
+
+-   **`reservoir_extent_override`** *(optional)*: Explicit
+    `(xmin, xmax, ymin, ymax, zmin, zmax)` reservoir extent. Default
+    `None`.
+-   **`fracture_planes_override`** *(optional)*: Explicit
+    synthetic-fracture plane coordinates. Default `None`.
+-   **`wells_override`** *(optional)*: Explicit well coordinates.
+    Default `None`.
+
+#### Injection and extraction inputs
+
+-   **`injection_point`** *(optional)*: Explicit `(x, y, z)` injection
+    location. If `None`, the automatically positioned centre of the
+    first synthetic fracture is used.
+-   **`extraction_point`** *(optional)*: Explicit `(x, y, z)` extraction
+    location. If `None`, the automatically positioned centre of the
+    second synthetic fracture is used.
+-   **`source_end_time`** *(optional)*: Time at which the sources stop.
+    Default `None`; when omitted, the builder sets it to the resolved simulation `end_time`, so the sources remain active until the simulation ends.
+
+#### Transient-simulation inputs
+
+-   **`time_sequence`** *(optional)*: Explicit sequence of solve times.
+    If `None`, the builder uses its default simple-reservoir time
+    sequence.
+-   **`automatic_scaling`** *(optional)*: Enables MOOSE automatic
+    scaling. Default `True`.
+-   **`compute_scaling_once`** *(optional)*: Controls the GOLEM/MOOSE executioner option of the same name, determining whether automatic scaling is computed only once rather than updated during the solve. Default `False`.
+
+#### PETSc solver controls
+
+The following advanced inputs expose the solver configuration:
+
+-   **`coupled_petsc_options_iname`** and
+    **`coupled_petsc_options_value`**: PETSc options for the coupled
+    nonlinear solve.
+-   **`pressure_petsc_options_iname`** and
+    **`pressure_petsc_options_value`**: PETSc options for the pressure
+    field solve.
+-   **`temperature_petsc_options_iname`** and
+    **`temperature_petsc_options_value`**: PETSc options for the
+    temperature field solve.
+
+#### Output and diagnostic controls
+
+-   **`print_linear_residuals`** *(optional)*: Print linear residual
+    information. Default `True`.
+-   **`print_nonlinear_converged_reason`** *(optional)*: Print the
+    nonlinear convergence reason. Default `True`.
+-   **`perf_graph`** *(optional)*: Enables GOLEM/MOOSE performance-graph reporting in the generated output configuration. Default `True`.
+
+Example call in the codebase:
+
+``` python
+reservoir_problem_model2 = GolemSimpleReservoirProblemBuilder(
+    geomodel_result=structural_model_result,
+
+    # Unstructured mesh
+    mesh_size=50.0,
+    curve_mesh_size=5.0,
+    mapping_litho="automatic_centers",
+    gmsh_flag=False,
+    merge_file=None,
+    z_threshold=10.0,
+    unstructured_mesh_options={
+        "tolerance": 50,
+    },
+
+    # Automatic geometry;
+    reservoir_extent_override=None,
+    fracture_planes_override=None,
+    wells_override=None,
+
+    # Well refinement
+    well_refine_size_min=5.0,
+    well_refine_size_max=30.0,
+    well_refine_dist_min=10.0,
+    well_refine_dist_max=60.0,
+
+    # Synthetic-fracture refinement
+    fracture_refine_size_min=5.0,
+    fracture_refine_size_max=30.0,
+    fracture_refine_dist_min=10.0,
+    fracture_refine_dist_max=60.0,
+
+    # Common reservoir/geological-fault rock properties
+    rock_porosity=0.10,
+    rock_permeability=1.0e-15,
+    rock_density=2.6e3,
+    rock_thermal_conductivity=3.0,
+    rock_heat_capacity=950.0,
+
+    # Synthetic fractures and geological faults
+    fracture_porosity=1.0,
+    fracture_aperture=1.0e-4,
+    geological_fault_aperture=1.0,
+
+    # Well
+    well_porosity=1.0,
+    well_permeability=3.12e-4,
+    well_scaling_factor=0.05,
+
+    # Fluid
+    fluid_density=1.0e3,
+    fluid_viscosity=1.0e-3,
+    fluid_heat_capacity=4.2e3,
+    fluid_thermal_conductivity=0.65,
+    fluid_modulus=2.5e9,
+
+    # Initial/boundary conditions
+    initial_pressure=1.0e7,
+    initial_temperature=150.0,
+    boundary_pressure=1.0e7,
+    boundary_temperature=150.0,
+    injection_temperature=70.0,
+
+    # Sources
+    injection_point=None,
+    extraction_point=None,
+    injection_rate=3.0,
+    extraction_rate=3.0,
+    source_start_time=0.0,
+    source_end_time=None,
+
+    # Transient solve
+    start_time=0.0,
+    end_time=None,
+    time_sequence=None,
+    automatic_scaling=True,
+
+    # Output/diagnostics
+    print_linear_residuals=True,
+    print_nonlinear_converged_reason=True,
+)
+```
+
+> **Note:** model1 and model2 in the examples demonstrate how to use
+> the **GOLEM** and **SfePy** simulation workflows. For the
+> **GOLEM Simple Reservoir Problem**, the simulation results can be
+> exported as an **Exodus** file and opened in **ParaView**. For
+> improved visualisation of the reservoir results, use the provided
+> ParaView state file `model1_reservoir_visualisation.pvsm` and `model2_reservoir_visualisation.pvsm`.
+
+
+### GOLEM: User-supplied Problem
+
+> **Workbench component:** `Build GOLEM Custom Problem`
+
+It accepts a complete user-provided GOLEM `.i` file.
+In the Workbench, this component requires connections to both a mesh and
+the structural model used to generate that mesh.
+
+
+The relevant inputs are:
+
+-   **`input_file_contents`**: Complete text of the custom GOLEM/MOOSE
+    `.i` file.
+-   **`input_file_path`** *(optional)*: Path of the original `.i` file.
+-   **`print_linear_residuals`**: Controls residual output.
+
+
+In the codebase, the structural model results and the following additional parameters are accepted:
+-   **`auxiliary_files_dir`** *(optional)*: Directory containing auxiliary
+    files required by a custom GOLEM input, for example, CSV files defining transient injection rate or fracture aperture.
+     The directory must already exist. The runner copies its
+    complete contents into a `files/` directory in the GOLEM working
+    directory. The custom `.i` file should therefore reference these files
+    with relative paths such as `files/injection_flowrate.csv` or
+    `files/frac_aperture.csv`.
+-   **`mesh_file_name`** *(optional)*: Specifies the filename used to stage an existing 
+    Exodus mesh in the GOLEM run directory. This supports simulations using meshes 
+    created externally or previously exported from the Workbench. The value must be a filename, not a path.
+-   **`geomodel_result`** *(optional)*: Structural model results.
+
+The following mesh inputs are supported:
+
+| Builder input | Placeholder in the `.i` file | Behaviour |
+| --- | --- | --- |
+| `mesh_results=...` | `${GOLEM_MESH_FILE}` | Use the WBGeo mesh. |
+| `mesh_file="/path/to/mesh.exo"` | `${GOLEM_MESH_FILE}` | Use an existing mesh file. 
+
+Regardless of the selected mesh source, use `${GOLEM_MESH_FILE}` in the
+ `.i` file to reference the mesh:
+
+``` text
+[Mesh]
+  [original_mesh]
+    type = FileMeshGenerator
+    file = ${GOLEM_MESH_FILE}
+  []
+[]
+```
+
+
+Example of a custom builder that requires the auxiliary files `injection_flowrate.csv` and `frac_aperture.csv` to run the custom-defined simulation successfully.
+
+
+``` python
+# input file
+reservoir_input_trans_path = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/transient_state.i"
+)
+
+with open(reservoir_input_trans_path, "r") as f:
+    reservoir_input_trans = f.read()
+
+# Auxiliary CSV files 
+reservoir_auxiliary_files_dir = (
+    cwd
+    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
+)
+
+model_transient = problem=CustomGolemBuilder(
+        input_file_contents=reservoir_input_trans,
+        input_file_path=reservoir_input_trans_path,
+        auxiliary_files_dir=reservoir_auxiliary_files_dir,
+        mesh_file=cwd
+        + "/examples/case_studies/Groß_Schoenebeck/"
+          "GS_steady_state/wbgeo_out.e",
+        geomodel_result=structural_model_result,
+        print_linear_residuals=True,
+    ),
+)
+```
+
+In the input `.i` file, the paths relative to the GOLEM working directory should be defined:
+
+``` text
+files/injection_flowrate.csv
+files/frac_aperture.csv
+```
+
+### 2. Run the simulation
+
+#### Run SfePy
+
+> **Workbench component:** `Run Sfepy Simulation`
+
+Both SfePy builders connect to the same runner.
+
+Example call in the codebase:
+
+``` python
+data_by_time = run_simulation_sfepy(builder)
+```
+
+For an auto-generated hydrothermal problem, the runner performs the
+pressure stage followed by the heat stage. For a custom SfePy problem,
+execution follows the supplied input by users.
+
+#### Run GOLEM
+
+> **Workbench component:** `Run GOLEM Simulation`
+
+All three GOLEM builders connect to the same runner through the common
+`GolemProblem` type.
+
+In the Workbench, the component accepts the following parameter:
+
+-   **`nproc`**: Number of MPI processes. Default `4`.
+
+In the codebase, the `run_simulation_golem()` function executes a GOLEM problem created by one of the supported GOLEM builders. It supports execution either inside a Docker container or directly on the host.
+
+Important runner inputs are:
+
+| Argument | Default | Meaning |
+| --- | --- | --- |
+| `problem` | — | GOLEM problem created by `GolemHydrothermalProblemBuilder`, `GolemSimpleReservoirProblemBuilder`, or `CustomGolemBuilder`. |
+| `image_name` | `None` | Docker image containing GOLEM. If provided, GOLEM runs inside a container; otherwise, it runs on the host. |
+| `golem_binary` | `"/golem/golem-opt"` | Path to the GOLEM executable inside the Docker container or on the host. |
+| `output_dir` | `<workspace_dir>/golem_output` | Host directory where simulation results and generated files are saved. |
+| `nproc` | `4` | Number of MPI processes used to run GOLEM. |
+| `temporary` | `True` | If `True`, stages the simulation in a temporary `golem_run_*` subdirectory of `workspace_dir` and removes it afterward. The generated input and mesh files are preserved in `output_dir`. If `False`, stages and runs directly in `workspace_dir` and retains the files for debugging. |
+| `workspace_dir` | `"/project"` | Host directory used for staging the simulation files and, for local execution, as the working directory. |
+| `stream_output` | `False` | If `True`, prints GOLEM output during execution. The output is also saved to `golem_stdout.txt` after successful execution. |
+
+
+After a successful simulation, the runner preserves the generated results in `output_dir`.
+
+When `temporary=True`, the generated input and mesh files are also copied into this directory before the temporary working directory is removed.
+
+Example of simulation run in a Docker:
+
+```python
+problem_golem_results = run_simulation_golem(
+    problem=problem_golem,
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    output_dir="/path/to/output",
+    nproc=4,
+)
+```
+
+### Choose where GOLEM runs: Docker or host
+
+The same GOLEM problem builder can be used in both execution modes. Only the arguments passed to `run_simulation_golem()` differ.
+
+The examples below assume that `problem_golem` has already been constructed.
+
+| Environment | Arguments | Required setup |
+| --- | --- | --- |
+| GOLEM in a Docker container | `image_name=...` and optionally `golem_binary=...` | Docker CLI, running Docker daemon, and a compatible GOLEM image. |
+| GOLEM installed on the host | `image_name=None` and `golem_binary=...` | `mpiexec` available on `PATH` and an executable GOLEM binary. |
+
+**Example A — GOLEM in Docker**
+
+```python
+from pathlib import Path
+from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
+
+problem_golem_results = run_simulation_golem(
+    problem=problem_golem,
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    output_dir=str(Path.cwd() / "golem_output"),
+    nproc=4,
+)
+```
+
+
+**Example B — GOLEM installed on the host**
+
+```python
+from pathlib import Path
+from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
+
+problem_golem_results = run_simulation_golem(
+    problem=problem_golem,
+    golem_binary="/absolute/path/to/golem-opt",
+    output_dir=str(Path.cwd() / "golem_native_output"),
+    nproc=4,
+)
+```
+
+### GOLEM installation
+
+To run GOLEM directly on the host, follow the installation guidelines in the [GOLEM GitLab repository](https://git.gfz-potsdam.de/moose/golem).
+
+To obtain access to the GitLab repository, please contact one of the GOLEM maintainers.
+
+After installation, provide the path to the GOLEM executable using the `golem_binary` parameter when calling `run_simulation_golem()`, as shown in **Example B — GOLEM installed on the host** above.
+
+### 3. Export the results
+
+> **Workbench component:** `Export Simulation Results`
+
+#### SfePy result export
+
+For SfePy, the standard Workbench export is a zipped VTK files.
+The ZIP contains one `.vtk` file per saved time step together with a
+`.pvd` collection file for loading the complete time series in ParaView.
+
+Example call in the codebase:
+
+``` python
+buf = export_simulation_results(data_by_time, format="vtk")
+with open("simulation_results.zip", "wb") as f:
+    f.write(buf.getvalue())
+```
+
+#### GOLEM result output and export
+
+GOLEM may produce several output files. In addition to the 
+Exodus file (commonly used), a model may produce CSV files or
+other configured outputs.
+
+In the codebase, there are two ways to keep GOLEM results.
+
+**Option 1 - define `output_dir` when running GOLEM.**
+
+Example call in the codebase:
+
+``` python
+problem_golem_results = run_simulation_golem(
+    problem=problem_golem,
+    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
+    output_dir="/path/to/my_golem_output",
+    nproc=4,
+)
+```
+
+When `output_dir` is supplied, `run_simulation_golem()` copies the
+preserved user-facing GOLEM outputs directly into that directory.
+
+**Option 2 - export the complete GOLEM output directory as a ZIP.**
+
+The `SimulationResults` retains the
+path to its preserved GOLEM output directory. This directory can be
+saved as one Zip file using `export_simulation_results`.
+
+Example call in the codebase:
+
+``` python
+buf = export_simulation_results(problem_golem_results, format="golem")
+with open("simulation_golem_results.zip", "wb") as f:
+    f.write(buf.getvalue())
+```
+
+Here, `format="golem"` returns the whole output directory as a ZIP file. This is useful when the complete result set needs to be downloaded,
+transferred, or stored as one artifact. 
+
+If only the Exodus file is required to be saved, it can be exported
+as a single Exodus file.
+
+Example call in the codebase:
+
+``` python
+buf = export_simulation_results(problem_golem_results, format="exodus")
+with open("simulation_golem_results.e", "wb") as f:
+    f.write(buf.getvalue())
+```
+
+Here `format="exodus"` returns GOLEM's original multi-time-step Exodus
+file.
+
+
+------------------------------------------------------------------------
+
+## Visualisation and Inspection
+
+Once the execution of a simulation has been done, SfePy and
+GOLEM results can use the same result plotting functions. 
+
+For the **GOLEM Simple Reservoir Problem**, the saved ParaView state
+file `model1_reservoir_visualisation.pvsm` and `model2_reservoir_visualisation.pvsm`
+can be opened in **ParaView** for
+more detailed visualisation of the simulation results. The state files
+provide a prepared visualisation setup for inspecting the reservoir
+simulation output and can be used in addition to the plotting functions
+available directly in WBGeo.
+
+### Plot Materials
+
+> **Workbench inspector:** `Plot Materials`
+
+This inspector provides a visual inspection of material assignments and
+properties in the simulation mesh before running the simulation. It helps
+verify the spatial distribution of geological units, fault damage zones,
+and material properties.
+
+It supports both predefined and custom SfePy and GOLEM problem builders.
+
+The component can display either categorical material assignments or
+the spatial distribution of numerical material properties, such as
+porosity, permeability, and thermal conductivity.
+
+The relevant inputs in the codebase are:
+
+- **`builder`**: The SfePy or GOLEM problem builder containing the mesh
+  and material definitions.
+- **`style`** *(default: `"surface"`)*: Visualization style for SfePy
+  material assignments. GOLEM currently supports only `"surface"`.
+- **`show_edges`** *(default: `False`)*: Controls whether mesh cell edges
+  are displayed.
+- **`property_name`** *(optional, default: `None`)*: Specifies a numerical
+  material property to visualize, such as `"porosity"`, `"permeability"`,
+  or `"k_solid"`. If omitted, the component displays categorical
+  material assignments.
+- **`cmap`** *(default: `"viridis"`)*: Colormap used when visualizing
+  numerical material properties.
+- **`opacity`** *(default: `0.65`)*: Controls the transparency of the
+  displayed mesh, with values ranging from `0` (fully transparent)
+  to `1` (fully opaque).
+
+Example calls in the codebase:
+
+```python
+# Visualize material assignments
+plot_builder_materials(builder)
+
+# Visualize permeability distribution
+plot_builder_materials(
+    builder,
+    property_name="permeability",
+    cmap="viridis",
+    opacity=0.7,
+    show_edges=False,
+)
+```
+
+**Note:** The material-property visualization uses numerical values
+defined in the model before simulation. It does not display computed
+simulation results such as temperature or pressure. Available properties
+depend on the selected problem builder and its material definitions.
+
+
+
+### Plot a variable at a time step
+
+> **Workbench inspector:** `Plot Variable (Final Time)`
+
+This inspector provides a 3D visualization of a simulation result
+variable at a selected time step. It displays the spatial distribution
+of variables such as temperature or pressure on the simulation mesh.
+
+By default, the final saved time step is displayed. The variable
+defaults to `"T"` if available, or the first available numerical
+scalar field.
+
+The relevant parameters in the codebase are:
+
+- **`sim`**: The `SimulationResults` object containing the simulation
+  results.
+- **`var_name`** *(optional, default: `None`)*: Name of the variable
+  to visualize.
+- **`time`** *(optional, default: `None`)*: Time step to display.
+  If omitted, the final saved time step is used.
+- **`cmap`** *(default: `"viridis"`)*: Colormap used for the variable.
+- **`show_edges`** *(default: `False`)*: Controls whether mesh cell
+  edges are displayed.
+- **`edge_color`** *(default: `"grey"`)*: Color of the mesh edges.
+- **`edge_line_width`** *(default: `0.5`)*: Width of the mesh edges.
+- **`show_contours`** *(default: `False`)*: Displays contour lines
+  of the selected variable on the 3D surface.
+- **`n_contours`** *(default: `10`)*: Number of contour levels.
+- **`contour_color`** *(default: `"black"`)*: Color of contour lines.
+- **`scale`** *(default: `(1, 1, 1)`)*: Scaling factors for the
+  X, Y, and Z directions.
+- **`off_screen`** *(default: `False`)*: Enables off-screen rendering.
+- **`window_size`** *(optional, default: `None`)*: Size of the
+  visualization window.
+- **`anti_aliasing`** *(default: `True`)*: Controls anti-aliasing
+  during rendering.
+
+Example call in the codebase:
+
+```python
+plot_variable_at_a_time(
+    simulation_result,
+    var_name="T",
+    time=final_time,
+    cmap="coolwarm",
+    show_edges=True,
+    show_contours=False,
+)
+```
+
+### Plot a cross-section
+
+> **Workbench inspector:** `Plot Cross Section 2D`
+
+This inspector visualizes a simulation result variable on a specified
+2D cross-section. It displays the variable at two saved time steps
+side by side, allowing their spatial distributions to be compared.
+
+By default, the first and last saved time steps are used. Both plots
+share the same color scale for direct comparison.
+
+The relevant parameters in the codebase are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`** *(optional, default: `None`)*: Variable to visualize.
+  Defaults to `"T"` if available, or the first available scalar field.
+- **`time_a`** *(optional, default: `None`)*: First time step.
+  Defaults to the first saved time step.
+- **`time_b`** *(optional, default: `None`)*: Second time step.
+  Defaults to the last saved time step.
+- **`origin`** *(default: `(0, 0, 0)`)*: A point defining the
+  cross-section plane.
+- **`normal`** *(default: `(0, 1, 0)`)*: Normal vector defining
+  the orientation of the cross-section plane.
+- **`cmap`** *(default: `"coolwarm"`)*: Colormap used for the variable.
+- **`n_contours`** *(default: `15`)*: Number of contour levels.
+- **`resolution`** *(default: `200`)*: Resolution of the interpolated
+  2D grid used for plotting.
+
+Example call in the codebase:
+
+```python
+plot_cross_section_2D(
+    simulation_result,
+    var_name="T",
+    time_a=initial_time,
+    time_b=final_time,
+    origin=(500, 500, 500),
+    normal=(0, 1, 0),
+    cmap="coolwarm",
+)
+```
+#### Plot a variable along a line
+> **Workbench inspector:** `Plot Variable Along Line`
+
+`plot_variable_along_line()` samples a result variable along a
+straight line between two specified points at one time step and
+plots its values against distance along the line.
+
+The relevant parameters are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`**: Variable to sample.
+- **`time`**: Time step used for sampling.
+- **`p0`**: Starting point of the line `(x, y, z)`.
+- **`p1`**: Ending point of the line `(x, y, z)`.
+- **`n_samples`** *(default: `200`)*: Number of sampling intervals
+  along the line.
+
+Example call in the codebase:
+
+```python
+plot_variable_along_line(
+    simulation_result,
+    var_name="T",
+    time=final_time,
+    p0=(0, 500, 500),
+    p1=(1000, 500, 500),
+    n_samples=200,
+)
+```
+
+#### Plot a time series at a point
+> **Workbench inspector:** `Plot Variable Time Series`
+
+`plot_variable_time_series()` samples a result variable at the same
+spatial point across all saved simulation time steps and plots the
+resulting time series.
+
+The relevant parameters are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`**: Variable to sample.
+- **`point`**: Spatial coordinates `(x, y, z)`.
+- **`decimals`** *(default: `3`)*: Number of decimal places used
+  for formatting the vertical axis.
+
+Example call in the codebase:
+
+```python
+plot_variable_time_series(
+    simulation_result,
+    var_name="T",
+    point=(500, 500, 500),
+    decimals=3,
+)
+```
+
+If the point cannot be sampled at a particular time step, the
+corresponding value is represented as a gap in the time-series plot.
+
+
+
+### View solver output (SfePy only)
+
+> **Workbench inspector:** `View Solver Output`
+
+This inspector allows users to inspect the text output generated
+during a SfePy simulation. This output can be useful for checking 
+solver progress, convergence information, warnings, and errors.
+
+Example access in the codebase:
+
+```python
+for stage, stdout in simulation_result.sfepy_stdout.items():
+    print(f"=== {stage} ===")
+    print(stdout)
+```
+
+
+
+### Additional simulation result plots and inspection
+
+The following post-processing functions are available in the codebase
+and can be used to inspect `SimulationResults`. They support both
+SfePy and GOLEM results when the requested variables and required
+data are available.
+
+#### Plot the difference between two time steps
+
+`plot_variable_difference()` displays the change in a variable
+between two saved time steps in 3D, calculated as `time_b - time_a`.
+
+The color scale is centered symmetrically around zero to distinguish
+increases and decreases.
+
+The relevant parameters are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`**: Name of the point-data variable.
+- **`time_a`** *(optional, default: `None`)*: First time step.
+  Defaults to the first saved time step.
+- **`time_b`** *(optional, default: `None`)*: Second time step.
+  Defaults to the last saved time step.
+- **`cmap`** *(default: `"RdBu_r"`)*: Colormap for the difference.
+- **`show_edges`** *(default: `False`)*: Controls mesh edge visibility.
+- **`scale`** *(default: `(1, 1, 1)`)*: Scaling factors for the
+  X, Y, and Z directions.
+
+Example call in the codebase:
+
+```python
+plot_variable_difference(
+    simulation_result,
+    var_name="T",
+    time_a=initial_time,
+    time_b=final_time,
+    cmap="RdBu_r",
+    show_edges=False,
+)
+```
+
+#### Plot a cross-section difference
+
+`plot_cross_section_difference_2D()` visualizes the change in a
+point-data variable between two time steps on a specified 2D plane.
+The difference is calculated as `time_b - time_a`.
+
+The relevant parameters are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`**: Name of the point-data variable.
+- **`time_a`** *(optional, default: `None`)*: First time step.
+- **`time_b`** *(optional, default: `None`)*: Second time step.
+- **`origin`** *(default: `(0, 0, 0)`)*: Point on the section plane.
+- **`normal`** *(default: `(1, 0, 0)`)*: Normal vector of the plane.
+- **`cmap`** *(default: `"RdBu_r"`)*: Difference colormap.
+- **`n_contours`** *(default: `15`)*: Number of contour levels.
+- **`resolution`** *(default: `200`)*: Resolution of the
+  interpolated 2D grid.
+
+Example call in the codebase:
+
+```python
+plot_cross_section_difference_2D(
+    simulation_result,
+    var_name="T",
+    time_a=initial_time,
+    time_b=final_time,
+    origin=(500, 500, 500),
+    normal=(0, 1, 0),
+    cmap="RdBu_r",
+)
+```
+
+
+#### Print a variable at a point
+
+`print_variable_at_point()` samples a result variable at a specified
+spatial point and time step. 
+
+The relevant parameters are:
+
+- **`sim`**: The `SimulationResults` object.
+- **`var_name`**: Variable to sample.
+- **`time`**: Time step used for sampling.
+- **`point`**: Spatial coordinates `(x, y, z)`.
+
+Example call in the codebase:
+
+```python
+value = print_variable_at_point(
+    simulation_result,
+    var_name="T",
+    time=final_time,
+    point=(500, 500, 500),
+)
+
+print(value)
+```
+
 
 ------------------------------------------------------------------------
 

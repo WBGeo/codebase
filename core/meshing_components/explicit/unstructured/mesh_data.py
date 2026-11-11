@@ -16,6 +16,8 @@ from typing import Sequence, Tuple, List, Mapping, Optional, Dict, Set, Any
 from numpy.typing import NDArray
 from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults, MeshType
+from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
+
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.structural_surfaces import build_grid_litho, import_structural_surfaces
 from core.meshing_components.explicit.unstructured.domain_geometry import (
@@ -33,8 +35,6 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (Refin
                                                                            EllipseRefinement,
                                                                            TriangulationRefinement)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
-from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
-
 from enum import Enum, StrEnum
 from pydantic_numpy import NpNDArrayFp64
 
@@ -2573,22 +2573,22 @@ class CSVSurfaceModelResults:
 
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
-                 title='Create Unstructured Explicit Mesh',  # The title shown in the GUI
+                 title='Create Unstructured Mesh',  # The title shown in the GUI
                  color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Meshing',
-                 positionInGroup=5,
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
-    geomodel: typing.Union[StructuralModelResults, CSVSurfaceModelResults],
+    geomodel_result: Optional[StructuralModelResults] = None,
+    surface_csv_dir: Optional[str] = None,
     wells: Optional[WellData] = None,
     sources: Optional[SourcesData] = None,
     shafts: Optional[ShaftData] = None,
     extra_planes: Optional[PlaneData] = None,
     ellipses: Optional[EllipseData] = None,
-    triangulations: Optional[TriangulationData] = None,
+    triangulations: Optional[TriangulationsPlanesData] = None,
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,
@@ -2611,7 +2611,8 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        geomodel (StructuralModelResults | CSVSurfaceModelResults): Structural-model input or CSVSurfaceModelResults
+        geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.
+        surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.
         rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
         rotation_angle_translate (float, optional): Rotation angle in degrees in the XY plane with additional translation. The mesh center is used as the reference point. If xt/yt/zt are omitted, the transformed mesh is centered at (0, 0, 0).
         xt, yt, zt (float, optional): Target coordinates of the transformed mesh center, used only with rotation_angle_translate. If specified, all three values must be provided together.
@@ -2648,13 +2649,12 @@ def create_unstructured_mesh_data(
                 - "manual"   : merge lithology blocks using information provided by user
         merge_file (str, optional): Directory path containing merge definition file.
             Used only when mapping_litho="manual".
-        refinement (Refinement, optional): Adaptive mesh refinement settings. Supports local refinement around wells,sources, faults, ellipses ,
+        refinement (Refinement, optional): Adaptive mesh refinement settings. Supports local refinement around wells, sources, faults, ellipses,
             and triangulated surfaces through GMSH background mesh fields.
 
     Returns:
         MeshResults: An instance of the MeshResults class.
     """
-
 
 
     if isinstance(mapping_litho, str):
@@ -2667,7 +2667,15 @@ def create_unstructured_mesh_data(
             )
 
     # Input route validation.
-    csv_mode = isinstance(geomodel, CSVSurfaceModelResults)
+    csv_mode = surface_csv_dir is not None
+    if csv_mode and geomodel_result is not None:
+        raise ValueError(
+            "Use either geomodel_result or surface_csv_dir, not both."
+        )
+    if not csv_mode and geomodel_result is None:
+        raise ValueError(
+            "Either geomodel_result or surface_csv_dir must be supplied."
+        )
 
     # CSV surfaces do not contain a structural lithology grid, so lithology
     # mapping is intentionally disabled for this input route.
@@ -2750,6 +2758,7 @@ def create_unstructured_mesh_data(
     else:
         extent_z_min = extent_z_max = None
 
+    csv_surface_data = None  # Load lazily; reuse for extent and mesh preparation.\n\n    # ``extent`` is backward compatible:
     #   * 6 values -> legacy axis-aligned box
     #   * 8 (x,y,z) corners -> oriented parallelepiped
     if extent is None or len(extent) == 0:
@@ -2757,11 +2766,12 @@ def create_unstructured_mesh_data(
             # Same default pattern as structural-model mode: infer the domain
             # from the geological input when no explicit extent is supplied.
             # For CSV surfaces this is the combined x/y/z min/max of all files.
+            csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
             xyz_min = np.min(
-                [xyz.min(axis=0) for _, xyz in geomodel.csv_surface_coordinates], axis=0
+                [xyz.min(axis=0) for _, xyz in csv_surface_data], axis=0
             )
             xyz_max = np.max(
-                [xyz.max(axis=0) for _, xyz in geomodel.csv_surface_coordinates], axis=0
+                [xyz.max(axis=0) for _, xyz in csv_surface_data], axis=0
             )
 
             domain_spec = np.array(
@@ -2774,7 +2784,7 @@ def create_unstructured_mesh_data(
             )
         else:
             domain_spec = np.asarray(
-                geomodel.structural_frame.grid.extent, dtype=float
+                geomodel_result.structural_frame.grid.extent, dtype=float
             )
 
         if extent_z is not None:
@@ -2816,11 +2826,13 @@ def create_unstructured_mesh_data(
         if csv_mode:
             # CSV mode deliberately bypasses data_preparation(): no overlap
             # removal, fault-side cleaning, projection, or surface extension.
+            if csv_surface_data is None:
+                csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
 
             cleaned_surfaces = []
             ref_surface_indices = {}
 
-            for csv_path, xyz in geomodel.csv_surface_coordinates:
+            for csv_path, xyz in csv_surface_data:
                 # IMPORTANT: create_surface_grid() expects exactly
                 # (surface_id, points), not extra metadata.
                 surface_id = csv_path.name
