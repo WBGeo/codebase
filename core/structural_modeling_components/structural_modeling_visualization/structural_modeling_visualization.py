@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import colorsys
+import itertools
 from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
@@ -522,11 +523,15 @@ def plot_fault_model_3D(
     show_input_data: bool = True,
     show_domain_map: bool = True,
     domain_opacity: float = 0.15,
+    highlight_crosscuts: bool = True,
+    crosscut_color: str = "red",
+    crosscut_line_width: float = 6.0,
     notebook: bool = False,
     show: bool = True,
 ) -> pv.Plotter:
     """
-    3D PyVista plot of a fault model with domain map, fault meshes, and input data.
+    3D PyVista plot of a fault model with domain map, fault meshes, input data,
+    and (where two fault surfaces actually cross) a highlighted crosscut line.
 
     Parameters
     ----------
@@ -542,6 +547,20 @@ def plot_fault_model_3D(
         Whether to render translucent domain blocks.
     domain_opacity : float, default 0.15
         Opacity of domain block visualizations.
+    highlight_crosscuts : bool, default True
+        If True (and show_surface_meshes), computes the exact 3D curve(s)
+        where any two fault surfaces actually intersect (via PyVista/VTK's
+        surface-surface intersection, not a voxel approximation) and draws
+        them in crosscut_color. This is purely geometric -- it doesn't need
+        to be told whether the model cross-cuts (e.g. via FaultModelResults.
+        cross_cutting): a pair of faults that don't cross yields an empty
+        intersection and nothing extra is drawn, so this is a no-op for an
+        ordinary, non-cross-cutting model and only has an effect when two
+        fault surfaces genuinely cross.
+    crosscut_color : str, default "red"
+        Color for the highlighted crosscut line(s).
+    crosscut_line_width : float, default 6.0
+        Line width for the highlighted crosscut line(s).
     notebook : bool, default False
         Use off-screen/notebook mode for PyVista.
     show : bool, default True
@@ -557,6 +576,8 @@ def plot_fault_model_3D(
 
     legend_entries_faults = []
     legend_entries_domains = []
+    legend_entries_crosscuts = []
+    fault_meshes: dict[str, pv.PolyData] = {}
 
     faults = fault_frame.fault_elements or []
 
@@ -660,6 +681,7 @@ def plot_fault_model_3D(
 
                 plotter.add_mesh(mesh, color=fcol, name=fname, label=fname)
                 legend_entries_faults.append((f"• {fname}", fcol))
+                fault_meshes[fname] = mesh
 
         # points (optional, show even if no meshes)
         if show_input_data and fault_frame.fault_surface_points_df is not None:
@@ -689,7 +711,45 @@ def plot_fault_model_3D(
                     plotter.add_mesh(arrow, color=fcol)
 
     # -------------------------
-    # (C) Legend (Domains + Faults)
+    # (B2) Crosscut lines -- exact surface-surface intersection (optional)
+    # -------------------------
+    # Purely geometric: a non-crossing pair of fault surfaces has an empty
+    # intersection, so this only ever draws something for a genuinely
+    # cross-cutting pair -- no need to consult FaultModelResults.cross_cutting
+    # or domain_map here, which plot_fault_model_3D never receives anyway
+    # (it's only given the FaultFrame).
+    if highlight_crosscuts and show_surface_meshes and len(fault_meshes) >= 2:
+        # vtkIntersectionPolyDataFilter logs a "No Intersection between
+        # objects" warning to the console for every non-crossing pair --
+        # expected and harmless (most pairs in an ordinary model don't
+        # cross), but noisy. Scoped off only for this loop, restored after.
+        from vtkmodules.vtkCommonCore import vtkObject
+        _prev_vtk_warnings = vtkObject.GetGlobalWarningDisplay()
+        vtkObject.GlobalWarningDisplayOff()
+        try:
+            for (name_i, mesh_i), (name_j, mesh_j) in itertools.combinations(fault_meshes.items(), 2):
+                try:
+                    line, _, _ = mesh_i.intersection(mesh_j, split_first=False, split_second=False)
+                except Exception:
+                    continue  # degenerate/non-manifold mesh pair -- skip rather than fail the whole plot
+
+                if line.n_points == 0 or line.n_cells == 0:
+                    continue  # these two faults don't actually cross
+
+                plotter.add_mesh(
+                    line,
+                    color=crosscut_color,
+                    line_width=crosscut_line_width,
+                    render_lines_as_tubes=True,
+                    name=f"crosscut_{name_i}_{name_j}",
+                    label=f"{name_i} x {name_j} crosscut",
+                )
+                legend_entries_crosscuts.append((f"— {name_i} × {name_j}", crosscut_color))
+        finally:
+            vtkObject.SetGlobalWarningDisplay(_prev_vtk_warnings)
+
+    # -------------------------
+    # (C) Legend (Domains + Faults + Crosscuts)
     # -------------------------
     flat_legend = []
     if legend_entries_domains:
@@ -699,6 +759,10 @@ def plot_fault_model_3D(
     if legend_entries_faults:
         flat_legend.append(("Faults", "black"))
         flat_legend.extend(legend_entries_faults)
+
+    if legend_entries_crosscuts:
+        flat_legend.append(("Crosscuts", "black"))
+        flat_legend.extend(legend_entries_crosscuts)
 
     if flat_legend:
         plotter.add_legend(
@@ -735,8 +799,13 @@ def plot_fault_model_2D(
     """
     2D slice plot for a FaultFrame.
 
-    - If show_results=True AND a domain_map is present: plots domain map + fault isolines.
-    - Otherwise: plots only input data (points) if available.
+    - Domain-map coloring (show_results) and fault contours (show_fault_contours)
+      are independent: domain blocks need a computed domain_map (absent for a
+      cross-cutting fault model -- see compute_fault_domains -- in which case a
+      UserWarning is raised and domain blocks are skipped), but fault contours
+      only need each fault's own scalar_field/scalar_value, which are always set
+      regardless of cross-cutting, so they're drawn whenever requested.
+    - Input data (points/orientations) is shown independently of both, if present.
 
     Extent is computed from grid coordinates (grid.gridx/gridy/gridz) with half-cell padding,
     so imshow/contour align properly.
@@ -802,14 +871,16 @@ def plot_fault_model_2D(
     has_result = show_results and domain_map is not None and np.size(domain_map) > 0
     if show_results and not has_result:
         warnings.warn(
-            "show_results=True but no domain_map found. Plotting input data only.",
+            "show_results=True but no domain_map found (e.g. a cross-cutting "
+            "fault model, where domaining is skipped) -- domain blocks won't "
+            "be plotted. Fault contours still will be, if show_fault_contours.",
             UserWarning,
         )
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # ---------------------------
-    # RESULTS: domain map + isolines
+    # RESULTS: domain map
     # ---------------------------
     if has_result:
         domain_slice = np.take(domain_map, index, axis=dim).T
@@ -835,40 +906,46 @@ def plot_fault_model_2D(
             cbar = plt.colorbar(im, ax=ax, ticks=domain_values)
             cbar.set_label("Fault Domain")
 
-        # fault contours (only if requested)
-        if show_fault_contours:
-            handles = []
-            for fault in faults:
-                sf = fault.scalar_field
-                sv = fault.scalar_value
-                if sf is None or sv is None:
-                    continue
+    # ---------------------------
+    # Fault contours -- independent of domain_map: each fault's own
+    # scalar_field/scalar_value is set regardless of cross-cutting (see
+    # compute_fault_domains), so these can always be drawn when requested,
+    # the same way plot_fault_model_3D's surface meshes don't depend on
+    # domain_map either.
+    # ---------------------------
+    if show_fault_contours:
+        handles = []
+        for fault in faults:
+            sf = fault.scalar_field
+            sv = fault.scalar_value
+            if sf is None or sv is None:
+                continue
 
-                f_slice = np.take(sf, index, axis=dim).T
-                fcol = fault.color or "black"
+            f_slice = np.take(sf, index, axis=dim).T
+            fcol = fault.color or "black"
 
-                CS = ax.contour(
-                    Xc, Yc,
-                    f_slice.T,
-                    levels=[sv],
-                    colors=[fcol],
-                    linewidths=1.5,
-                    linestyles="-",
-                )
+            CS = ax.contour(
+                Xc, Yc,
+                f_slice.T,
+                levels=[sv],
+                colors=[fcol],
+                linewidths=1.5,
+                linestyles="-",
+            )
 
-                # label directly on contour line
-                ax.clabel(
-                    CS,
-                    fmt={sv: getattr(fault, "name", "fault")},
-                    inline=True,
-                    fontsize=15
-                )
+            # label directly on contour line
+            ax.clabel(
+                CS,
+                fmt={sv: getattr(fault, "name", "fault")},
+                inline=True,
+                fontsize=15
+            )
 
-                handles.append(plt.Line2D([0], [0], color=fcol, lw=1.5, label=getattr(fault, "name", "fault")))
+            handles.append(plt.Line2D([0], [0], color=fcol, lw=1.5, label=getattr(fault, "name", "fault")))
 
-            if handles:
-                by_label = {h.get_label(): h for h in handles}
-                ax.legend(by_label.values(), by_label.keys(), title="Faults", loc="lower left")
+        if handles:
+            by_label = {h.get_label(): h for h in handles}
+            ax.legend(by_label.values(), by_label.keys(), title="Faults", loc="lower left")
 
     # ---------------------------
     # INPUT DATA ONLY (project all points)

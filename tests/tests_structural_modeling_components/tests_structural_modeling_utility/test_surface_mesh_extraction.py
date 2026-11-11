@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from core.structural_modeling_components.general import _build_padded_grid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import (
     marching_cubes, marching_cubes_per_element)
 
@@ -39,8 +41,8 @@ def test_marching_cubes_calls_skimage_for_each_level_and_offsets_vertices(monkey
     assert [c["level"] for c in calls] == [float(e) for e in elements]
     assert all(c["spacing"] == spacing for c in calls)
 
-    # Assert: vertices are offset by extent[0], extent[2], extent[4]
-    offset = np.array([extent[0], extent[2], extent[4]], dtype=float)
+    # Assert: vertices are offset to the first cell centre (extent min + spacing/2)
+    offset = np.array([extent[0], extent[2], extent[4]], dtype=float) + np.array(spacing) / 2
     expected_verts = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]], dtype=float) + offset
 
     assert len(mc_vertices) == 2
@@ -103,6 +105,73 @@ def test_marching_cubes_per_element_passes_mask_and_offsets_vertices(monkeypatch
     assert captured["spacing"] == spacing
     assert captured["mask"] is mask
 
-    offset = np.array([extent[0], extent[2], extent[4]], dtype=float)
+    offset = np.array([extent[0], extent[2], extent[4]], dtype=float) + np.array(spacing) / 2
     assert np.allclose(vertices, np.array([[5.0, 6.0, 7.0]]) + offset)
     assert np.array_equal(edges, np.array([[0, 0, 0]], dtype=int))
+
+
+# -----------------------------------------------------------------------------
+# Real skimage on RegularGrid: surfaces must sit where the field crosses the level
+# -----------------------------------------------------------------------------
+
+_GRIDS = [
+    ((0.0, 10.0, 0.0, 10.0, 0.0, 10.0), (10, 10, 10)),
+    ((100.0, 1100.0, 0.0, 500.0, -800.0, 0.0), (20, 10, 16)),
+]
+
+
+def _field_on_grid(grid: RegularGrid, axis: int) -> np.ndarray:
+    """Coordinate field f = x, y or z evaluated like an interpolator: at grid points."""
+    return grid.grid_coordinates[:, axis].reshape(grid.resolution)
+
+
+@pytest.mark.parametrize("extent, resolution", _GRIDS)
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_marching_cubes_per_element_places_plane_at_its_level(extent, resolution, axis):
+    grid = RegularGrid(extent=extent, resolution=resolution)
+    level = 0.5 * (extent[2 * axis] + extent[2 * axis + 1]) + 0.3 * grid.spacing[axis]
+
+    vertices, _ = marching_cubes_per_element(
+        _field_on_grid(grid, axis), level, grid.spacing, grid.extent, mask=None
+    )
+
+    assert len(vertices) > 0
+    assert np.allclose(vertices[:, axis], level)
+
+
+@pytest.mark.parametrize("extent, resolution", _GRIDS)
+def test_marching_cubes_places_tilted_plane_at_its_level(extent, resolution):
+    grid = RegularGrid(extent=extent, resolution=resolution)
+    field = grid.grid_coordinates.sum(axis=1).reshape(grid.resolution)
+    level = 0.5 * sum(extent)
+
+    (vertices,), _ = marching_cubes(field, [level], grid.spacing, grid.extent)
+
+    assert np.allclose(vertices.sum(axis=1), level)
+
+
+def test_vertices_stay_inside_the_cell_centre_hull():
+    grid = RegularGrid(extent=(0.0, 10.0, 0.0, 10.0, 0.0, 10.0), resolution=(10, 10, 10))
+    vertices, _ = marching_cubes_per_element(
+        _field_on_grid(grid, 2), 5.0, grid.spacing, grid.extent, mask=None
+    )
+
+    hull_min = np.array([grid.gridx[0], grid.gridy[0], grid.gridz[0]])
+    hull_max = np.array([grid.gridx[-1], grid.gridy[-1], grid.gridz[-1]])
+    assert np.all(vertices >= hull_min - 1e-9)
+    assert np.all(vertices <= hull_max + 1e-9)
+
+
+def test_padded_grid_surface_matches_the_unpadded_one():
+    """EXTENDED meshes pass a padded block with a padded extent through the same helper."""
+    grid = RegularGrid(extent=(100.0, 1100.0, 0.0, 500.0, -800.0, 0.0), resolution=(20, 10, 16))
+    padded = _build_padded_grid(grid, 2)
+    level = -390.0
+
+    vertices, _ = marching_cubes_per_element(
+        _field_on_grid(padded, 2), level, padded.spacing, padded.extent, mask=None
+    )
+
+    assert np.allclose(vertices[:, 2], level)
+    # The padded surface reaches beyond the model box, as the GMSH path requires.
+    assert vertices[:, 0].min() < grid.extent[0] and vertices[:, 0].max() > grid.extent[1]

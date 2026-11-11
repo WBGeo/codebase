@@ -10,6 +10,24 @@ from numpy.typing import NDArray
 from skimage import measure
 
 
+def _grid_origin(
+    spacing: Tuple[float, float, float],
+    extent: Tuple[float, ...],
+) -> NDArray[np.float64]:
+    """
+    World coordinates of array index (0, 0, 0) on a cell-centred grid.
+
+    ``skimage.measure.marching_cubes`` returns vertices relative to the first
+    array sample. Grid values are evaluated at cell centres (see
+    ``RegularGrid``), so the first sample sits half a cell inside the extent.
+    """
+    return np.array([
+        extent[0] + spacing[0] / 2,
+        extent[2] + spacing[1] / 2,
+        extent[4] + spacing[2] / 2,
+    ], dtype=float)
+
+
 def marching_cubes(
     block: NDArray[np.float64],
     elements: List[float],
@@ -28,8 +46,9 @@ def marching_cubes(
     spacing : tuple[float, float, float]
         Voxel spacing in (x, y, z).
     extent : tuple[float, ...]
-        Model extent as (xmin, xmax, ymin, ymax, zmin, zmax), used to offset
-        extracted vertices to world coordinates.
+        Model extent as (xmin, xmax, ymin, ymax, zmin, zmax). The block is
+        assumed cell-centred on this extent; vertices are offset by
+        ``extent.min + spacing / 2`` to world coordinates.
 
     Returns
     -------
@@ -38,10 +57,11 @@ def marching_cubes(
     mc_edges : list[np.ndarray]
         Triangle index arrays, one per isovalue.
     """
+    origin = _grid_origin(spacing, extent)
     mc_vertices, mc_edges = [], []
     for level in elements:
         verts, faces, _, _ = measure.marching_cubes(block, float(level), spacing=spacing)
-        mc_vertices.append(verts + [extent[0], extent[2], extent[4]])
+        mc_vertices.append(verts + origin)
         mc_edges.append(faces)
     return mc_vertices, mc_edges
 
@@ -65,8 +85,9 @@ def marching_cubes_per_element(
     spacing : tuple[float, float, float]
         Voxel spacing in (x, y, z).
     extent : tuple[float, ...]
-        Model extent as (xmin, xmax, ymin, ymax, zmin, zmax), used to offset
-        extracted vertices to world coordinates.
+        Model extent as (xmin, xmax, ymin, ymax, zmin, zmax). The block is
+        assumed cell-centred on this extent; vertices are offset by
+        ``extent.min + spacing / 2`` to world coordinates.
     mask : np.ndarray or None
         Boolean mask restricting the extraction region. Pass None for no masking.
 
@@ -86,5 +107,5 @@ def marching_cubes_per_element(
         verts, edges, _, _ = measure.marching_cubes(block, element, spacing=spacing, mask=mask)
     except RuntimeError:
         return np.empty((0, 3)), np.empty((0, 3), dtype=int)
-    vertices = verts + [extent[0], extent[2], extent[4]]
+    vertices = verts + _grid_origin(spacing, extent)
     return vertices, edges

@@ -168,19 +168,18 @@ def _expected_lithology(grid: RegularGrid) -> np.ndarray:
 _MIN_INTERIOR_MATCH: dict[InterpolationMethod, float] = {
     InterpolationMethod.RADIAL_BASIS_FUNCTION: 0.95,
     InterpolationMethod.FINITE_DIFFERENCES:    0.95,
+    InterpolationMethod.PIECEWISE_LINEAR:      0.95,
     InterpolationMethod.UNIVERSAL_COKRIGING:   0.90,
     InterpolationMethod.UNIVERSAL_KRIGING:     0.90,
 
     InterpolationMethod.ORDINARY_KRIGING:      0.75,
+    # GeoINR is non-deterministic (unseeded random init); 0.90 gives a safe margin below
+    # the 1.000 interior match observed on this scenario across 15 unseeded trials, so a
+    # normal run-to-run variation doesn't make this test flaky.
+    InterpolationMethod.GEOINR:                0.90,
 }
 
-# GeoINR is non-deterministic and cannot be compared against an analytical solution
-ALL_METHODS = [
-    m for m in InterpolationMethod
-    if m not in {
-        InterpolationMethod.GEOINR,            # non-deterministic
-    }
-]
+ALL_METHODS = list(InterpolationMethod)
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +259,9 @@ def test_model2_fault_with_unconformity(method, plot_mode):
     )
     for g in frame.structural_groups:
         g.set_interpolation_method(method)
+        if method == InterpolationMethod.GEOINR:
+            # default is 4000 epochs; 1000 passed 6/6 unseeded trials here and keeps the suite fast
+            g.configure_interpolation_params(epochs=1000)
 
     res = general.compute_structural_model(frame, extract_meshes=False, verbose=False)
     lith = res.structural_frame.lith_block

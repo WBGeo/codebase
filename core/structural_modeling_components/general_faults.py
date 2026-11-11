@@ -158,6 +158,25 @@ def check_fault_crosscuts_via_isovalue_bands(
                 )
 
 
+def check_fault_model_not_crosscutting(fault_model: Optional[FaultModelResults]) -> None:
+    """
+    Pre-check: fault_model must not have cross-cutting faults. A crosscutting
+    FaultModelResults (see compute_fault_domains) has no domain map -- domaining
+    is skipped entirely in that case -- so it cannot be used for structural
+    modeling. Used both as a Workbench input_checks pre-check (structural_modeling,
+    which lets the Workbench refuse the connection before the node is ever run)
+    and internally in build_structural_frame -- pre-checks can be skipped by a
+    caller (see docs/developers/components.md), so it's also enforced there.
+    """
+    if fault_model is not None and fault_model.cross_cutting:
+        raise ValueError(
+            "fault_model has cross-cutting faults, so it has no domain map and "
+            "cannot be used for structural modeling. Inspect it directly (e.g. "
+            "Plot Fault Model 3D) to see where the faults cross, fix the fault "
+            "geometry, and recompute the fault model."
+        )
+
+
 def interpolate_group_universal_cokriging_for_faults(
     element: FaultElement,
     grid: RegularGrid,
@@ -238,24 +257,32 @@ def compute_fault_domains(
     fault_frame: FaultFrame,
 ) -> FaultModelResults:
     """
-    Interpolate all faults and generate a domain map across the model grid.
+    Interpolate all faults, check for cross-cutting, and (if clean) generate a
+    domain map across the model grid.
 
     This function relies on fault.domain_mask being set by the interpolator.
 
     Side effects
     ------------
-    - Sets `fault_frame._domain_map`
-    - Sets `fault_frame._domain_masks`
-    - Sets per-fault separated_domains and domain_pairs
-    - Extracts unmasked fault meshes and stores them on each FaultElement
-    - Performs a cross-cut sanity check at the end
+    - Always extracts fault surface meshes and stores them on each FaultElement,
+      regardless of cross-cutting -- so a cross-cutting result can still be
+      inspected visually to see where the faults cross.
+    - If no faults cross-cut: sets `fault_frame.domain_map`, `fault_frame.domain_masks`,
+      and each fault's separated_domains/domain_pairs, and returns a
+      FaultModelResults with cross_cutting=False (usable by Compute Structural Model).
+    - If any two faults cross-cut: domaining is skipped entirely (domain_map,
+      domain_masks, domain_pairs, separated_domains are left at their None
+      defaults) and the returned FaultModelResults has cross_cutting=True --
+      not usable by Compute Structural Model (see build_structural_frame), but
+      still inspectable via plot_fault_model_2D/3D.
 
     Raises
     ------
     ValueError
         If required frame inputs are missing or interpolation fails.
     RuntimeError
-        If any fault does not generate a valid split or yields no adjacency pairs.
+        If any fault does not generate a valid split or yields no adjacency pairs
+        (only possible on the non-cross-cutting path).
     """
     if not fault_frame.grid:
         raise ValueError("Grid must be set before domain generation.")
@@ -319,70 +346,96 @@ def compute_fault_domains(
 
         domain_map_xyz = new_domain_map
 
-    # Remap IDs to consecutive (FINAL ID SPACE)
-    unique_ids = np.unique(domain_map_xyz)
-    remap = {int(old): int(new) for new, old in enumerate(unique_ids)}
-    remapped_xyz = np.vectorize(remap.get)(domain_map_xyz)
+    # Crosscut check moved ahead of domaining (which it used to only run
+    # after): every fault's scalar_field is already available at this point,
+    # and detecting a crosscut first means domaining's own internal
+    # RuntimeErrors (produced no valid domain_pairs / empty-side split) can
+    # no longer fire ahead of it for a crosscutting geometry and mask the
+    # real cause -- the reported error is now always "crosscuts", never a
+    # confusing downstream symptom of it.
+    try:
+        check_fault_crosscuts_via_isovalue_bands(fault_frame)
+        cross_cutting = False
+    except ValueError:
+        cross_cutting = True
 
-    # Store final domain map and masks in XYZ
-    fault_frame.domain_map = remapped_xyz
-    fault_frame.domain_masks = {int(uid): (remapped_xyz == uid) for uid in np.unique(remapped_xyz)}
+    # Domaining is meaningless for a crosscutting fault set (domain
+    # splitting assumes faults don't intersect) and is skipped entirely in
+    # that case -- fault_frame.domain_map/domain_masks and each fault's
+    # domain_pairs/separated_domains are left at their safe Optional[None]
+    # defaults. Both plot_fault_model_2D/3D already handle domain_map=None
+    # (domain blocks just aren't drawn), so fault-surface inspection still
+    # works for a crosscutting model; only Compute Structural Model refuses
+    # to consume a FaultModelResults with cross_cutting=True (see
+    # build_structural_frame).
+    if not cross_cutting:
+        # Remap IDs to consecutive (FINAL ID SPACE)
+        unique_ids = np.unique(domain_map_xyz)
+        remap = {int(old): int(new) for new, old in enumerate(unique_ids)}
+        remapped_xyz = np.vectorize(remap.get)(domain_map_xyz)
 
-    valid_ids = set(map(int, np.unique(remapped_xyz)))
+        # Store final domain map and masks in XYZ
+        fault_frame.domain_map = remapped_xyz
+        fault_frame.domain_masks = {int(uid): (remapped_xyz == uid) for uid in np.unique(remapped_xyz)}
 
-    # --- Compute & store domain_pairs in FINAL ID SPACE ---
-    for fault in fault_frame.fault_elements:
-        sf = fault.scalar_field
-        if sf.shape == res_zyx:
-            sf = sf.transpose(2, 1, 0)
+        valid_ids = set(map(int, np.unique(remapped_xyz)))
 
-        pairs = compute_domain_pairs_from_fault_band(
-            domain_map_xyz=remapped_xyz,  # IMPORTANT: final IDs
-            scalar_field_xyz=sf,
-            scalar_value=float(fault.scalar_value),
-            spacing_xyz=fault_frame.grid.spacing,
-            voxels=1.0,
-            use_gradient=True,
-        )
+        # --- Compute & store domain_pairs in FINAL ID SPACE ---
+        for fault in fault_frame.fault_elements:
+            sf = fault.scalar_field
+            if sf.shape == res_zyx:
+                sf = sf.transpose(2, 1, 0)
 
-        pairs = frozenset((int(a), int(b)) for (a, b) in pairs if int(a) in valid_ids and int(b) in valid_ids)
-
-        if not pairs:
-            raise RuntimeError(f"Fault '{fault.name}' produced no valid domain_pairs after remap.")
-
-        fault.set_domain_pairs(pairs)
-
-    # --- ALSO store separated_domains in FINAL ID SPACE ---
-    for fault in fault_frame.fault_elements:
-        mask = fault.get_domain_mask()
-        if mask is None:
-            raise ValueError(f"Fault '{fault.name}' has no domain_mask set.")
-
-        # Force mask to XYZ deterministically (same logic as above)
-        if mask.shape == res_xyz:
-            mask_xyz = mask
-        elif mask.shape == res_zyx:
-            mask_xyz = mask.transpose(2, 1, 0)
-        else:
-            raise ValueError(f"Fault mask has unexpected shape {mask.shape}, expected {res_xyz} or {res_zyx}")
-
-        # IMPORTANT: use remapped_xyz (final IDs), not domain_map_xyz (temp IDs)
-        left_ids = set(map(int, np.unique(remapped_xyz[mask_xyz])))
-        right_ids = set(map(int, np.unique(remapped_xyz[~mask_xyz])))
-
-        if not left_ids or not right_ids:
-            raise RuntimeError(f"Fault '{fault.name}' does not create a valid split (empty side).")
-
-        # Optional sanity: ensure they're in final id space
-        if not left_ids.issubset(valid_ids) or not right_ids.issubset(valid_ids):
-            raise RuntimeError(
-                f"Fault '{fault.name}' separated_domains contain ids outside domain_map: "
-                f"left={sorted(left_ids - valid_ids)}, right={sorted(right_ids - valid_ids)}"
+            pairs = compute_domain_pairs_from_fault_band(
+                domain_map_xyz=remapped_xyz,  # IMPORTANT: final IDs
+                scalar_field_xyz=sf,
+                scalar_value=float(fault.scalar_value),
+                spacing_xyz=fault_frame.grid.spacing,
+                voxels=1.0,
+                use_gradient=True,
             )
 
-        fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
+            pairs = frozenset((int(a), int(b)) for (a, b) in pairs if int(a) in valid_ids and int(b) in valid_ids)
 
-    # Extract surface meshes for faults
+            if not pairs:
+                raise RuntimeError(f"Fault '{fault.name}' produced no valid domain_pairs after remap.")
+
+            fault.set_domain_pairs(pairs)
+
+        # --- ALSO store separated_domains in FINAL ID SPACE ---
+        for fault in fault_frame.fault_elements:
+            mask = fault.get_domain_mask()
+            if mask is None:
+                raise ValueError(f"Fault '{fault.name}' has no domain_mask set.")
+
+            # Force mask to XYZ deterministically (same logic as above)
+            if mask.shape == res_xyz:
+                mask_xyz = mask
+            elif mask.shape == res_zyx:
+                mask_xyz = mask.transpose(2, 1, 0)
+            else:
+                raise ValueError(f"Fault mask has unexpected shape {mask.shape}, expected {res_xyz} or {res_zyx}")
+
+            # IMPORTANT: use remapped_xyz (final IDs), not domain_map_xyz (temp IDs)
+            left_ids = set(map(int, np.unique(remapped_xyz[mask_xyz])))
+            right_ids = set(map(int, np.unique(remapped_xyz[~mask_xyz])))
+
+            if not left_ids or not right_ids:
+                raise RuntimeError(f"Fault '{fault.name}' does not create a valid split (empty side).")
+
+            # Optional sanity: ensure they're in final id space
+            if not left_ids.issubset(valid_ids) or not right_ids.issubset(valid_ids):
+                raise RuntimeError(
+                    f"Fault '{fault.name}' separated_domains contain ids outside domain_map: "
+                    f"left={sorted(left_ids - valid_ids)}, right={sorted(right_ids - valid_ids)}"
+                )
+
+            fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
+
+    # Extract surface meshes for faults -- unconditional (depends only on
+    # each fault's own scalar_field/extended_scalar_field/scalar_value, never
+    # on domaining), so a crosscutting model still gets full 3D fault
+    # surfaces to inspect.
     dx, dy, dz = fault_frame.grid.spacing
     x0, x1, y0, y1, z0, z1 = fault_frame.grid.extent
     padded_extent = (
@@ -409,10 +462,9 @@ def compute_fault_domains(
             )
             fault.set_mesh(FaultMeshType.EXTENDED, vertices_ext[0], edges_ext[0])
 
-    check_fault_crosscuts_via_isovalue_bands(fault_frame)
-
     result = FaultModelResults(
         fault_frame=copy.deepcopy(fault_frame),
+        cross_cutting=cross_cutting,
     )
     return result
 

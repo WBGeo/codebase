@@ -87,7 +87,7 @@ os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 # Create a grid for the model
 grid = RegularGrid(
     extent=(0, 2500, 0, 1000, 0, 1000),  # Example grid extent
-    resolution=(125, 50, 50)  # Example resolution
+    resolution=(100, 40, 40)  # Example resolution
 )
 
 #%%
