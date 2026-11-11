@@ -117,7 +117,37 @@ def build_well_refinement(zip_info, well_lines, refinement, field_gen) -> Option
         raise TypeError(type(w))
 
 
-def build_source_refinement(source_points, refinement, field_gen) -> Optional[int]:
+def source_point_size(refinement) -> Optional[float]:
+    """
+    Mesh size at the source points themselves (distance 0) for the source refinement.
+
+    The 3D Delaunay mesher only refines around an embedded point if the point itself
+    has a small mesh size, so this size is assigned to the source points in
+    addition to the refinement field. For a FunctionSourceRefinement the expression
+    is evaluated at DIST = 0; None if there is no source refinement or the
+    expression cannot be evaluated in Python.
+    """
+    if not refinement or refinement.sources is None:
+        return None
+
+    s = refinement.sources
+
+    if isinstance(s, LinearSourceRefinement):
+        return float(s.SizeMin)
+
+    import math
+
+    expr = s.expression.replace("DIST", "0").replace("^", "**")
+    names = {k: getattr(math, k) for k in dir(math) if not k.startswith("_")}
+
+    try:
+        return float(eval(expr, {"__builtins__": {}}, names))
+    except Exception:
+        logger.warning("Could not evaluate the source refinement expression %r at DIST=0", s.expression)
+        return None
+
+
+def build_source_refinement(source_points, refinement, field_gen, zip_info=None) -> Optional[int]:
     """
     Creates mesh refinement fields around source points.
 
@@ -125,7 +155,10 @@ def build_source_refinement(source_points, refinement, field_gen) -> Optional[in
     - LinearSourceRefinement
     - FunctionSourceRefinement
 
-    Uses a distance field to control mesh size near source locations.
+    Uses a distance field to control mesh size near source locations. The
+    source point tags are mapped to their tags after fragmentation via
+    ``zip_info``; the size at the points themselves is set in mesh_generator
+    (see source_point_size).
     """
     if not refinement or refinement.sources is None:
         return None
@@ -135,9 +168,19 @@ def build_source_refinement(source_points, refinement, field_gen) -> Optional[in
 
     s = refinement.sources
 
+    if zip_info:
+        fragmented = [
+            ctag
+            for (dim, tag), children in zip_info
+            if dim == 0 and tag in source_points
+            for cdim, ctag in children
+            if cdim == 0
+        ]
+        source_points = fragmented or source_points
+
     fid_dist = field_gen.next()
     gmsh.model.mesh.field.add("Distance", fid_dist)
-    gmsh.model.mesh.field.setNumbers(fid_dist, "NodesList", source_points)
+    gmsh.model.mesh.field.setNumbers(fid_dist, "PointsList", source_points)
     gmsh.model.mesh.field.setNumber(fid_dist, "Sampling", 2000)
 
     # Linear refinement
@@ -1062,6 +1105,7 @@ def build_refinement_fields(
         source_points,
         refinement,
         field_gen,
+        zip_info=zip_info,
     )
 
     shaft_field = build_shaft_refinement(

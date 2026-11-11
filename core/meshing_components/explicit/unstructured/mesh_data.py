@@ -17,7 +17,7 @@ from numpy.typing import NDArray
 from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults, MeshType
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
-from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
+from core.meshing_components.explicit.unstructured.structural_surfaces import build_grid_litho, import_structural_surfaces
 from core.meshing_components.explicit.unstructured.domain_geometry import (
     domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
 )
@@ -33,6 +33,8 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (Refin
                                                                            EllipseRefinement,
                                                                            TriangulationRefinement)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
+from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
+
 from enum import Enum, StrEnum
 from pydantic_numpy import NpNDArrayFp64
 
@@ -567,7 +569,8 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
 def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Optional[List[int]],
     source_tag: Optional[List[int]], shaft_tags: Optional[List[int]], tri_group_tags: Optional[List[int]], tri_surface_tags: Optional[List[int]],
     grid_litho: pd.DataFrame, mesh_size: float = 20.0, curve_mesh_size: float = 5.0,
-    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value, merge_file: Optional[str] = None) -> MeshResults:
+    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value, merge_file: Optional[str] = None,
+    source_mesh_size: Optional[float] = None) -> MeshResults:
 
   """
     Generate an unstructured 3D tetrahedral mesh using Gmsh and export it
@@ -580,6 +583,8 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
         ov (List[Tuple[int, int]]): Gmsh entities defined as (dimension, tag), typically volume entities resulting from prior fragmentation.
         well_tags (List[int] or None): Gmsh physical group tags associated with wells (dimension = 1).
         source_tag (List[int] or None): Physical group tags of embedded source points (dimension = 0).
+        source_mesh_size (float, optional): Mesh size at the source points (from the source refinement).
+            Without it, the 3D mesher does not refine around the sources even if a refinement field is set.
         shaft_tags (List[int] or None): Physical group tags identifying shaft volumes (dimension = 3).
         tri_group_tags (List[int]): Physical group tags assigned to triangulated *groups* (intermediate grouping before surface tagging).
         tri_surface_tags (List[int]): Physical group tags assigned to triangulated surfaces created from input point sets.
@@ -629,15 +634,24 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   gmsh.model.occ.synchronize()
 
 ##############################
-# Embed sources into all volumes
+# Embed sources into their volumes
 ##############################
+  # source_tag holds physical group tags; embed each group's point entity into
+  # the volume that contains it (OCC fragment usually did that already).
   if source_tag:
 
-    for volume_tag in volumes:
+    for s_tag in source_tag:
 
-        for s_tag in source_tag:
+        for point_tag in gmsh.model.getEntitiesForPhysicalGroup(0, s_tag):
 
-            gmsh.model.mesh.embed(0, [s_tag], 3, volume_tag)
+            xyz = gmsh.model.getValue(0, point_tag, [])
+
+            for volume_tag in volumes:
+
+                if gmsh.model.isInside(3, volume_tag, xyz):
+
+                    gmsh.model.mesh.embed(0, [point_tag], 3, volume_tag)
+                    break
 
   ############################################################
   # Specify global mesh size and mesh the partitioned model
@@ -645,6 +659,13 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
 
   gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
+
+  if source_tag and source_mesh_size is not None:
+
+    for s_tag in source_tag:
+
+        source_points = [(0, p) for p in gmsh.model.getEntitiesForPhysicalGroup(0, s_tag)]
+        gmsh.model.mesh.setSize(source_points, min(source_mesh_size, mesh_size))
 
   gmsh.option.setNumber("General.Verbosity", 4)
 
@@ -2571,10 +2592,6 @@ def create_unstructured_mesh_data(
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,
-    DISTANCE_THRESHOLD: float = 50,
-    PROJECTION_THRESHOLD: float = 60,
-    EXTRUSION_FACTOR: float = 100,
-    z_threshold: float = 10,
     extent: Optional[ExtentData] = None,
     extent_z: Optional[ExtentZData] = None,
     smooth: float = 1e-5,
@@ -2587,7 +2604,6 @@ def create_unstructured_mesh_data(
     xt: Optional[float] = None,
     yt: Optional[float] = None,
     zt: Optional[float] = None,
-
 ) -> MeshResults:
     """
     Generates an unstructured geological mesh using a geomodel and additional structures
@@ -2616,10 +2632,6 @@ def create_unstructured_mesh_data(
         tolerance (float): Distance threshold to identify boarder of mesh.
         mesh_size (int): Default mesh size for surface and volume meshing (default is 30).
         curve_mesh_size (int): Mesh size applied to curves (default is 5).
-        DISTANCE_THRESHOLD (float): Maximum distance used to filter overlapping points between surfaces.
-        PROJECTION_THRESHOLD (float): Distance threshold for projecting points when calculating extrusion.
-        EXTRUSION_FACTOR (float): Factor that scales extrusion distance.
-        z_threshold (float): Threshold for determining whether two surfaces on either side of a fault are close in elevation.
         extent: Optional domain. Either [xmin, xmax, ymin, ymax, zmin, zmax] for the legacy axis-aligned box, or 8 ordered (x, y, z) corners for an oriented box. If omitted, structural-model mode uses the structural-model extent and CSV-surface mode uses the combined min/max x, y, z values of all CSV surfaces.
         extent_z: Optional absolute Z limits [z_min, z_max] applied only when extent is omitted. For example [-9, 5] replaces the inferred Z limits with zmin=-9 and zmax=5 while preserving the inferred X/Y limits. An explicit extent always takes precedence.
         smooth (float): smoothness factor for interpolation of surfaces
@@ -2644,7 +2656,7 @@ def create_unstructured_mesh_data(
     """
 
 
-    # normalize
+
     if isinstance(mapping_litho, str):
         try:
             mapping_litho = LithoMappingMode(mapping_litho.lower())
@@ -2835,31 +2847,32 @@ def create_unstructured_mesh_data(
                 len(ref_surface_indices),
                 list(ref_surface_indices.keys()),
             )
-        else:
-            cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(
-                geomodel,
-                DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
-                PROJECTION_THRESHOLD=PROJECTION_THRESHOLD,
-                EXTRUSION_FACTOR=EXTRUSION_FACTOR,
-                z_threshold=z_threshold,
-            )
 
-        ########################
-        # Surface interpolation
-        ########################
-        interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth,)
-
-        ##################
-        # Import surfaces
-        ##################
         surfaces_original: List[int]
-        bounds: Tuple[float, float, float, float, float, float]
 
-        surfaces_original, bounds = import_surfaces(
-            interpolated_s,
-            extent_arr,
-            tolerance=tolerance,
-        )
+        if not csv_mode:
+            ##########################################################
+            # Surfaces straight from the extended masked meshes: one
+            # plane or B-spline surface per piece, no cleaning needed
+            ##########################################################
+            grid_litho = build_grid_litho(geomodel_result)
+            surfaces_original, ref_surface_indices = import_structural_surfaces(geomodel_result)
+        else:
+            ########################
+            # Surface interpolation
+            ########################
+            interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth,)
+
+            ##################
+            # Import surfaces
+            ##################
+            bounds: Tuple[float, float, float, float, float, float]
+
+            surfaces_original, bounds = import_surfaces(
+                interpolated_s,
+                extent_arr,
+                tolerance=tolerance,
+            )
 
         gmsh.model.occ.synchronize()
 
@@ -2894,6 +2907,7 @@ def create_unstructured_mesh_data(
         nodes, cells, cell_data = mesh_generator(ov, extent_arr, well_tags, source_tag, shaft_tags, tri_group_tags,
             tri_surface_tags, grid_litho, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,
             boundary_tags=boundary_tags, gmsh_flag=gmsh_flag, mapping_litho=mapping_litho, merge_file=merge_file,
+            source_mesh_size=source_point_size(refinement),
         )
         # 1. Clip generated mesh to the requested domain BEFORE boundary sets.
         # This also removes unused nodes and remaps all cell connectivity.

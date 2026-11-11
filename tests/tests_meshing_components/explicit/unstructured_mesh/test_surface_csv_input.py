@@ -86,7 +86,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             cells = [tetra]
 
         with (
-            patch(f"{MODULE}.data_preparation") as data_preparation,
+            patch(f"{MODULE}.import_structural_surfaces") as import_structural_surfaces,
             patch(f"{MODULE}.create_surface_grid", return_value=[np.zeros((4, 3))]) as create_grid,
             patch(f"{MODULE}.import_surfaces", return_value=([101, 102], EXTENT)),
             patch(
@@ -111,7 +111,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
                 kwargs["extent_z"] = extent_z
             result = create_unstructured_mesh_data(**kwargs)
 
-        return result, data_preparation, create_grid, fragment, mesh_generator
+        return result, import_structural_surfaces, create_grid, fragment, mesh_generator
 
     def test_surface_csv_dir_to_generic_exodus_export(self):
         """CSV input -> MeshResults -> generic dispatcher -> real Exodus writer.
@@ -170,7 +170,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
                             self.assertEqual(len(ds.variables[f"elem_ss{i}"][:]), 1)
                             self.assertEqual(int(ds.variables[f"elem_ss{i}"][0]), 1)
 
-    def test_csv_mode_bypasses_structural_model_cleaning(self):
+    def test_csv_mode_bypasses_structural_surface_import(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_surface(root / "surface1.csv", 4.0)
@@ -184,10 +184,10 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             _write_surface(root / "fault1.csv", 6.0)
 
             _, _, create_grid, _, _ = self._run_csv_route(root)
-            cleaned_surfaces = create_grid.call_args.args[0]
+            csv_surfaces = create_grid.call_args.args[0]
 
-            self.assertEqual(len(cleaned_surfaces), 2)
-            for item in cleaned_surfaces:
+            self.assertEqual(len(csv_surfaces), 2)
+            for item in csv_surfaces:
                 self.assertEqual(len(item), 2)
                 surface_id, xyz = item
                 self.assertIsInstance(surface_id, str)
@@ -201,8 +201,8 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             _write_surface(root / "fault_main.csv", 7.0)
 
             _, _, create_grid, fragment, _ = self._run_csv_route(root)
-            cleaned_surfaces = create_grid.call_args.args[0]
-            index_by_name = {name: i for i, (name, _) in enumerate(cleaned_surfaces)}
+            csv_surfaces = create_grid.call_args.args[0]
+            index_by_name = {name: i for i, (name, _) in enumerate(csv_surfaces)}
 
             reference_surfaces = fragment.call_args.args[2]
             self.assertEqual(
@@ -386,8 +386,8 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             _write_surface(root / "._fault_hidden.csv")
 
             _, _, create_grid, fragment, _ = self._run_csv_route(root)
-            cleaned_surfaces = create_grid.call_args.args[0]
-            self.assertEqual([name for name, _ in cleaned_surfaces], ["surface1.csv"])
+            csv_surfaces = create_grid.call_args.args[0]
+            self.assertEqual([name for name, _ in csv_surfaces], ["surface1.csv"])
             self.assertEqual(fragment.call_args.args[2], {})
 
 

@@ -176,8 +176,6 @@ downsampled, incomplete, or scattered representation of a surface, the
 surface is interpolated before the unstructured mesh geometry is
 constructed.
 
-The CSV-surface workflow is an alternative surface-input route for the
-explicit unstructured mesh.
 
 #### Engineering objects
 
@@ -317,7 +315,8 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
 
 #### Mesh generation parameters
 
--   **`tolerance`**: The maximum allowable deviation (in model
+
+-   **`tolerance`** *(`"reconstructed"` only)*: The maximum allowable deviation (in model
     coordinate units) when adjusting surface boundaries to match the
     model extent. During interpolation, surface coordinates can shift
     slightly due to numerical precision or grid discretisation, so the
@@ -338,37 +337,6 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     along curved regions and coarser meshing where the geometry is
     nearly flat.
 
--   **`DISTANCE_THRESHOLD`**: A distance threshold used to identify and
-    remove geological surface points that lie close to fault surfaces.
-    For each geological surface, points within `DISTANCE_THRESHOLD` of
-    any fault surface are treated as overlapping the fault and are
-    removed. This prevents overlaps and keeps faults cleanly separated
-    from surrounding geological units --- the geological model's output
-    typically contains overlapping or duplicated points near fault
-    surfaces. A small value may leave overlapping regions incompletely
-    removed; a large value can remove valid geometry near faults.
-
--   **`PROJECTION_THRESHOLD`**: The search radius around a fault surface
-    used to find nearby layer points for extrusion. After points near
-    faults are removed (see `DISTANCE_THRESHOLD`), gaps appear between
-    the geological surfaces and the fault planes; nearby points are
-    extruded --- perpendicular to their surface normals --- until they
-    intersect the fault plane, closing these gaps.
-    `PROJECTION_THRESHOLD` should generally be larger than
-    `DISTANCE_THRESHOLD`, but not so large that points with different
-    curvature far from the fault get selected, which can distort the
-    geometry near the fault.
-
--   **`EXTRUSION_FACTOR`**: How far each point found within
-    `PROJECTION_THRESHOLD` is pushed along the direction perpendicular
-    to its surface normal, in model units.
-
--   **`z_threshold`**: The vertical tolerance used to identify surfaces
-    that are effectively flat across a fault (i.e. the fault produces no
-    meaningful vertical offset there). If a surface's total vertical
-    variation is smaller than `z_threshold`, the fault is treated as
-    non-displacing for that surface, and no overlap removal or extrusion
-    is applied near it.
 
 -   **`extent`** *(optional)*: Defines the spatial domain of the
     unstructured mesh. Two representations are supported:
@@ -401,7 +369,7 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     explicit `extent` is supplied, that extent takes precedence and is
     used unchanged.
 
--   **`smooth`**: The smoothing parameter for the Radial Basis Function
+-   **`smooth`** *(`"reconstructed"` only)*: The smoothing parameter for the Radial Basis Function
     (RBF) interpolation used to rebuild surfaces. Larger values produce
     smoother surfaces by reducing small-scale noise; smaller values
     preserve more detail from the original surface geometry.
@@ -584,10 +552,6 @@ mesh_unstructured_with_objects = create_unstructured_mesh_data(
     tolerance=50,
     mesh_size=30,
     curve_mesh_size=5,
-    DISTANCE_THRESHOLD=40,
-    PROJECTION_THRESHOLD=60,
-    EXTRUSION_FACTOR=80,
-    z_threshold=10,
     gmsh_flag=True,
     mapping_litho="automatic_centers",
     refinement=refinement,
@@ -599,10 +563,7 @@ mesh_unstructured_with_objects = create_unstructured_mesh_data(
 This generates an unstructured tetrahedral mesh from
 `structural_model_result` and includes the supplied engineering and
 additional geometric objects. `mesh_size` and `curve_mesh_size` define
-the background and curvature-based resolution. `DISTANCE_THRESHOLD`,
-`PROJECTION_THRESHOLD`, and `EXTRUSION_FACTOR` control geometric
-processing near faults, while `z_threshold` identifies surfaces for
-which a fault produces no meaningful vertical offset. `gmsh_flag=True`
+the background and curvature-based resolution. `gmsh_flag=True`
 saves the original Gmsh `.msh` file, `mapping_litho="automatic_centers"`
 applies centroid-based automatic lithological mapping, and `refinement`
 applies the local refinement definitions. In this example,

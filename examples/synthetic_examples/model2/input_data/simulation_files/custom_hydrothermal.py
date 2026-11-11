@@ -79,9 +79,8 @@ WBGeo1.0_model2.py), built with:
         fault_model_results=fault_model_result)
     structural_model_result = general.compute_structural_model(frame, extract_meshes=True)
     mesh_explicit_unstructured = create_unstructured_mesh_data(
-        geomodel=structural_model_result, tolerance=50, mesh_size=20,
-        curve_mesh_size=5, DISTANCE_THRESHOLD=40, PROJECTION_THRESHOLD=60,
-        EXTRUSION_FACTOR=80, z_threshold=10)
+        geomodel_result=structural_model_result, tolerance=50, mesh_size=20,
+        curve_mesh_size=5)
 
 Rock/fluid/fault-zone properties (deliberately identical to
 WBGeo1.0_model2.py's own HydrothermalProblemBuilder call, so this is a fair

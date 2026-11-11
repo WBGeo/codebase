@@ -167,13 +167,10 @@ mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=struc
 
 # Explicit unstructured mesh
 mesh_explicit_unstructured = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     tolerance=5,
     mesh_size=40,
     curve_mesh_size=5,
-    mapping_litho ='manual',
-    merge_file = cwd + "/examples/synthetic_examples/model6/input_data/block_groups.csv", # Only if mapping_litho='manual'
-
 )
 
 # Explicit structured mesh
@@ -201,22 +198,22 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 # Optional: Example of how to include objects (only works for unstructured mesh)
 
 # # Load engineering objects
-# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_wells.csv")
-# shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_shafts.csv")
-# sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_sources.csv")
-# planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_planes.csv")
-# ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_ellipses.csv")
+wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_wells.csv")
+shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_shafts.csv")
+sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_sources.csv")
+planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_planes.csv")
+ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model6/input_data/engineering_objects/model_6_ellipses.csv")
 
 
 # --- Optional: adaptive mesh refinement around objects ---
 # Uncomment, adjust the values, and pass refinement=refinement to create_unstructured_mesh_data.
 #
-# refinement = Refinement()
-# refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-# refinement.shafts = LinearShaftRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
-# refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
-# refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
-# refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
+refinement = Refinement()
+refinement.wells = LinearWellRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.shafts = LinearShaftRefinement(SizeMin=5.0, SizeMax=90.0, DistMin=30.0, DistMax=100.0)
+refinement.sources = FunctionSourceRefinement(expression="5 + 75*(1 - exp(-DIST/80))")
+refinement.ellipses = EllipseRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=30.0, DistMax=80.0)
+refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistMin=20.0, DistMax=60.0)
 # refinement.general = [GeneralRefinement(coordinates=[(500.0, 400.0, 0.0),],SizeMin=1.0,DistMax=70.0,),
 #    GeneralRefinement(coordinates=[(0.0, 0.0, 0.0),(1000.0, 0.0, 0.0),],expression="2 + 85*(1 - exp(-DIST/100))",),]
 
@@ -263,30 +260,26 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 
 
 # # Explicit unstructured mesh with objects
-# mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel=structural_model_result,
-#     wells=wells,
-#     sources=sources,
-#     shafts=shafts,
-#     extra_planes=planes,
-#     ellipses= ellipses,
-#     tolerance=5,
-#     mesh_size=70,
-#     curve_mesh_size=10,
-#     DISTANCE_THRESHOLD=50,
-#     PROJECTION_THRESHOLD=60,
-#     EXTRUSION_FACTOR=120,
-#     z_threshold=10,
+mesh_unstructured_with_objects = create_unstructured_mesh_data(
+     geomodel_result=structural_model_result,
+     wells=wells,
+     sources=sources,
+     shafts=shafts,
+     extra_planes=planes,
+     ellipses= ellipses,
+     tolerance=5,
+     mesh_size=70,
+    curve_mesh_size=10,
 #     gmsh_flag= True,   # to save original gmsh configuration (defaut is False)
 #     mapping_litho='manual', # it can be 'manual', 'automatic_centers', 'automatic_corners' or 'none' (default: automatic_centers)
 #     merge_file = cwd + "/examples/synthetic_examples/model6/input_data/block_groups_complete.csv", # Only if mapping_litho='manual'
-#     refinement=refinement,
-# )
+     refinement=refinement,
+ )
 #
 # save the mesh
-# buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
-# with open("filename_example_mesh.exo", "wb") as f:
-#    f.write(buf.getvalue())
+buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects, type='unstr')
+with open("filename_example_mesh.exo", "wb") as f:
+    f.write(buf.getvalue())
 
 #%%
 # ------------------------------------------------------------------------------
