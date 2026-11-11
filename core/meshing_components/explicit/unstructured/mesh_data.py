@@ -1,10 +1,10 @@
 import logging
 import typing
 import re
-from pydantic.dataclasses import dataclass
 from pathlib import Path
+from pydantic.dataclasses import dataclass
+from pydantic_numpy import NpNDArrayFp64
 import gmsh
-from py_api_wbgeo import smartcontrols
 
 logger = logging.getLogger(__name__)
 import meshio
@@ -16,29 +16,85 @@ from typing import Sequence, Tuple, List, Mapping, Optional, Dict, Set, Any
 from numpy.typing import NDArray
 from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults, MeshType
-from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
-
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.structural_surfaces import build_grid_litho, import_structural_surfaces
 from core.meshing_components.explicit.unstructured.domain_geometry import (
     domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
 )
-from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement,
-                                                                           LinearWellRefinement,
-                                                                           FunctionWellRefinement,
-                                                                           LinearSourceRefinement,
-                                                                           FunctionSourceRefinement,
-                                                                           LinearShaftRefinement,
-                                                                           FunctionShaftRefinement,
-                                                                           GeneralRefinement,
-                                                                           ExtraPlaneRefinement,
-                                                                           EllipseRefinement,
-                                                                           TriangulationRefinement)
+from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
+from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
+                                                               LinearSourceRefinement,FunctionSourceRefinement,)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
 from enum import Enum, StrEnum
-from pydantic_numpy import NpNDArrayFp64
 
 
+
+def _load_csv_surface_coordinates(surface_csv_dir):
+    """Load surface point coordinates from CSV files for extent and meshing.
+
+    Each CSV represents one surface and contains a header with ``x``, ``y``,
+    and ``z`` columns, followed by one 3D coordinate point per row. Fault and
+    geological surfaces share this format; for example, ``fault1.csv`` and
+    ``surface_0.csv`` both contain::
+
+        x,y,z
+        1598.8658142089844,-40.0,1019.999991966042
+        1615.1783417083404,-40.0,996.7021942749328
+
+    Column names are matched case-insensitively after stripping whitespace.
+    Other columns, if present, are ignored. Non-numeric or non-finite coordinate
+    rows are discarded. Each file must retain at least three valid points.
+    CSV files are processed in filename order; hidden files and non-CSV files
+    are ignored.
+
+    Args:
+        surface_csv_dir: Directory containing one CSV file per surface.
+            A string or path-like value is accepted; ``~`` is expanded.
+
+    Returns:
+        list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
+        finite floating-point coordinate arrays of shape ``(N, 3)``.
+
+    Raises:
+        ValueError: If the directory does not exist, contains no CSV files,
+            a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
+            valid coordinate rows remain in a file.
+        pandas.errors.ParserError: If pandas cannot parse a CSV file.
+    """
+    csv_root = Path(surface_csv_dir).expanduser()
+    if not csv_root.is_dir():
+        raise ValueError(
+            f"surface_csv_dir is not a directory: {surface_csv_dir}"
+        )
+    csv_files = sorted(
+        p for p in csv_root.iterdir()
+        if p.is_file()
+        and p.suffix.lower() == ".csv"
+        and not p.name.startswith(".")
+        and not p.name.startswith("._")
+    )
+    if not csv_files:
+        raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
+
+    surfaces = []
+    for csv_path in csv_files:
+        df = pd.read_csv(csv_path)
+        columns = {str(c).strip().lower(): c for c in df.columns}
+        missing = [axis for axis in ("x", "y", "z") if axis not in columns]
+        if missing:
+            raise ValueError(
+                f"{csv_path.name} must contain x, y, z columns; missing {missing}."
+            )
+        xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
+            pd.to_numeric, errors="coerce"
+        ).to_numpy(dtype=float)
+        xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+        if len(xyz) < 3:
+            raise ValueError(
+                f"{csv_path.name} has fewer than 3 valid x,y,z points."
+            )
+        surfaces.append((csv_path, xyz))
+    return surfaces
 
 
 MESH_ENGINEERING_COLOR = '#99b3cc'
@@ -1731,128 +1787,11 @@ PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, Lis
 
 EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
 
-
 TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name='triangulation', color='aqua',
         identifier='mesh::TriangulationData')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
 WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
-
-
-def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kind: str, label: str):
-    # Create the labeled option between none, linear, and function
-    return smartcontrols.CtrlGroup(id=kind, inner=[
-        smartcontrols.CtrlSelect(label=label, id='ref' + kind,
-                                 options=["None", "Linear", "Function"],
-                                 defaultValue="None"),
-        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Linear\"",
-                             when_true=[smartcontrols.CtrlGroup(id=f"linear", inner=smartcontrols.smart_group_from_type(linearT, None))],
-                             when_false=[]
-                             ),
-        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Function\"",
-                             when_true=[smartcontrols.CtrlGroup(id=f"function", inner=smartcontrols.smart_group_from_type(functionT, None))],
-                             when_false=[]
-                             )
-    ])
-
-
-def __internal_refinement_opt_form(T: typing.Type, kind: str, label: str, defaults = None):
-  # Create an optional form
-  return smartcontrols.CtrlGroup(id=kind, inner=[
-    smartcontrols.CtrlBool(label=label, id='with_' + kind,
-                             defaultValue=False),
-    smartcontrols.CtrlIf(condition=f"'$.with_{kind}' == \"true\"",
-                         when_true=[smartcontrols.CtrlGroup(id=f"present", inner=smartcontrols.smart_group_from_type(T, defaults))],
-                         when_false=[]
-                         )
-  ])
-
-
-def __internal_refinement_to_data(data, kind: str, linearT: typing.Type, functionT: typing.Type):
-    # turn the __internal_refinement_form back into a given type
-    if data is None or kind not in data:
-        return None
-    data = data[kind]
-    if f"ref{kind}" not in data:
-        return None
-    if data[f"ref{kind}"] == "Linear":
-        return linearT(**data["linear"])
-    if data[f"ref{kind}"] == "Function":
-        return functionT(**data["function"])
-    return None
-
-
-def __internal_refinement_opt_to_data(data, kind: str, T: typing.Type):
-  # turn the __internal_refinement_form back into a given type
-  if data is None or kind not in data:
-    return None
-  data = data[kind]
-  if f"with_{kind}" not in data or not data[f"with_{kind}"]:
-    return None
-  return T(**data["present"])
-
-
-@wbgeo_component(identifier='wbgeo:__internal__refined_form_well' ,
-                 title='__internal__refined_form_well' )
-def __internal__refined_form(wells: Optional[WellData] = None,
-                             sources: Optional[SourcesData] = None,
-                             shafts: Optional[ShaftData] = None,
-                             extra_planes: Optional[PlaneData] = None,
-                             ellipses: Optional[EllipseData] = None,
-                             triangulations: Optional[TriangulationData] = None,
-                             ) -> smartcontrols.CtrlGroup:
-    inner: typing.List[smartcontrols.ASmartControl] = [
-      smartcontrols.CtrlLabel(
-        label='To define refinements, please connect a well/sources/etc. and execute them once, before clicking Update Controls'),
-    ]
-    if wells is not None:
-        inner.append(__internal_refinement_form(LinearWellRefinement, FunctionWellRefinement, 'well', 'Well Refinement:'))
-    if sources is not None:
-        inner.append(__internal_refinement_form(LinearSourceRefinement, FunctionSourceRefinement, 'source', 'Source Refinement:'))
-    if shafts is not None:
-        inner.append(__internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'))
-    if extra_planes is not None:
-      inner.append(__internal_refinement_opt_form(ExtraPlaneRefinement, 'extra_planes', 'Extra Planes Refinement:', ExtraPlaneRefinement()))
-    if ellipses is not None:
-      inner.append(__internal_refinement_opt_form(EllipseRefinement, 'ellipses', 'Ellipses Refinement:', EllipseRefinement()))
-    if triangulations is not None:
-      inner.append(__internal_refinement_opt_form(TriangulationRefinement, 'triangulations', 'Triangulations Refinement:', TriangulationRefinement()))
-
-
-    return smartcontrols.CtrlGroup(id='root', inner=inner + [
-        smartcontrols.CtrlLabel(
-            label='General refinement not yet supported'), # TODO: ALu - will be added seperatly
-    ])
-
-@wbgeo_component(identifier='wbgeo:__internal__refined_options_to_data_well',
-                 title='__internal__refined_options_to_data_well')
-def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData) -> typing.Optional[Refinement]:
-    data = smartcontrols.form_data_as_dict(_input)
-    if "root" not in data:
-        return None
-    data = data["root"]
-    ret = Refinement()
-    ret.wells = __internal_refinement_to_data(data, 'well', LinearWellRefinement, FunctionWellRefinement)
-    ret.sources = __internal_refinement_to_data(data, 'source', LinearSourceRefinement, FunctionSourceRefinement)
-    ret.shafts = __internal_refinement_to_data(data, 'shafts', LinearShaftRefinement, LinearShaftRefinement)
-    ret.extra_planes = __internal_refinement_opt_to_data(data, 'extra_planes', ExtraPlaneRefinement)
-    ret.ellipses = __internal_refinement_opt_to_data(data, 'ellipses', EllipseRefinement)
-    ret.triangulations = __internal_refinement_opt_to_data(data, 'triangulations', TriangulationRefinement)
-
-    # TODO: ALu: general refinements
-
-    if (ret.wells is None and ret.sources is None and ret.shafts and
-            ret.general is None and ret.triangulations is None
-            and ret.ellipses is None and ret.extra_planes is None):
-        return None # if everything is empty -> None
-
-    return ret
-
-
-SmartRefinement = typing.Annotated[
-    Refinement, smartcontrols.SmartInput(inputs=['wells', 'sources', 'shafts'],
-                                    to_form=__internal__refined_form,
-                                    to_data=__internal__refined_options_to_data)]
 
 @wbgeo_component(description='Loads a well from a wells.CSV file',
                  title='Load Well',  # The title shown in the GUI
@@ -1860,8 +1799,8 @@ SmartRefinement = typing.Annotated[
                  border_color='#000000',  # and its border color
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
-                 return_name='Wells',  # the name for the returned-port
-                 is_object_type=True, # render as object
+                 return_name='Wells',
+                 is_object_type=True,  # the name for the returned-port
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
@@ -2043,7 +1982,7 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
-    is_object_type=True, # render as object
+                 is_object_type=True,
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: bool = False) -> EllipseData:
     """Load ellipse definitions from a CSV file.
@@ -2128,8 +2067,8 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  border_color='#000000',  # and its border color
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
-                 return_name='Shafts',  # the name for the returned-port
-                 is_object_type=True, # render as object
+                 return_name='Shafts',
+                 is_object_type=True,  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = False) -> ShaftData:
     """Load shaft definitions from a CSV file.
@@ -2194,8 +2133,8 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  border_color='#000000',  # and its border color
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
-                 return_name='planes',  # the name for the returned-port
-                 is_object_type=True, # render as object
+                 return_name='planes',
+                 is_object_type=True,  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = False) -> PlaneData:
     """Load additional planes as grouped 3D points from a CSV file.
@@ -2261,7 +2200,7 @@ TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]],
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
-    is_object_type=True, # render as object
+                 is_object_type=True,
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_hierarchical: bool = False) -> TriangulationData:
     """Load triangulation points from one or more CSV files.
@@ -2564,91 +2503,29 @@ def meshit_coordinate_transform(
     return transformed
 
 
-def _load_csv_surface_coordinates(surface_csv_dir):
-    """Load surface point coordinates from CSV files for extent and meshing.
-
-    Each CSV represents one surface and contains a header with ``x``, ``y``,
-    and ``z`` columns, followed by one 3D coordinate point per row. Fault and
-    geological surfaces share this format; for example, ``fault1.csv`` and
-    ``surface_0.csv`` both contain::
-
-        x,y,z
-        1598.8658142089844,-40.0,1019.999991966042
-        1615.1783417083404,-40.0,996.7021942749328
-
-    Column names are matched case-insensitively after stripping whitespace.
-    Other columns, if present, are ignored. Non-numeric or non-finite coordinate
-    rows are discarded. Each file must retain at least three valid points.
-    CSV files are processed in filename order; hidden files and non-CSV files
-    are ignored.
-
-    Args:
-        surface_csv_dir: Directory containing one CSV file per surface.
-            A string or path-like value is accepted; ``~`` is expanded.
-
-    Returns:
-        list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
-        finite floating-point coordinate arrays of shape ``(N, 3)``.
-
-    Raises:
-        ValueError: If the directory does not exist, contains no CSV files,
-            a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
-            valid coordinate rows remain in a file.
-        pandas.errors.ParserError: If pandas cannot parse a CSV file.
-    """
-    csv_root = Path(surface_csv_dir).expanduser()
-    if not csv_root.is_dir():
-        raise ValueError(
-            f"surface_csv_dir is not a directory: {surface_csv_dir}"
-        )
-    csv_files = sorted(
-        p for p in csv_root.iterdir()
-        if p.is_file()
-        and p.suffix.lower() == ".csv"
-        and not p.name.startswith(".")
-        and not p.name.startswith("._")
-    )
-    if not csv_files:
-        raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
-
-    surfaces = []
-    for csv_path in csv_files:
-        df = pd.read_csv(csv_path)
-        columns = {str(c).strip().lower(): c for c in df.columns}
-        missing = [axis for axis in ("x", "y", "z") if axis not in columns]
-        if missing:
-            raise ValueError(
-                f"{csv_path.name} must contain x, y, z columns; missing {missing}."
-            )
-        xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
-            pd.to_numeric, errors="coerce"
-        ).to_numpy(dtype=float)
-        xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
-        if len(xyz) < 3:
-            raise ValueError(
-                f"{csv_path.name} has fewer than 3 valid x,y,z points."
-            )
-        surfaces.append((csv_path, xyz))
-    return surfaces
-
-
 @wbgeo_type(name='Surface as described ', color='#8cb369', identifier='CSVSurfaceModelResults')
 @dataclass
 class CSVSurfaceModelResults:
-  csv_surface_coordinates: List[Tuple[Path, NpNDArrayFp64]]
+    csv_surface_coordinates: List[Tuple[Path, NpNDArrayFp64]]
 
+
+def load_csv_surface_coordinates(surface_csv_dir) -> CSVSurfaceModelResults:
+    """Load a directory of CSV surfaces into a Workbench-compatible object."""
+    return CSVSurfaceModelResults(_load_csv_surface_coordinates(surface_csv_dir))
 
 
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
-                 title='Create Unstructured Mesh',  # The title shown in the GUI
+                 title='Create Unstructured Explicit Mesh',  # The title shown in the GUI
                  color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Meshing',
+                 positionInGroup=5,
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
+    geomodel: Optional[typing.Union[StructuralModelResults, CSVSurfaceModelResults]] = None,
     geomodel_result: Optional[StructuralModelResults] = None,
     surface_csv_dir: Optional[str] = None,
     wells: Optional[WellData] = None,
@@ -2656,7 +2533,7 @@ def create_unstructured_mesh_data(
     shafts: Optional[ShaftData] = None,
     extra_planes: Optional[PlaneData] = None,
     ellipses: Optional[EllipseData] = None,
-    triangulations: Optional[TriangulationsPlanesData] = None,
+    triangulations: Optional[TriangulationData] = None,
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,
@@ -2666,7 +2543,7 @@ def create_unstructured_mesh_data(
     gmsh_flag: bool = False,
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     merge_file: Optional[str] = None,
-    refinement: Optional[SmartRefinement] = None,
+    refinement: Optional[Refinement] = None,
     rotation_angle: Optional[float] = None,
     rotation_angle_translate: Optional[float] = None,
     xt: Optional[float] = None,
@@ -2679,6 +2556,7 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
+        geomodel (StructuralModelResults | CSVSurfaceModelResults, optional): Workbench model input.
         geomodel_result (StructuralModelResults, optional): Structural-model input. Leave None when using surface_csv_dir.
         surface_csv_dir (str, optional): Directory of CSV geological surfaces with x,y,z columns. Files whose names start with 'fault' (for example fault1.csv) are treated as reference/fault surfaces. CSV mode bypasses structural-model surface cleaning/removal/extension and uses mapping_litho='none'.
         rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
@@ -2734,16 +2612,25 @@ def create_unstructured_mesh_data(
                 f"Valid options are: {[m.value for m in LithoMappingMode]}"
             )
 
-    # Input route validation.
-    csv_mode = surface_csv_dir is not None
-    if csv_mode and geomodel_result is not None:
-        raise ValueError(
-            "Use either geomodel_result or surface_csv_dir, not both."
-        )
+    # Resolve the Workbench geomodel port while retaining the legacy Python API.
+    if geomodel is not None:
+        if geomodel_result is not None or surface_csv_dir is not None:
+            raise ValueError("Use geomodel or the legacy geomodel_result/surface_csv_dir inputs, not both.")
+        if isinstance(geomodel, CSVSurfaceModelResults):
+            csv_surface_data = geomodel.csv_surface_coordinates
+        elif isinstance(geomodel, StructuralModelResults):
+            geomodel_result = geomodel
+            csv_surface_data = None
+        else:
+            raise TypeError("geomodel must be StructuralModelResults or CSVSurfaceModelResults.")
+    else:
+        csv_surface_data = None
+
+    csv_mode = isinstance(geomodel, CSVSurfaceModelResults) or surface_csv_dir is not None
+    if surface_csv_dir is not None and geomodel_result is not None:
+        raise ValueError("Use either geomodel_result or surface_csv_dir, not both.")
     if not csv_mode and geomodel_result is None:
-        raise ValueError(
-            "Either geomodel_result or surface_csv_dir must be supplied."
-        )
+        raise ValueError("Supply geomodel, geomodel_result, or surface_csv_dir.")
 
     # CSV surfaces do not contain a structural lithology grid, so lithology
     # mapping is intentionally disabled for this input route.
@@ -2826,7 +2713,8 @@ def create_unstructured_mesh_data(
     else:
         extent_z_min = extent_z_max = None
 
-    csv_surface_data = None  # Load lazily; reuse for extent and mesh preparation.\n\n    # ``extent`` is backward compatible:
+    # Load CSV surfaces lazily, or reuse the supplied CSVSurfaceModelResults.
+    # ``extent`` is backward compatible:
     #   * 6 values -> legacy axis-aligned box
     #   * 8 (x,y,z) corners -> oriented parallelepiped
     if extent is None or len(extent) == 0:
@@ -2834,7 +2722,8 @@ def create_unstructured_mesh_data(
             # Same default pattern as structural-model mode: infer the domain
             # from the geological input when no explicit extent is supplied.
             # For CSV surfaces this is the combined x/y/z min/max of all files.
-            csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
+            if csv_surface_data is None:
+                csv_surface_data = _load_csv_surface_coordinates(surface_csv_dir)
             xyz_min = np.min(
                 [xyz.min(axis=0) for _, xyz in csv_surface_data], axis=0
             )
@@ -2877,7 +2766,10 @@ def create_unstructured_mesh_data(
     validate_ellipses(ellipses, domain_spec)
 
     if len(triangulations) > 0:
-        triangulations = np.asarray(triangulations, dtype=np.float64)
+        if isinstance(triangulations, dict):
+            triangulations = {key: np.asarray(points, dtype=np.float64) for key, points in triangulations.items()}
+        else:
+            triangulations = np.asarray(triangulations, dtype=np.float64)
         validate_triangulation(triangulations, domain_spec)
 
     # Initialize GMSH
@@ -3053,4 +2945,3 @@ def create_unstructured_mesh_data(
         cell_data=cell_data,
         mesh_type=MeshType.UNSTRUCTURED,
 )
-
