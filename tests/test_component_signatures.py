@@ -23,7 +23,7 @@ class TestComponentSignatures(unittest.TestCase):
     """
 
     @classmethod
-    def setup_class(cls):
+    def setUpClass(cls):
         from pathlib import Path
 
         core = Path("core")
@@ -82,7 +82,7 @@ class TestComponentSignatures(unittest.TestCase):
         print("with", cls.py_files)
 
     @classmethod
-    def teardown_class(cls):
+    def tearDownClass(cls):
         # Unload the mock-reloaded modules and reset the backend instance
         nodesapi.set_instance(None)
         for py_file in cls.py_files:
@@ -188,26 +188,61 @@ class MockBackendInstance:
                     is_visualizer = True
                     f = args[0]
             sig = signature(f)
-            if sig.return_annotation == Signature.empty:
+
+            def is_geo_type(rt) -> bool:
+                if hasattr(rt, '__wbgeo_type_metadata__'):  # decorated (real pyrunner form)
+                    return True
+                # annotated & decorated with geo comp
+                return hasattr(rt, '__metadata__') and gwt_ast(rt.__metadata__) is not None
+
+            def check_return(rt, label):
+                if typing.get_origin(rt) is typing.Union:  # Optional[T], same workaround as for params
+                    u_args = typing.get_args(rt)
+                    if len(u_args) == 2 and u_args[1] == types.NoneType:
+                        return check_return(u_args[0], label)
+                if rt in [str, bool, int, float] or is_geo_type(rt):
+                  return
+                MockBackendInstance.errors.append(ValueError(
+                    "GeoComponent `{fname}` must return a built-in type or a geo type (@wbgeo_type / AnnotatedScriptType), "
+                    "instead {label} is `{t}`, {typel} / {floc}".format(
+                        fname=f.__name__, label=label, t=str(rt), typel=get_location(rt), floc=get_location(f))))
+
+            rt = sig.return_annotation
+            return_name = params.get("return_name")
+            if rt == Signature.empty:
                 if not is_visualizer:
                   MockBackendInstance.errors.append(ValueError(
                         "@GeoComponent `{fname}` requires a declared return type, e.g. @GeoComponent def {fname}() -> str: \n{floc}".format(
                             fname=str(f.__name__), floc=get_location(f))))
-            elif sig.return_annotation in [str, bool, int, float]:
-                pass
-            elif not hasattr(sig.return_annotation, '__metadata__'):
-              MockBackendInstance.errors.append(ValueError(
-                    "GeoComponent `{fname}` must return a built-in type or a type annotated with AnnotatedScriptType, instead it returned `{t}`, {typel} / {floc}".format(
-                        fname=f.__name__,t=str(sig.return_annotation), typel=get_location(sig.return_annotation),
-                        floc=get_location(f))))
-            else:
-                ret_v = gwt_ast(sig.return_annotation.__metadata__)
-
-                if ret_v is None:
-                  MockBackendInstance.errors.append(ValueError(
-                        "Unsupported return type " + sig.return_annotation + str(sig) + get_location(f)))
+            elif not is_geo_type(rt) and typing.get_origin(rt) is tuple:  # bare tuple => multiple outputs
+                t_args = typing.get_args(rt)
+                if is_visualizer:
+                    MockBackendInstance.errors.append(ValueError(
+                        "Visualizer `{fname}` must not define a return type {floc}".format(
+                            fname=f.__name__, floc=get_location(f))))
+                elif len(t_args) == 0 or (len(t_args) == 2 and t_args[1] is Ellipsis):
+                    MockBackendInstance.errors.append(ValueError(
+                        "`{fname}`: Tuple returns must have a fixed length, e.g. Tuple[A, B], instead it returned `{t}` {floc}".format(
+                            fname=f.__name__, t=str(rt), floc=get_location(f))))
                 else:
-                    pass
+                    for idx, a in enumerate(t_args):
+                        check_return(a, f"output {idx}")
+                    if return_name is not None:
+                        names = [s.strip() for s in return_name.split(',')]
+                        if len(names) not in (1, len(t_args)):
+                            MockBackendInstance.errors.append(ValueError(
+                                "`{fname}`: return_name '{rn}' names {k} outputs, but the Tuple has {n} {floc}".format(
+                                    fname=f.__name__, rn=return_name, k=len(names), n=len(t_args), floc=get_location(f))))
+                        if any(n == '' for n in names) or len(set(names)) != len(names):
+                            MockBackendInstance.errors.append(ValueError(
+                                "`{fname}`: return_name '{rn}' entries must be non-empty and unique {floc}".format(
+                                    fname=f.__name__, rn=return_name, floc=get_location(f))))
+            else:
+                check_return(rt, "the return type")
+                if return_name is not None and ',' in return_name:
+                    MockBackendInstance.errors.append(ValueError(
+                        "`{fname}`: return_name '{rn}' contains ',' but the return type is not a Tuple[...] {floc}".format(
+                            fname=f.__name__, rn=return_name, floc=get_location(f))))
 
             # check against duplicate identifiers
             if params["identifier"] in MockBackendInstance.registered_components:
