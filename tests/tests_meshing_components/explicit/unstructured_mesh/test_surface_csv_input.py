@@ -15,7 +15,7 @@ from core.meshing_components.mesh_format.mesh_export import (
 )
 from core.meshing_components.explicit.unstructured.mesh_data import (
     LithoMappingMode,
-    create_unstructured_mesh_data, load_csv_surface_coordinates
+    create_unstructured_mesh_data,
 )
 
 
@@ -102,7 +102,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             patch(f"{MODULE}.gmsh.model.occ.synchronize"),
         ):
             kwargs = {
-                "geomodel": load_csv_surface_coordinates(str(csv_dir)),
+                "surface_csv_dir": str(csv_dir),
                 "mapping_litho": mapping_litho,
             }
             if extent is not None:
@@ -345,7 +345,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "z_min < z_max"):
                 create_unstructured_mesh_data(
-                    geomodel=load_csv_surface_coordinates(str(root)),
+                    surface_csv_dir=str(root),
                     extent_z=[5.0, -9.0],
                     mapping_litho="none",
                 )
@@ -357,8 +357,20 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "exactly two"):
                 create_unstructured_mesh_data(
-                    geomodel=load_csv_surface_coordinates(str(root)),
+                    surface_csv_dir=str(root),
                     extent_z=[-9.0],
+                    mapping_litho="none",
+                )
+
+    def test_geomodel_and_csv_directory_are_mutually_exclusive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_surface(root / "surface1.csv")
+            with self.assertRaisesRegex(ValueError, "either geomodel_result or surface_csv_dir"):
+                create_unstructured_mesh_data(
+                    geomodel_result=object(),
+                    surface_csv_dir=str(root),
+                    extent=EXTENT,
                     mapping_litho="none",
                 )
 
@@ -374,7 +386,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(ValueError, "must contain x, y, z columns"):
                     create_unstructured_mesh_data(
-                        geomodel=load_csv_surface_coordinates(str(root)),
+                        surface_csv_dir=str(root),
                         extent=EXTENT,
                         mapping_litho="none",
                     )

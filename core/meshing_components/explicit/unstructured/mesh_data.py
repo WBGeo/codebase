@@ -2564,6 +2564,74 @@ def meshit_coordinate_transform(
     return transformed
 
 
+def _load_csv_surface_coordinates(surface_csv_dir):
+    """Load surface point coordinates from CSV files for extent and meshing.
+
+    Each CSV represents one surface and contains a header with ``x``, ``y``,
+    and ``z`` columns, followed by one 3D coordinate point per row. Fault and
+    geological surfaces share this format; for example, ``fault1.csv`` and
+    ``surface_0.csv`` both contain::
+
+        x,y,z
+        1598.8658142089844,-40.0,1019.999991966042
+        1615.1783417083404,-40.0,996.7021942749328
+
+    Column names are matched case-insensitively after stripping whitespace.
+    Other columns, if present, are ignored. Non-numeric or non-finite coordinate
+    rows are discarded. Each file must retain at least three valid points.
+    CSV files are processed in filename order; hidden files and non-CSV files
+    are ignored.
+
+    Args:
+        surface_csv_dir: Directory containing one CSV file per surface.
+            A string or path-like value is accepted; ``~`` is expanded.
+
+    Returns:
+        list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
+        finite floating-point coordinate arrays of shape ``(N, 3)``.
+
+    Raises:
+        ValueError: If the directory does not exist, contains no CSV files,
+            a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
+            valid coordinate rows remain in a file.
+        pandas.errors.ParserError: If pandas cannot parse a CSV file.
+    """
+    csv_root = Path(surface_csv_dir).expanduser()
+    if not csv_root.is_dir():
+        raise ValueError(
+            f"surface_csv_dir is not a directory: {surface_csv_dir}"
+        )
+    csv_files = sorted(
+        p for p in csv_root.iterdir()
+        if p.is_file()
+        and p.suffix.lower() == ".csv"
+        and not p.name.startswith(".")
+        and not p.name.startswith("._")
+    )
+    if not csv_files:
+        raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
+
+    surfaces = []
+    for csv_path in csv_files:
+        df = pd.read_csv(csv_path)
+        columns = {str(c).strip().lower(): c for c in df.columns}
+        missing = [axis for axis in ("x", "y", "z") if axis not in columns]
+        if missing:
+            raise ValueError(
+                f"{csv_path.name} must contain x, y, z columns; missing {missing}."
+            )
+        xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
+            pd.to_numeric, errors="coerce"
+        ).to_numpy(dtype=float)
+        xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+        if len(xyz) < 3:
+            raise ValueError(
+                f"{csv_path.name} has fewer than 3 valid x,y,z points."
+            )
+        surfaces.append((csv_path, xyz))
+    return surfaces
+
+
 @wbgeo_type(name='Surface as described ', color='#8cb369', identifier='CSVSurfaceModelResults')
 @dataclass
 class CSVSurfaceModelResults:
@@ -2986,70 +3054,3 @@ def create_unstructured_mesh_data(
         mesh_type=MeshType.UNSTRUCTURED,
 )
 
-# TODO: Turn this into a wbgeo component once union types are supported
-def load_csv_surface_coordinates(surface_csv_dir) -> CSVSurfaceModelResults:
-  """Load surface point coordinates from CSV files for extent and meshing.
-
-  Each CSV represents one surface and contains a header with ``x``, ``y``,
-  and ``z`` columns, followed by one 3D coordinate point per row. Fault and
-  geological surfaces share this format; for example, ``fault1.csv`` and
-  ``surface_0.csv`` both contain::
-
-      x,y,z
-      1598.8658142089844,-40.0,1019.999991966042
-      1615.1783417083404,-40.0,996.7021942749328
-
-  Column names are matched case-insensitively after stripping whitespace.
-  Other columns, if present, are ignored. Non-numeric or non-finite coordinate
-  rows are discarded. Each file must retain at least three valid points.
-  CSV files are processed in filename order; hidden files and non-CSV files
-  are ignored.
-
-  Args:
-      surface_csv_dir: Directory containing one CSV file per surface.
-          A string or path-like value is accepted; ``~`` is expanded.
-
-  Returns:
-      list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
-      finite floating-point coordinate arrays of shape ``(N, 3)``.
-
-  Raises:
-      ValueError: If the directory does not exist, contains no CSV files,
-          a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
-          valid coordinate rows remain in a file.
-      pandas.errors.ParserError: If pandas cannot parse a CSV file.
-  """
-  csv_root = Path(surface_csv_dir).expanduser()
-  if not csv_root.is_dir():
-    raise ValueError(
-      f"surface_csv_dir is not a directory: {surface_csv_dir}"
-    )
-  csv_files = sorted(
-    p for p in csv_root.iterdir()
-    if p.is_file()
-    and p.suffix.lower() == ".csv"
-    and not p.name.startswith(".")
-    and not p.name.startswith("._")
-  )
-  if not csv_files:
-    raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
-
-  surfaces = []
-  for csv_path in csv_files:
-    df = pd.read_csv(csv_path)
-    columns = {str(c).strip().lower(): c for c in df.columns}
-    missing = [axis for axis in ("x", "y", "z") if axis not in columns]
-    if missing:
-      raise ValueError(
-        f"{csv_path.name} must contain x, y, z columns; missing {missing}."
-      )
-    xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
-      pd.to_numeric, errors="coerce"
-    ).to_numpy(dtype=float)
-    xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
-    if len(xyz) < 3:
-      raise ValueError(
-        f"{csv_path.name} has fewer than 3 valid x,y,z points."
-      )
-    surfaces.append((csv_path, xyz))
-  return CSVSurfaceModelResults(surfaces)
