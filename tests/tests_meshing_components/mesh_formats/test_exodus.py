@@ -6,12 +6,15 @@ import unittest
 import meshio
 import numpy as np
 
+from types import SimpleNamespace
+
 from core.meshing_components.mesh_format.exodus.Exo_format import (
     ExodusInput,
     export_mesh_results_to_exodus,
+    exodus_type_for,
     MeshType,
 )
-from core.object_components import MeshResults
+from core.object_components import MeshResults, MeshType as ObjectMeshType
 
 
 class TestExportMeshResultsToExodus(unittest.TestCase):
@@ -247,6 +250,37 @@ class TestStructuredAndImplicitClassification(unittest.TestCase):
 
     def test_implicit_writes_all_blocks(self):
         self._assert_all_blocks_are_written(MeshType.IMPLICIT)
+
+
+class TestExodusTypeFor(unittest.TestCase):
+    """exodus_type_for() translates a mesh's provenance (core.object_components.MeshType)
+    to the Exodus export path, so callers need no copy of the mapping."""
+
+    def setUp(self):
+        self.nodes = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        self.elements = [meshio.CellBlock("hexahedron", np.array([[0, 1, 2, 3, 0, 1, 2, 3]]))]
+
+    def _mesh_with_type(self, mesh_type):
+        return MeshResults(nodes=self.nodes, elements=self.elements, mesh_type=mesh_type)
+
+    def test_implicit(self):
+        self.assertEqual(exodus_type_for(self._mesh_with_type(ObjectMeshType.IMPLICIT)), MeshType.IMPLICIT)
+
+    def test_structured(self):
+        self.assertEqual(exodus_type_for(self._mesh_with_type(ObjectMeshType.STRUCTURED)), MeshType.STRUCTURED)
+
+    def test_unstructured(self):
+        self.assertEqual(exodus_type_for(self._mesh_with_type(ObjectMeshType.UNSTRUCTURED)), MeshType.UNSTRUCTURED)
+
+    def test_none_falls_back_to_unstructured(self):
+        # Matches export_mesh_results_to_exodus's default for a MeshResults without provenance.
+        self.assertEqual(exodus_type_for(self._mesh_with_type(None)), MeshType.UNSTRUCTURED)
+
+    def test_unknown_type_raises(self):
+        # A mesh type the exporter does not know (e.g. a future octree type) must not
+        # silently be exported as unstructured.
+        with self.assertRaises(ValueError):
+            exodus_type_for(SimpleNamespace(mesh_type="octree"))
 
 
 if __name__ == "__main__":

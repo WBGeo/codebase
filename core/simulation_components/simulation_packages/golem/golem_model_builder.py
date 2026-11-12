@@ -31,6 +31,13 @@ from core.simulation_components.simulation_packages.golem.golem_input_parser imp
     locate_blocks, top_block,
 )
 
+#: Mesh types GOLEM builders accept (the single place to extend, e.g. for octree meshes).
+GOLEM_SUPPORTED_MESH_TYPES = frozenset({
+    MeshType.IMPLICIT,
+    MeshType.STRUCTURED,
+    MeshType.UNSTRUCTURED,
+})
+
 # Backward-compatible names. Both solvers now use the same concrete models.
 GolemFluidProperties = FluidProperties
 GolemRockProperties = RockUnitProperties
@@ -158,13 +165,8 @@ class CustomGolemBuilder:
                 if not name or name != self.mesh_file_name:
                     raise ValueError("mesh_file_name must be a file name, not a path.")
 
-        supported_mesh_types = {
-            MeshType.IMPLICIT,
-            MeshType.STRUCTURED,
-            MeshType.UNSTRUCTURED,
-        }
         for mesh in (self.mesh_results, self.mesh1, self.mesh2):
-            if mesh is not None and mesh.mesh_type not in supported_mesh_types:
+            if mesh is not None and mesh.mesh_type not in GOLEM_SUPPORTED_MESH_TYPES:
                 raise ValueError(
                     "Custom GOLEM input requires implicit, structured, or "
                     f"unstructured WBGeo meshes; got {mesh.mesh_type!r}."
@@ -335,12 +337,7 @@ class GolemHydrothermalProblemBuilder:
     print_linear_residuals: bool = True
 
     def __post_init__(self) -> None:
-        supported_mesh_types = {
-            MeshType.IMPLICIT,
-            MeshType.STRUCTURED,
-            MeshType.UNSTRUCTURED,
-        }
-        if self.mesh_results.mesh_type not in supported_mesh_types:
+        if self.mesh_results.mesh_type not in GOLEM_SUPPORTED_MESH_TYPES:
             raise ValueError(
                 "GOLEM requires mesh_results.mesh_type to be IMPLICIT, "
                 "STRUCTURED or UNSTRUCTURED; got "

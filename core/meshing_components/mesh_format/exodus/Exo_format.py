@@ -10,7 +10,7 @@ import meshio
 import netCDF4 as nc
 import numpy as np
 
-from core.object_components import MeshResults
+from core.object_components import MeshResults, MeshType as ObjectMeshType
 from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 
 
@@ -18,9 +18,40 @@ logger = logging.getLogger(__name__)
 
 
 class MeshType(StrEnum):
+    """Export path of the Exodus writer (how blocks are split into volumes and sidesets).
+
+    Not the same as a mesh's provenance (core.object_components.MeshType);
+    use exodus_type_for() to translate one into the other.
+    """
     UNSTRUCTURED = "unstr"
     STRUCTURED = "str"
     IMPLICIT = "imp"
+
+
+#: A mesh's provenance (core.object_components.MeshType) -> the Exodus export path.
+_OBJECT_TO_EXODUS_TYPE = {
+    ObjectMeshType.IMPLICIT: MeshType.IMPLICIT,
+    ObjectMeshType.STRUCTURED: MeshType.STRUCTURED,
+    ObjectMeshType.UNSTRUCTURED: MeshType.UNSTRUCTURED,
+}
+
+
+def exodus_type_for(mesh_results: MeshResults) -> MeshType:
+    """The Exodus export path for mesh_results, from its recorded mesh_type.
+
+    Falls back to MeshType.UNSTRUCTURED when mesh_type is None (a manually
+    built MeshResults without provenance), matching
+    export_mesh_results_to_exodus's default. Raises ValueError for a mesh
+    type this exporter does not know, instead of silently treating it as
+    unstructured.
+    """
+    mesh_type = getattr(mesh_results, "mesh_type", None)
+    if mesh_type is None:
+        return MeshType.UNSTRUCTURED
+    try:
+        return _OBJECT_TO_EXODUS_TYPE[ObjectMeshType(mesh_type)]
+    except (KeyError, ValueError):
+        raise ValueError(f"Unsupported mesh type for Exodus export: {mesh_type!r}") from None
 
 
 class ExodusInput:

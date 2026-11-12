@@ -19,7 +19,10 @@ import numpy as np
 from pathlib import Path
 from typing import Optional, Union
 
-from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
+from core.meshing_components.mesh_format.exodus.Exo_format import (
+    export_mesh_results_to_exodus,
+    exodus_type_for,
+)
 from core.object_components import MeshType, SimulationResults
 from core.simulation_components.output_format.exodus.unified_format_exodus import (
     load_exodus_results,
@@ -36,12 +39,6 @@ from core.simulation_components.simulation_packages.golem.golem_input_parser imp
 )
 
 logger = logging.getLogger(__name__)
-
-MESH_TYPE_CODES = {
-    MeshType.IMPLICIT: "imp",
-    MeshType.STRUCTURED: "str",
-    MeshType.UNSTRUCTURED: "unstr",
-}
 
 
 def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> None:
@@ -531,8 +528,7 @@ def run_simulation_golem(
         for placeholder, mesh in referenced_meshes.items():
             filename, container_mesh = mesh_specs[placeholder]
             mesh_path_item = run_dir / filename
-            mesh_type_code = MESH_TYPE_CODES[mesh.mesh_type]
-            exo = export_mesh_results_to_exodus(mesh, type=mesh_type_code)
+            exo = export_mesh_results_to_exodus(mesh, type=exodus_type_for(mesh))
             mesh_path_item.write_bytes(exo.getbuffer())
             mesh_paths[placeholder] = mesh_path_item
             generated = generated.replace(placeholder, container_mesh)
