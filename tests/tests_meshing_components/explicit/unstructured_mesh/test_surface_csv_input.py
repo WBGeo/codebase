@@ -15,6 +15,7 @@ from core.meshing_components.mesh_format.mesh_export import (
 )
 from core.meshing_components.explicit.unstructured.mesh_data import (
     LithoMappingMode,
+    load_csv_surface_coordinates,
     create_unstructured_mesh_data,
 )
 
@@ -102,7 +103,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             patch(f"{MODULE}.gmsh.model.occ.synchronize"),
         ):
             kwargs = {
-                "surface_csv_dir": str(csv_dir),
+                "geomodel_result": load_csv_surface_coordinates(csv_dir),
                 "mapping_litho": mapping_litho,
             }
             if extent is not None:
@@ -218,6 +219,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_surface(root / "Fault2.csv", 6.0)
+            _write_surface(root / "surface1.csv", 4.0)
 
             _, _, _, fragment, _ = self._run_csv_route(root)
             self.assertIn("Fault2.csv", fragment.call_args.args[2])
@@ -345,7 +347,7 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "z_min < z_max"):
                 create_unstructured_mesh_data(
-                    surface_csv_dir=str(root),
+                    geomodel_result=load_csv_surface_coordinates(root),
                     extent_z=[5.0, -9.0],
                     mapping_litho="none",
                 )
@@ -357,22 +359,21 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "exactly two"):
                 create_unstructured_mesh_data(
-                    surface_csv_dir=str(root),
+                    geomodel_result=load_csv_surface_coordinates(root),
                     extent_z=[-9.0],
                     mapping_litho="none",
                 )
 
-    def test_geomodel_and_csv_directory_are_mutually_exclusive(self):
+    def test_csv_model_loader_returns_surface_coordinates(self):
+        """The current API accepts one geomodel object, not two input routes."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_surface(root / "surface1.csv")
-            with self.assertRaisesRegex(ValueError, "either geomodel_result or surface_csv_dir"):
-                create_unstructured_mesh_data(
-                    geomodel_result=object(),
-                    surface_csv_dir=str(root),
-                    extent=EXTENT,
-                    mapping_litho="none",
-                )
+            model = load_csv_surface_coordinates(root)
+            self.assertEqual(len(model.csv_surface_coordinates), 1)
+            csv_path, xyz = model.csv_surface_coordinates[0]
+            self.assertEqual(csv_path.name, "surface1.csv")
+            self.assertEqual(xyz.shape, (4, 3))
 
     def test_csv_requires_xyz_columns(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -380,16 +381,8 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             pd.DataFrame({"x": [0, 1, 2], "y": [0, 1, 2]}).to_csv(
                 root / "bad.csv", index=False
             )
-            with (
-                patch(f"{MODULE}.gmsh.initialize"),
-                patch(f"{MODULE}.gmsh.finalize"),
-            ):
-                with self.assertRaisesRegex(ValueError, "must contain x, y, z columns"):
-                    create_unstructured_mesh_data(
-                        surface_csv_dir=str(root),
-                        extent=EXTENT,
-                        mapping_litho="none",
-                    )
+            with self.assertRaisesRegex(ValueError, "must contain x, y, z columns"):
+                load_csv_surface_coordinates(root)
 
     def test_hidden_csv_files_are_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -397,6 +390,8 @@ class SurfaceCsvInputTestCase(unittest.TestCase):
             _write_surface(root / "surface1.csv")
             _write_surface(root / "._fault_hidden.csv")
 
+            model = load_csv_surface_coordinates(root)
+            self.assertEqual([path.name for path, _ in model.csv_surface_coordinates], ["surface1.csv"])
             _, _, create_grid, fragment, _ = self._run_csv_route(root)
             csv_surfaces = create_grid.call_args.args[0]
             self.assertEqual([name for name, _ in csv_surfaces], ["surface1.csv"])
