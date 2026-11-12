@@ -8,7 +8,8 @@ WBGeo through its browser-based interface in Docker.
 
 ## Requirements
 
-WBGeo requires Python 3.12 or later. We recommend installing into a virtual
+WBGeo requires Python 3.12.4 or later (earlier 3.12 releases fail to import the
+meshing components). We recommend installing into a virtual
 environment, e.g.:
 
 ```
