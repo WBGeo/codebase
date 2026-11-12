@@ -236,9 +236,9 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 
 # # Load engineering objects
 wells = load_wells_from_csv(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/wells.csv")
-csv_files=(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/seismic.csv",
-           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/well.csv",
-           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/Engineering_objects/multi.csv")
+csv_files=(cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/seismic.csv",
+           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/well.csv",
+           cwd + "/examples/case_studies/Groß_Schoenebeck/input_data/engineering_objects/multi.csv")
 triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # --- Optional: adaptive mesh refinement around objects ---

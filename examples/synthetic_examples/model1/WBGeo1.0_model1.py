@@ -206,8 +206,8 @@ shafts = load_shafts_from_csv(cwd + "/examples/synthetic_examples/model1/input_d
 sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_sources.csv")
 planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_planes.csv")
 ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/model_1_ellipses.csv")
-csv_files=(cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_0.csv",
-           cwd + "/examples/synthetic_examples/Model1/input_data/Engineering_objects/seismic_plane_new_offset_1.csv")
+csv_files=(cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/seismic_plane_new_offset_0.csv",
+           cwd + "/examples/synthetic_examples/model1/input_data/engineering_objects/seismic_plane_new_offset_1.csv")
 triangulations= load_triangulations_planes_from_csv(csv_files)
 
 # --- Optional: adaptive mesh refinement around objects ---
