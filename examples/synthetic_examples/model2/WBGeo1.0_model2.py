@@ -598,7 +598,6 @@ fault_zone_properties = RockUnitProperties(
 #problem_golem_results = run_simulation_golem(
 #    problem=problem_golem,
 #    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
 #    output_dir=(
 #        cwd
@@ -676,7 +675,6 @@ fault_zone_properties = RockUnitProperties(
 #    problem=custom_golem_problem,
 
 #    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 
 #    workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
 #    output_dir=(
@@ -796,7 +794,6 @@ fault_zone_properties = RockUnitProperties(
 #reservoir_results_model2 = run_simulation_golem(
 #    problem=reservoir_problem_model2,
 #    image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#    project_dir=os.environ["GOLEM_PROJECT_DIR"],
 #    output_dir=(
 #        cwd + "/examples/synthetic_examples/model2/golem_universal_reservoir_output"
 #    ),
