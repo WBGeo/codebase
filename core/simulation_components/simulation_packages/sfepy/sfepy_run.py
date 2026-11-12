@@ -1,6 +1,6 @@
 """
 Runs the SfePy input files HydrothermalProblemBuilder generates
-(sfepy_hydrothermal_builder.py) and loads the results back into a
+(sfepy_model_builder.py) and loads the results back into a
 SimulationResults object -- split out from the builder to keep "build the
 input data" and "run the simulation" as separate concerns, matching the
 Workbench's component/connector model: HydrothermalProblemBuilder is the

@@ -6,18 +6,15 @@ using anything HydrothermalProblemBuilder generates.
 
 WHAT THIS FILE DEMONSTRATES
 -----------------------------
-model1's custom_hydrothermal_reproduction_implicit.py and model2's
-custom_hydrothermal_reproduction_faulted_unstructured.py both embed a
-pressure/heat conf generated directly by HydrothermalProblemBuilder's own
-build_pressure_input_file/build_heat_input_file, to prove CustomSfepyBuilder
-can replay that generator's exact output. This file instead shows the
+HydrothermalProblemBuilder generates its pressure/heat input files itself
+(build_pressure_input_file/build_heat_input_file). This file shows the
 complementary case: a two-stage hydrothermal problem (fault zone, active
 damage zone, unstructured mesh, include_flow=True) written from first
 principles for CustomSfepyBuilder, without calling
 build_pressure_input_file/build_heat_input_file and without any literal
 enumerated vertex-id list. It uses only:
   - map_mat_id_to_lithology / enumerate_rock_units / compute_fault_zone_cell_mask
-    -- public, standalone helper functions in sfepy_hydrothermal_builder.py,
+    -- public, standalone helper functions in sfepy_model_builder.py,
     documented as reusable by any caller wanting the same mesh-block/
     lithology/fault-zone cell selection a custom file needs.
   - RockUnitProperties.effective_conductivity/effective_heat_capacity --
@@ -28,14 +25,14 @@ enumerated vertex-id list. It uses only:
   - The segregated pressure/heat two-stage physics, dw_advect_div_free
     advective coupling, and data-driven diffusion-timescale default that
     HydrothermalProblemBuilder itself implements (see
-    sfepy_hydrothermal_builder.py's module docstring and
+    sfepy_model_builder.py's module docstring and
     HydrothermalProblemBuilder's class docstring).
 
 Verified end-to-end against a real HydrothermalProblemBuilder run with
 identical settings (same mesh, same rock/fault-zone properties,
 include_flow=True, num_steps=2): T mean agrees to within 2e-6 (36.68905 both
 sides), max node-by-node |T diff| = 9e-6 over a 10-60 range. Not expected to
-match to 0.0 like the byte-for-byte reproduction files: this file is
+match to 0.0: this file is
 independently authored (different solver code paths, different EBC selector
 implementation inside SfePy, different floating-point operation order), so
 close agreement here demonstrates that the same technique reproduces the
@@ -90,10 +87,10 @@ t_top=10.0, t_bottom=60.0. t0=0.0, t1=5.0e11, num_steps=3 time
 increments (four stored SFePy states), include_flow=True.
 
 Then:
-    from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import CustomSfepyBuilder
-    from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import CustomSfepyBuilder
+    from core.simulation_components.simulation_packages.sfepy.sfepy_run import run_simulation_sfepy
     custom_builder = CustomSfepyBuilder(
-        input_file_contents=open("custom_hydrothermal_fromscratch_faulted_unstructured.py").read(),
+        input_file_contents=open("custom_hydrothermal.py").read(),
         mesh_results=mesh_explicit_unstructured, geomodel_result=structural_model_result,
         fault_zone_n_voxels=1,
     )

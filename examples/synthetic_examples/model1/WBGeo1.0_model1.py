@@ -386,11 +386,9 @@ plot_variable_time_series(data_by_time, "T", point=(500,500,500))
 # CustomSfepyBuilder validates it against the mesh at construction time,
 # then runs through the exact same run_simulation_sfepy() dispatcher.
 #
-# Two worked examples are provided for this mesh (no fault, implicit
-# structured); pick one by (un)commenting custom_input_path below.
+# One worked example is provided for this model (no fault):
 #
-#   - custom_hydrothermal_fromscratch_implicit.py (active by default)
-#     implements the same two-stage pressure -> Darcy velocity -> heat
+#   - custom_hydrothermal.py implements the same two-stage pressure -> Darcy velocity -> heat
 #     problem as HydrothermalProblemBuilder(include_flow=True), but written
 #     from first principles: regions, materials and boundary conditions are
 #     derived using only public helper functions and coordinate-based SfePy
@@ -398,14 +396,10 @@ plot_variable_time_series(data_by_time, "T", point=(500,500,500))
 #     generated pressure-stage file. On this mesh (an axis-aligned
 #     Cartesian grid, no fault) it reproduces HydrothermalProblemBuilder's
 #     result exactly, not just closely -- see the file's own docstring for
-#     why that's different from model2's fromscratch file, which only
+#     why that's different from model2's custom_hydrothermal.py, which only
 #     agrees to within solver tolerance on its unstructured, faulted mesh.
 #
-#   - custom_hydrothermal_reproduction_implicit.py instead reproduces the
-#     HydrothermalProblemBuilder call above bit-for-bit by embedding its
-#     own build_pressure_input_file/build_heat_input_file output directly.
-#
-# See each file's own docstring for the full technical explanation.
+# See the file's own docstring for the full technical explanation.
 
 custom_input_path = (cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/"
                       "custom_hydrothermal.py")

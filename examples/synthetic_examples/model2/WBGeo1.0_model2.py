@@ -474,11 +474,10 @@ fault_zone_properties = RockUnitProperties(
 # CustomSfepyBuilder validates it against the mesh at construction time,
 # then runs through the exact same run_simulation_sfepy() dispatcher.
 #
-# Two worked examples are provided for this mesh (real fault, active damage
-# zone, unstructured); pick one by (un)commenting custom_input_path below.
+# One worked example is provided for this mesh (real fault, active damage
+# zone, unstructured):
 #
-#   - custom_hydrothermal_fromscratch_faulted_unstructured.py (active by
-#     default) implements the same two-stage pressure -> Darcy velocity ->
+#   - custom_hydrothermal.py implements the same two-stage pressure -> Darcy velocity ->
 #     heat problem as HydrothermalProblemBuilder(include_flow=True), but
 #     written from first principles: regions, materials and boundary
 #     conditions are derived using only public helper functions and
@@ -490,16 +489,7 @@ fault_zone_properties = RockUnitProperties(
 #     physics can be set up in a custom file without prior knowledge of how
 #     HydrothermalProblemBuilder constructs its pressure stage internally.
 #
-#   - custom_hydrothermal_reproduction_faulted_unstructured.py instead
-#     reproduces the HydrothermalProblemBuilder call above bit-for-bit:
-#     same mesh, same rock_properties/fault_zone_properties, same
-#     include_flow=False/num_steps. Since include_flow=False there (pure
-#     conduction), it is a single, complete SfePy conf with no pressure/
-#     velocity stage at all -- see the file's own docstring for the full
-#     explanation, including why no companion fault-zone-mask file is
-#     needed for that case.
-#
-# See each file's own docstring for the full technical explanation.
+# See the file's own docstring for the full technical explanation.
 
 #custom_input_path = (cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/"
 #                      "custom_hydrothermal.py")

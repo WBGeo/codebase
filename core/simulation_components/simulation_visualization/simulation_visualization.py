@@ -1005,7 +1005,7 @@ def _plot_sfepy_builder_materials(
 
 
 # ----------------------------------------------------------------------
-# GOLEM pre-flight material preview (merged from golem_material_preview.py)
+# GOLEM pre-flight material preview
 # ----------------------------------------------------------------------
 
 def _section_parameters(lines, section):

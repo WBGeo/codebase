@@ -6,11 +6,11 @@ pair, instead of a hand-written static file with hardcoded regions.
 
 This is the input-data side only: HydrothermalProblemBuilder builds the
 generated SfePy input files and their configuration. Actually running them
-(subprocess launch, output loading) lives in sfepy_hydrothermal_run.py,
+(subprocess launch, output loading) lives in sfepy_run.py,
 split out to keep "build the input data" and "run the simulation" as
 separate concerns -- matching the Workbench's component/connector model,
 where HydrothermalProblemBuilder is the input-data-generator component and
-run_simulation_sfepy() (sfepy_hydrothermal_run.py) is the run component.
+run_simulation_sfepy() (sfepy_run.py) is the run component.
 
 Solved as two sequential, single-physics stages (pressure, then temperature),
 not one monolithic multi-field system -- see run_simulation_sfepy()'s docstring for why:
@@ -195,7 +195,7 @@ LINEAR_SOLVERS = ("direct", "iterative", "petsc")
 #: MeshResults.mesh_type's readable values, mapped to the short codes
 #: export_mesh_results_to_exodus()/sfepy-run actually need ("imp", "str",
 #: "unstr"), which read as unexplained abbreviations at a call site. Used by
-#: sfepy_hydrothermal_run.py too (imported from here) to translate
+#: sfepy_run.py too (imported from here) to translate
 #: builder.mesh_type to the short code when actually running SfePy.
 MESH_TYPE_CODES = {
     MeshType.IMPLICIT: "imp",
@@ -1297,7 +1297,7 @@ class CustomSfepyBuilder:
     Unlike HydrothermalProblemBuilder, no pressure/heat staging, no
     velocity handoff -- the file is assumed to already contain everything
     it needs and gets run in a single sfepy-run invocation (see
-    run_simulation_sfepy in sfepy_hydrothermal_run.py). On an unstructured
+    run_simulation_sfepy in sfepy_run.py). On an unstructured
     mesh, the same mesh_type_code == "unstr" pre-filter
     HydrothermalProblemBuilder relies on (_run_sfepy_input_file, dropping
     non-volume blocks before Exodus export) applies here too -- so a

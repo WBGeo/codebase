@@ -1117,20 +1117,25 @@ corresponding value is represented as a gap in the time-series plot.
 
 
 
-### View solver output (SfePy only)
+### View solver output
 
 > **Workbench inspector:** `View Solver Output`
 
-This inspector allows users to inspect the text output generated
-during a SfePy simulation. This output can be useful for checking 
-solver progress, convergence information, warnings, and errors.
+This inspector shows the text output of the solver for a simulation
+result, for both SfePy and GOLEM runs. It is useful for checking solver
+progress, convergence information, warnings, and errors, also after a
+successful run.
 
 Example access in the codebase:
 
 ```python
+# SfePy: one transcript per stage ("pressure"/"heat", or "custom")
 for stage, stdout in simulation_result.sfepy_stdout.items():
     print(f"=== {stage} ===")
     print(stdout)
+
+# GOLEM: one transcript for the whole run
+print(simulation_result.golem_solver_output)
 ```
 
 

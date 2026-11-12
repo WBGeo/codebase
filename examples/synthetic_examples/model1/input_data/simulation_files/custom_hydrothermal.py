@@ -6,19 +6,16 @@ using anything HydrothermalProblemBuilder generates.
 
 WHAT THIS FILE DEMONSTRATES
 -----------------------------
-model1's custom_hydrothermal_reproduction_implicit.py (and model2's
-custom_hydrothermal_reproduction_faulted_unstructured.py) both embed a
-pressure/heat conf generated directly by HydrothermalProblemBuilder's own
-build_pressure_input_file/build_heat_input_file, to prove CustomSfepyBuilder
-can replay that generator's exact output. This file instead shows the
-complementary case (same idea as model2's own
-custom_hydrothermal_fromscratch_faulted_unstructured.py, adapted to model1's
-simpler no-fault, implicit-structured-mesh setting): a two-stage
+HydrothermalProblemBuilder generates its pressure/heat input files itself
+(build_pressure_input_file/build_heat_input_file). This file shows the
+complementary case (same idea as model2's own custom_hydrothermal.py,
+adapted to model1's simpler no-fault, implicit-structured-mesh setting): a
+two-stage
 hydrothermal problem written from first principles for CustomSfepyBuilder,
 without calling build_pressure_input_file/build_heat_input_file and without
 any literal enumerated vertex-id list. It uses only:
   - map_mat_id_to_lithology / enumerate_rock_units -- public, standalone
-    helper functions in sfepy_hydrothermal_builder.py, documented as
+    helper functions in sfepy_model_builder.py, documented as
     reusable by any caller wanting the same mesh-block/lithology cell
     selection a custom file needs (no fault zone here, so
     compute_fault_zone_cell_mask isn't needed -- model1 has no faults).
@@ -35,7 +32,7 @@ any literal enumerated vertex-id list. It uses only:
   - The segregated pressure/heat two-stage physics, dw_advect_div_free
     advective coupling, and data-driven diffusion-timescale default that
     HydrothermalProblemBuilder itself implements (see
-    sfepy_hydrothermal_builder.py's module docstring and
+    sfepy_model_builder.py's module docstring and
     HydrothermalProblemBuilder's class docstring).
 
 Verified end-to-end against a real HydrothermalProblemBuilder run with
@@ -43,7 +40,7 @@ identical settings (same mesh, same rock/fluid properties, include_flow=True,
 num_steps=3): T mean agrees to 0.0 (both 39.77372655621871), max
 node-by-node |T diff| = 0.0 over a 10.0-60.0 range -- an
 exact match, not just close agreement. This is different from model2's own
-fromscratch file, which reproduces HydrothermalProblemBuilder closely but
+custom_hydrothermal.py, which reproduces HydrothermalProblemBuilder closely but
 not exactly (T mean agrees to within 2e-6, not 0.0). The reason: model2's
 mesh is explicit/unstructured with a fault, so its independently-implemented
 EBC selectors and cell ordering take a genuinely different path through
@@ -109,10 +106,10 @@ t_bottom=60.0. t1=500000000000.0 (data-driven diffusion timescale, L^2/alpha),
 num_steps=3, include_flow=True.
 
 Then:
-    from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import CustomSfepyBuilder
-    from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_run import run_simulation_sfepy
+    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import CustomSfepyBuilder
+    from core.simulation_components.simulation_packages.sfepy.sfepy_run import run_simulation_sfepy
     custom_builder = CustomSfepyBuilder(
-        input_file_contents=open("custom_hydrothermal_fromscratch_implicit.py").read(),
+        input_file_contents=open("custom_hydrothermal.py").read(),
         mesh_results=mesh_implicit_structured, geomodel_result=structural_model_result,
         print_linear_residuals=True,
     )
