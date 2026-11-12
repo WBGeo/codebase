@@ -821,15 +821,16 @@ def inspect_simulation_result_plot_cross_section_2D(
     var_name: Optional[str] = None,
     time_step1: Optional[int] = None,
     time_step2: Optional[int] = None,
-    origin: Optional[AnnotatedPoint] = (500, 500, 500),
+    origin: Optional[AnnotatedPoint] = None,
     normal: AnnotatedPoint = (0, 1, 0),
 ):
     times = sorted(simulation_result.nodes_by_time)
     if not times:
         raise ValueError("Simulation has no saved time steps.")
-    # Use the mesh centroid so the slicing plane intersects the domain.
-    if not origin:
-      origin = tuple(simulation_result.nodes_by_time[times[0]].mean(axis=0))
+    # Default to the mesh centroid so the slicing plane intersects the domain
+    # for any model extent; a fixed default point misses models in real coordinates.
+    if origin is None:
+        origin = tuple(simulation_result.nodes_by_time[times[0]].mean(axis=0))
     physical_time_a = times[0] if time_step1 is None else _saved_time_for_step(simulation_result, time_step1)
     physical_time_b = times[-1] if time_step2 is None else _saved_time_for_step(simulation_result, time_step2)
     plot_cross_section_2D(

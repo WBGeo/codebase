@@ -703,6 +703,40 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
     assert received["cmap"] == "coolwarm"
 
 
+def _offset_simulation_result():
+    """Two saved steps on a small mesh in real-world coordinates, far from (500, 500, 500)."""
+    nodes = np.array([[3.2e5, 5.6e6, -800.0], [3.3e5, 5.6e6, -800.0],
+                      [3.2e5, 5.7e6, -800.0], [3.2e5, 5.6e6, -200.0]])
+    sim = SimulationResults()
+    for t in (0.0, 1.0):
+        sim.nodes_by_time[t] = nodes
+        sim.node_data_by_time[t] = {"T": np.full(len(nodes), 10.0 + t)}
+    return sim
+
+
+def test_inspect_plot_cross_section_2D_defaults_to_centroid_for_real_coordinates(monkeypatch):
+    sim = _offset_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_cross_section_2D", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None)
+
+    assert received["origin"] == pytest.approx(tuple(sim.nodes_by_time[0.0].mean(axis=0)))
+    assert received["normal"] == (0, 1, 0)
+
+
+def test_inspect_plot_cross_section_2D_uses_explicit_origin(monkeypatch):
+    sim = _offset_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_cross_section_2D", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_cross_section_2D(
+        simulation_result=sim, _inspector=None, origin=(3.25e5, 5.65e6, -500.0), normal=(1, 0, 0))
+
+    assert received["origin"] == (3.25e5, 5.65e6, -500.0)
+    assert received["normal"] == (1, 0, 0)
+
+
 def test_inspect_simulation_result_stdout_prints_each_stage(capsys):
     sim = SimulationResults()
     sim.sfepy_stdout = {"pressure": "pressure solver log", "heat": "heat solver log"}
