@@ -69,7 +69,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
   file_path = os.path.abspath(file_path)
 
-  print(file_path, 'file_path')
+  logger.debug("Loading GOLEM Exodus results from %s", file_path)
 
   # =====================================================
   # IF DIRECTORY IS GIVEN, FIND EXODUS FILE

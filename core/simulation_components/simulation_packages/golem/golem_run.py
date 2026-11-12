@@ -221,6 +221,7 @@ def _stream_process(command, heartbeat_seconds: float = 10.0, *, stream_output: 
     def emit(*args, **kwargs):
         if stream_output:
             print(*args, **kwargs)
+    logger.info("Starting GOLEM: %s", shlex.join(command))
     emit("\n" + "=" * 72, flush=True)
     emit("Starting GOLEM simulation", flush=True)
     emit("Command:", shlex.join(command), flush=True)
@@ -275,6 +276,7 @@ def _stream_process(command, heartbeat_seconds: float = 10.0, *, stream_output: 
     if return_code:
         raise RuntimeError(f"GOLEM exited with status {return_code}:\n{output}")
     elapsed = time.monotonic() - start_time
+    logger.info("GOLEM finished in %.1f s.", elapsed)
     emit("=" * 72, flush=True)
     emit(f"GOLEM completed successfully in {elapsed:.1f} seconds", flush=True)
     emit("=" * 72 + "\n", flush=True)
@@ -371,12 +373,8 @@ def _prepare_hierarchy_transfer_files(target_aux_dir: Path, generated: str, *, s
 
         generated = generated.replace(token, str(len(data_rows)))
         generated = generated.replace(nprop_token, str(nprop))
-        if stream_output:
-            print(
-                f"Prepared hierarchy transfer {stable.name}: "
-            f"nvoronoi={len(data_rows)}, nprop={nprop}",
-            flush=True,
-        )
+        logger.info("Prepared hierarchy transfer %s: nvoronoi=%d, nprop=%d",
+                    stable.name, len(data_rows), nprop)
 
     unresolved = sorted(set(re.findall(r"__(?:N|NPROP)_[A-Z0-9_]+__", generated)))
     if unresolved:
@@ -416,10 +414,6 @@ def run_simulation_golem(
     :param stream_output: whether golem process should be streamed
     :return: the simulation results
     """
-
-    def emit(*args, **kwargs):
-        if stream_output:
-            print(*args, **kwargs)
 
     if nproc < 1:
         raise ValueError("nproc must be >= 1")
@@ -464,7 +458,7 @@ def run_simulation_golem(
                 )
             target_aux_dir = run_dir / "files"
             shutil.copytree(source_aux_dir, target_aux_dir, dirs_exist_ok=True)
-            emit( f"Staged GOLEM auxiliary files: {source_aux_dir} -> {target_aux_dir}", flush=True, )
+            logger.info("Staged GOLEM auxiliary files: %s -> %s", source_aux_dir, target_aux_dir)
         else:
             target_aux_dir = None
 
@@ -493,7 +487,7 @@ def run_simulation_golem(
                         original_input.stem + "_hierarchy_sampling" + original_input.suffix
                     )
                     augmented_input.write_text(generated, encoding="utf-8", newline="\n")
-                    emit( f"Saved hierarchy-augmented GOLEM input: {augmented_input}", flush=True, )
+                    logger.info("Saved hierarchy-augmented GOLEM input: %s", augmented_input)
                 input_path.write_text(generated, encoding="utf-8", newline="\n")
         else:
             referenced_meshes = {"${GOLEM_MESH_FILE}": problem.mesh_results}
@@ -572,12 +566,12 @@ def run_simulation_golem(
                      or mesh_paths.get("${GOLEM_MESH1_FILE}")
                      or mesh_paths.get("${GOLEM_MESH2_FILE}"))
 
-        emit(f"GOLEM host staging directory: {run_dir}", flush=True)
-        emit(f"Input to copy: {input_path}", flush=True)
-        emit(f"Mesh to copy: {mesh_path}", flush=True)
+        logger.debug("GOLEM host staging directory: %s", run_dir)
+        logger.debug("Input to copy: %s", input_path)
+        logger.debug("Mesh to copy: %s", mesh_path)
         if create_docker:
-            emit(f"Docker container: {container_name}", flush=True)
-        emit(f"MPI processes: {nproc}", flush=True)
+            logger.debug("Docker container: %s", container_name)
+        logger.debug("MPI processes: %d", nproc)
 
         # Resolve executable and input paths in the namespace where GOLEM runs.
         # Host paths (for example /Users/... on macOS) are not valid inside
@@ -678,9 +672,9 @@ def run_simulation_golem(
                 (path for path in output.rglob("*") if path.is_file()),
                 key=lambda path: str(path),
             )
-            emit( f"Copied {len(copied_files)} GOLEM output file(s) to {output}", flush=True, )
+            logger.info("Copied %d GOLEM output file(s) to %s", len(copied_files), output)
             for path in copied_files:
-                emit(f"  {path.relative_to(output)}", flush=True)
+                logger.debug("  %s", path.relative_to(output))
         else:
             # if golem is installed locally: Run the golem command directly
             if stream_output:
@@ -896,8 +890,8 @@ def run_simulation_golem(
             "output_dir": str(output),
             "stdout_file": str(transcript_path),
         }
-        emit(f"GOLEM Exodus result: {result_file}", flush=True)
-        emit("Loading GOLEM Exodus result into SimulationResults...", flush=True)
+        logger.debug("GOLEM Exodus result: %s", result_file)
+        logger.debug("Loading GOLEM Exodus result into SimulationResults...")
         simulation_results = load_exodus_results(run_info)
         # Keep the native GOLEM Exodus result path on the unified result object.
         # The generic simulation exporter uses this path for format="exodus" so
@@ -912,7 +906,7 @@ def run_simulation_golem(
             raise RuntimeError(
                 f"The GOLEM Exodus file at {result_file} contained no readable time steps."
             )
-        emit( f"Loaded {len(simulation_results.nodes_by_time)} GOLEM time step(s).", flush=True, )
+        logger.info("Loaded %d GOLEM time step(s).", len(simulation_results.nodes_by_time))
         return simulation_results
     finally:
         if container_created:

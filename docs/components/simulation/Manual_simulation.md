@@ -382,8 +382,6 @@ The component accepts the following parameters in the Workbench:
     `30.0`.
 -   **`curve_mesh_size`** *(optional)*: Target mesh size on well curves.
     Default `5.0`.
--   **`z_threshold`** *(optional)*: Optional z-direction threshold used
-    by the unstructured meshing workflow. Default `None`.
 -   **`well_refine_size_min`** *(optional)*: Minimum target mesh size
     close to the well. Default `5.0`.
 -   **`well_refine_size_max`** *(optional)*: Maximum target mesh size
@@ -544,7 +542,6 @@ reservoir_problem_model2 = GolemSimpleReservoirProblemBuilder(
     mapping_litho="automatic_centers",
     gmsh_flag=False,
     merge_file=None,
-    z_threshold=10.0,
     unstructured_mesh_options={
         "tolerance": 50,
     },

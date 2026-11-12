@@ -351,6 +351,9 @@ refinement.extra_planes = ExtraPlaneRefinement(SizeMin=10.0, SizeMax=80.0, DistM
 
 
 # # Explicit unstructured mesh with objects
+# Note: with all objects and the refinement above, this mesh is much finer than the
+# plain one (about 350k nodes vs. 20k) and took about 14 minutes on a desktop PC
+# (the plain mesh: a few seconds).
 mesh_unstructured_with_objects = create_unstructured_mesh_data(
      geomodel_result=structural_model_result,
      tolerance=50,

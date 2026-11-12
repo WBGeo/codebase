@@ -22,6 +22,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, 
 from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartInputFormData
 
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
+from core.meshing_components.explicit.unstructured.mesh_data import LithoMappingMode, LithoMappingModeType
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem, RockUnitProperties, FluidProperties,
     enumerate_rock_units, check_mesh_has_known_type, check_mesh_has_lithology_mapping,
@@ -31,6 +32,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_run import (
     run_simulation_sfepy as _run_simulation_sfepy,
 )
 from core.simulation_components.simulation_packages.simulation_export import (
+    SimulationExportFormat,
     export_simulation_results as _export_simulation_results,
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
@@ -62,6 +64,12 @@ AnnotatedPoint = typing.Annotated[Tuple[float, float, float], AnnotatedScriptTyp
 CustomSfepyFileDataType = typing.Annotated[
     str, AnnotatedScriptType(name='path', color='aqua', identifier='CustomSfepyFileDataType',
                              controlled='RemoteFile|endswith=.py')]
+
+SimulationExportFormatType = typing.Annotated[
+    SimulationExportFormat,
+    AnnotatedScriptType(name='SimulationExportFormat', identifier='SimulationExportFormatType',
+                        controlled='Select|' + '|'.join(f.value for f in SimulationExportFormat)),
+]
 
 # GOLEM custom inputs use the same RemoteFile pattern, but select MOOSE .i files.
 CustomGolemFileDataType = typing.Annotated[
@@ -474,8 +482,8 @@ def build_golem_hydrothermal_problem(
     p_bottom: float = 1.0e6,
     t_top: float = 10.0,
     t_bottom: float = 60.0,
-    initial_pressure: Optional[float] = 0,
-    initial_temperature: Optional[float] = 0,
+    initial_pressure: Optional[float] = None,
+    initial_temperature: Optional[float] = None,
     start_time: float = 0.0,
     end_time: Optional[float] = 5e11,
     dt: float = 1.667e11,
@@ -484,9 +492,23 @@ def build_golem_hydrothermal_problem(
     print_linear_residuals: bool = True,
 ) -> GolemProblem:
     """
-    :param mesh_results: The WBGeo mesh to solve on.
+    :param mesh_results: The WBGeo mesh to solve on (implicit, structured, or unstructured).
     :param geomodel_result: Structural model associated with the mesh.
     :param options: Smart GOLEM fluid/rock/fault properties.
+    :param p_top: Pressure Dirichlet boundary value at the model top (Pa).
+    :param p_bottom: Pressure Dirichlet boundary value at the model bottom (Pa).
+    :param t_top: Temperature Dirichlet boundary value at the model top (°C).
+    :param t_bottom: Temperature Dirichlet boundary value at the model bottom (°C).
+    :param initial_pressure: Constant initial pressure (Pa). Leave empty for a linear
+        profile between p_bottom and p_top.
+    :param initial_temperature: Constant initial temperature (°C). Leave empty for a
+        linear profile between t_bottom and t_top (as in the SfePy hydrothermal builder).
+    :param start_time: Simulation start time (s).
+    :param end_time: Simulation end time (s). Leave empty for start_time + dt * num_steps.
+    :param dt: Time step size (s).
+    :param num_steps: Number of time steps.
+    :param output_interval: Write results every output_interval time steps.
+    :param print_linear_residuals: Include GOLEM's linear residuals in the solver output.
     :return: GOLEM problem envelope for Run GOLEM Simulation.
     """
     check_mesh_has_known_type(mesh_results)
@@ -536,8 +558,7 @@ def build_golem_simple_reservoir_problem(
     geomodel_result: StructuralModelResults,
     mesh_size: float = 30.0,
     curve_mesh_size: float = 5.0,
-    mapping_litho: str = "automatic_centers",
-    z_threshold: Optional[float] = None,
+    mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     well_refine_size_min: float = 5.0,
     well_refine_size_max: float = 30.0,
     well_refine_dist_min: float = 10.0,
@@ -573,20 +594,52 @@ def build_golem_simple_reservoir_problem(
     end_time: Optional[float] = None,
 ) -> GolemProblem:
     """
-    :param geomodel_result: Structural model used to place/scale the reservoir geometry.
-    :param mesh_size: Target unstructured volume-mesh size.
-    :param curve_mesh_size: Target mesh size on well curves.
+    The reservoir mesh fills the structural model's extent. Two 100 m x 100 m fracture
+    planes (200 m apart) and a well are placed in the model's centre; injection and
+    extraction act at the centres of the first and second fracture. All rock units get
+    the same rock properties.
+
+    :param geomodel_result: Structural model whose extent the reservoir mesh fills.
+    :param mesh_size: Target unstructured volume-mesh size (m).
+    :param curve_mesh_size: Target mesh size on the well curve (m).
     :param mapping_litho: Lithology mapping mode passed to the unstructured mesher.
-    :param initial_pressure: Initial reservoir pressure.
-    :param initial_temperature: Initial reservoir temperature.
-    :param boundary_pressure: Reservoir boundary pressure.
-    :param boundary_temperature: Reservoir boundary temperature.
-    :param injection_temperature: Injection-fluid temperature.
-    :param injection_rate: Injection rate.
-    :param extraction_rate: Extraction rate.
-    :param start_time: Simulation start time.
-    :param end_time: Simulation end time; defaults inside the builder when None.
-    :param print_linear_residuals: Include GOLEM linear residual output.
+    :param well_refine_size_min: Smallest element size next to the well (m).
+    :param well_refine_size_max: Element size beyond well_refine_dist_max (m).
+    :param well_refine_dist_min: Distance from the well up to which well_refine_size_min applies (m).
+    :param well_refine_dist_max: Distance from the well at which well_refine_size_max is reached (m).
+    :param fracture_refine_size_min: Smallest element size next to the fractures (m).
+    :param fracture_refine_size_max: Element size beyond fracture_refine_dist_max (m).
+    :param fracture_refine_dist_min: Distance from the fractures up to which fracture_refine_size_min applies (m).
+    :param fracture_refine_dist_max: Distance from the fractures at which fracture_refine_size_max is reached (m).
+        The eight refinement values refer to a 1000 m reference model and are scaled
+        with the model's smallest axis.
+    :param rock_porosity: Porosity of the rock (-).
+    :param rock_permeability: Permeability of the rock (m²).
+    :param rock_density: Density of the rock (kg/m³).
+    :param rock_thermal_conductivity: Thermal conductivity of the rock (W/(m·K)).
+    :param rock_heat_capacity: Specific heat capacity of the rock (J/(kg·K)).
+    :param fracture_porosity: Porosity of the fracture elements (-).
+    :param fracture_aperture: Aperture of the fracture elements (m).
+    :param geological_fault_aperture: Aperture given to faults of the structural model (m);
+        they otherwise use the rock properties.
+    :param well_porosity: Porosity of the well elements (-).
+    :param well_permeability: Permeability of the well elements (m²).
+    :param well_scaling_factor: Initial scaling factor of the 1D well elements in GOLEM.
+    :param fluid_density: Fluid density (kg/m³).
+    :param fluid_viscosity: Fluid viscosity (Pa·s).
+    :param fluid_heat_capacity: Specific heat capacity of the fluid (J/(kg·K)).
+    :param fluid_thermal_conductivity: Thermal conductivity of the fluid (W/(m·K)).
+    :param fluid_modulus: Fluid bulk modulus (Pa).
+    :param initial_pressure: Initial reservoir pressure (Pa).
+    :param initial_temperature: Initial reservoir temperature (°C).
+    :param boundary_pressure: Pressure held at the model boundary (Pa).
+    :param boundary_temperature: Temperature held at the model boundary (°C).
+    :param injection_temperature: Temperature of the injected fluid (°C).
+    :param injection_rate: Injection rate, passed to GOLEM's point source (constant_rate).
+    :param extraction_rate: Extraction rate, passed to GOLEM's point source (constant_rate).
+    :param start_time: Simulation start time (s).
+    :param end_time: Simulation end time (s). Leave empty to end at the last solve time of
+        the builder's default time sequence.
     :return: GOLEM problem envelope for Run GOLEM Simulation.
     """
     return GolemProblem(simple_reservoir=GolemSimpleReservoirProblemBuilder(
@@ -594,7 +647,6 @@ def build_golem_simple_reservoir_problem(
         mesh_size=mesh_size,
         curve_mesh_size=curve_mesh_size,
         mapping_litho=mapping_litho,
-        z_threshold=z_threshold,
         well_refine_size_min=well_refine_size_min,
         well_refine_size_max=well_refine_size_max,
         well_refine_dist_min=well_refine_dist_min,
@@ -651,7 +703,15 @@ def build_custom_golem_problem(
     geomodel_result: Optional[StructuralModelResults] = None,
     print_linear_residuals: bool = True,
 ) -> GolemProblem:
-    """Build a CustomGolemBuilder from a RemoteFile-controlled .i input."""
+    """
+    :param input_file: Path (relative to the codebase root) to a complete GOLEM/MOOSE input
+        file (.i), picked via the file browser. Its FileMeshGenerator must use
+        ${GOLEM_MESH_FILE}, which is replaced by the exported mesh_results.
+    :param mesh_results: The WBGeo mesh to solve on (implicit, structured, or unstructured).
+    :param geomodel_result: Optional structural model associated with the mesh.
+    :param print_linear_residuals: Include GOLEM's linear residuals in the solver output.
+    :return: GOLEM problem envelope for Run GOLEM Simulation.
+    """
     check_mesh_has_known_type(mesh_results)
 
     datadir = pathlib.Path(__file__).parent.parent.parent.resolve().as_posix()
@@ -726,7 +786,11 @@ def run_golem_simulation(
     identifier='wbgeo::export_simulation_results',
     return_name='file',
 )
-def export_simulation_results(simulation_result: SimulationResults, format: str = "auto", golem_output_dir: str = "") -> BasicallyABufferedFile:
+def export_simulation_results(
+    simulation_result: SimulationResults,
+    format: SimulationExportFormatType = SimulationExportFormat.AUTO.value,
+    golem_output_dir: str = "",
+) -> BasicallyABufferedFile:
     """
     :param simulation_result: Simulation results from Run Simulation or Run GOLEM Simulation.
     :param format: "auto" (SfePy VTK ZIP / GOLEM native output ZIP), "vtk", "exodus", or "golem".
@@ -755,7 +819,7 @@ def inspect_sfepy_problem_plot_materials(
     problem: SfepyProblem,
     var_name: Optional[str] = None,
 ):
-    """Leave property_name empty for material groups; enter a numeric material property to color by value."""
+    """Leave var_name empty for material groups; enter a numeric material property to color by value."""
     plot_builder_materials(problem.inner(), property_name=var_name, cmap= "viridis")
 
 
@@ -769,7 +833,7 @@ def inspect_golem_problem_plot_materials(
     problem: GolemProblem,
     var_name: Optional[str] = None,
 ):
-    """Leave property_name empty for material blocks; enter a numeric material property to color by value."""
+    """Leave var_name empty for material blocks; enter a numeric material property to color by value."""
     plot_builder_materials(problem.inner(), property_name=var_name, cmap= "viridis")
 
 
@@ -918,11 +982,11 @@ def inspect_simulation_result_stdout(simulation_result: SimulationResults, _insp
         print("No GOLEM solver output recorded for this result.")
         return
     if simulation_result.sfepy_stdout:
-      for stage, stdout in simulation_result.sfepy_stdout.items():
-        print(f"=== {stage} ===")
-        print(stdout)
+        for stage, stdout in simulation_result.sfepy_stdout.items():
+            print(f"=== {stage} ===")
+            print(stdout)
     elif simulation_result.golem_solver_output:
-      print("=== GOLEM ===")
-      print(simulation_result.golem_solver_output)
+        print("=== GOLEM ===")
+        print(simulation_result.golem_solver_output)
     else:
-      print("No solver output recorded for this result.")
+        print("No solver output recorded for this result.")

@@ -56,7 +56,7 @@ class LithoMappingMode(StrEnum):
     # accurate overall, especially near faults/unconformities, though the
     # accuracy gap between the two modes only really shows up when the
     # structural grid is coarse relative to the mesh -- neither mode fully
-    # fixes that miwellcvtch on its own (see _check_lithology_mapping_reliability,
+    # fixes that mismatch on its own (see _check_lithology_mapping_reliability,
     # which warns about it directly).
     AUTOMATIC_CENTERS = "automatic_centers"
     # Per-block lithology vote taken on each raw block's *node* coordinates
@@ -1861,8 +1861,8 @@ SmartRefinement = typing.Annotated[
                  border_color='#000000',  # and its border color
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
-                 return_name='Wells',
-                 is_object_type=True,  # the name for the returned-port
+                 return_name='Wells',  # the name for the returned-port
+                 is_object_type=True,  # render as object
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
@@ -2044,7 +2044,7 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
-                 is_object_type=True,
+    is_object_type=True,  # render as object
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: bool = False) -> EllipseData:
     """Load ellipse definitions from a CSV file.
@@ -2129,8 +2129,8 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  border_color='#000000',  # and its border color
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
-                 return_name='Shafts',
-                 is_object_type=True,  # the name for the returned-port
+                 return_name='Shafts',  # the name for the returned-port
+                 is_object_type=True,  # render as object
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = False) -> ShaftData:
     """Load shaft definitions from a CSV file.
@@ -2195,8 +2195,8 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  border_color='#000000',  # and its border color
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
-                 return_name='planes',
-                 is_object_type=True,  # the name for the returned-port
+                 return_name='planes',  # the name for the returned-port
+                 is_object_type=True,  # render as object
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = False) -> PlaneData:
     """Load additional planes as grouped 3D points from a CSV file.
@@ -2262,7 +2262,7 @@ TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]],
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
-                 is_object_type=True,
+    is_object_type=True,  # render as object
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_hierarchical: bool = False) -> TriangulationData:
     """Load triangulation points from one or more CSV files.

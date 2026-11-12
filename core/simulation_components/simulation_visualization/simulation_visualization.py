@@ -15,6 +15,7 @@ own ad-hoc defaults.
 import inspect
 import ast
 import re
+import shlex
 import logging
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -32,6 +33,11 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder im
     RockUnitProperties,
     enumerate_rock_units,
     is_custom_sfepy_builder,
+)
+from core.simulation_components.simulation_packages.golem.golem_input_parser import locate_blocks
+from core.simulation_components.simulation_packages.golem.golem_model_builder import (
+    CustomGolemBuilder, GolemHydrothermalProblemBuilder,
+    GolemSimpleReservoirProblemBuilder,
 )
 
 logger = logging.getLogger(__name__)
@@ -1001,13 +1007,6 @@ def _plot_sfepy_builder_materials(
 # ----------------------------------------------------------------------
 # GOLEM pre-flight material preview (merged from golem_material_preview.py)
 # ----------------------------------------------------------------------
-import re
-import shlex
-from core.simulation_components.simulation_packages.golem.golem_input_parser import locate_blocks
-from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder, GolemHydrothermalProblemBuilder,
-    GolemSimpleReservoirProblemBuilder,
-)
 
 def _section_parameters(lines, section):
     """Read scalar assignments in a MOOSE section, without evaluating expressions."""

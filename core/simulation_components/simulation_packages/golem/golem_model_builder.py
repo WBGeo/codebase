@@ -25,6 +25,7 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     FluidProperties,
     RockUnitProperties,
+    enumerate_rock_units,
 )
 from py_api_wbgeo.nodesapi import wbgeo_type
 from core.simulation_components.simulation_packages.golem.golem_input_parser import (
@@ -38,26 +39,12 @@ GOLEM_SUPPORTED_MESH_TYPES = frozenset({
     MeshType.UNSTRUCTURED,
 })
 
-# Backward-compatible names. Both solvers now use the same concrete models.
-GolemFluidProperties = FluidProperties
-GolemRockProperties = RockUnitProperties
-
-
-class GolemFaultProperties(GolemRockProperties):
+class GolemFaultProperties(RockUnitProperties):
     """Properties placed directly on a 2D fault element block."""
     name: str = "fault"
     porosity: float = 1.0
     permeability: float = 1.0e-10
     aperture: float = 0.05                   # GOLEM scaling_factor_initial, m
-
-
-def enumerate_rock_units(model: StructuralModelResults) -> List[Tuple[int, str]]:
-    units: List[Tuple[int, str]] = [(0, "basement")]
-    for group in reversed(model.structural_frame.structural_groups):
-        for element in reversed(group.structural_elements):
-            if element.id is not None:
-                units.append((int(element.id), element.name))
-    return sorted(units, key=lambda item: item[0])
 
 
 def _block_lithology_ids(mesh: MeshResults) -> Dict[int, int]:
@@ -314,11 +301,11 @@ class GolemHydrothermalProblemBuilder:
 
     mesh_results: MeshResults
     geomodel_result: StructuralModelResults
-    rock_properties: Optional[Dict[str, GolemRockProperties]] = None
+    rock_properties: Optional[Dict[str, RockUnitProperties]] = None
     fault_properties: Optional[
         Union[GolemFaultProperties, Dict[str, GolemFaultProperties]]
     ] = None
-    fluid: Optional[GolemFluidProperties] = None
+    fluid: Optional[FluidProperties] = None
     p_top: float = 0.0
     p_bottom: float = 1.0e6
     t_top: float = 10.0
@@ -372,11 +359,11 @@ class GolemHydrothermalProblemBuilder:
             self.t_top - self.t_bottom
         ) / (self.z_top - self.z_bottom)
 
-        self.fluid = self.fluid or GolemFluidProperties()
+        self.fluid = self.fluid or FluidProperties()
         self.rock_units = enumerate_rock_units(self.geomodel_result)
         self.rock_properties = dict(self.rock_properties or {})
         for _, name in self.rock_units:
-            self.rock_properties.setdefault(name, GolemRockProperties(name=name))
+            self.rock_properties.setdefault(name, RockUnitProperties(name=name))
         self.block_lithology = _block_lithology_ids(self.mesh_results)
 
         # Only unstructured WBGeo meshes append six 2D exterior-boundary
@@ -449,8 +436,8 @@ class GolemHydrothermalProblemBuilder:
         return self.fault_properties[names[ordinal]]
 
     @staticmethod
-    def _material(name: str, block_id: int, props: GolemRockProperties,
-                  fluid: GolemFluidProperties, fracture: bool = False,
+    def _material(name: str, block_id: int, props: RockUnitProperties,
+                  fluid: FluidProperties, fracture: bool = False,
                   use_supg: bool = False) -> str:
         fracture_lines = ""
         if fracture:
@@ -478,8 +465,8 @@ class GolemHydrothermalProblemBuilder:
   [../]"""
 
     @staticmethod
-    def _property_user_objects(block_id: int, props: GolemRockProperties,
-                               fluid: GolemFluidProperties,
+    def _property_user_objects(block_id: int, props: RockUnitProperties,
+                               fluid: FluidProperties,
                                fracture: bool = False) -> str:
         """GOLEM constant-property objects required by the target Docker image."""
         aperture_object = ""
@@ -891,7 +878,6 @@ class GolemSimpleReservoirProblemBuilder:
     mapping_litho: str = "automatic_centers"
     gmsh_flag: bool = False
     merge_file: Optional[str] = None
-    z_threshold: Optional[float] = None
 
     # Any additional keyword accepted by create_unstructured_mesh_data() can
     # be supplied here without changing this builder.
@@ -1251,8 +1237,6 @@ class GolemSimpleReservoirProblemBuilder:
         }
         if self.merge_file is not None:
             mesh_kwargs["merge_file"] = self.merge_file
-        if self.z_threshold is not None:
-            mesh_kwargs["z_threshold"] = self.z_threshold
         mesh_kwargs.update(dict(self.unstructured_mesh_options or {}))
 
         # Give a clear message if this WBGeo version does not expose one of the
@@ -1339,8 +1323,6 @@ class GolemSimpleReservoirProblemBuilder:
         }
         if self.merge_file is not None:
             mesh_kwargs["merge_file"] = self.merge_file
-        if self.z_threshold is not None:
-            mesh_kwargs["z_threshold"] = self.z_threshold
         mesh_kwargs.update(dict(self.unstructured_mesh_options or {}))
 
         option_lines = []

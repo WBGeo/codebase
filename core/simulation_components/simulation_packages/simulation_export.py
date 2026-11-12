@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+from enum import StrEnum
 from pathlib import Path
 
 from core.object_components import SimulationResults
@@ -13,21 +14,38 @@ from core.simulation_components.simulation_visualization.simulation_visualizatio
 from py_api_wbgeo.nodesapi import BasicallyABufferedFile
 
 
+class SimulationExportFormat(StrEnum):
+    """Export formats for SimulationResults."""
+    AUTO = "auto"      # SfePy -> VTK ZIP, GOLEM -> native output ZIP
+    VTK = "vtk"        # one legacy VTK file per saved time step + ParaView PVD
+    EXODUS = "exodus"  # GOLEM's native Exodus result file, unchanged
+    GOLEM = "golem"    # ZIP of the complete GOLEM output directory
+
+
 def export_simulation_results(
-    sim: SimulationResults, format: str = "auto", golem_output_dir: str = ""
+    sim: SimulationResults,
+    format: SimulationExportFormat = SimulationExportFormat.AUTO,
+    golem_output_dir: str = "",
 ) -> BasicallyABufferedFile:
     """Export all time steps from SFePy or GOLEM SimulationResults.
 
     ``format="vtk"`` returns a ZIP containing one legacy VTK file per time
     step plus a ParaView PVD collection. ``format="exodus"`` returns GOLEM's
-    original native Exodus result file unchanged. ``format="golem"`` (or
-    ``"native"``) returns a ZIP of the complete GOLEM output directory,
-    including the Exodus result and any CSV/log/generated files.
+    original native Exodus result file unchanged. ``format="golem"`` returns
+    a ZIP of the complete GOLEM output directory, including the Exodus result
+    and any CSV/log/generated files. ``format`` accepts a
+    SimulationExportFormat or its string value.
     """
-    fmt = (format or "auto").strip().lower()
+    try:
+        fmt = SimulationExportFormat(str(format or "auto").strip().lower())
+    except ValueError:
+        raise NotImplementedError(
+            f"Unsupported simulation export format {format!r}. "
+            f"Supported formats are {[f.value for f in SimulationExportFormat]}."
+        ) from None
     solver = str(getattr(sim, "source_solver", "") or "").strip().lower()
     native_dir = _find_golem_output_dir(sim, golem_output_dir)
-    if fmt in {"auto", "default"}:
+    if fmt == SimulationExportFormat.AUTO:
         if solver == "golem" or native_dir is not None:
             return _export_golem_output_directory(sim, native_dir)
         if solver == "sfepy" or getattr(sim, "sfepy_stdout", None):
@@ -38,16 +56,11 @@ def export_simulation_results(
             "format='vtk' for SfePy. The exporter will not silently convert "
             "unidentified GOLEM results into VTK."
         )
-    if fmt == "vtk":
+    if fmt == SimulationExportFormat.VTK:
         return _export_simulation_results_to_vtk(sim)
-    if fmt in {"exodus", "exo", "e", "ex2"}:
+    if fmt == SimulationExportFormat.EXODUS:
         return _export_simulation_results_to_exodus(sim, native_dir)
-    if fmt in {"golem", "native", "golem_zip", "output_dir"}:
-        return _export_golem_output_directory(sim, native_dir)
-    raise NotImplementedError(
-        f"Unsupported simulation export format {format!r}. "
-        "Supported formats are 'auto', 'vtk', 'exodus', and 'golem'."
-    )
+    return _export_golem_output_directory(sim, native_dir)
 
 
 def _native_files(directory: Path):
