@@ -5,6 +5,7 @@ from pathlib import Path
 from pydantic.dataclasses import dataclass
 from pydantic_numpy import NpNDArrayFp64
 import gmsh
+from py_api_wbgeo import smartcontrols
 
 logger = logging.getLogger(__name__)
 import meshio
@@ -22,8 +23,17 @@ from core.meshing_components.explicit.unstructured.domain_geometry import (
     domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
 )
 from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
-from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
-                                                               LinearSourceRefinement,FunctionSourceRefinement,)
+from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement,
+                                                                           LinearWellRefinement,
+                                                                           FunctionWellRefinement,
+                                                                           LinearSourceRefinement,
+                                                                           FunctionSourceRefinement,
+                                                                           LinearShaftRefinement,
+                                                                           FunctionShaftRefinement,
+                                                                           GeneralRefinement,
+                                                                           ExtraPlaneRefinement,
+                                                                           EllipseRefinement,
+                                                                           TriangulationRefinement)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
 from enum import Enum, StrEnum
 
@@ -111,7 +121,7 @@ class LithoMappingMode(StrEnum):
     # accurate overall, especially near faults/unconformities, though the
     # accuracy gap between the two modes only really shows up when the
     # structural grid is coarse relative to the mesh -- neither mode fully
-    # fixes that mismatch on its own (see _check_lithology_mapping_reliability,
+    # fixes that miwellcvtch on its own (see _check_lithology_mapping_reliability,
     # which warns about it directly).
     AUTOMATIC_CENTERS = "automatic_centers"
     # Per-block lithology vote taken on each raw block's *node* coordinates
@@ -1793,6 +1803,123 @@ TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDA
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
 WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
 
+
+def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kind: str, label: str):
+    # Create the labeled option between none, linear, and function
+    return smartcontrols.CtrlGroup(id=kind, inner=[
+        smartcontrols.CtrlSelect(label=label, id='ref' + kind,
+                                 options=["None", "Linear", "Function"],
+                                 defaultValue="None"),
+        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Linear\"",
+                             when_true=[smartcontrols.CtrlGroup(id=f"linear", inner=smartcontrols.smart_group_from_type(linearT, None))],
+                             when_false=[]
+                             ),
+        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Function\"",
+                             when_true=[smartcontrols.CtrlGroup(id=f"function", inner=smartcontrols.smart_group_from_type(functionT, None))],
+                             when_false=[]
+                             )
+    ])
+
+
+def __internal_refinement_opt_form(T: typing.Type, kind: str, label: str, defaults = None):
+  # Create an optional form
+  return smartcontrols.CtrlGroup(id=kind, inner=[
+    smartcontrols.CtrlBool(label=label, id='with_' + kind,
+                             defaultValue=False),
+    smartcontrols.CtrlIf(condition=f"'$.with_{kind}' == \"true\"",
+                         when_true=[smartcontrols.CtrlGroup(id=f"present", inner=smartcontrols.smart_group_from_type(T, defaults))],
+                         when_false=[]
+                         )
+  ])
+
+
+def __internal_refinement_to_data(data, kind: str, linearT: typing.Type, functionT: typing.Type):
+    # turn the __internal_refinement_form back into a given type
+    if data is None or kind not in data:
+        return None
+    data = data[kind]
+    if f"ref{kind}" not in data:
+        return None
+    if data[f"ref{kind}"] == "Linear":
+        return linearT(**data["linear"])
+    if data[f"ref{kind}"] == "Function":
+        return functionT(**data["function"])
+    return None
+
+
+def __internal_refinement_opt_to_data(data, kind: str, T: typing.Type):
+  # turn the __internal_refinement_form back into a given type
+  if data is None or kind not in data:
+    return None
+  data = data[kind]
+  if f"with_{kind}" not in data or not data[f"with_{kind}"]:
+    return None
+  return T(**data["present"])
+
+
+@wbgeo_component(identifier='wbgeo:__internal__refined_form_well' ,
+                 title='__internal__refined_form_well' )
+def __internal__refined_form(wells: Optional[WellData] = None,
+                             sources: Optional[SourcesData] = None,
+                             shafts: Optional[ShaftData] = None,
+                             extra_planes: Optional[PlaneData] = None,
+                             ellipses: Optional[EllipseData] = None,
+                             triangulations: Optional[TriangulationData] = None,
+                             ) -> smartcontrols.CtrlGroup:
+    inner: typing.List[smartcontrols.ASmartControl] = [
+      smartcontrols.CtrlLabel(
+        label='To define refinements, please connect a well/sources/etc. and execute them once, before clicking Update Controls'),
+    ]
+    if wells is not None:
+        inner.append(__internal_refinement_form(LinearWellRefinement, FunctionWellRefinement, 'well', 'Well Refinement:'))
+    if sources is not None:
+        inner.append(__internal_refinement_form(LinearSourceRefinement, FunctionSourceRefinement, 'source', 'Source Refinement:'))
+    if shafts is not None:
+        inner.append(__internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'))
+    if extra_planes is not None:
+      inner.append(__internal_refinement_opt_form(ExtraPlaneRefinement, 'extra_planes', 'Extra Planes Refinement:', ExtraPlaneRefinement()))
+    if ellipses is not None:
+      inner.append(__internal_refinement_opt_form(EllipseRefinement, 'ellipses', 'Ellipses Refinement:', EllipseRefinement()))
+    if triangulations is not None:
+      inner.append(__internal_refinement_opt_form(TriangulationRefinement, 'triangulations', 'Triangulations Refinement:', TriangulationRefinement()))
+
+
+    return smartcontrols.CtrlGroup(id='root', inner=inner + [
+        smartcontrols.CtrlLabel(
+            label='General refinement not yet supported'), # TODO: ALu - will be added seperatly
+    ])
+
+@wbgeo_component(identifier='wbgeo:__internal__refined_options_to_data_well',
+                 title='__internal__refined_options_to_data_well')
+def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData) -> typing.Optional[Refinement]:
+    data = smartcontrols.form_data_as_dict(_input)
+    if "root" not in data:
+        return None
+    data = data["root"]
+    ret = Refinement()
+    ret.wells = __internal_refinement_to_data(data, 'well', LinearWellRefinement, FunctionWellRefinement)
+    ret.sources = __internal_refinement_to_data(data, 'source', LinearSourceRefinement, FunctionSourceRefinement)
+    ret.shafts = __internal_refinement_to_data(data, 'shafts', LinearShaftRefinement, LinearShaftRefinement)
+    ret.extra_planes = __internal_refinement_opt_to_data(data, 'extra_planes', ExtraPlaneRefinement)
+    ret.ellipses = __internal_refinement_opt_to_data(data, 'ellipses', EllipseRefinement)
+    ret.triangulations = __internal_refinement_opt_to_data(data, 'triangulations', TriangulationRefinement)
+
+    # TODO: ALu: general refinements
+
+    if (ret.wells is None and ret.sources is None and ret.shafts and
+            ret.general is None and ret.triangulations is None
+            and ret.ellipses is None and ret.extra_planes is None):
+        return None # if everything is empty -> None
+
+    return ret
+
+
+SmartRefinement = typing.Annotated[
+    Refinement, smartcontrols.SmartInput(inputs=['wells', 'sources', 'shafts'],
+                                    to_form=__internal__refined_form,
+                                    to_data=__internal__refined_options_to_data)]
+
+
 @wbgeo_component(description='Loads a well from a wells.CSV file',
                  title='Load Well',  # The title shown in the GUI
                  color=MESH_ENGINEERING_COLOR,  # the color of the components
@@ -2543,7 +2670,7 @@ def create_unstructured_mesh_data(
     gmsh_flag: bool = False,
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     merge_file: Optional[str] = None,
-    refinement: Optional[Refinement] = None,
+    refinement: Optional[SmartRefinement] = None,
     rotation_angle: Optional[float] = None,
     rotation_angle_translate: Optional[float] = None,
     xt: Optional[float] = None,
