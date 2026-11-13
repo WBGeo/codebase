@@ -268,18 +268,21 @@ def build_hydrothermal_problem(
     include_flow: bool = True,
     enable_fault_zone: bool = False,
     fault_zone_n_voxels: int = 1,
+    # Saved Workbench pipelines store input values by position: keep the
+    # existing order (start_time/end_time took t0/t1's places) and only
+    # ever append new inputs at the end.
+    start_time: float = 0.0,
+    end_time: Optional[float] = None,
+    num_steps: int = 3,
     p_top: float = 0.0,
     p_bottom: float = 1.0e6,
     t_top: float = 10.0,
     t_bottom: float = 60.0,
-    initial_temperature: Optional[float] = None,
-    start_time: float = 0.0,
-    end_time: Optional[float] = None,
-    num_steps: int = 3,
-    print_linear_residuals: bool = False,
     linear_solver: str = "iterative",
     linear_solver_i_max: int = 500,
     linear_solver_eps_r: float = 1e-8,
+    initial_temperature: Optional[float] = None,
+    print_linear_residuals: bool = False,
 ) -> SfepyProblem:
     """
     :param mesh_results: The mesh to solve on (implicit, structured, or unstructured).

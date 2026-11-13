@@ -794,3 +794,17 @@ def test_inspect_simulation_result_stdout_handles_missing_stdout(capsys):
     swc.inspect_simulation_result_stdout(simulation_result=sim, _inspector=None)
 
     assert "No solver output" in capsys.readouterr().out
+
+
+def test_sfepy_hydrothermal_node_keeps_input_positions_of_saved_pipelines():
+    """Saved Workbench pipelines (e.g. examples/.../WBGeo1.0_model1.json) store
+    input values by position, so existing inputs must keep their index and new
+    inputs may only be appended."""
+    import inspect
+    func = getattr(build_hydrothermal_problem, "__wrapped__", build_hydrothermal_problem)
+    names = list(inspect.signature(func).parameters)
+    assert names[:16] == [
+        "mesh_results", "geomodel_result", "options", "include_flow", "enable_fault_zone",
+        "fault_zone_n_voxels", "start_time", "end_time", "num_steps", "p_top", "p_bottom",
+        "t_top", "t_bottom", "linear_solver", "linear_solver_i_max", "linear_solver_eps_r",
+    ]
