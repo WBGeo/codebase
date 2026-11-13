@@ -90,6 +90,7 @@ services:
   golem_runner:
     # container that has MOOSE/GOLEM installed
     image: registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest
+    pull_policy: always
     expose:
       - "22"  # for ssh
     volumes:
