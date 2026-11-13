@@ -53,7 +53,6 @@ from core.meshing_components.explicit.unstructured.mesh_data import create_unstr
 #%%
 
 cwd = os.getcwd()
-os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 
 # ==============================================================================
 # MODEL 2 - SCRIPT MAP

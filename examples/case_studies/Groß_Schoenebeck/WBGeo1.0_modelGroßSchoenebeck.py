@@ -36,7 +36,6 @@ from core.simulation_components.simulation_visualization.simulation_visualizatio
 
 cwd = os.getcwd()
 
-os.environ["GOLEM_EXECUTION_MODE"] = "docker"
 
 # ==============================================================================
 # GROSS SCHOENEBECK CASE STUDY - SCRIPT MAP
