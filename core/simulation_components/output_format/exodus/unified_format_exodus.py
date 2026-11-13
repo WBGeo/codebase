@@ -183,9 +183,12 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
       continue
 
+    # The Exodus reader gives every element block its own copy of the
+    # nodes it uses; merge them so nodes shared between blocks (lithology
+    # interfaces, fault planes) appear once, as in the file.
     combined_mesh = pv.MultiBlock(
       leaf_meshes
-    ).combine()
+    ).combine(merge_points=True)
 
     if combined_mesh is None or not hasattr(
         combined_mesh,
