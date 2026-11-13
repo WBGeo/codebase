@@ -50,21 +50,20 @@ services:
       PREPARE_TEMPLATES: "false" # Whether templates should be pre-executed on start
       GOLEM_BINARY: "/golem/golem-opt" # where golem can be found
       GOLEM_WORKSPACE: "/shared_golem_workspace" # where golem should work
-      GOLEM_EXECUTION_MODE: "sidecar"
-      #PYTHONPATH: "/marziehbaes/Documents/Aug_code/codebase"
     volumes:
       # option 1, for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
       # if this file is located at the root of the "codebase" project, the defaults work
-      - "./core/:/usr/src/app/codebase/core/"
-      - "./examples/:/usr/src/app/codebase/examples/"
+      #      - "./core/:/usr/src/app/codebase/core/"
+      #      - "./requirements.txt:/usr/src/app/codebase/requirements.txt"
+      #      - "./examples/:/usr/src/app/codebase/examples/"
       
       # option 2 - if the codebase is in a different folder, you can also use this format
       #      - "./path/to/my/codebase/:/usr/src/app/codebase/"
       
       # option 3 - to only include your own data directory (with input CSV files)
-      #- "./own_data/:/usr/src/app/codebase/examples/own_data/"
+      - "./own_data/:/usr/src/app/codebase/examples/own_data/"
       
-      # cache installed python packages even across image updates
+      # cache installed python packages (of the codebase) even across image updates
       - "pythonDepCache:/opt/venv"
       # For golem to run
       - shared_golem_workspace:/shared_golem_workspace
