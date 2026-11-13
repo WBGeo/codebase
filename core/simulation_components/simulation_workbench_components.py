@@ -814,12 +814,12 @@ def export_simulation_results(
 @wbgeo_component(identifier='wbgeo::inspect_sfepy_problem_plot_materials',
                  title='Plot Materials',
                  description='Plots the mesh colored one solid color per material '
-                             '(lithologies, plus the fault zone if active), with a '
-                             'legend of the properties each material actually uses '
-                             '(bare material names for a Custom SfePy problem, which '
-                             'has no structured properties object to draw from) -- a '
-                             'pre-flight check to catch a wrong material/fault-zone '
-                             'assignment before running the (possibly slow) solve.')
+                             '(lithologies in their structural-model colors, plus the '
+                             'fault zone if active), with a legend grouped like the '
+                             'structural model plot, or colored by a numeric material '
+                             'property -- a pre-flight check to catch a wrong '
+                             'material/fault-zone assignment before running the '
+                             '(possibly slow) solve. Same preview as Plot GOLEM Materials.')
 @wbgeo_inspector()
 def inspect_sfepy_problem_plot_materials(
     problem: SfepyProblem,
@@ -832,8 +832,10 @@ def inspect_sfepy_problem_plot_materials(
 @wbgeo_component(identifier='wbgeo::inspect_golem_problem_plot_materials',
                  title='Plot GOLEM Materials',
                  description='Preview GOLEM rock, fault, fracture and well material blocks '
-                             'before running the solver. Custom input assignments cannot '
-                             'be inferred safely and produce an informative error.')
+                             'before running the solver, with the same colors and legend '
+                             'as Plot Materials for SfePy. Custom input files must assign '
+                             'every material to explicit blocks; otherwise the preview '
+                             'reports what it cannot resolve.')
 @wbgeo_inspector()
 def inspect_golem_problem_plot_materials(
     problem: GolemProblem,

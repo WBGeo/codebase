@@ -940,19 +940,28 @@ The relevant inputs in the codebase are:
 
 - **`builder`**: The SfePy or GOLEM problem builder containing the mesh
   and material definitions.
-- **`style`** *(default: `"surface"`)*: Visualization style for SfePy
-  material assignments. GOLEM currently supports only `"surface"`.
+- **`style`** *(default: `"surface"`)*: PyVista style of the material
+  meshes (for example `"surface"` or `"wireframe"`), for both simulators.
 - **`show_edges`** *(default: `False`)*: Controls whether mesh cell edges
   are displayed.
 - **`property_name`** *(optional, default: `None`)*: Specifies a numerical
   material property to visualize, such as `"porosity"`, `"permeability"`,
-  or `"k_solid"`. If omitted, the component displays categorical
-  material assignments.
+  or `"k_solid"` (or a custom input file's own coefficient names). Fluid
+  properties are shared by all materials and can be given as
+  `"fluid.<name>"` or as `"viscosity"`, `"mu"`, `"rho_c_fluid"` and
+  similar. If omitted, the component displays categorical material
+  assignments.
 - **`cmap`** *(default: `"viridis"`)*: Colormap used when visualizing
   numerical material properties.
-- **`opacity`** *(default: `0.65`)*: Controls the transparency of the
-  displayed mesh, with values ranging from `0` (fully transparent)
-  to `1` (fully opaque).
+- **`opacity`** *(default: `0.65`)*: Transparency of the rock materials,
+  from `0` (fully transparent) to `1` (fully opaque). Faults, fractures
+  and wells are always drawn opaque so they stay visible inside the rock.
+
+Both simulators use the same colors and legend: lithologies get their
+structural-model colors (basement grey), faults are black, and the legend
+is grouped like the structural model plot. For a custom GOLEM input, each
+3D block also shows the lithology it belongs to, when the builder has a
+structural model.
 
 Example calls in the codebase:
 

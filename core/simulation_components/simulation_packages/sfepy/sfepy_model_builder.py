@@ -770,7 +770,7 @@ class HydrothermalProblemBuilder:
         Public and separate from the SfePy input-file generation so it can
         be used for visual QA before running a solve that can take a while
         -- see plot_builder_materials() in
-        core.simulation_components.simulation_visualization.simulation_visualization.
+        core.simulation_components.simulation_visualization.material_preview.
         """
         names = []
         offset = 0

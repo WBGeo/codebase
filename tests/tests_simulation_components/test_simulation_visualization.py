@@ -1,7 +1,6 @@
 """
 Unit tests for simulation_visualization.py's pure-computation helpers only
-(build_grid_from_class, _variable_label, _format_rock_properties,
-_in_plane_axes) -- not the actual plot_*/render functions, matching this
+(build_grid_from_class, _variable_label, _in_plane_axes) -- not the actual plot_*/render functions, matching this
 codebase's existing convention of not unit-testing plotting output directly
 (see e.g. tests_structural_modeling_components, which only calls
 plot_structural_model_* conditionally for on-fail debugging, never asserts
@@ -11,9 +10,8 @@ import numpy as np
 import pytest
 
 from core.object_components import SimulationResults
-from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import RockUnitProperties, FluidProperties
 from core.simulation_components.simulation_visualization.simulation_visualization import (
-    build_grid_from_class, _variable_label, _format_rock_properties, _in_plane_axes,
+    build_grid_from_class, _variable_label, _in_plane_axes,
 )
 
 
@@ -24,14 +22,6 @@ def test_variable_label_known_variables_get_units():
 
 def test_variable_label_unknown_variable_falls_back_to_raw_name():
     assert _variable_label("block_id") == "block_id"
-
-
-def test_format_rock_properties_contains_all_fields():
-    props = RockUnitProperties(name="rock1", porosity=0.2, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6)
-    label = _format_rock_properties(props)
-    assert "poro=0.2" in label
-    assert "1.0e-14" in label
-    assert "k_s=2.5" in label
 
 
 def test_build_grid_from_class_point_cloud_when_no_cells():
