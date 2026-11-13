@@ -96,9 +96,9 @@ def _check_convergence(stdout: str, input_file: str) -> None:
             f"condition code, i.e. did not converge):\n"
             + "\n".join(failures)
             + "\nConsider raising linear_solver_i_max, tightening/loosening "
-              "linear_solver_eps_r, or checking t1/num_steps are appropriate for "
+              "linear_solver_eps_r, or checking end_time/num_steps are appropriate for "
               "this model's diffusion timescale (see "
-              "HydrothermalProblemBuilder._default_diffusion_timescale)."
+              "default_diffusion_timescale)."
             + "\n\nFull sfepy-run output:\n"
             + stdout
         )
@@ -331,7 +331,7 @@ def _run_sfepy_input_file(
 
 def _run_hydrothermal_problem(
     builder: HydrothermalProblemBuilder, keep_files_dir: Optional[str] = None,
-    output_dir: Optional[str] = None,
+    output_dir: Optional[str] = None, stream_output: bool = False,
 ) -> SimulationResults:
     """
     Run the full two-stage solve (pressure, then temperature+advection) for
@@ -381,11 +381,9 @@ def _run_hydrothermal_problem(
 
     Time-key semantics (easy to get wrong, so noted explicitly here): the
     returned SimulationResults' nodes_by_time/node_data_by_time are keyed by
-    each saved VTK output file's 0-based *step index*, not physical time and
-    not including a separate initial-condition snapshot -- SfePy only saves
-    one file per actually-*solved* step. So for num_steps=N, valid keys are
-    0..N-1, and the fully evolved final state is always at
-    max(result.nodes_by_time.keys()), not at key 0 or at t1.
+    physical time. For num_steps=N there are N+1 keys, evenly spaced from
+    start_time (the initial state) to end_time, the same times GOLEM writes;
+    the fully evolved final state is at max(result.nodes_by_time.keys()).
 
     keep_files_dir: optional directory to write the generated input
     files and the intermediate velocity .npz into, for debugging -- if
@@ -431,7 +429,7 @@ def _run_hydrothermal_problem(
             p_out = _run_sfepy_input_file(
                 pressure_file, builder.mesh_results, mesh_type_code, output_dir=pressure_output_dir,
                 fault_zone_cell_mask=builder.fault_zone_cell_mask, fault_group_id=builder.fault_group_id,
-                stream_output=builder.print_linear_residuals,
+                stream_output=stream_output,
             )
             pressure_sim = load_vtk_results(p_out)
             if not pressure_sim.nodes_by_time:
@@ -453,7 +451,7 @@ def _run_hydrothermal_problem(
         t_out = _run_sfepy_input_file(
             heat_file, builder.mesh_results, mesh_type_code, output_dir=heat_output_dir,
             fault_zone_cell_mask=builder.fault_zone_cell_mask, fault_group_id=builder.fault_group_id,
-            stream_output=builder.print_linear_residuals,
+            stream_output=stream_output,
         )
         heat_sim = load_vtk_results(t_out)
         if not heat_sim.nodes_by_time:
@@ -467,7 +465,7 @@ def _run_hydrothermal_problem(
         expected_count = builder.num_steps + 1
         if len(stored_heat_times) == expected_count:
             physical_heat_times = np.linspace(
-                builder.t0, builder.t1, expected_count,
+                builder.start_time, builder.end_time, expected_count,
             ).tolist()
         else:
             # Retain reader-provided times for unusual custom output
@@ -503,7 +501,7 @@ def _run_hydrothermal_problem(
 
 def _run_custom_sfepy_problem(
     problem: CustomSfepyBuilder, keep_files_dir: Optional[str] = None,
-    output_dir: Optional[str] = None,
+    output_dir: Optional[str] = None, stream_output: bool = False,
 ) -> SimulationResults:
     """
     Run a CustomSfepyBuilder's file once and return the result -- no
@@ -547,7 +545,7 @@ def _run_custom_sfepy_problem(
         out = _run_sfepy_input_file(
             input_file, problem.mesh_results, mesh_type_code, output_dir=output_dir,
             fault_zone_cell_mask=problem.fault_zone_cell_mask, fault_group_id=problem.fault_group_id,
-            stream_output=problem.print_linear_residuals,
+            stream_output=stream_output,
         )
         sim = load_vtk_results(out)
         if not sim.nodes_by_time:
@@ -564,7 +562,7 @@ def _run_custom_sfepy_problem(
 
 def run_simulation_sfepy(
     problem: Union[HydrothermalProblemBuilder, CustomSfepyBuilder], keep_files_dir: Optional[str] = None,
-    output_dir: Optional[str] = None,
+    output_dir: Optional[str] = None, stream_output: bool = False,
 ) -> SimulationResults:
     """
     Run either kind of SfePy problem and return a SimulationResults in the
@@ -585,10 +583,15 @@ def run_simulation_sfepy(
     affordance, so its "Run Simulation" component always leaves this at
     the default (None) -- use the "Export Simulation Results" component
     (export_simulation_results()) to get a file out of a Workbench run.
+
+    stream_output: print sfepy-run's output live to the console while it
+    runs (scripts only, as in run_simulation_golem). The output is captured
+    into the result either way; the builder's print_linear_residuals only
+    decides whether it contains the linear solver residuals.
     """
     if is_custom_sfepy_builder(problem):
-        return _run_custom_sfepy_problem(problem, keep_files_dir, output_dir)
-    return _run_hydrothermal_problem(problem, keep_files_dir, output_dir)
+        return _run_custom_sfepy_problem(problem, keep_files_dir, output_dir, stream_output)
+    return _run_hydrothermal_problem(problem, keep_files_dir, output_dir, stream_output)
 
 
 

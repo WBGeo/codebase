@@ -129,32 +129,34 @@ def test_run_simulation_sfepy_dispatches_hydrothermal_problem_builder(monkeypatc
     sentinel_result = SimulationResults()
     received = {}
 
-    def fake_run_hydrothermal(builder, keep_files_dir=None, output_dir=None):
+    def fake_run_hydrothermal(builder, keep_files_dir=None, output_dir=None, stream_output=False):
         received["builder"] = builder
         received["keep_files_dir"] = keep_files_dir
+        received["stream_output"] = stream_output
         return sentinel_result
 
-    def fake_run_custom(problem, keep_files_dir=None, output_dir=None):
+    def fake_run_custom(problem, keep_files_dir=None, output_dir=None, stream_output=False):
         raise AssertionError("should not be called for a HydrothermalProblemBuilder")
 
     monkeypatch.setattr(sfepy_run, "_run_hydrothermal_problem", fake_run_hydrothermal)
     monkeypatch.setattr(sfepy_run, "_run_custom_sfepy_problem", fake_run_custom)
 
     fake_builder = HydrothermalProblemBuilder.__new__(HydrothermalProblemBuilder)
-    result = run_simulation_sfepy(fake_builder, keep_files_dir="some/dir")
+    result = run_simulation_sfepy(fake_builder, keep_files_dir="some/dir", stream_output=True)
     assert result is sentinel_result
     assert received["builder"] is fake_builder
     assert received["keep_files_dir"] == "some/dir"
+    assert received["stream_output"] is True
 
 
 def test_run_simulation_sfepy_dispatches_custom_sfepy_builder(monkeypatch):
     sentinel_result = SimulationResults()
     received = {}
 
-    def fake_run_hydrothermal(builder, keep_files_dir=None, output_dir=None):
+    def fake_run_hydrothermal(builder, keep_files_dir=None, output_dir=None, stream_output=False):
         raise AssertionError("should not be called for a CustomSfepyBuilder")
 
-    def fake_run_custom(problem, keep_files_dir=None, output_dir=None):
+    def fake_run_custom(problem, keep_files_dir=None, output_dir=None, stream_output=False):
         received["problem"] = problem
         return sentinel_result
 
@@ -279,7 +281,7 @@ def test_run_simulation_sfepy_end_to_end_implicit_mesh(model1_implicit_mesh, mod
         geomodel_result=model1_structural_result,
         include_flow=True,
         linear_solver="iterative",
-        t1=5e9,
+        end_time=5e9,
         num_steps=1,
         t_top=10.0,
         t_bottom=60.0,
@@ -316,7 +318,7 @@ def test_run_simulation_sfepy_output_dir_persists_both_stages(
         geomodel_result=model1_structural_result,
         include_flow=True,
         linear_solver="iterative",
-        t1=5e9,
+        end_time=5e9,
         num_steps=1,
     )
     out_dir = tmp_path / "sfepy_out"

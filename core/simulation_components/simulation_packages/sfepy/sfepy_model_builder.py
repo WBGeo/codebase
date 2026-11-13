@@ -168,14 +168,14 @@ class RockUnitProperties(BaseModel):
 #: iterative solvers.
 #:
 #: The temperature stage's own equation combines rho_c_eff (~1e6) and k_eff
-#: (~1-5) terms, so an inappropriately short `t1` relative to the model's
+#: (~1-5) terms, so an inappropriately short `end_time` relative to the model's
 #: actual thermal diffusion timescale (order of years for typical rock
 #: properties and domain sizes) makes the transient term's matrix
 #: contribution (~rho_c_eff/dt) dwarf the diffusive term's (~k_eff/L^2) by
 #: many orders of magnitude -- an internal scale mismatch that defeats
-#: preconditioning regardless of solver choice. `t1` defaults to a
+#: preconditioning regardless of solver choice. `end_time` defaults to a
 #: data-driven diffusion timescale for exactly this reason (see
-#: _default_diffusion_timescale()) rather than a fixed constant.
+#: default_diffusion_timescale()) rather than a fixed constant.
 #:
 #: - "direct"    -- scipy_direct (sparse LU factorization). Exact (up to
 #:                  floating-point precision), no tuning needed. Does not
@@ -185,7 +185,7 @@ class RockUnitProperties(BaseModel):
 #:                  scaling). No extra PETSc dependency; useful locally.
 #:                  As with any iterative method, verify convergence (check
 #:                  the printed residual) for new rock/fluid parameter sets
-#:                  or a manually-supplied `t1` that deviates a lot from the
+#:                  or a manually-supplied `end_time` that deviates a lot from the
 #:                  diffusion timescale.
 #: - "petsc"     -- PETSc FGMRES with ASM/ILU (or GAMG for faulted pressure).
 #:                  DEFAULT. Requires petsc4py and a compatible PETSc/MPI install.
@@ -525,6 +525,34 @@ def compute_fault_zone_cell_mask(
     return cell_mask
 
 
+def default_diffusion_timescale(
+    geomodel_result: StructuralModelResults,
+    rock_properties: Dict[str, RockUnitProperties],
+    fluid: FluidProperties,
+) -> float:
+    """
+    Rough thermal diffusion timescale L^2 / alpha (s): the time the model
+    needs to approach thermal equilibrium. Shared default `end_time` of the
+    SfePy and GOLEM hydrothermal builders, so the default scales with the
+    model instead of being a fixed constant.
+
+    L is the smallest extent of the structural model's grid and alpha the
+    mean effective thermal diffusivity of the rock units. For SfePy it also
+    keeps the heat equation's transient term (~rho_c_eff/dt) and diffusive
+    term (~k_eff/L^2) at comparable magnitude in the assembled matrix; a much
+    shorter end time makes the transient term dominate by many orders of
+    magnitude, which defeats simple preconditioning.
+    """
+    extent = geomodel_result.structural_frame.grid.extent
+    length_scale = min(extent[1] - extent[0], extent[3] - extent[2], extent[5] - extent[4])
+    alphas = [
+        props.effective_conductivity(fluid) / props.effective_heat_capacity(fluid)
+        for props in rock_properties.values()
+    ]
+    alpha = float(np.mean(alphas))
+    return length_scale ** 2 / alpha
+
+
 @wbgeo_type(name='Hydrothermal Problem', color='#e07a5f',
             identifier='HydrothermalProblemBuilder')
 @dataclass
@@ -608,13 +636,17 @@ class HydrothermalProblemBuilder:
     include_flow: bool = True
     fault_zone_properties: Optional[RockUnitProperties] = None
     fault_zone_n_voxels: int = 1
-    t0: float = 0.0
-    t1: Optional[float] = None
-    num_steps: int = 1
+    start_time: float = 0.0
+    # None: the model's thermal diffusion timescale (default_diffusion_timescale).
+    end_time: Optional[float] = None
+    # Number of uniform time steps between start_time and end_time.
+    num_steps: int = 3
     p_top: float = 0.0
-    p_bottom: float = 100e4
+    p_bottom: float = 1.0e6
     t_top: float = 10.0
     t_bottom: float = 60.0
+    # None: linear profile from t_bottom to t_top. A number: constant initial temperature.
+    initial_temperature: Optional[float] = None
     # Deployment-oriented default for GOLEM comparisons; requires petsc4py.
     # For environments without PETSc, explicitly select "iterative" (SciPy).
     linear_solver: str = "petsc"
@@ -680,11 +712,18 @@ class HydrothermalProblemBuilder:
             len(self.mesh_results.elements) if self.fault_zone_cell_mask is not None else None
         )
 
-        # t1 defaults to a data-driven thermal diffusion timescale rather
-        # than an arbitrary constant -- see _default_diffusion_timescale()
-        # for why an inappropriately short t1 breaks the heat equation's own
-        # conditioning.
-        self.t1: float = self.t1 if self.t1 is not None else self._default_diffusion_timescale()
+        if self.num_steps < 1:
+            raise ValueError("num_steps must be >= 1")
+        # end_time defaults to a data-driven thermal diffusion timescale rather
+        # than an arbitrary constant -- see default_diffusion_timescale()
+        # for why an inappropriately short end time breaks the heat equation's
+        # own conditioning.
+        if self.end_time is None:
+            self.end_time = self.start_time + default_diffusion_timescale(
+                self.geomodel_result, self.rock_properties, self.fluid
+            )
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be greater than start_time")
 
     # ------------------------------------------------------------------
     # Rock unit / lithology bookkeeping
@@ -753,27 +792,6 @@ class HydrothermalProblemBuilder:
                 return name
         raise ValueError(f"Lithology id {lith_id} not found in structural model")
 
-    def _default_diffusion_timescale(self) -> float:
-        """
-        Rough thermal diffusion timescale (L^2 / alpha) used as the default
-        `t1`, so the heat equation's transient term (~rho_c_eff/dt) and
-        diffusive term (~k_eff/L^2) land at comparable magnitude in the
-        assembled matrix.
-
-        An arbitrarily short t1 relative to this timescale (typically on
-        the order of years, given realistic rock properties and domain
-        sizes) makes the transient term dominate the matrix by many orders
-        of magnitude -- an internal scale mismatch that defeats simple
-        preconditioning even though the equation itself is fine.
-        """
-        extent = self.geomodel_result.structural_frame.grid.extent
-        length_scale = min(extent[1] - extent[0], extent[3] - extent[2], extent[5] - extent[4])
-        alphas = [
-            props.effective_conductivity(self.fluid) / props.effective_heat_capacity(self.fluid)
-            for props in self.rock_properties.values()
-        ]
-        alpha = float(np.mean(alphas))
-        return length_scale ** 2 / alpha
 
     # ------------------------------------------------------------------
     # Shared region/solver boilerplate
@@ -893,7 +911,7 @@ def setup_precond(mtx, context):
         pressure and heat input files: the linear solver block passed in (`ls_block`,
         from _solver_blocks), the Newton nonlinear solver (`report_status=True` so
         _run_sfepy_input_file's _check_convergence can parse a real pass/fail signal),
-        and the `ts.simple` time-stepping config using self.t0/t1/num_steps.
+        and the `ts.simple` time-stepping config using start_time/end_time/num_steps.
         """
         relative_tolerance = (
             f"        'eps_r': {self.linear_solver_eps_r!r},\n"
@@ -980,8 +998,8 @@ fields = {{
     'pressure': ('real', 1, 'Omega', 1),
 }}
 
-t0 = {self.t0!r}
-t1 = {self.t1!r}
+t0 = {self.start_time!r}
+t1 = {self.end_time!r}
 # Pressure has no time-derivative term (steady-state Darcy flow), so it is
 # always solved in a single step regardless of the heat stage's num_steps --
 # run_simulation_sfepy()'s `(time,) = pressure_sim.nodes_by_time.keys()` depends on this.
@@ -1212,8 +1230,8 @@ fields = {{
     'temperature': ('real', 1, 'Omega', 1),
 }}
 
-t0 = {self.t0!r}
-t1 = {self.t1!r}
+t0 = {self.start_time!r}
+t1 = {self.end_time!r}
 # GOLEM num_steps counts time increments. SfePy n_step counts stored time
 # points including t0, so add one to obtain the same dt and final time.
 num_steps = {self.num_steps!r} + 1
@@ -1234,6 +1252,9 @@ def ic_temp(coor, ic=None):
     z_min = float(np.min(coor[:, 2]))
     z_max = float(np.max(coor[:, 2]))
     T_top, T_bottom = {self.t_top!r}, {self.t_bottom!r}
+    T_initial = {self.initial_temperature!r}
+    if T_initial is not None:
+        return np.full(coor.shape[0], float(T_initial))
     return T_bottom + (T_top - T_bottom) * (coor[:, 2] - z_min) / (z_max - z_min)
 
 functions = {{

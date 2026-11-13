@@ -144,15 +144,21 @@ The component accepts the following parameters:
     effect if the structural model has no faults. Default `False`.
 -   **`fault_zone_n_voxels`** *(optional)*: Width of the fault damage
     zone, in structural-grid voxels. Default `1`.
--   **`t0`**, **`t1`**, **`num_steps`** *(optional)*: Start time, end
-    time, and number of steps for the transient heat stage. Default
-    `t0=0.0`, `num_steps=1`; `t1` defaults to a data-driven estimate of
-    the model's thermal diffusion timescale if not given.
 -   **`p_top`**, **`p_bottom`** *(optional)*: Pressure boundary values
     at the model top/bottom, in Pa. Default `p_top=0.0`, `p_bottom=1e6`.
 -   **`t_top`**, **`t_bottom`** *(optional)*: Temperature boundary
     values at the model top/bottom, in °C. Default `t_top=10.0`,
     `t_bottom=60.0`.
+-   **`initial_temperature`** *(optional)*: Constant initial temperature
+    in °C. Default empty: a linear profile from `t_bottom` to `t_top`.
+-   **`start_time`**, **`end_time`**, **`num_steps`** *(optional)*:
+    Start time, end time, and number of uniform steps for the transient
+    heat stage. Default `start_time=0.0`, `num_steps=3`; `end_time`
+    defaults to the model's thermal diffusion timescale (roughly the time
+    to reach thermal equilibrium). Same names and defaults as the GOLEM
+    hydrothermal builder.
+-   **`print_linear_residuals`** *(optional)*: Include the linear solver
+    residuals in the solver output. Default `False`.
 -   **`linear_solver`** *(optional)*: `"iterative"` (default) scales to
     large meshes; `"direct"` is exact but does not scale well --- use it
     for small or debug meshes.
@@ -183,14 +189,14 @@ builder = HydrothermalProblemBuilder(
     rock_properties=rock_properties,
     fluid=fluid,
     include_flow=True,
-    t1=5e11,
+    end_time=5e11,
     num_steps=3,
 )
 ```
 
 Here, `rock_properties` gives each lithology its own porosity,
 permeability, thermal conductivity, and heat capacity; `fluid` describes
-the pore fluid. `t1=5e11` overrides the default diffusion-timescale
+the pore fluid. `end_time=5e11` overrides the default diffusion-timescale
 estimate for the heat stage's end time, solved over `num_steps=3` steps.
 
 A faulted model additionally enables the damage zone:
@@ -297,10 +303,13 @@ Important inputs and controls in Workbench include:
 -   **`p_top`**, **`p_bottom`**: Pressure boundary values.
 -   **`t_top`**, **`t_bottom`**: Temperature boundary values.
 -   **initial pressure / temperature**: Initial-state controls.
--   **`start_time`**, **`end_time`**, **`dt`**, **`num_steps`**: Time
-    controls.
+-   **`start_time`**, **`end_time`**, **`num_steps`**: Time controls,
+    with the same names and defaults as the SfePy hydrothermal builder.
+    The step size is `(end_time - start_time) / num_steps`; an empty
+    `end_time` uses the model's thermal diffusion timescale.
 -   **`output_interval`**: Result-output frequency.
--   **`print_linear_residuals`**: Enables linear residual reporting.
+-   **`print_linear_residuals`**: Include GOLEM's linear residuals in
+    the solver output. Default `False`.
 
 In the codebase, the mesh and structural model are provided through two
 additional parameters:
@@ -728,6 +737,10 @@ data_by_time = run_simulation_sfepy(builder)
 For an auto-generated hydrothermal problem, the runner performs the
 pressure stage followed by the heat stage. For a custom SfePy problem,
 execution follows the supplied input by users.
+
+In scripts, `run_simulation_sfepy(builder, stream_output=True)` also
+prints SfePy's output live while it runs, as `stream_output` does for
+GOLEM. The output is stored in the result either way.
 
 #### Run GOLEM
 

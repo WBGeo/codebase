@@ -218,7 +218,7 @@ def test_builder_construction_basic(model1_implicit_mesh, model1_structural_resu
     assert set(builder.mat_id_to_lithology.values()) == {0, 1, 2}
     assert builder.fault_zone_cell_mask is None
     assert builder.fault_group_id is None
-    assert builder.t1 is not None and builder.t1 > 0
+    assert builder.end_time is not None and builder.end_time > 0
     assert builder.fluid == FluidProperties()
 
 
@@ -282,7 +282,7 @@ def test_builder_survives_json_roundtrip(model1_implicit_mesh, model1_structural
     dropped from the JSON and recomputed on the other side.
     """
     builder = HydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=5e9,
         linear_solver="iterative",
     )
     as_json = json.dumps(to_jsonable_python(builder))
@@ -292,7 +292,7 @@ def test_builder_survives_json_roundtrip(model1_implicit_mesh, model1_structural
     assert rebuilt.rock_units == builder.rock_units
     assert rebuilt.mat_id_to_lithology == builder.mat_id_to_lithology
     assert rebuilt.rock_properties.keys() == builder.rock_properties.keys()
-    assert rebuilt.t1 == pytest.approx(builder.t1)
+    assert rebuilt.end_time == pytest.approx(builder.end_time)
 
 
 def test_default_diffusion_timescale_is_positive_and_finite(model1_implicit_mesh, model1_structural_result):
@@ -300,16 +300,62 @@ def test_default_diffusion_timescale_is_positive_and_finite(model1_implicit_mesh
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         linear_solver="iterative",
     )
-    assert math.isfinite(builder.t1)
-    assert builder.t1 > 0
+    assert math.isfinite(builder.end_time)
+    assert builder.end_time > 0
 
 
-def test_explicit_t1_is_not_overridden(model1_implicit_mesh, model1_structural_result):
+def test_explicit_end_time_is_not_overridden(model1_implicit_mesh, model1_structural_result):
     builder = HydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=1234.5,
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=1234.5,
         linear_solver="iterative",
     )
-    assert builder.t1 == pytest.approx(1234.5)
+    assert builder.end_time == pytest.approx(1234.5)
+
+
+def test_default_end_time_is_offset_by_start_time(model1_implicit_mesh, model1_structural_result):
+    base = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
+    )
+    shifted = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        start_time=100.0, linear_solver="iterative",
+    )
+    assert shifted.end_time == pytest.approx(base.end_time + 100.0)
+
+
+def test_end_time_before_start_time_raises(model1_implicit_mesh, model1_structural_result):
+    with pytest.raises(ValueError, match="end_time must be greater than start_time"):
+        HydrothermalProblemBuilder(
+            mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+            start_time=10.0, end_time=5.0, linear_solver="iterative",
+        )
+
+
+@pytest.mark.parametrize("initial_temperature, expected", [(None, "T_initial = None"), (25.0, "T_initial = 25.0")])
+def test_heat_input_file_initial_temperature(
+    model1_implicit_mesh, model1_structural_result, tmp_path, initial_temperature, expected,
+):
+    """None keeps the linear t_bottom -> t_top profile; a number gives a constant
+    initial temperature (same semantics as GolemHydrothermalProblemBuilder)."""
+    builder = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        initial_temperature=initial_temperature, include_flow=False, linear_solver="iterative",
+    )
+    out_path = str(tmp_path / "heat.py")
+    builder.build_heat_input_file(out_path, str(tmp_path / "velocity.npz"))
+    content = open(out_path).read()
+    compile(content, out_path, "exec")
+    assert expected in content
+
+    namespace = {}
+    exec(content[content.index("def ic_temp"):content.index("functions = {")], {"np": np}, namespace)
+    coor = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 50.0], [0.0, 0.0, 100.0]])
+    values = namespace["ic_temp"](coor)
+    if initial_temperature is None:
+        np.testing.assert_allclose(values, [builder.t_bottom, 0.5 * (builder.t_bottom + builder.t_top), builder.t_top])
+    else:
+        np.testing.assert_allclose(values, [25.0, 25.0, 25.0])
 
 
 # -----------------------------------------------------------------------------

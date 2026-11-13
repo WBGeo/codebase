@@ -68,6 +68,22 @@ def test_build_hydrothermal_problem_applies_options(model1_implicit_mesh, model1
     assert "basement" in problem.rock_properties
 
 
+def test_build_hydrothermal_problem_forwards_shared_time_and_initial_controls(
+    model1_implicit_mesh, model1_structural_result
+):
+    """Same input names as Build GOLEM Hydrothermal Problem for the shared physics."""
+    problem = build_hydrothermal_problem(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        start_time=10.0, end_time=1010.0, num_steps=4,
+        initial_temperature=20.0, print_linear_residuals=True,
+    ).inner()
+    assert problem.start_time == pytest.approx(10.0)
+    assert problem.end_time == pytest.approx(1010.0)
+    assert problem.num_steps == 4
+    assert problem.initial_temperature == pytest.approx(20.0)
+    assert problem.print_linear_residuals is True
+
+
 def test_enable_fault_zone_false_ignores_options_fault_zone_properties(
     model1_implicit_mesh, model1_structural_result
 ):
@@ -361,7 +377,7 @@ def test_build_golem_hydrothermal_problem_applies_smart_options(
         options=options,
         p_bottom=2.5e6,
         t_bottom=80.0,
-        dt=3600.0,
+        end_time=14400.0,
         num_steps=4,
         output_interval=2,
         print_linear_residuals=False,
@@ -649,7 +665,7 @@ def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkey
 @pytest.mark.slow
 def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_implicit_mesh, model1_structural_result):
     problem = build_hydrothermal_problem(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=5e9,
     )
     sim = run_simulation(problem)
 
@@ -683,7 +699,7 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
     monkeypatch, model1_implicit_mesh, model1_structural_result
 ):
     problem = build_hydrothermal_problem(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=5e9,
     )
     sim = run_simulation(problem)
     first_time = min(sim.nodes_by_time.keys())

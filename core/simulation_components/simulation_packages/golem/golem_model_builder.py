@@ -25,6 +25,7 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     FluidProperties,
     RockUnitProperties,
+    default_diffusion_timescale,
     enumerate_rock_units,
 )
 from py_api_wbgeo.nodesapi import wbgeo_type
@@ -317,11 +318,15 @@ class GolemHydrothermalProblemBuilder:
     # HydrothermalProblemBuilder. A number retains support for a constant IC.
     initial_temperature: Optional[float] = None
     start_time: float = 0.0
-    end_time: Optional[float] = 5e11
-    dt: float = 1.667e11
+    # None: the model's thermal diffusion timescale (default_diffusion_timescale),
+    # as in HydrothermalProblemBuilder.
+    end_time: Optional[float] = None
+    # Number of uniform time steps; the step size is derived as
+    # (end_time - start_time) / num_steps, so the three can't contradict
+    # each other (MOOSE stops silently at whichever limit comes first).
     num_steps: int = 3
     output_interval: int = 1
-    print_linear_residuals: bool = True
+    print_linear_residuals: bool = False
 
     def __post_init__(self) -> None:
         if self.mesh_results.mesh_type not in GOLEM_SUPPORTED_MESH_TYPES:
@@ -330,12 +335,8 @@ class GolemHydrothermalProblemBuilder:
                 "STRUCTURED or UNSTRUCTURED; got "
                 f"{self.mesh_results.mesh_type!r}."
             )
-        if self.dt <= 0 or self.num_steps < 1:
-            raise ValueError("dt must be > 0 and num_steps must be >= 1")
-        if self.end_time is None:
-            self.end_time = self.start_time + self.dt * self.num_steps
-        if self.end_time <= self.start_time:
-            raise ValueError("end_time must be greater than start_time")
+        if self.num_steps < 1:
+            raise ValueError("num_steps must be >= 1")
 
         extent = self.geomodel_result.structural_frame.grid.extent
         self.z_bottom = float(extent[4])
@@ -364,6 +365,14 @@ class GolemHydrothermalProblemBuilder:
         self.rock_properties = dict(self.rock_properties or {})
         for _, name in self.rock_units:
             self.rock_properties.setdefault(name, RockUnitProperties(name=name))
+
+        if self.end_time is None:
+            self.end_time = self.start_time + default_diffusion_timescale(
+                self.geomodel_result, self.rock_properties, self.fluid
+            )
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be greater than start_time")
+        self.dt = (self.end_time - self.start_time) / self.num_steps
         self.block_lithology = _block_lithology_ids(self.mesh_results)
 
         # Only unstructured WBGeo meshes append six 2D exterior-boundary

@@ -269,13 +269,15 @@ def build_hydrothermal_problem(
     include_flow: bool = True,
     enable_fault_zone: bool = False,
     fault_zone_n_voxels: int = 1,
-    t0: float = 0.0,
-    t1: Optional[float] = None,
-    num_steps: int = 1,
     p_top: float = 0.0,
-    p_bottom: float = 100e4,
+    p_bottom: float = 1.0e6,
     t_top: float = 10.0,
     t_bottom: float = 60.0,
+    initial_temperature: Optional[float] = None,
+    start_time: float = 0.0,
+    end_time: Optional[float] = None,
+    num_steps: int = 3,
+    print_linear_residuals: bool = False,
     linear_solver: str = "iterative",
     linear_solver_i_max: int = 500,
     linear_solver_eps_r: float = 1e-8,
@@ -289,13 +291,17 @@ def build_hydrothermal_problem(
         (options' Fault Zone Properties), using fault_zone_n_voxels as the damage-zone width.
         Ignored (no fault zone) if the structural model has no faults.
     :param fault_zone_n_voxels: Fault damage-zone width in structural-grid voxels.
-    :param t0: Heat stage start time (s).
-    :param t1: Heat stage end time (s); defaults to a data-driven thermal diffusion timescale if not given.
-    :param num_steps: Number of heat-stage time steps.
     :param p_top: Pressure Dirichlet boundary value at the model top (Pa).
     :param p_bottom: Pressure Dirichlet boundary value at the model bottom (Pa).
     :param t_top: Temperature Dirichlet boundary value at the model top (°C).
     :param t_bottom: Temperature Dirichlet boundary value at the model bottom (°C).
+    :param initial_temperature: Constant initial temperature (°C). Leave empty for a
+        linear profile between t_bottom and t_top.
+    :param start_time: Simulation start time (s).
+    :param end_time: Simulation end time (s). Leave empty for the model's thermal
+        diffusion timescale (roughly the time to reach thermal equilibrium).
+    :param num_steps: Number of uniform time steps between start_time and end_time.
+    :param print_linear_residuals: Include the linear solver residuals in the solver output.
     :param linear_solver: "direct" or "iterative" (see HydrothermalProblemBuilder.LINEAR_SOLVERS).
     :param linear_solver_i_max: Max iterations for the iterative linear solver.
     :param linear_solver_eps_r: Relative residual tolerance for the iterative linear solver.
@@ -328,13 +334,15 @@ def build_hydrothermal_problem(
         include_flow=include_flow,
         fault_zone_properties=fault_zone_properties,
         fault_zone_n_voxels=fault_zone_n_voxels,
-        t0=t0,
-        t1=t1,
-        num_steps=num_steps,
         p_top=p_top,
         p_bottom=p_bottom,
         t_top=t_top,
         t_bottom=t_bottom,
+        initial_temperature=initial_temperature,
+        start_time=start_time,
+        end_time=end_time,
+        num_steps=num_steps,
+        print_linear_residuals=print_linear_residuals,
         linear_solver=linear_solver,
         linear_solver_i_max=linear_solver_i_max,
         linear_solver_eps_r=linear_solver_eps_r,
@@ -485,11 +493,10 @@ def build_golem_hydrothermal_problem(
     initial_pressure: Optional[float] = None,
     initial_temperature: Optional[float] = None,
     start_time: float = 0.0,
-    end_time: Optional[float] = 5e11,
-    dt: float = 1.667e11,
+    end_time: Optional[float] = None,
     num_steps: int = 3,
     output_interval: int = 1,
-    print_linear_residuals: bool = True,
+    print_linear_residuals: bool = False,
 ) -> GolemProblem:
     """
     :param mesh_results: The WBGeo mesh to solve on (implicit, structured, or unstructured).
@@ -504,9 +511,9 @@ def build_golem_hydrothermal_problem(
     :param initial_temperature: Constant initial temperature (°C). Leave empty for a
         linear profile between t_bottom and t_top (as in the SfePy hydrothermal builder).
     :param start_time: Simulation start time (s).
-    :param end_time: Simulation end time (s). Leave empty for start_time + dt * num_steps.
-    :param dt: Time step size (s).
-    :param num_steps: Number of time steps.
+    :param end_time: Simulation end time (s). Leave empty for the model's thermal
+        diffusion timescale (roughly the time to reach thermal equilibrium).
+    :param num_steps: Number of uniform time steps between start_time and end_time.
     :param output_interval: Write results every output_interval time steps.
     :param print_linear_residuals: Include GOLEM's linear residuals in the solver output.
     :return: GOLEM problem envelope for Run GOLEM Simulation.
@@ -532,7 +539,6 @@ def build_golem_hydrothermal_problem(
         initial_temperature=initial_temperature,
         start_time=start_time,
         end_time=end_time,
-        dt=dt,
         num_steps=num_steps,
         output_interval=output_interval,
         print_linear_residuals=print_linear_residuals,

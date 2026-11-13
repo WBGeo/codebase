@@ -4,6 +4,9 @@ from meshio import CellBlock
 
 import core.simulation_components.simulation_packages.golem.golem_model_builder as golem_builder
 from core.object_components import MeshType
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
+    HydrothermalProblemBuilder,
+)
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     CustomGolemBuilder,
     GolemFaultProperties,
@@ -183,12 +186,18 @@ def test_hydrothermal_builder_generates_valid_input(
     builder = GolemHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
+        end_time=246.0,
         num_steps=2,
-        dt=123.0,
     )
     path = tmp_path / "hydro.i"
     builder.build_input_file(str(path))
     generated = path.read_text()
+
+    # Step size is derived, so end_time, dt and num_steps can't disagree.
+    assert builder.dt == pytest.approx(123.0)
+    assert "dt = 123.0" in generated
+    assert "end_time = 246.0" in generated
+    assert "num_steps = 2" in generated
 
     # Important top-level structure and mesh placeholder.
     for block in (
@@ -216,6 +225,39 @@ def test_hydrothermal_builder_generates_valid_input(
     validate_golem_input(
         generated, model1_implicit_mesh, model1_implicit_mesh.mesh_type
     )
+
+
+def test_hydrothermal_builder_time_defaults_match_sfepy(
+    model1_implicit_mesh, model1_structural_result
+):
+    """Same time-control names and defaults as the SfePy hydrothermal builder:
+    end_time=None resolves to the model's diffusion timescale."""
+    golem = GolemHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+    )
+    sfepy = HydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        linear_solver="iterative",
+    )
+    assert golem.start_time == sfepy.start_time == 0.0
+    assert golem.num_steps == sfepy.num_steps == 3
+    assert golem.end_time == pytest.approx(sfepy.end_time)
+    assert golem.dt == pytest.approx(golem.end_time / 3)
+    assert golem.print_linear_residuals is sfepy.print_linear_residuals is False
+
+
+def test_hydrothermal_builder_rejects_end_time_before_start_time(
+    model1_implicit_mesh, model1_structural_result
+):
+    with pytest.raises(ValueError, match="end_time must be greater than start_time"):
+        GolemHydrothermalProblemBuilder(
+            mesh_results=model1_implicit_mesh,
+            geomodel_result=model1_structural_result,
+            start_time=10.0,
+            end_time=5.0,
+        )
 
 
 def test_hydrothermal_builder_uses_constant_initial_conditions_when_requested(

@@ -420,8 +420,8 @@ fault_zone_properties = RockUnitProperties(
 #    fault_zone_properties=fault_zone_properties,
 #    fault_zone_n_voxels=1,
 
-#    t0=0.0,
-#    t1=5.0e11,
+#    start_time=0.0,
+#    end_time=5.0e11,
 #    num_steps=3,
 #)
 
@@ -437,7 +437,7 @@ fault_zone_properties = RockUnitProperties(
 
 #%%
 
-#data_by_time = run_simulation_sfepy(builder)
+#data_by_time = run_simulation_sfepy(builder, stream_output=True)
 
 #%%
 
@@ -513,7 +513,7 @@ fault_zone_properties = RockUnitProperties(
 #    show_plotter=True,
 #)
 #
-#custom_data_by_time = run_simulation_sfepy(custom_builder)
+#custom_data_by_time = run_simulation_sfepy(custom_builder, stream_output=True)
 
 #%%
 
@@ -578,7 +578,6 @@ fault_zone_properties = RockUnitProperties(
 #    initial_temperature=None,
 #    start_time=0.0,
 #    end_time=5.0e11,
-#    dt=5.0e11 / 3,
 #    num_steps=3,
 #)
 # Plot material assignments BEFORE running GOLEM

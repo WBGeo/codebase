@@ -340,7 +340,7 @@ builder = HydrothermalProblemBuilder(
     rock_properties=rock_properties,
     fluid=fluid,
     include_flow=True,
-    t1=5e11,
+    end_time=5e11,
     num_steps=3,
 )
 #%%
@@ -354,7 +354,7 @@ plot_builder_materials(
 )
 #%%
 
-data_by_time = run_simulation_sfepy(builder)
+data_by_time = run_simulation_sfepy(builder, stream_output=True)
 
 #%%
 
@@ -422,7 +422,7 @@ plot_builder_materials(
     property_name="porosity",
     show_plotter=True,
 )
-custom_data_by_time = run_simulation_sfepy(custom_builder)
+custom_data_by_time = run_simulation_sfepy(custom_builder, stream_output=True)
 
 #%%
 
@@ -468,7 +468,6 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 ##    initial_temperature=None,
 ##    start_time=0.0,
 ##    end_time=5.0e11,
-##    dt=5.0e11 / 3,
 ##    num_steps=3,
 ##)
 
