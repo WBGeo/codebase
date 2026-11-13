@@ -11,6 +11,20 @@ services:
   
   backend:
     image: registry.git.rwth-aachen.de/wbgeo/container-registry/backend:latest
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "java",
+          "-cp",
+          "/app/classes/",
+          "wbgeo.service.WebSocketHealthCheck",
+          "ws://backend:8081/umlp/api/command"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     pull_policy: always
     environment:
       S3_HOST: "minio:9000"
@@ -35,14 +49,16 @@ services:
       RUSTFS_SECRET_KEY: g@bJ!&NS8K^!
     #volumes:   # for persisting the data to disk
     #  - "./docker/storage:/data:rw"
-   
+  
   py_runner:
     image: registry.git.rwth-aachen.de/wbgeo/container-registry/pyrunner:latest
-    restart: always
+    restart: on-failure
     pull_policy: always
     depends_on:
-      - minio
-      - backend
+      minio:
+        condition: service_started
+      backend:
+        condition: service_healthy
     environment:
       LIQUIDEARTH_TOKEN: "" # TODO place your token here to use it by default
       MINIO_HOST: "minio:9000"
