@@ -7,7 +7,6 @@ Thin-wrapper file only: per the project's "one workbench file per step" rule
 The actual logic lives in the SfePy/GOLEM builder and runner modules
 and is called here unmodified.
 """
-import atexit
 import os
 import pathlib
 import shutil
@@ -763,7 +762,7 @@ def run_golem_simulation(
 
         golem_binary = os.environ.get('GOLEM_BINARY', '/golem/golem-opt')
         workspace_dir = os.environ.get('GOLEM_WORKSPACE', 'golem_workspace') + "/" + str(uuid.uuid4())
-        result = _run_simulation_golem(
+        return _run_simulation_golem(
             problem=problem.inner(),
             image_name=golem_image,
             golem_binary=golem_binary,
@@ -772,20 +771,17 @@ def run_golem_simulation(
             nproc=nproc,
             temporary=True,
         )
-    except BaseException:
-        # The GOLEM runner cleans its staging area, not the copied output.
-        # Never retain partial output from a failed Workbench execution.
+    finally:
+        # The result holds everything later nodes need (fields, CSV tables,
+        # input, solver output), so GOLEM's output folder can go right away,
+        # whether the run succeeded or not.
         shutil.rmtree(run_output_dir, ignore_errors=True)
-        raise
-
-    # Results, Exodus export and the solver-output inspector may read files
-    # after this function returns. Keep them until the Workbench process exits.
-    atexit.register(shutil.rmtree, run_output_dir, ignore_errors=True)
-    return result
 
 
 @wbgeo_component(
-    description='Exports SfePy as VTK/PVD ZIP and GOLEM as native output ZIP (Exodus, CSV and other output files) by default. Explicit formats: auto, vtk, exodus, golem.',
+    description='Exports a SfePy or GOLEM result as a ZIP: the fields as VTK files with a ParaView '
+                'collection or as one Exodus file (auto: Exodus for GOLEM, VTK otherwise), plus the '
+                "solver's CSV tables, input file(s) and console output.",
     title='Export Simulation Results',
     group='Simulation',
     positionInGroup=0,
@@ -795,15 +791,13 @@ def run_golem_simulation(
 def export_simulation_results(
     simulation_result: SimulationResults,
     format: SimulationExportFormatType = SimulationExportFormat.AUTO.value,
-    golem_output_dir: str = "",
 ) -> BasicallyABufferedFile:
     """
     :param simulation_result: Simulation results from Run Simulation or Run GOLEM Simulation.
-    :param format: "auto" (SfePy VTK ZIP / GOLEM native output ZIP), "vtk", "exodus", or "golem".
-    :param golem_output_dir: Optional exact GOLEM output directory, needed when multiple GOLEM runs exist and solver metadata was lost.
-    :return: A downloadable file containing the exported results.
+    :param format: "auto" (Exodus for GOLEM, VTK otherwise), "vtk" or "exodus".
+    :return: A ZIP with the results plus the solver's tables (CSV), input file(s) and console output.
     """
-    return _export_simulation_results(simulation_result, format, golem_output_dir)
+    return _export_simulation_results(simulation_result, format)
 
 
 # -----------------------------------------------------------------------------
@@ -971,30 +965,16 @@ def inspect_simulation_result_plot_variable_time_series(
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_stdout',
                  title='View Solver Output',
-                 description='Prints the raw sfepy-run solver output for this result, per stage '
-                             '("pressure"/"heat" for a Hydrothermal problem, "custom" for a Custom '
-                             'SfePy problem) -- lets solver convergence/quality be checked on a '
-                             'normal, successful run too, not only via the error raised when a '
-                             'solve fails to converge.')
+                 description='Prints the raw solver output for this result, per stage '
+                             '("pressure"/"heat" for a SfePy hydrothermal problem, "custom" for a '
+                             'custom SfePy problem, "golem" for GOLEM) -- lets solver '
+                             'convergence/quality be checked on a normal, successful run too, not '
+                             'only via the error raised when a solve fails to converge.')
 @wbgeo_inspector()
 def inspect_simulation_result_stdout(simulation_result: SimulationResults, _inspector: InspectorHelper):
-    # GOLEM stores its transcript on disk; leave the SfePy handling below unchanged.
-    if getattr(simulation_result, "source_solver", None) == "golem":
-        output_dir = getattr(simulation_result, "source_output_dir", None)
-        if output_dir:
-            transcript_path = pathlib.Path(output_dir) / "golem_stdout.txt"
-            if transcript_path.is_file():
-                print("=== GOLEM ===")
-                print(transcript_path.read_text(encoding="utf-8", errors="replace"))
-                return
-        print("No GOLEM solver output recorded for this result.")
-        return
-    if simulation_result.sfepy_stdout:
-        for stage, stdout in simulation_result.sfepy_stdout.items():
-            print(f"=== {stage} ===")
-            print(stdout)
-    elif simulation_result.golem_solver_output:
-        print("=== GOLEM ===")
-        print(simulation_result.golem_solver_output)
-    else:
+    if not simulation_result.solver_output:
         print("No solver output recorded for this result.")
+        return
+    for stage, output in simulation_result.solver_output.items():
+        print(f"=== {stage} ===")
+        print(output)

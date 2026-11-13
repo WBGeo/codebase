@@ -23,7 +23,7 @@ class SfepyOutputType:
     stdout: the raw sfepy-run output for this run, so callers of
     _run_sfepy_input_file (not just load_vtk_results, which only cares
     about the VTK files) can carry it forward -- see
-    run_simulation_sfepy()'s SimulationResults.sfepy_stdout.
+    run_simulation_sfepy()'s SimulationResults.solver_output.
     """
     output_dir: str
     is_temp: bool = False

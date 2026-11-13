@@ -17,13 +17,14 @@ import uuid
 
 import numpy as np
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 from core.meshing_components.mesh_format.exodus.Exo_format import (
     export_mesh_results_to_exodus,
     exodus_type_for,
 )
 from core.object_components import MeshType, SimulationResults
+from core.simulation_components.output_format.csv_tables import read_numeric_csv
 from core.simulation_components.output_format.exodus.unified_format_exodus import (
     load_exodus_results,
 )
@@ -382,6 +383,42 @@ def _prepare_hierarchy_transfer_files(target_aux_dir: Path, generated: str, *, s
             "Unresolved hierarchy transfer placeholder(s): " + ", ".join(unresolved)
         )
     return generated
+
+def _read_solver_tables(output: Path) -> Dict[str, Dict[str, np.ndarray]]:
+    """GOLEM's CSV output files as numeric tables, keyed by path relative to `output`."""
+    tables = {}
+    for path in sorted(output.rglob("*.csv")):
+        if any(part.endswith("_cp") for part in path.relative_to(output).parts):
+            continue
+        table = read_numeric_csv(path)
+        if table is not None:
+            tables[path.relative_to(output).as_posix()] = table
+    return tables
+
+
+def _builder_block_names(problem) -> Dict[int, str]:
+    """Block names a generated GOLEM problem knows (Exodus ids are 1-based).
+
+    Names written into the Exodus file itself take precedence over these.
+    """
+    names: Dict[int, str] = {}
+    if isinstance(problem, GolemHydrothermalProblemBuilder):
+        for index in problem.volume_blocks:
+            names[index + 1] = problem._rock_name(problem.block_lithology[index])
+        for ordinal, index in enumerate(problem.fault_blocks):
+            names[index + 1] = list(problem.fault_properties)[ordinal]
+    elif isinstance(problem, GolemSimpleReservoirProblemBuilder):
+        groups = (
+            (problem.volume_blocks, "reservoir_rock"),
+            (problem.geological_fault_blocks, "geological_fault"),
+            (problem.fracture_blocks, "fracture"),
+            (problem.well_blocks, "well"),
+        )
+        for block_ids, label in groups:
+            for k, block_id in enumerate(block_ids, start=1):
+                names[block_id] = label if len(block_ids) == 1 else f"{label}_{k}"
+    return names
+
 
 def run_simulation_golem(
     problem: Union[
@@ -893,15 +930,16 @@ def run_simulation_golem(
         logger.debug("GOLEM Exodus result: %s", result_file)
         logger.debug("Loading GOLEM Exodus result into SimulationResults...")
         simulation_results = load_exodus_results(run_info)
-        # Keep the native GOLEM Exodus result path on the unified result object.
-        # The generic simulation exporter uses this path for format="exodus" so
-        # GOLEM's original multi-time-step wbgeo.e is returned unchanged instead
-        # of reconstructing one Exodus file per time step.
-        # Note: the paths may no longer be available when computing it!
-        simulation_results.source_exodus_file = str(result_file)
-        simulation_results.source_output_dir = str(output)
-        simulation_results.golem_solver_output = transcript
-        simulation_results.source_solver = "golem"
+        # Make the result self-contained, so nothing has to stay on disk:
+        # the fields are already loaded; add GOLEM's CSV output as tables,
+        # the input that ran, its console output and block names.
+        simulation_results.solver = "golem"
+        simulation_results.solver_output = {"golem": transcript}
+        simulation_results.input_files = {"wbgeo.i": input_path.read_text(encoding="utf-8")}
+        simulation_results.solver_tables = _read_solver_tables(output)
+        simulation_results.block_names = {
+            **_builder_block_names(problem), **simulation_results.block_names,
+        }
         if not simulation_results.nodes_by_time:
             raise RuntimeError(
                 f"The GOLEM Exodus file at {result_file} contained no readable time steps."

@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 import core.simulation_components.simulation_packages.golem.golem_run as golem_run
@@ -370,6 +371,14 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
     )
 
     assert returned is result
+    # The result is self-contained: solver, console output, input, CSV tables, block names.
+    assert result.solver == "golem"
+    assert result.solver_output == {"golem": "fake GOLEM stdout\n"}
+    assert "[Mesh]" in result.input_files["wbgeo.i"]
+    assert set(result.solver_tables) == {"diagnostic.csv"}
+    np.testing.assert_array_equal(result.solver_tables["diagnostic.csv"]["x"], [1.0])
+    np.testing.assert_array_equal(result.solver_tables["diagnostic.csv"]["y"], [2.0])
+    assert set(result.block_names.values()) == {"basement", "rock1", "rock2"}
 
     # docker create/cp/cp/rm were constructed, but our fake handled all of them.
     create_commands = [cmd for cmd in commands if cmd[:2] == ["docker", "create"]]

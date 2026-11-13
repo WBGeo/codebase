@@ -200,7 +200,9 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
     assert result is sentinel_sim
     assert received["fault_group_id"] == 42
     assert np.array_equal(received["fault_zone_cell_mask"], fake_mask)
-    assert result.sfepy_stdout == {"custom": "fake stdout"}
+    assert result.solver == "sfepy"
+    assert result.solver_output == {"custom": "fake stdout"}
+    assert result.input_files == {"custom.py": problem.input_file_contents}
 
 
 # -----------------------------------------------------------------------------
@@ -297,8 +299,12 @@ def test_run_simulation_sfepy_end_to_end_implicit_mesh(model1_implicit_mesh, mod
     assert p.min() >= 0.0 - 1e-6  # p_top=0.0 (default)
     # Solver stdout must be captured for both stages, not just on failure --
     # lets solver quality be inspected on a normal, successful run too.
-    assert set(result.sfepy_stdout.keys()) == {"pressure", "heat"}
-    assert all(result.sfepy_stdout.values())
+    assert set(result.solver_output.keys()) == {"pressure", "heat"}
+    assert all(result.solver_output.values())
+    # The generated input files and block names travel with the result.
+    assert set(result.input_files) == {"pressure.py", "heat.py"}
+    assert all(result.input_files.values())
+    assert set(result.block_names.values()) == {"basement", "rock1", "rock2"}
 
 
 @pytest.mark.integration
@@ -451,8 +457,8 @@ def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, mo
     # The real SfePy solve differs from the analytical mean only by a few
     # micro-degrees due to finite-element/iterative-solver floating-point error.
     assert float(T.mean()) == pytest.approx(35.0, abs=1e-5)
-    assert set(result.sfepy_stdout.keys()) == {"custom"}
-    assert result.sfepy_stdout["custom"]
+    assert set(result.solver_output.keys()) == {"custom"}
+    assert result.solver_output["custom"]
 
 
 @pytest.mark.integration
@@ -510,25 +516,52 @@ def test_run_simulation_sfepy_custom_builder_fault_zone_end_to_end(
     assert float(T.mean()) == pytest.approx(35.0, abs=1e-6)
 
 
-def test_export_auto_requires_identifiable_solver(monkeypatch, tmp_path):
-    """Do not silently treat unknown results as SfePy when GOLEM metadata is missing."""
-    monkeypatch.chdir(tmp_path)
-    sim = _synthetic_simulation_results()
-    with pytest.raises(ValueError, match="Cannot identify the solver"):
-        export_simulation_results(sim, format="auto")
+def _tetra_result(solver):
+    """Two tetrahedra in two blocks, two time steps, with every optional field filled."""
+    sim = SimulationResults(solver=solver, block_names={1: "rock1", 2: "rock2"})
+    nodes = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 1]], dtype=float)
+    for t in (0.0, 5.0):
+        sim.nodes_by_time[t] = nodes
+        sim.cells_by_time[t] = np.array([4, 0, 1, 2, 3, 4, 1, 2, 3, 4])
+        sim.celltypes_by_time[t] = np.array([10, 10])
+        sim.node_data_by_time[t] = {"temperature": nodes[:, 2] + t}
+        sim.cell_data_by_time[t] = {"ObjectId": np.array([1.0, 2.0])}
+    sim.solver_output = {"golem": "GOLEM completed"}
+    sim.solver_tables = {"wbgeo.csv": {"time": np.array([0.0, 5.0]), "flow": np.array([1.5, 2.5])}}
+    sim.input_files = {"wbgeo.i": "[Mesh]\n[]\n"}
+    return sim
 
 
-def test_export_golem_zips_native_exodus_and_csv(tmp_path):
-    """Native GOLEM export includes the full solver output directory."""
-    output_dir = tmp_path / "golem_run"
-    output_dir.mkdir()
-    (output_dir / "solution.e").write_bytes(b"synthetic exodus")
-    (output_dir / "history.csv").write_text("time,pressure\n0,1\n")
-    (output_dir / "golem_stdout.txt").write_text("GOLEM completed")
-    sim = _synthetic_simulation_results()
-    buf = export_simulation_results(sim, format="golem", golem_output_dir=str(output_dir))
-    with zipfile.ZipFile(buf) as archive:
-        names = archive.namelist()
-        assert any(name.endswith("solution.e") for name in names)
-        assert any(name.endswith("history.csv") for name in names)
-        assert any(name.endswith("golem_stdout.txt") for name in names)
+@pytest.mark.parametrize("solver, fmt, expected", [
+    ("golem", "auto", "results.e"),
+    ("sfepy", "auto", "results.pvd"),
+    (None, "auto", "results.pvd"),
+    ("sfepy", "exodus", "results.e"),
+    ("golem", "vtk", "results.pvd"),
+])
+def test_export_formats_work_for_both_simulators(solver, fmt, expected):
+    with zipfile.ZipFile(export_simulation_results(_tetra_result(solver), format=fmt)) as archive:
+        assert expected in archive.namelist()
+
+
+def test_export_needs_no_output_folder_and_includes_tables_inputs_and_logs(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # nothing on disk to find
+    with zipfile.ZipFile(export_simulation_results(_tetra_result("golem"))) as archive:
+        names = set(archive.namelist())
+        assert {"results.e", "tables/wbgeo.csv", "input/wbgeo.i", "solver_output/golem.txt"} <= names
+        assert archive.read("tables/wbgeo.csv").decode().splitlines() == ["time,flow", "0.0,1.5", "5.0,2.5"]
+        assert archive.read("solver_output/golem.txt").decode() == "GOLEM completed"
+
+
+def test_exported_exodus_reads_back_with_names_and_values(tmp_path):
+    from core.simulation_components.output_format.exodus.unified_format_exodus import load_exodus_results
+    sim = _tetra_result("golem")
+    with zipfile.ZipFile(export_simulation_results(sim, format="exodus")) as archive:
+        archive.extract("results.e", tmp_path)
+    back = load_exodus_results(str(tmp_path / "results.e"))
+    assert sorted(back.nodes_by_time) == [0.0, 5.0]
+    assert back.block_names == {1: "rock1", 2: "rock2"}
+    for t in (0.0, 5.0):
+        assert len(back.nodes_by_time[t]) == 5 and len(back.celltypes_by_time[t]) == 2
+        np.testing.assert_allclose(back.node_data_by_time[t]["temperature"], back.nodes_by_time[t][:, 2] + t,
+                                   rtol=1e-6)

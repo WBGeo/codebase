@@ -836,11 +836,23 @@ After installation, provide the path to the GOLEM executable using the `golem_bi
 
 > **Workbench component:** `Export Simulation Results`
 
-#### SfePy result export
+Both simulators export the same way. The result is self-contained: it
+holds the fields, the solver's CSV tables, the input file(s) and the
+console output, so an export needs no output folder on disk.
 
-For SfePy, the standard Workbench export is a zipped VTK files.
-The ZIP contains one `.vtk` file per saved time step together with a
-`.pvd` collection file for loading the complete time series in ParaView.
+`export_simulation_results()` returns one ZIP containing:
+
+- the fields, either as one `.vtk` file per saved time step plus a
+  `results.pvd` collection for ParaView (`format="vtk"`), or as one
+  multi-time-step `results.e` Exodus file with named blocks
+  (`format="exodus"`);
+- `tables/`: the solver's CSV output (for GOLEM, its postprocessor
+  tables);
+- `input/`: the input file(s) the solver ran;
+- `solver_output/`: the solver's console output per stage.
+
+`format="auto"` (the default) uses Exodus for GOLEM results and VTK
+otherwise. Both formats work for both simulators.
 
 Example call in the codebase:
 
@@ -848,19 +860,19 @@ Example call in the codebase:
 buf = export_simulation_results(data_by_time, format="vtk")
 with open("simulation_results.zip", "wb") as f:
     f.write(buf.getvalue())
+
+buf = export_simulation_results(problem_golem_results, format="exodus")
+with open("simulation_golem_results.zip", "wb") as f:
+    f.write(buf.getvalue())
 ```
 
-#### GOLEM result output and export
+The Exodus file is written from the result, not copied from GOLEM. It
+contains the same fields, time steps and blocks; side sets, node sets and
+QA records are not included (they belong to the input mesh and the input
+file).
 
-GOLEM may produce several output files. In addition to the 
-Exodus file (commonly used), a model may produce CSV files or
-other configured outputs.
-
-In the codebase, there are two ways to keep GOLEM results.
-
-**Option 1 - define `output_dir` when running GOLEM.**
-
-Example call in the codebase:
+In scripts, GOLEM's original output files can additionally be kept by
+passing `output_dir` to `run_simulation_golem()`:
 
 ``` python
 problem_golem_results = run_simulation_golem(
@@ -871,39 +883,8 @@ problem_golem_results = run_simulation_golem(
 )
 ```
 
-When `output_dir` is supplied, `run_simulation_golem()` copies the
-preserved user-facing GOLEM outputs directly into that directory.
-
-**Option 2 - export the complete GOLEM output directory as a ZIP.**
-
-The `SimulationResults` retains the
-path to its preserved GOLEM output directory. This directory can be
-saved as one Zip file using `export_simulation_results`.
-
-Example call in the codebase:
-
-``` python
-buf = export_simulation_results(problem_golem_results, format="golem")
-with open("simulation_golem_results.zip", "wb") as f:
-    f.write(buf.getvalue())
-```
-
-Here, `format="golem"` returns the whole output directory as a ZIP file. This is useful when the complete result set needs to be downloaded,
-transferred, or stored as one artifact. 
-
-If only the Exodus file is required to be saved, it can be exported
-as a single Exodus file.
-
-Example call in the codebase:
-
-``` python
-buf = export_simulation_results(problem_golem_results, format="exodus")
-with open("simulation_golem_results.e", "wb") as f:
-    f.write(buf.getvalue())
-```
-
-Here `format="exodus"` returns GOLEM's original multi-time-step Exodus
-file.
+The Workbench's Run GOLEM Simulation component deletes GOLEM's output
+folder right after the run, since the result already contains everything.
 
 
 ------------------------------------------------------------------------
@@ -1158,13 +1139,10 @@ successful run.
 Example access in the codebase:
 
 ```python
-# SfePy: one transcript per stage ("pressure"/"heat", or "custom")
-for stage, stdout in simulation_result.sfepy_stdout.items():
+# One transcript per stage: "pressure"/"heat" or "custom" for SfePy, "golem" for GOLEM
+for stage, output in simulation_result.solver_output.items():
     print(f"=== {stage} ===")
-    print(stdout)
-
-# GOLEM: one transcript for the whole run
-print(simulation_result.golem_solver_output)
+    print(output)
 ```
 
 
@@ -1299,5 +1277,9 @@ topology, and numerical fields. It includes:
 -   **`celltypes_by_time`** --- VTK-style cell type identifiers.
 -   **`node_data_by_time`** --- node-based result variables.
 -   **`cell_data_by_time`** --- cell-based result variables.
--   **`sfepy_stdout`** --- solver-specific recorded output where
-    provided by the runner.
+-   **`solver`** --- `"sfepy"` or `"golem"`.
+-   **`solver_output`** --- the solver's console output per stage.
+-   **`solver_tables`** --- tabular solver output per file and column,
+    e.g. GOLEM's postprocessor CSVs.
+-   **`input_files`** --- the input file(s) the solver ran.
+-   **`block_names`** --- the name of each element block, by block id.

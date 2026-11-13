@@ -275,9 +275,8 @@ def test_export_simulation_results_calls_through(monkeypatch):
     sentinel_buf = object()
     received = {}
 
-    def fake_export(sim, fmt, golem_output_dir):
+    def fake_export(sim, fmt):
         received["sim"], received["format"] = sim, fmt
-        received["golem_output_dir"] = golem_output_dir
         return sentinel_buf
 
     monkeypatch.setattr(swc, "_export_simulation_results", fake_export)
@@ -286,7 +285,6 @@ def test_export_simulation_results_calls_through(monkeypatch):
     assert result is sentinel_buf
     assert received["sim"] is sim
     assert received["format"] == "vtk"
-    assert received["golem_output_dir"] == ""
 
 
 
@@ -615,6 +613,32 @@ def test_run_golem_simulation_unwraps_all_problem_types_without_running_docker(
     assert received["nproc"] == 6
 
 
+@pytest.mark.parametrize("fails", [False, True])
+def test_run_golem_simulation_deletes_output_folder_right_away(monkeypatch, tmp_path, fails):
+    """The result is self-contained, so GOLEM's output folder goes immediately (X4)."""
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+
+    def fake_run(**kwargs):
+        output_dir = pathlib.Path(kwargs["output_dir"])
+        output_dir.mkdir(parents=True)
+        (output_dir / "wbgeo.e").write_bytes(b"result")
+        seen["output_dir"] = output_dir
+        if fails:
+            raise RuntimeError("GOLEM failed")
+        return SimulationResults(solver="golem")
+
+    monkeypatch.setattr(swc, "_run_simulation_golem", fake_run)
+    problem = GolemProblem(simple_reservoir=GolemSimpleReservoirProblemBuilder.__new__(
+        GolemSimpleReservoirProblemBuilder))
+    if fails:
+        with pytest.raises(RuntimeError, match="GOLEM failed"):
+            run_golem_simulation(problem=problem)
+    else:
+        assert run_golem_simulation(problem=problem).solver == "golem"
+    assert not seen["output_dir"].exists()
+
+
 def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkeypatch):
     sentinel_result = SimulationResults()
     received = {}
@@ -755,7 +779,7 @@ def test_inspect_plot_cross_section_2D_uses_explicit_origin(monkeypatch):
 
 def test_inspect_simulation_result_stdout_prints_each_stage(capsys):
     sim = SimulationResults()
-    sim.sfepy_stdout = {"pressure": "pressure solver log", "heat": "heat solver log"}
+    sim.solver_output = {"pressure": "pressure solver log", "heat": "heat solver log"}
 
     swc.inspect_simulation_result_stdout(simulation_result=sim, _inspector=None)
 
@@ -765,7 +789,7 @@ def test_inspect_simulation_result_stdout_prints_each_stage(capsys):
 
 
 def test_inspect_simulation_result_stdout_handles_missing_stdout(capsys):
-    sim = SimulationResults()  # sfepy_stdout left at its default (None)
+    sim = SimulationResults()  # solver_output left empty
 
     swc.inspect_simulation_result_stdout(simulation_result=sim, _inspector=None)
 

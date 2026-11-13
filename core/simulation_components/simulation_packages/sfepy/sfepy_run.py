@@ -33,6 +33,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder im
     HydrothermalProblemBuilder,
     CustomSfepyBuilder,
     MESH_TYPE_CODES,
+    enumerate_rock_units,
     is_custom_sfepy_builder,
 )
 from core.simulation_components.simulation_visualization.simulation_visualization import build_grid_from_class
@@ -118,7 +119,7 @@ def _run_sfepy_input_file(
     a SfepyOutputType(output_dir, is_temp, stdout) -- output_dir/is_temp are
     the shape load_vtk_results() already expects (a drop-in replacement at
     the call site); stdout is carried separately by callers that want it
-    (see run_simulation_sfepy()'s SimulationResults.sfepy_stdout), since
+    (see run_simulation_sfepy()'s SimulationResults.solver_output), since
     load_vtk_results() itself only cares about the VTK files on disk.
 
     fault_zone_cell_mask/fault_group_id (both from
@@ -370,7 +371,7 @@ def _run_hydrothermal_problem(
     Download Mesh / export_mesh_results() for MeshResults, as its own
     separate Workbench component taking SimulationResults as input.
 
-    The returned SimulationResults.sfepy_stdout carries each stage's raw
+    The returned SimulationResults.solver_output carries each stage's raw
     solver output ("pressure"/"heat"), regardless of whether the solve
     converged -- so solver quality can be inspected on a normal, successful
     run too, not only via the exception raised on non-convergence.
@@ -484,9 +485,17 @@ def _run_hydrothermal_problem(
             )
             if builder.include_flow and time in pressure_sim.node_data_by_time:
                 merged.node_data_by_time[physical_t]["p"] = pressure_sim.node_data_by_time[time]["p"]
-        merged.sfepy_stdout = {"heat": t_out.stdout}
+        merged.solver = "sfepy"
+        merged.solver_output = {"heat": t_out.stdout}
+        merged.input_files = {"heat.py": _read_text(heat_file)}
         if builder.include_flow:
-            merged.sfepy_stdout["pressure"] = p_out.stdout
+            merged.solver_output = {"pressure": p_out.stdout, **merged.solver_output}
+            merged.input_files = {"pressure.py": _read_text(pressure_file), **merged.input_files}
+        merged.block_names = {
+            mat_id: builder._lithology_name(lith_id) for mat_id, lith_id in builder.mat_id_to_lithology.items()
+        }
+        if builder.fault_group_id is not None:
+            merged.block_names[builder.fault_group_id] = builder.fault_zone_properties.name
         return merged
     finally:
         if keep_files_dir is None:
@@ -514,7 +523,7 @@ def _run_custom_sfepy_problem(
     _run_hydrothermal_problem already does -- the mat_id relabeling itself
     is entirely generic, not HydrothermalProblemBuilder-specific.
 
-    The returned SimulationResults.sfepy_stdout carries the raw solver
+    The returned SimulationResults.solver_output carries the raw solver
     output under the "custom" key, same purpose as
     _run_hydrothermal_problem's "pressure"/"heat" keys.
 
@@ -550,7 +559,15 @@ def _run_custom_sfepy_problem(
         sim = load_vtk_results(out)
         if not sim.nodes_by_time:
             raise RuntimeError("Custom SfePy input file produced no SfePy output (0 VTK files).")
-        sim.sfepy_stdout = {"custom": out.stdout}
+        sim.solver = "sfepy"
+        sim.solver_output = {"custom": out.stdout}
+        sim.input_files = {"custom.py": problem.input_file_contents}
+        if problem.geomodel_result is not None:
+            lith_names = dict(enumerate_rock_units(problem.geomodel_result))
+            sim.block_names = {mat_id: lith_names[lith_id]
+                               for mat_id, lith_id in problem.mat_id_to_lithology.items() if lith_id in lith_names}
+        if problem.fault_group_id is not None:
+            sim.block_names[problem.fault_group_id] = "fault_zone"
         return sim
     finally:
         if keep_files_dir is None:
@@ -558,6 +575,11 @@ def _run_custom_sfepy_problem(
                 os.remove(input_file)
             except OSError:
                 pass
+
+
+def _read_text(path: str) -> str:
+    with open(path, encoding="utf-8") as stream:
+        return stream.read()
 
 
 def run_simulation_sfepy(

@@ -626,7 +626,7 @@ fault_zone_properties = RockUnitProperties(
 #)
 
 # save the outputs as zip file
-#buf = export_simulation_results(problem_golem_results, format="golem",)
+#buf = export_simulation_results(problem_golem_results, format="exodus")
 
 #with open("simulation_golem_results.zip", "wb") as f:
 #    f.write(buf.getvalue())

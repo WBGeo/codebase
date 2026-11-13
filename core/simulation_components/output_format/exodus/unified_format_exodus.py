@@ -138,6 +138,15 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
   reader.SetGenerateObjectIdCellArray(True)
 
+  # Element block names by block id (the id ObjectId holds per cell).
+  # Unnamed blocks are reported as "Unnamed block ID: ..." and left out.
+  elem_block = vtkExodusIIReader.ELEM_BLOCK
+  block_names = {}
+  for i in range( reader.GetNumberOfObjects(elem_block) ):
+    name = reader.GetObjectName(elem_block, i) or ""
+    if name and not name.startswith("Unnamed block"):
+      block_names[int(reader.GetObjectId(elem_block, i))] = name
+
   # =====================================================
   # TIME STEPS
   # =====================================================
@@ -150,7 +159,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
 
   logger.info( "Found %d time steps", len(time_steps) )
 
-  results = SimulationResults()
+  results = SimulationResults(block_names=block_names)
 
   # =====================================================
   # LOOP OVER TIME STEPS
