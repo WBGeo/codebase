@@ -2569,7 +2569,7 @@ def meshit_coordinate_transform(
     return transformed
 
 
-@wbgeo_type(name='Surface as described ', color='#8cb369', identifier='CSVSurfaceModelResults')
+@wbgeo_type(name='Surface as described', color='#8cb369', identifier='CSVSurfaceModelResults')
 @dataclass
 class CSVSurfaceModelResults:
   csv_surface_coordinates: List[Tuple[Path, NpNDArrayFp64]]

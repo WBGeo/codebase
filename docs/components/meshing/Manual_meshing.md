@@ -543,7 +543,7 @@ Example of creating an unstructured mesh from structural-model results:
 
 ``` python
 mesh_unstructured_with_objects = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     wells=wells,
     sources=sources,
     shafts=shafts,
@@ -583,7 +583,7 @@ cases.
 
 ``` python
 mesh_rotated = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     mesh_size=30,
     rotation_angle=30.0,
 )
@@ -604,7 +604,7 @@ are then rotated by 30°. The original z coordinates are preserved:
 
 ``` python
 mesh_rotated_centered = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     mesh_size=30,
     rotation_angle_translate=30.0,
 )
@@ -623,7 +623,7 @@ the transformed mesh is therefore located at `(0, 0, 0)`:
 
 ``` python
 mesh_rotated_translated = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     mesh_size=30,
     rotation_angle_translate=30.0,
     xt=1000.0,
@@ -648,7 +648,7 @@ geological surfaces:
 
 ``` python
 mesh_explicit_unst_from_file = create_unstructured_mesh_data(
-    geomodel=load_csv_surface_coordinates(cwd + "/examples/synthetic_examples/model2/input_data/surfaces"),
+    geomodel_result=load_csv_surface_coordinates(cwd + "/examples/synthetic_examples/model2/input_data/surfaces"),
 
     # X/Y are inferred from all CSV surfaces; use these absolute Z limits.
     extent_z=[-1000, 500],

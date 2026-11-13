@@ -196,7 +196,7 @@ mesh_implicit = create_implicit_structured_mesh(geomodel_result=structural_model
 
 # Explicit unstructured mesh
 #mesh_explicit_unstr = create_unstructured_mesh_data(
-#    geomodel=structural_model_result,
+#    geomodel_result=structural_model_result,
 #    tolerance=500,
 #    mesh_size=60,
 #    smooth=30,
@@ -278,7 +278,7 @@ refinement.triangulations = TriangulationRefinement(SizeMin=15.0, SizeMax=105.0,
 # create big model wit traslate to center
 
 mesh_unstructured_with_objects = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     wells=wells,
     triangulations=triangulations,
     mesh_size=75,
@@ -312,7 +312,7 @@ extent = [
 
 
 mesh_unstructured_with_objects = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     extent=extent,
     wells=wells,
     triangulations=triangulations,
@@ -330,7 +330,7 @@ with open("filename_Gross_Schoenebeck_SM_n.exo", "wb") as f:
 
 # create small model with rotation using csv files (instead of structual modeling results)
 #mesh_unstructured_with_objects2 = create_unstructured_mesh_data(
-#    geomodel= load_csv_surface_coordinates(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/surfaces"),
+#    geomodel_result= load_csv_surface_coordinates(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/surfaces"),
 #    extent=extent,
 #    wells=wells,
 #    triangulations=triangulations,

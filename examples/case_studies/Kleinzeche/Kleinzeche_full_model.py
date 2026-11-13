@@ -307,7 +307,7 @@ z_e=_Z_MIN_MODEL-2
 # DISTANCE_THRESHOLD must be << model extent to avoid removing all points from small models.
 # WARNING: Runtime extremely high
 mesh_explicit_unstructured = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     tolerance=1,
     #wells=wells,
     extent=(380043, 380128, 5700896, 5700938, z_e, 125),

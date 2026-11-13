@@ -308,7 +308,7 @@ refinement.faults = FaultRefinement(
  )
 
 mesh_explicit_unstructured = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     tolerance=1,
     wells=wells,
     mesh_size=3,

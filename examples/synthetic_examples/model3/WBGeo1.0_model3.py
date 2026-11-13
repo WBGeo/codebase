@@ -220,7 +220,7 @@ mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=struc
 
 # Explicit unstructured mesh
 mesh_explicit_unstructured = create_unstructured_mesh_data(
-    geomodel=structural_model_result,
+    geomodel_result=structural_model_result,
     tolerance=50,
     mesh_size=30,
     curve_mesh_size=10,
@@ -310,7 +310,7 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 
 # # Explicit unstructured mesh with objects
 # mesh_unstructured_with_objects = create_unstructured_mesh_data(
-#     geomodel=structural_model_result,
+#     geomodel_result=structural_model_result,
 #     wells=wells,
 #     sources=sources,
 #     shafts=shafts,
