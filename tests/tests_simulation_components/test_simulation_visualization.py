@@ -1,6 +1,7 @@
 """
 Unit tests for simulation_visualization.py's pure-computation helpers only
-(build_grid_from_class, _variable_label, _in_plane_axes) -- not the actual plot_*/render functions, matching this
+(build_grid_from_class, _variable_label, _in_plane_axes,
+_default_var_name, _resolve_var_name) -- not the actual plot_*/render functions, matching this
 codebase's existing convention of not unit-testing plotting output directly
 (see e.g. tests_structural_modeling_components, which only calls
 plot_structural_model_* conditionally for on-fail debugging, never asserts
@@ -11,13 +12,51 @@ import pytest
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_visualization.simulation_visualization import (
-    build_grid_from_class, _variable_label, _in_plane_axes,
+    build_grid_from_class, _variable_label, _in_plane_axes, _default_var_name, _resolve_var_name,
 )
 
 
 def test_variable_label_known_variables_get_units():
     assert _variable_label("T") == "Temperature (°C)"
     assert _variable_label("p") == "Pressure (Pa)"
+
+
+def test_variable_label_covers_golem_names():
+    assert _variable_label("temperature") == _variable_label("T")
+    assert _variable_label("pore_pressure") == _variable_label("p")
+
+
+def _sim_with_fields(*names):
+    sim = SimulationResults()
+    sim.nodes_by_time[0.0] = np.zeros((3, 3))
+    sim.node_data_by_time[0.0] = {name: np.arange(3.0) for name in names}
+    return sim
+
+
+@pytest.mark.parametrize("fields, expected", [
+    (("p", "T"), "T"),                                   # SfePy
+    (("pore_pressure", "temperature"), "temperature"),   # GOLEM, temperature not first
+    (("concentration", "head"), "concentration"),        # custom builder: first field
+])
+def test_default_var_name_prefers_temperature(fields, expected):
+    assert _default_var_name(_sim_with_fields(*fields), 0.0) == expected
+
+
+@pytest.mark.parametrize("fields, requested, expected", [
+    (("temperature", "pore_pressure"), "T", "temperature"),
+    (("temperature", "pore_pressure"), "p", "pore_pressure"),
+    (("T", "p"), "temperature", "T"),
+    (("T", "p"), "pore_pressure", "p"),
+    (("T", "temperature"), "temperature", "temperature"),  # existing name wins
+    (("head",), "T", "T"),                                 # no alias present: unchanged
+    (("head",), "head", "head"),
+])
+def test_resolve_var_name_maps_only_onto_existing_fields(fields, requested, expected):
+    assert _resolve_var_name(_sim_with_fields(*fields), 0.0, requested) == expected
+
+
+def test_resolve_var_name_none_uses_default():
+    assert _resolve_var_name(_sim_with_fields("pore_pressure", "temperature"), 0.0, None) == "temperature"
 
 
 def test_variable_label_unknown_variable_falls_back_to_raw_name():

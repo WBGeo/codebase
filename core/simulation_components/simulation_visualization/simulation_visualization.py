@@ -32,12 +32,25 @@ logger = logging.getLogger(__name__)
 
 # Human-readable label (with units, where known) for a solved variable's
 # raw name -- falls back to the raw name itself for anything not listed
-# here (e.g. a future variable, or cell_data like block_id), so this never
-# needs to be kept in lockstep with every possible var_name.
+# here (e.g. a future variable, a custom builder's own field, or cell_data
+# like block_id), so this never needs to be kept in lockstep with every
+# possible var_name. Covers the names the generated hydrothermal builders
+# write: SfePy "T"/"p", GOLEM "temperature"/"pore_pressure".
 _VARIABLE_LABELS = {
     "T": "Temperature (°C)",
+    "temperature": "Temperature (°C)",
     "p": "Pressure (Pa)",
+    "pore_pressure": "Pressure (Pa)",
 }
+
+# The same physical variable under each simulator's name. Stored results keep
+# the solver's own names; a requested var_name is only mapped onto a field
+# that exists, so var_name="T" works for a GOLEM result and
+# var_name="temperature" for a SfePy one. Custom builders' fields are untouched.
+_VARIABLE_ALIASES = (
+    ("T", "temperature"),
+    ("p", "pore_pressure"),
+)
 
 
 def _variable_label(var_name: str) -> str:
@@ -222,12 +235,36 @@ def _available_variables(sim: SimulationResults, time: float) -> List[str]:
 
 
 def _default_var_name(sim: SimulationResults, time: float) -> str:
-    """Choose a plottable scalar without requiring model-specific field names."""
+    """Temperature if the result has it under either simulator's name, else the first scalar field."""
     variables = _available_variables(sim, time)
     if not variables:
         raise ValueError(f"No numeric scalar simulation fields found at time {time}.")
-    # Preserve the existing SfePy default, but accept any other model's names.
-    return "T" if "T" in variables else variables[0]
+    for name in _VARIABLE_ALIASES[0]:
+        if name in variables:
+            return name
+    return variables[0]
+
+
+def _resolve_var_name(sim: SimulationResults, time: float, var_name: Optional[str]) -> str:
+    """The field to plot for a requested var_name.
+
+    None picks the default (_default_var_name). A name that exists at `time`
+    is used as is. Otherwise a known alias that does exist is used instead
+    (see _VARIABLE_ALIASES); anything else is returned unchanged, so the
+    caller's usual "not found" error lists the available fields.
+    """
+    if var_name is None:
+        return _default_var_name(sim, time)
+    fields = set(sim.node_data_by_time.get(time, {})) | set(sim.cell_data_by_time.get(time, {}))
+    if var_name in fields:
+        return var_name
+    for group in _VARIABLE_ALIASES:
+        if var_name in group:
+            for alias in group:
+                if alias in fields:
+                    logger.info("Variable %r not in this result; using %r instead.", var_name, alias)
+                    return alias
+    return var_name
 
 
 def _validate_saved_time(sim: SimulationResults, time: float, parameter: str = "time") -> None:
@@ -301,10 +338,11 @@ def plot_variable_at_a_time(
     isosurface-of-a-3D-volume use case) -- a 3D analogue of the contour
     lines plot_cross_section_2D already draws in its 2D matplotlib slices.
 
-    time defaults to the final saved time step; var_name defaults to "T"
-    if present, else whatever field the sim actually has (see
-    _default_var_name) -- a CustomSfepyBuilder result need not solve
-    hydrothermal physics at all.
+    time defaults to the final saved time step; var_name defaults to the
+    temperature ("T" for SfePy, "temperature" for GOLEM) if present, else
+    whatever field the sim actually has (see _default_var_name) -- a custom
+    builder's result need not solve hydrothermal physics at all. "T" and
+    "temperature" (and "p"/"pore_pressure") are accepted for either simulator.
 
     off_screen/window_size/anti_aliasing tune the render's own resource
     footprint rather than what's shown -- this is the only 3D plot in the
@@ -323,8 +361,7 @@ def plot_variable_at_a_time(
     if time is None:
         time = max(sim.nodes_by_time.keys())
     _validate_saved_time(sim, time)
-    if var_name is None:
-        var_name = _default_var_name(sim, time)
+    var_name = _resolve_var_name(sim, time, var_name)
 
     grid = build_grid_from_class(sim, time, var_names=[var_name])
 
@@ -395,6 +432,7 @@ def plot_variable_difference(
         time_a = times[0]
     if time_b is None:
         time_b = times[-1]
+    var_name = _resolve_var_name(sim, time_a, var_name)
 
     # Built once and reused for both timesteps when they share geometry
     # (the common case -- see _same_geometry) instead of building two full
@@ -512,10 +550,11 @@ def plot_cross_section_2D(
     side with matplotlib -- filled contours plus contour lines, sharing one
     color scale so the two panels are directly, visually comparable (unlike
     two separate 3D PyVista plots/camera views). time_a/time_b default to
-    the first and last saved time steps; var_name defaults to "T" if
-    present, else whatever field the sim actually has (see
-    _default_var_name) -- a CustomSfepyBuilder result need not solve
-    hydrothermal physics at all.
+    the first and last saved time steps; var_name defaults to the
+    temperature ("T" for SfePy, "temperature" for GOLEM) if present, else
+    whatever field the sim actually has (see _default_var_name) -- a custom
+    builder's result need not solve hydrothermal physics at all. "T" and
+    "temperature" (and "p"/"pore_pressure") are accepted for either simulator.
 
     normal defaults to (0, 1, 0) -- a slice perpendicular to Y, spanning
     X and Z -- matching how this pipeline's own example models are laid
@@ -540,8 +579,7 @@ def plot_cross_section_2D(
         time_a = times[0]
     if time_b is None:
         time_b = times[-1]
-    if var_name is None:
-        var_name = _default_var_name(sim, time_a)
+    var_name = _resolve_var_name(sim, time_a, var_name)
 
     _validate_cross_section_inputs(sim, var_name, time_a, time_b)
 
@@ -612,6 +650,7 @@ def plot_cross_section_difference_2D(
         time_a = times[0]
     if time_b is None:
         time_b = times[-1]
+    var_name = _resolve_var_name(sim, time_a, var_name)
 
     _validate_cross_section_inputs(sim, var_name, time_a, time_b)
 
@@ -674,8 +713,7 @@ def plot_variable_along_line(
     pv.Line(...).sample(grid), which linearly interpolates from the mesh).
     """
     _validate_saved_time(sim, time, "time")
-    if var_name is None:
-        var_name = _default_var_name(sim, time)
+    var_name = _resolve_var_name(sim, time, var_name)
     if (var_name not in sim.node_data_by_time.get(time, {})
             and var_name not in sim.cell_data_by_time.get(time, {})):
         raise _variable_not_found_error(sim, time, var_name)
@@ -735,6 +773,7 @@ def print_variable_at_point(
     sampling) and log it. Returns the sampled value, or None (with a
     warning logged) if `point` falls outside the mesh's bounds.
     """
+    var_name = _resolve_var_name(sim, time, var_name)
     grid = build_grid_from_class(sim, time, var_names=[var_name])
     value = _sample_point_on_mesh(grid, var_name, point)
     if value is not None:
@@ -775,8 +814,7 @@ def plot_variable_time_series(
             f"Available saved time steps (index: time value): {available_steps}."
         )
     selected_times = times[start:end + 1]
-    if var_name is None:
-        var_name = _default_var_name(sim, selected_times[0])
+    var_name = _resolve_var_name(sim, selected_times[0], var_name)
     for t in selected_times:
         if (var_name not in sim.node_data_by_time.get(t, {})
                 and var_name not in sim.cell_data_by_time.get(t, {})):

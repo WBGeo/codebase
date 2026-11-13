@@ -995,8 +995,15 @@ variable at a selected time step. It displays the spatial distribution
 of variables such as temperature or pressure on the simulation mesh.
 
 By default, the final saved time step is displayed. The variable
-defaults to `"T"` if available, or the first available numerical
-scalar field.
+defaults to the temperature if available, or the first available
+numerical scalar field.
+
+Results keep the variable names their solver writes: SfePy writes `T`
+and `p`, GOLEM writes `temperature` and `pore_pressure`, and a custom
+builder writes whatever its input file defines. For the two hydrothermal
+variables, all plotting functions accept either name, so `var_name="T"`
+also works for a GOLEM result and `var_name="temperature"` for a SfePy
+one.
 
 The relevant parameters in the codebase are:
 
