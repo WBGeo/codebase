@@ -10,6 +10,7 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 
 from core.object_components import InputData_FaultElements
 from core.structural_modeling_components import general_faults
+from core.structural_modeling_components.general_faults import check_fault_model_not_crosscutting
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
     plot_fault_model_2D, plot_fault_model_3D, plot_fault_input_data_3D)
 
@@ -104,8 +105,6 @@ plot_fault_model_2D(fault_model_result.fault_frame)
 # this is enforced both as a Workbench input_checks pre-check (so the
 # Workbench can refuse the connection before the node is ever run) and here,
 # directly in code, as a clear, specific ValueError.
-from core.structural_modeling_components.general_faults import check_fault_model_not_crosscutting
-
 try:
     check_fault_model_not_crosscutting(fault_model_result)
 except ValueError as exc:
