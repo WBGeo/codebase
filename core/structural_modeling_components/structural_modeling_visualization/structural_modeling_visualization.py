@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm, to_hex
 import warnings
 
+from core.structural_modeling_components.structural_modeling_utility.surface_mesh_gradients import normalize_vectors
 from core.structural_modeling_components.structural_objects.structural_objects import (
     FaultFrame,
     StructuralFrame,
@@ -27,6 +28,26 @@ def _faces_to_vtk(faces_arr: np.ndarray) -> np.ndarray:
     if faces_arr.ndim != 2 or faces_arr.shape[1] != 3:
         raise ValueError("faces must be (N, 3) triangle indices")
     return np.hstack([np.full((faces_arr.shape[0], 1), 3, dtype=np.int64), faces_arr.astype(np.int64)]).ravel()
+
+
+def _orientation_arrow_length(grid, points: np.ndarray) -> float:
+    """Arrow length for orientation plots: 5% of the model diagonal, independent of coordinate units.
+
+    Uses the grid extent, or the bounding box of `points` for plots without a grid.
+    """
+    if grid is not None:
+        lower, upper = np.asarray(grid.extent[::2], dtype=float), np.asarray(grid.extent[1::2], dtype=float)
+    else:
+        lower, upper = points.min(axis=0), points.max(axis=0)
+    length = 0.05 * float(np.linalg.norm(upper - lower))
+    return length if length > 0 else 1.0
+
+
+def _with_unit_gradients(df_ori):
+    """Copy of an orientations DataFrame with G_x/G_y/G_z scaled to unit length."""
+    df_unit = df_ori.copy()
+    df_unit[["G_x", "G_y", "G_z"]] = normalize_vectors(df_ori[["G_x", "G_y", "G_z"]].to_numpy(dtype=float))
+    return df_unit
 
 
 def _make_formation_color_map(mapping_object: dict) -> dict[str, str]:
@@ -68,9 +89,7 @@ def plot_input_data_3D(
     color_map = _make_formation_color_map(mapping)
 
     if arrow_scale is None and show_orientations and ori is not None and not ori.empty:
-        pts = sp[["X", "Y", "Z"]].values
-        diag = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
-        arrow_scale = max(diag * 0.05, 1.0)
+        arrow_scale = _orientation_arrow_length(None, np.vstack([sp[["X", "Y", "Z"]].values, ori[["X", "Y", "Z"]].values]))
 
     legend_entries: list[tuple[str, str]] = []
     for group_name, elements in mapping.items():
@@ -143,9 +162,7 @@ def plot_fault_input_data_3D(
     }
 
     if arrow_scale is None and show_orientations and ori is not None and not ori.empty:
-        pts = sp[["X", "Y", "Z"]].values
-        diag = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
-        arrow_scale = max(diag * 0.05, 1.0)
+        arrow_scale = _orientation_arrow_length(None, np.vstack([sp[["X", "Y", "Z"]].values, ori[["X", "Y", "Z"]].values]))
 
     legend_entries: list[tuple[str, str]] = []
     for fault_name in fault_names:
@@ -269,7 +286,7 @@ def plot_structural_model_3D(
                 if df_ori is not None and not df_ori.empty:
                     start = df_ori[["X", "Y", "Z"]].values
                     direction = df_ori[["G_x", "G_y", "G_z"]].values
-                    scale = 50.0
+                    scale = _orientation_arrow_length(frame.grid, start)
                     for i in range(len(start)):
                         arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
                         plotter.add_mesh(arrow, color=elem.color)
@@ -473,6 +490,7 @@ def plot_structural_model_2D(
                         ax.scatter(df_pts["X"], df_pts["Y"], color=elem.color, s=30, edgecolors='black', linewidths=0.5)
 
                 if df_ori is not None and not df_ori.empty:
+                    df_ori = _with_unit_gradients(df_ori)
                     if axis == 'x':
                         xs, ys, u, v = df_ori["Y"], df_ori["Z"], df_ori["G_y"], df_ori["G_z"]
                     elif axis == 'y':
@@ -481,7 +499,7 @@ def plot_structural_model_2D(
                         xs, ys, u, v = df_ori["X"], df_ori["Y"], df_ori["G_x"], df_ori["G_y"]
 
                     ax.quiver(xs, ys, u, v,
-                              angles='xy', scale_units='xy', scale=0.03,
+                              angles='xy', scale_units='xy', scale=1 / _orientation_arrow_length(frame.grid, None),
                               width=0.01, headwidth=3, headlength=4, headaxislength=3,
                               color=elem.color, edgecolors='black', linewidths=0.5)
 
@@ -702,10 +720,7 @@ def plot_fault_model_3D(
                 start = df_ori[["X", "Y", "Z"]].values
                 direction = df_ori[["G_x", "G_y", "G_z"]].values
 
-                # scale arrow relative to grid X-extent so it stays visible at any coordinate scale
-                grid_obj = getattr(fault_frame, "grid", None)
-                extent_vals = getattr(grid_obj, "extent", None) if grid_obj is not None else None
-                scale = (extent_vals[1] - extent_vals[0]) * 0.05 if extent_vals is not None else 50.0
+                scale = _orientation_arrow_length(grid, start)
                 for i in range(len(start)):
                     arrow = pv.Arrow(start=start[i], direction=direction[i], scale=scale)
                     plotter.add_mesh(arrow, color=fcol)
@@ -977,6 +992,7 @@ def plot_fault_model_2D(
             if ori_getter is not None:
                 df_ori = ori_getter(getattr(fault, "name", "fault"))
                 if df_ori is not None and not getattr(df_ori, "empty", False):
+                    df_ori = _with_unit_gradients(df_ori)
                     if axis == "x":
                         xs, ys, u, v = df_ori["Y"], df_ori["Z"], df_ori["G_y"], df_ori["G_z"]
                     elif axis == "y":
@@ -986,7 +1002,7 @@ def plot_fault_model_2D(
 
                     ax.quiver(
                         xs, ys, u, v,
-                        angles="xy", scale_units="xy", scale=0.03,
+                        angles="xy", scale_units="xy", scale=1 / _orientation_arrow_length(grid, None),
                         width=0.01, headwidth=3, headlength=4, headaxislength=3,
                         color=fcol, edgecolors="black", linewidths=0.5,
                         zorder=11,  # above imshow + points

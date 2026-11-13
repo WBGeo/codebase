@@ -260,3 +260,32 @@ def test_compute_fault_domains_crosscutting_skips_domaining_but_keeps_meshes():
         assert fault.scalar_field is not None
         vertices, _ = fault.get_mesh(FaultMeshType.UNMASKED)
         assert len(vertices) > 0
+
+
+def test_fault_interpolation_passes_unit_gradients_to_gempy(monkeypatch):
+    # GemPy treats G_x/G_y/G_z as gradient values, so they must reach it with unit length
+    import core.structural_modeling_components.general_faults as mod
+
+    captured = {}
+
+    class Stop(Exception):
+        pass
+
+    def capture(**kwargs):
+        captured.update(kwargs)
+        raise Stop
+
+    monkeypatch.setattr(mod.gp.data.orientations.OrientationsTable, "from_arrays", staticmethod(capture))
+
+    surface_points = pd.DataFrame({"X": [0.0, 1.0], "Y": [0.0, 1.0], "Z": [0.0, 1.0], "formation": ["F1", "F1"]})
+    orientations = pd.DataFrame({"X": [0.5, 0.5], "Y": [0.5, 0.5], "Z": [0.5, 0.5],
+                                 "G_x": [3.0, 0.0], "G_y": [4.0, 0.0], "G_z": [0.0, 0.01], "formation": ["F1", "F1"]})
+    with pytest.raises(Stop):
+        mod.interpolate_group_universal_cokriging_for_faults(
+            element=mod.FaultElement("F1"), grid=mod.RegularGrid(extent=(0, 1, 0, 1, 0, 1), resolution=(2, 2, 2)),
+            fault_surface_points_df=surface_points, fault_orientations_points_df=orientations,
+        )
+
+    np.testing.assert_allclose(captured["G_x"], [0.6, 0.0])
+    np.testing.assert_allclose(captured["G_y"], [0.8, 0.0])
+    np.testing.assert_allclose(captured["G_z"], [0.0, 1.0])

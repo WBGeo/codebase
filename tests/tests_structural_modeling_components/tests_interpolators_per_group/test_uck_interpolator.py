@@ -294,3 +294,30 @@ def test_rescale_scalar_field_safe_maps_surfaces_to_exact_integers():
 
     assert vals_new == {"a": 1.0, "b": 2.0}
     assert np.allclose(S_new, np.array([1.0, 1.5, 2.0]))
+
+
+def test_gradient_length_does_not_weight_orientations(monkeypatch):
+    """GemPy treats G_x/G_y/G_z as gradient values, so they must reach it with unit length."""
+    import core.structural_modeling_components.interpolator_functions.universal_cokriging as mod
+
+    captured = {}
+
+    class Stop(Exception):
+        pass
+
+    def capture(**kwargs):
+        captured.update(kwargs)
+        raise Stop
+
+    monkeypatch.setattr(mod.gp.data.orientations.OrientationsTable, "from_arrays", staticmethod(capture))
+
+    ori = ori_df(["a", "b"]).assign(G_x=[3.0, 0.0], G_y=[4.0, 0.0], G_z=[0.0, 0.01])
+    with pytest.raises(Stop):
+        interpolate_group_universal_cokriging(
+            group=FakeGroup("G", ["a", "b"]), grid=FakeGrid(),
+            group_surface_points_df=surface_df(["a", "b"]), group_orientations_points_df=ori,
+        )
+
+    np.testing.assert_allclose(captured["G_x"], [0.6, 0.0])
+    np.testing.assert_allclose(captured["G_y"], [0.8, 0.0])
+    np.testing.assert_allclose(captured["G_z"], [0.0, 1.0])

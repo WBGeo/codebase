@@ -11,10 +11,10 @@ cycler==0.12.1
 filelock==3.16.1
 fonttools>=4.60.0
 fsspec==2024.10.0
-gempy==2024.2.0.2
-gempy_engine==2024.2.0
+gempy==2026.0.3
+gempy_engine==2026.0.3.post1
 gempy_plugins==2024.1.0
-gempy_viewer==2024.2.0
+gempy_viewer==2026.0.5
 gmsh==4.13.1
 idna>=3.10
 imageio==2.35.1
