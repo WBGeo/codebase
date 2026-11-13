@@ -449,7 +449,8 @@ def loss_grad(gradients_orie: torch.Tensor, y_true: torch.Tensor) -> torch.Tenso
         Mean (1 - cosine similarity) over orientation points.
     """
     grad_norm_pred = torch.norm(gradients_orie, p=2, dim=1)
-    grad_inner_product = torch.einsum("ij, ij->i", y_true, gradients_orie)
+    y_true_unit = nn.functional.normalize(y_true, p=2, dim=1)  # only the measured direction counts, not its length
+    grad_inner_product = torch.einsum("ij, ij->i", y_true_unit, gradients_orie)
     cosine = grad_inner_product / grad_norm_pred  # normal orientation
     return torch.mean(1 - cosine)
 

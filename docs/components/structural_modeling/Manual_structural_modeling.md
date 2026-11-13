@@ -56,7 +56,7 @@ If the geological model includes faults, they must be modelled before the strati
 2. Call `build_fault_frame` to create the `FaultFrame`.
 3. Call `compute_fault_domains` to interpolate each fault scalar field and partition the grid into fault domains. This step also extracts fault surface meshes.
 
-Fault interpolation currently uses Universal Co-Kriging exclusively, so **both surface points and orientations are required for every fault**. The result is a `FaultModelResults` object containing:
+Fault interpolation currently uses Universal Co-Kriging exclusively, so **both surface points and orientations are required for every fault**. Orientation vectors are scaled to unit length first, so only their direction matters. The result is a `FaultModelResults` object containing:
 
 - A **surface mesh** for each fault (the boundary between hanging wall and footwall).
 - A **domain map** that partitions every voxel in the grid into strictly separate, non-overlapping fault blocks. Stratigraphic groups that are active for a given fault will be interpolated independently in each of its domains; groups that post-date the fault are not affected by the domain split. The domain map is only computed if no faults cross-cut (see limitations below).
@@ -104,6 +104,8 @@ All methods produce the same output format (scalar field + per-element isovalues
 | **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
 | **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
 | **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
+
+For UCK and GeoINR, orientation vectors are scaled to unit length, so only their direction affects the result: UCK normalises them before passing them to GemPy, and GeoINR normalises them in its orientation loss.
 
 Three of these parameters take one of a fixed set of options. An unknown option is rejected when it is set.
 
