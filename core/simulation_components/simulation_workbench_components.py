@@ -800,6 +800,7 @@ def run_golem_simulation(
             output_dir=str(run_output_dir),
             nproc=nproc,
             temporary=True,
+            stream_output=True,
         )
     finally:
         # The result holds everything later nodes need (fields, CSV tables,
