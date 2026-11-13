@@ -105,7 +105,8 @@ the simulation either in a Docker container or directly on the host.
 >   for the codebase. The required
 >   input files are staged in the container, and the simulation results are
 >   copied back to the host. The container is removed after execution.
-> - *Workbench execution:** GOLEM runs directly on the host. 
+> - *Host execution:** GOLEM runs directly on the host. 
+>   The workbench with visual editor uses this mode with a remote mpiexec.
 >
 > In codebase, the `golem_binary` parameter specifies the GOLEM executable path in the
 > selected environment. The `workspace_dir`, `output_dir`, `nproc`, and
