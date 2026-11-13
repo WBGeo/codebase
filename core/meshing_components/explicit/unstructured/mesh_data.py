@@ -1787,7 +1787,8 @@ def __internal_refinement_opt_to_data(data, kind: str, T: typing.Type):
   if data is None or kind not in data:
     return None
   data = data[kind]
-  if f"with_{kind}" not in data or not data[f"with_{kind}"]:
+  # The form may send the checkbox as a JSON boolean or as the string "true"/"false".
+  if str(data.get(f"with_{kind}", False)).lower() != "true" or "present" not in data:
     return None
   return T(**data["present"])
 
@@ -1834,14 +1835,14 @@ def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData
     ret = Refinement()
     ret.wells = __internal_refinement_to_data(data, 'well', LinearWellRefinement, FunctionWellRefinement)
     ret.sources = __internal_refinement_to_data(data, 'source', LinearSourceRefinement, FunctionSourceRefinement)
-    ret.shafts = __internal_refinement_to_data(data, 'shafts', LinearShaftRefinement, LinearShaftRefinement)
+    ret.shafts = __internal_refinement_to_data(data, 'shafts', LinearShaftRefinement, FunctionShaftRefinement)
     ret.extra_planes = __internal_refinement_opt_to_data(data, 'extra_planes', ExtraPlaneRefinement)
     ret.ellipses = __internal_refinement_opt_to_data(data, 'ellipses', EllipseRefinement)
     ret.triangulations = __internal_refinement_opt_to_data(data, 'triangulations', TriangulationRefinement)
 
     # TODO: ALu: general refinements
 
-    if (ret.wells is None and ret.sources is None and ret.shafts and
+    if (ret.wells is None and ret.sources is None and ret.shafts is None and
             ret.general is None and ret.triangulations is None
             and ret.ellipses is None and ret.extra_planes is None):
         return None # if everything is empty -> None
@@ -1850,7 +1851,10 @@ def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData
 
 
 SmartRefinement = typing.Annotated[
-    Refinement, smartcontrols.SmartInput(inputs=['wells', 'sources', 'shafts'],
+    # Must list every parameter of __internal__refined_form, by the names the
+    # mesher uses for them; unlisted ones receive unrelated mesher inputs.
+    Refinement, smartcontrols.SmartInput(inputs=['wells', 'sources', 'shafts',
+                                                 'extra_planes', 'ellipses', 'triangulations'],
                                     to_form=__internal__refined_form,
                                     to_data=__internal__refined_options_to_data)]
 
