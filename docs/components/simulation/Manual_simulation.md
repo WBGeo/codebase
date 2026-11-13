@@ -385,11 +385,29 @@ PETSc solver settings.
 
 
 In the Workbench, this component requires connections to a
-structural model. The unstructured mesh is created in the builder. 
+structural model. The unstructured mesh is created in the builder.
+
+It works for any structural model large enough for the layout. The
+reservoir mesh fills the model's extent, and a doublet of physical size
+is placed in it: two square fracture planes (`fracture_size`, default
+100 m) normal to x, `fracture_spacing` apart (default 200 m), centred on
+`layout_center` (default: the model centre), with a well at the second
+plane. Injection and extraction act at the plane centres. Sizes follow
+what they belong to:
+
+-   the fracture and well refinement is in metres around those objects,
+    the same in every model;
+-   the background `mesh_size` defaults to 3 % of the model's smallest
+    axis (30 m for a 1 km model), so large models don't produce huge
+    meshes.
+
+The layout plus its refinement zone must fit into the model on every
+axis; otherwise the builder stops before meshing and names the axis and
+the missing space.
 
 The component accepts the following parameters in the Workbench:
--   **`mesh_size`** *(optional)*: Target volume-mesh size. Default
-    `30.0`.
+-   **`mesh_size`** *(optional)*: Target volume-mesh size (m). Default
+    empty: 3 % of the model's smallest axis.
 -   **`curve_mesh_size`** *(optional)*: Target mesh size on well curves.
     Default `5.0`.
 -   **`well_refine_size_min`** *(optional)*: Minimum target mesh size
@@ -408,7 +426,12 @@ The component accepts the following parameters in the Workbench:
     fracture refinement. Default `10.0`.
 -   **`fracture_refine_dist_max`** *(optional)*: Outer distance for
     fracture refinement. Default `60.0`.
--   **`scale_refinement_with_model`** *(optional)*: When `True`, scales well and fracture refinement sizes and distances using the smallest structural-model axis scale relative to the reference 1000-unit model. When `False`, uses the specified refinement values directly. Default `True`.
+-   **`scale_refinement_with_model`** *(optional, codebase only)*: When `True`, scales well and fracture refinement sizes and distances with the smallest model axis relative to a 1000 m reference model (the old behaviour). Default `False`: the refinement values are metres.
+-   **`fracture_size`** *(optional)*: Edge length of the two square fracture planes (m). Default `100.0`.
+-   **`fracture_spacing`** *(optional)*: Distance between the two fracture planes along x (m). Default `200.0`.
+-   **`layout_center`** *(optional)*: `(x, y, z)` centre of the fracture pair. Default: the model centre.
+-   **`injection_point`**, **`extraction_point`** *(optional)*: `(x, y, z)` source locations. Default: the centres of the first and second fracture.
+-   **`wells`** *(optional)*: Well path(s), e.g. from `Load Well` (a plain list, not hierarchical well data). Default: the model 1 well shape at the second fracture.
 -   **`rock_porosity`** *(optional)*: Rock porosity. Default `0.1`.
 -   **`rock_permeability`** *(optional)*: Rock permeability. Default
     `1.0e-15`.
@@ -486,17 +509,16 @@ unstructured_mesh_options={
 #### Optional geometry overrides
 
 Normally, the builder uses the complete structural-model extent and
-places its reference reservoir geometry automatically. The generated
-fracture pair + a well are centred in the model while preserving the
-reference geometry relationships.
+places the doublet described above. In the codebase, the reservoir extent
+and the fracture planes can also be given as explicit coordinates:
 
 -   **`reservoir_extent_override`** *(optional)*: Explicit
     `(xmin, xmax, ymin, ymax, zmin, zmax)` reservoir extent. Default
     `None`.
 -   **`fracture_planes_override`** *(optional)*: Explicit
     synthetic-fracture plane coordinates. Default `None`.
--   **`wells_override`** *(optional)*: Explicit well coordinates.
-    Default `None`.
+-   **`wells_override`** *(optional)*: Explicit well coordinates (the
+    Workbench input `wells`). Default `None`.
 
 #### Injection and extraction inputs
 

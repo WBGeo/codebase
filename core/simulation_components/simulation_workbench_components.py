@@ -21,7 +21,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, 
 from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartInputFormData
 
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
-from core.meshing_components.explicit.unstructured.mesh_data import LithoMappingMode, LithoMappingModeType
+from core.meshing_components.explicit.unstructured.mesh_data import LithoMappingMode, LithoMappingModeType, WellData
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem, RockUnitProperties, FluidProperties,
     enumerate_rock_units, check_mesh_has_known_type, check_mesh_has_lithology_mapping,
@@ -548,12 +548,13 @@ def build_golem_hydrothermal_problem(
 
 
 @wbgeo_component(
-    description="Builds the GOLEM simple-reservoir model. Unlike the GOLEM "
-                "hydrothermal model, this builder also creates its dedicated "
-                "unstructured reservoir mesh with synthetic fractures and a "
-                "well before generating the GOLEM/MOOSE input. This only "
-                "prepares the problem; Docker/GOLEM is started by Run GOLEM "
-                "Simulation.",
+    description="Builds the GOLEM simple-reservoir model for any structural model large "
+                "enough for the layout. Unlike the GOLEM hydrothermal model, this builder "
+                "also creates its own unstructured mesh: a doublet of two square fracture "
+                "planes (default 100 m, 200 m apart) and a well, centred in the model "
+                "(or at layout_center), with refinement in metres around them and a "
+                "background mesh size that follows the model size. This only prepares the "
+                "problem; Docker/GOLEM is started by Run GOLEM Simulation.",
     title='Build GOLEM Simple Reservoir Problem',
     color='#e07a5f',
     border_color='#000000',
@@ -564,7 +565,7 @@ def build_golem_hydrothermal_problem(
 )
 def build_golem_simple_reservoir_problem(
     geomodel_result: StructuralModelResults,
-    mesh_size: float = 30.0,
+    mesh_size: Optional[float] = None,
     curve_mesh_size: float = 5.0,
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     well_refine_size_min: float = 5.0,
@@ -600,15 +601,25 @@ def build_golem_simple_reservoir_problem(
     extraction_rate: float = 3.0,
     start_time: float = 0.0,
     end_time: Optional[float] = None,
+    # Appended inputs: saved pipelines store values by position.
+    fracture_size: float = 100.0,
+    fracture_spacing: float = 200.0,
+    layout_center: Optional[AnnotatedPoint] = None,
+    injection_point: Optional[AnnotatedPoint] = None,
+    extraction_point: Optional[AnnotatedPoint] = None,
+    wells: Optional[WellData] = None,
 ) -> GolemProblem:
     """
-    The reservoir mesh fills the structural model's extent. Two 100 m x 100 m fracture
-    planes (200 m apart) and a well are placed in the model's centre; injection and
-    extraction act at the centres of the first and second fracture. All rock units get
-    the same rock properties.
+    The reservoir mesh fills the structural model's extent. A doublet of physical size is
+    placed in it: two square fracture planes (fracture_size, default 100 m) fracture_spacing
+    apart (default 200 m) around layout_center (default: the model centre), and a well at
+    the second plane; injection and extraction act at the plane centres. The layout plus
+    its refinement zone must fit into the model on every axis. All rock units get the same
+    rock properties.
 
     :param geomodel_result: Structural model whose extent the reservoir mesh fills.
-    :param mesh_size: Target unstructured volume-mesh size (m).
+    :param mesh_size: Target unstructured volume-mesh size (m). Leave empty for 3 % of the
+        model's smallest axis (30 m for a 1 km model).
     :param curve_mesh_size: Target mesh size on the well curve (m).
     :param mapping_litho: Lithology mapping mode passed to the unstructured mesher.
     :param well_refine_size_min: Smallest element size next to the well (m).
@@ -619,8 +630,8 @@ def build_golem_simple_reservoir_problem(
     :param fracture_refine_size_max: Element size beyond fracture_refine_dist_max (m).
     :param fracture_refine_dist_min: Distance from the fractures up to which fracture_refine_size_min applies (m).
     :param fracture_refine_dist_max: Distance from the fractures at which fracture_refine_size_max is reached (m).
-        The eight refinement values refer to a 1000 m reference model and are scaled
-        with the model's smallest axis.
+        The eight refinement values are metres around the fractures and the well,
+        independent of the model size.
     :param rock_porosity: Porosity of the rock (-).
     :param rock_permeability: Permeability of the rock (m²).
     :param rock_density: Density of the rock (kg/m³).
@@ -648,8 +659,18 @@ def build_golem_simple_reservoir_problem(
     :param start_time: Simulation start time (s).
     :param end_time: Simulation end time (s). Leave empty to end at the last solve time of
         the builder's default time sequence.
+    :param fracture_size: Edge length of the two square fracture planes (m).
+    :param fracture_spacing: Distance between the two fracture planes along x (m).
+    :param layout_center: Centre of the fracture pair. Leave empty for the model centre.
+    :param injection_point: Injection point. Leave empty for the centre of the first fracture.
+    :param extraction_point: Extraction point. Leave empty for the centre of the second fracture.
+    :param wells: Well path(s), e.g. from Load Well. Leave empty for the default well at the
+        second fracture.
     :return: GOLEM problem envelope for Run GOLEM Simulation.
     """
+    if isinstance(wells, dict):
+        raise ValueError("The simple reservoir takes a plain list of wells; hierarchical (keyed) "
+                         "well data from Load Well is not supported here.")
     return GolemProblem(simple_reservoir=GolemSimpleReservoirProblemBuilder(
         geomodel_result=geomodel_result,
         mesh_size=mesh_size,
@@ -688,6 +709,12 @@ def build_golem_simple_reservoir_problem(
         extraction_rate=extraction_rate,
         start_time=start_time,
         end_time=end_time,
+        fracture_size=fracture_size,
+        fracture_spacing=fracture_spacing,
+        layout_center=layout_center,
+        injection_point=injection_point,
+        extraction_point=extraction_point,
+        wells_override=wells,
     ))
 
 

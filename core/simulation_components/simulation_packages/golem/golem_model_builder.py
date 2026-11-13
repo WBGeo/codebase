@@ -857,14 +857,22 @@ class GolemHydrothermalProblemBuilder:
             identifier="GolemSimpleReservoirProblemBuilder")
 @dataclass
 class GolemSimpleReservoirProblemBuilder:
-    """Create the Model-1 reservoir mesh AND its GOLEM input automatically.
+    """Create a simple reservoir mesh AND its GOLEM input for any structural model.
 
-    The reservoir mesh fills the complete structural-model extent. The two
-    synthetic fracture planes keep their original Model-1 separation and are
-    centred laterally so their distances to the left/right model boundaries are
-    equal. The well keeps its original shape and offsets relative to the second
-    fracture plane. Injection/extraction points remain at the centres of the
-    first/second fracture planes, respectively.
+    The reservoir mesh fills the complete structural-model extent. A doublet
+    layout of physical size is placed in it: two square fracture planes
+    (fracture_size, default 100 m) normal to x, fracture_spacing apart
+    (default 200 m), centred on layout_center (default: the model centre).
+    The well keeps the Model-1 shape and its offsets relative to the second
+    fracture plane. Injection/extraction act at the centres of the first and
+    second plane. The layout, plus its refinement zone, must fit inside the
+    reservoir on every axis.
+
+    Sizes follow what they belong to: the fracture/well refinement is in
+    metres around the objects (independent of the model size), while the
+    background mesh_size defaults to a fraction of the model size
+    (DEFAULT_MESH_SIZE_FRACTION of the smallest axis), so element counts stay
+    manageable on large models.
 
     All 3D material blocks receive one common reservoir material. Existing 2D
     geological faults receive the same intrinsic rock properties, while the
@@ -882,7 +890,9 @@ class GolemSimpleReservoirProblemBuilder:
     # Unstructured-mesh inputs
     # These are passed to create_unstructured_mesh_data().
     # ------------------------------------------------------------------
-    mesh_size: float = 30.0
+    # None: DEFAULT_MESH_SIZE_FRACTION of the smallest model axis (30 m for a
+    # 1 km model). A value is used as is (m).
+    mesh_size: Optional[float] = None
     curve_mesh_size: float = 5.0
     mapping_litho: str = "automatic_centers"
     gmsh_flag: bool = False
@@ -901,6 +911,12 @@ class GolemSimpleReservoirProblemBuilder:
     fracture_planes_override: Optional[List[Tuple[float, ...]]] = None
     wells_override: Optional[List[Tuple[float, ...]]] = None
 
+    # Physical layout (m). The planes are square, normal to x, centred on
+    # layout_center (None: the model centre) and fracture_spacing apart.
+    fracture_size: float = 100.0
+    fracture_spacing: float = 200.0
+    layout_center: Optional[Tuple[float, float, float]] = None
+
     # ------------------------------------------------------------------
     # Refinement inputs
     # ------------------------------------------------------------------
@@ -914,10 +930,11 @@ class GolemSimpleReservoirProblemBuilder:
     fracture_refine_dist_min: float = 10.0
     fracture_refine_dist_max: float = 60.0
 
-    # If True, the six refinement lengths above are interpreted in the
-    # reference 0..1000 model and scaled with the smallest model-axis scale.
-    # Mesh_size and curve_mesh_size remain direct unstructured-mesh inputs.
-    scale_refinement_with_model: bool = True
+    # The refinement refines around the fractures and the well, whose size
+    # doesn't change with the model, so its lengths are metres by default.
+    # True restores the old behaviour: interpret them in the 1000 m reference
+    # model and scale them with the smallest model axis.
+    scale_refinement_with_model: bool = False
 
     # ------------------------------------------------------------------
     # Reservoir / fracture / well material inputs
@@ -1039,6 +1056,7 @@ class GolemSimpleReservoirProblemBuilder:
     REFERENCE_EXTRACTION_POINT: ClassVar[Tuple[float, float, float]] = (
         600.0, 500.0, 500.0
     )
+    DEFAULT_MESH_SIZE_FRACTION: ClassVar[float] = 0.03
 
     def __post_init__(self) -> None:
         self._validate_inputs()
@@ -1111,58 +1129,62 @@ class GolemSimpleReservoirProblemBuilder:
         return tuple(float(v) for v in translated)
 
     def _default_centered_geometry(self):
-        """Return planes, well and source points for the full model domain.
+        """Return planes, well and source points of the physical doublet layout.
 
-        The original Model-1 fracture spacing is preserved as an absolute
-        distance. The plane pair is centred in x, giving equal left/right
-        margins. Their 100 x 100 geometry remains centred in y and z. The well
-        is translated with fracture 2, preserving all original offsets.
+        Two square planes of fracture_size, normal to x, at
+        layout_center.x -/+ fracture_spacing/2 and centred in y and z on
+        layout_center (default: the reservoir centre). The Model-1 well is
+        moved with the second plane, keeping its shape and offsets. Injection
+        and extraction are at the plane centres.
         """
-        xmin, xmax, ymin, ymax, zmin, zmax = self.model_extent
-        x_center = 0.5 * (xmin + xmax)
-        y_center = 0.5 * (ymin + ymax)
-        z_center = 0.5 * (zmin + zmax)
+        if self.fracture_size <= 0 or self.fracture_spacing <= 0:
+            raise ValueError("fracture_size and fracture_spacing must be > 0")
+        xmin, xmax, ymin, ymax, zmin, zmax = self.reservoir_extent
+        if self.layout_center is not None:
+            cx, cy, cz = (float(v) for v in self.layout_center)
+        else:
+            cx, cy, cz = 0.5 * (xmin + xmax), 0.5 * (ymin + ymax), 0.5 * (zmin + zmax)
+        half = 0.5 * self.fracture_size
 
-        reference_plane_1_x = float(self.REFERENCE_FRACTURE_PLANES[0][0])
-        reference_plane_2_x = float(self.REFERENCE_FRACTURE_PLANES[1][0])
-        plane_spacing = reference_plane_2_x - reference_plane_1_x
-        if plane_spacing <= 0:
-            raise ValueError("Reference fracture-plane spacing must be positive")
-        if (xmax - xmin) < plane_spacing:
-            raise ValueError(
-                "Structural-model x extent is smaller than the required "
-                f"simple-reservoir fracture spacing ({plane_spacing})."
-            )
+        def plane(x):
+            return (x, cy - half, cz - half, x, cy + half, cz - half,
+                    x, cy + half, cz + half, x, cy - half, cz + half)
 
-        # Both planes have the same lateral distance to the corresponding
-        # x-boundary while keeping their original absolute separation.
-        plane_1_x = x_center - 0.5 * plane_spacing
-        plane_2_x = x_center + 0.5 * plane_spacing
-
-        reference_center = self.REFERENCE_INJECTION_POINT
-        plane_1 = self._translate_flat_xyz(
-            self.REFERENCE_FRACTURE_PLANES[0],
-            reference_origin=reference_center,
-            destination_origin=(plane_1_x, y_center, z_center),
-        )
-        plane_2 = self._translate_flat_xyz(
-            self.REFERENCE_FRACTURE_PLANES[1],
-            reference_origin=self.REFERENCE_EXTRACTION_POINT,
-            destination_origin=(plane_2_x, y_center, z_center),
-        )
-
+        plane_1_x = cx - 0.5 * self.fracture_spacing
+        plane_2_x = cx + 0.5 * self.fracture_spacing
         wells = [
             self._translate_flat_xyz(
                 well,
                 reference_origin=self.REFERENCE_EXTRACTION_POINT,
-                destination_origin=(plane_2_x, y_center, z_center),
+                destination_origin=(plane_2_x, cy, cz),
             )
             for well in self.REFERENCE_WELLS
         ]
+        return [plane(plane_1_x), plane(plane_2_x)], wells, (plane_1_x, cy, cz), (plane_2_x, cy, cz)
 
-        injection = (plane_1_x, y_center, z_center)
-        extraction = (plane_2_x, y_center, z_center)
-        return [plane_1, plane_2], wells, injection, extraction
+    def _check_layout_fits(self) -> None:
+        """The planes, wells and source points, plus the refinement zone around
+        them, must lie inside the reservoir on every axis."""
+        items = [*self.fracture_planes, *self.wells, self.injection_point, self.extraction_point]
+        coordinates = np.vstack([np.asarray(item, dtype=float).reshape(-1, 3) for item in items])
+        margin = max(self._scaled_refinement_value(self.fracture_refine_dist_max),
+                     self._scaled_refinement_value(self.well_refine_dist_max))
+        problems = []
+        for axis, name in enumerate("xyz"):
+            lo, hi = self.reservoir_extent[2 * axis], self.reservoir_extent[2 * axis + 1]
+            need_lo = coordinates[:, axis].min() - margin
+            need_hi = coordinates[:, axis].max() + margin
+            if need_lo < lo or need_hi > hi:
+                problems.append(
+                    f"{name}: layout plus {margin:g} m refinement zone spans {need_lo:g}..{need_hi:g}, "
+                    f"reservoir is {lo:g}..{hi:g}"
+                )
+        if problems:
+            raise ValueError(
+                "The simple-reservoir layout does not fit into the model: " + "; ".join(problems)
+                + ". Use a larger model, reduce fracture_size, fracture_spacing or the refinement "
+                "distances, or move layout_center."
+            )
 
     def _prepare_scaled_geometry(self) -> None:
         self.model_extent = self._extent_tuple(
@@ -1170,6 +1192,11 @@ class GolemSimpleReservoirProblemBuilder:
         )
         self.axis_scales = self._axis_scales()
         self.length_scale = min(self.axis_scales)
+        if self.mesh_size is None:
+            smallest_axis = min(self.model_extent[2 * a + 1] - self.model_extent[2 * a] for a in range(3))
+            self.mesh_size = self.DEFAULT_MESH_SIZE_FRACTION * smallest_axis
+        elif float(self.mesh_size) <= 0:
+            raise ValueError("These simple-reservoir inputs must be > 0: mesh_size")
 
         # By default, Simple Reservoir now occupies the complete structural
         # domain. An explicit override remains an actual-coordinate override.
@@ -1207,6 +1234,8 @@ class GolemSimpleReservoirProblemBuilder:
             self.extraction_point = default_extraction
         else:
             self.extraction_point = tuple(float(v) for v in self.extraction_point)
+
+        self._check_layout_fits()
 
     # ------------------------------------------------------------------
     # Mesh generation
@@ -1495,7 +1524,6 @@ reservoir_refinement = Refinement(
     # ------------------------------------------------------------------
     def _validate_inputs(self) -> None:
         positive = {
-            "mesh_size": self.mesh_size,
             "curve_mesh_size": self.curve_mesh_size,
             "rock_porosity": self.rock_porosity,
             "rock_permeability": self.rock_permeability,
