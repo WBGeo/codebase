@@ -298,6 +298,30 @@ def test_hydrothermal_builder_structured_mesh_uses_robust_explicit_solver_settin
     assert "fgmres asm ilu 1 1.0e-04 500" in generated
 
 
+@pytest.mark.parametrize("mesh_type", [MeshType.IMPLICIT, MeshType.STRUCTURED])
+def test_hydrothermal_builder_executioner_has_absolute_tolerance_and_dtmin(
+    model1_implicit_mesh, model1_structural_result, tmp_path, mesh_type
+):
+    """Without nl_abs_tol a step starting near steady state can't meet MOOSE's
+    purely relative criterion and dt is halved indefinitely (seen on the
+    unstructured model 1 mesh with the default end_time); dtmin bounds that."""
+    mesh = model1_implicit_mesh.model_copy(update={"mesh_type": mesh_type})
+    builder = GolemHydrothermalProblemBuilder(
+        mesh_results=mesh,
+        geomodel_result=model1_structural_result,
+        end_time=3000.0,
+        num_steps=3,
+    )
+    path = tmp_path / "executioner.i"
+    builder.build_input_file(str(path))
+    generated = path.read_text()
+    executioner = generated.split("[Executioner]", 1)[1].split("[]", 1)[0]
+
+    assert "nl_abs_tol = 1e-08" in executioner
+    assert "dt = 1000.0" in executioner
+    assert "dtmin = 1.0" in executioner
+
+
 def test_hydrothermal_builder_fault_blocks_require_fault_properties(
     model1_implicit_mesh, model1_structural_result
 ):

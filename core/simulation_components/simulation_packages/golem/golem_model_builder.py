@@ -286,6 +286,18 @@ class CustomGolemBuilder:
         return output_path
 
 
+# Nonlinear convergence of the hydrothermal builder. MOOSE's own test is
+# relative to each step's initial residual (nl_rel_tol 1e-8) and has
+# practically no absolute floor. A step that starts near steady state then
+# asks for a residual below the solver's noise floor (~1e-9 with the inexact
+# Eisenstat-Walker solves on explicit meshes), Newton stagnates and MOOSE
+# halves dt indefinitely. The absolute tolerance sits above that floor and far
+# below any initial residual of a real step; dtmin bounds the cutbacks of a
+# genuine failure to about ten halvings.
+NL_ABS_TOL = 1e-8
+DTMIN_FRACTION = 1000.0
+
+
 @wbgeo_type(name="GOLEM Hydrothermal Problem", color="#e07a5f",
             identifier="GolemHydrothermalProblemBuilder")
 @dataclass
@@ -833,7 +845,9 @@ class GolemHydrothermalProblemBuilder:
   start_time = {self.start_time!r}
   end_time = {self.end_time!r}
   dt = {self.dt!r}
+  dtmin = {self.dt / DTMIN_FRACTION!r}
   num_steps = {self.num_steps!r}
+  nl_abs_tol = {NL_ABS_TOL!r}
 []
 
 [Outputs]
