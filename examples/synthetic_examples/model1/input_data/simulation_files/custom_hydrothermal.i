@@ -318,8 +318,8 @@
     [../]
     [./p]
       vars = 'pore_pressure'
-      petsc_options_iname = '-ksp_type -pc_type -pc_hypre_type -ksp_rtol -ksp_max_it'
-      petsc_options_value = 'preonly hypre boomeramg 1.0e-04 500'
+      petsc_options_iname = '-ksp_type -pc_type -pc_hypre_type'
+      petsc_options_value = 'preonly hypre boomeramg'
     [../]
     [./T]
       vars = 'temperature'
@@ -336,7 +336,9 @@
   start_time = 0.0
   end_time = 500000000000.0
   dt = 166666666666.66666
+  dtmin = 166666666.66666666
   num_steps = 3
+  nl_abs_tol = 1e-08
 []
 
 [Outputs]

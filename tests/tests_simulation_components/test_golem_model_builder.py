@@ -217,9 +217,11 @@ def test_hydrothermal_builder_generates_valid_input(
     assert "[initial_temperature]" in generated
     assert "type = FunctionIC" in generated
 
-    # Current implicit-mesh solver strategy.
-    assert "fgmres asm ilu 1 1.0e-12 20" in generated
-    assert "preonly hypre boomeramg 1.0e-12 20" in generated
+    # Implicit meshes use the same solver strategy as explicit ones.
+    assert "petsc_options = '-snes_ksp_ew'" in generated
+    assert "petsc_options_value = 'preonly hypre boomeramg'" in generated
+    assert "fgmres asm ilu 1 1.0e-04 500" in generated
+    assert "1.0e-12 20" not in generated
 
     # Test the validator on a real builder product.
     validate_golem_input(
@@ -294,7 +296,7 @@ def test_hydrothermal_builder_structured_mesh_uses_robust_explicit_solver_settin
     generated = path.read_text()
 
     assert "petsc_options = '-snes_ksp_ew'" in generated
-    assert "preonly hypre boomeramg 1.0e-04 500" in generated
+    assert "petsc_options_value = 'preonly hypre boomeramg'" in generated
     assert "fgmres asm ilu 1 1.0e-04 500" in generated
 
 

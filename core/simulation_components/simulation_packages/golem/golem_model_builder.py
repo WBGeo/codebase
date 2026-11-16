@@ -545,57 +545,31 @@ class GolemHydrothermalProblemBuilder:
         # fracture formulation is enabled only when actual 2D element blocks
         # are present in the exported mesh.
         has_faults = bool(self.fault_blocks)
-        # Both implicit and explicit structured meshes are hexahedral, but
-        # their assembled systems can have different ordering, partitioning,
-        # and conditioning. Preserve the settings that already work for the
-        # implicit mesh and use a more robust solve for explicit meshes.
-        if self.mesh_results.mesh_type == MeshType.IMPLICIT:
-            coupled_flags_line = ""
-            coupled_options = (
-                "-ksp_type -ksp_rtol -ksp_max_it "
-                "-snes_type -snes_linesearch_type "
-                "-snes_atol -snes_rtol -snes_max_it"
-            )
-            coupled_solver = (
-                "fgmres 1.0e-12 20 newtonls basic "
-                "1.0e-04 1.0e-12 25"
-            )
-            pressure_options = (
-                "-ksp_type -pc_type -sub_pc_type "
-                "-sub_pc_factor_levels -ksp_rtol -ksp_max_it"
-            )
-            pressure_solver = "fgmres asm ilu 1 1.0e-12 20"
-            temperature_options = (
-                "-ksp_type -pc_type -pc_hypre_type "
-                "-ksp_rtol -ksp_max_it"
-            )
-            temperature_solver = "preonly hypre boomeramg 1.0e-12 20"
-        else:
-            # GOLEM's reference HTM strategy, reduced to the H-T system:
-            # Eisenstat-Walker chooses an appropriate inner KSP tolerance for
-            # each Newton iteration, pressure uses AMG, and temperature uses
-            # overlapping ASM/ILU. This avoids both early oversolving and a
-            # fixed, excessively strict inner tolerance on explicit meshes.
-            coupled_flags_line = "      petsc_options = '-snes_ksp_ew'\n"
-            coupled_options = (
-                "-ksp_type -ksp_rtol -ksp_max_it "
-                "-snes_type -snes_linesearch_type "
-                "-snes_atol -snes_stol -snes_max_it"
-            )
-            coupled_solver = (
-                "fgmres 1.0e-12 50 newtonls basic "
-                "1.0e-04 0 100"
-            )
-            pressure_options = (
-                "-ksp_type -pc_type -pc_hypre_type "
-                "-ksp_rtol -ksp_max_it"
-            )
-            pressure_solver = "preonly hypre boomeramg 1.0e-04 500"
-            temperature_options = (
-                "-ksp_type -pc_type -sub_pc_type "
-                "-sub_pc_factor_levels -ksp_rtol -ksp_max_it"
-            )
-            temperature_solver = "fgmres asm ilu 1 1.0e-04 500"
+        # One solver strategy for every mesh type: GOLEM's reference HTM
+        # strategy, reduced to the H-T system. Eisenstat-Walker chooses the
+        # inner KSP tolerance for each Newton iteration, pressure uses one AMG
+        # application (preonly, so no KSP tolerance of its own), temperature
+        # overlapping ASM/ILU. The former implicit-mesh set (fixed inner
+        # tolerance 1e-12 with at most 20 iterations) never converged on
+        # model 1 with permeable rocks (1e-11 m2): the linear solves hit the
+        # iteration limit and MOOSE halved dt until it gave up.
+        coupled_flags_line = "      petsc_options = '-snes_ksp_ew'\n"
+        coupled_options = (
+            "-ksp_type -ksp_rtol -ksp_max_it "
+            "-snes_type -snes_linesearch_type "
+            "-snes_atol -snes_stol -snes_max_it"
+        )
+        coupled_solver = (
+            "fgmres 1.0e-12 50 newtonls basic "
+            "1.0e-04 0 100"
+        )
+        pressure_options = "-ksp_type -pc_type -pc_hypre_type"
+        pressure_solver = "preonly hypre boomeramg"
+        temperature_options = (
+            "-ksp_type -pc_type -sub_pc_type "
+            "-sub_pc_factor_levels -ksp_rtol -ksp_max_it"
+        )
+        temperature_solver = "fgmres asm ilu 1 1.0e-04 500"
 
         # Use semantic node-set names for every mesh type instead of assuming
         # that numeric Exodus side-set IDs have the same ordering in all WBGeo
