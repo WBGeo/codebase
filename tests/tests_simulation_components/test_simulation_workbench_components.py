@@ -14,11 +14,11 @@ import pytest
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    RockUnitProperties, FluidProperties, HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem,
+    RockUnitProperties, FluidProperties, SfepyHydrothermalProblemBuilder, SfepyCustomBuilder, SfepyProblem,
     map_mat_id_to_lithology,
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
+    GolemCustomBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
     GolemSimpleReservoirProblemBuilder,
 )
 import core.simulation_components.simulation_workbench_components as swc
@@ -194,7 +194,7 @@ def test_build_custom_sfepy_problem_reads_and_decodes_file(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
     )
     assert isinstance(problem, SfepyProblem)
-    assert isinstance(problem.custom, CustomSfepyBuilder)
+    assert isinstance(problem.custom, SfepyCustomBuilder)
     assert problem.custom.input_file_contents == text
 
 
@@ -244,7 +244,7 @@ def test_run_simulation_unwraps_hydrothermal_problem(monkeypatch):
         return sentinel_result
 
     monkeypatch.setattr(swc, "_run_simulation_sfepy", fake_run)
-    fake_builder = HydrothermalProblemBuilder.__new__(HydrothermalProblemBuilder)
+    fake_builder = SfepyHydrothermalProblemBuilder.__new__(SfepyHydrothermalProblemBuilder)
     problem = SfepyProblem.__new__(SfepyProblem)
     problem.hydrothermal, problem.custom = fake_builder, None
 
@@ -262,7 +262,7 @@ def test_run_simulation_unwraps_custom_sfepy_problem(monkeypatch):
         return sentinel_result
 
     monkeypatch.setattr(swc, "_run_simulation_sfepy", fake_run)
-    fake_builder = CustomSfepyBuilder.__new__(CustomSfepyBuilder)
+    fake_builder = SfepyCustomBuilder.__new__(SfepyCustomBuilder)
     problem = SfepyProblem.__new__(SfepyProblem)
     problem.hydrothermal, problem.custom = None, fake_builder
 
@@ -488,7 +488,7 @@ def test_build_custom_golem_problem_reads_input_file(
     assert problem.custom is not None
 
     builder = problem.inner()
-    assert isinstance(builder, CustomGolemBuilder)
+    assert isinstance(builder, GolemCustomBuilder)
     assert builder.input_file_contents == text
     assert builder.mesh_results is model1_implicit_mesh
     assert builder.geomodel_result is model1_structural_result
@@ -536,7 +536,7 @@ def test_golem_problem_accepts_each_of_the_three_problem_kinds():
     fake_simple = GolemSimpleReservoirProblemBuilder.__new__(
         GolemSimpleReservoirProblemBuilder
     )
-    fake_custom = CustomGolemBuilder.__new__(CustomGolemBuilder)
+    fake_custom = GolemCustomBuilder.__new__(GolemCustomBuilder)
 
     hydro = GolemProblem(hydrothermal=fake_hydro)
     simple = GolemProblem(simple_reservoir=fake_simple)
@@ -591,7 +591,7 @@ def test_run_golem_simulation_unwraps_all_problem_types_without_running_docker(
         )
         problem = GolemProblem(simple_reservoir=fake_inner)
     else:
-        fake_inner = CustomGolemBuilder.__new__(CustomGolemBuilder)
+        fake_inner = GolemCustomBuilder.__new__(GolemCustomBuilder)
         problem = GolemProblem(custom=fake_inner)
 
     result = run_golem_simulation(

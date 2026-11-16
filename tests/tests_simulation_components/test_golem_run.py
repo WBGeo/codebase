@@ -9,7 +9,7 @@ import pytest
 import core.simulation_components.simulation_packages.golem.golem_run as golem_run
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder,
+    GolemCustomBuilder,
     GolemHydrothermalProblemBuilder,
 )
 
@@ -489,7 +489,7 @@ def test_run_simulation_golem_custom_problem_keeps_checkpoint_directory(
 []
 """
 
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=custom_input,
         mesh_results=model1_implicit_mesh,
     )
@@ -615,7 +615,7 @@ def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
     builder_kw,
     expected_filename,
 ):
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=_custom_hierarchical_input(placeholder),
         **{builder_kw: model1_implicit_mesh},
     )
@@ -710,7 +710,7 @@ def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
     )
 
 
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=_custom_hierarchical_input("${GOLEM_MESH2_FILE}"),
         mesh2=model1_implicit_mesh,
         auxiliary_files_dir=str(auxiliary_dir),
@@ -794,7 +794,7 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
 ):
     source_mesh = tmp_path / "source_mesh.exo"
     source_mesh.write_bytes(b"external-exodus")
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=_custom_hierarchical_input("${GOLEM_MESH_FILE}"),
         mesh_file=str(source_mesh),
         mesh_file_name="reservoir.exo",

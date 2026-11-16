@@ -1,17 +1,17 @@
 """
 From-scratch custom SfePy input file for model1 (no fault, implicit
 structured mesh, include_flow=True) -- a two-stage (pressure -> Darcy
-velocity -> transient heat) solve via CustomSfepyBuilder, written WITHOUT
-using anything HydrothermalProblemBuilder generates.
+velocity -> transient heat) solve via SfepyCustomBuilder, written WITHOUT
+using anything SfepyHydrothermalProblemBuilder generates.
 
 WHAT THIS FILE DEMONSTRATES
 -----------------------------
-HydrothermalProblemBuilder generates its pressure/heat input files itself
+SfepyHydrothermalProblemBuilder generates its pressure/heat input files itself
 (build_pressure_input_file/build_heat_input_file). This file shows the
 complementary case (same idea as model2's own custom_hydrothermal.py,
 adapted to model1's simpler no-fault, implicit-structured-mesh setting): a
 two-stage
-hydrothermal problem written from first principles for CustomSfepyBuilder,
+hydrothermal problem written from first principles for SfepyCustomBuilder,
 without calling build_pressure_input_file/build_heat_input_file and without
 any literal enumerated vertex-id list. It uses only:
   - map_mat_id_to_lithology / enumerate_rock_units -- public, standalone
@@ -31,25 +31,25 @@ any literal enumerated vertex-id list. It uses only:
     -- see WHAT THIS FILE IS TIED TO below.
   - The segregated pressure/heat two-stage physics, dw_advect_div_free
     advective coupling, and data-driven diffusion-timescale default that
-    HydrothermalProblemBuilder itself implements (see
+    SfepyHydrothermalProblemBuilder itself implements (see
     sfepy_model_builder.py's module docstring and
-    HydrothermalProblemBuilder's class docstring).
+    SfepyHydrothermalProblemBuilder's class docstring).
 
-Verified end-to-end against a real HydrothermalProblemBuilder run with
+Verified end-to-end against a real SfepyHydrothermalProblemBuilder run with
 identical settings (same mesh, same rock/fluid properties, include_flow=True,
 num_steps=3): T mean agrees to 0.0 (both 39.77372655621871), max
 node-by-node |T diff| = 0.0 over a 10.0-60.0 range -- an
 exact match, not just close agreement. This is different from model2's own
-custom_hydrothermal.py, which reproduces HydrothermalProblemBuilder closely but
+custom_hydrothermal.py, which reproduces SfepyHydrothermalProblemBuilder closely but
 not exactly (T mean agrees to within 2e-6, not 0.0). The reason: model2's
 mesh is explicit/unstructured with a fault, so its independently-implemented
 EBC selectors and cell ordering take a genuinely different path through
-SfePy than HydrothermalProblemBuilder's own generated file, leaving a tiny
+SfePy than SfepyHydrothermalProblemBuilder's own generated file, leaving a tiny
 residual. model1's mesh is instead an axis-aligned Cartesian grid (implicit
 structured, no fault) -- 'vertices in (z < ...)'/'vertices in (z > ...)'
 selects exactly the same node set here as a literal enumerated vertex-id
 list would, and the rest of the solve (materials, equations, solver config)
-is otherwise identical to what HydrothermalProblemBuilder itself generates
+is otherwise identical to what SfepyHydrothermalProblemBuilder itself generates
 -- so there is no remaining source of numerical divergence left for this
 particular mesh/problem combination, and the two happen to agree exactly.
 The technique is still independently authored (no builder-generated text,
@@ -93,7 +93,7 @@ built with:
     mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 Rock/fluid properties (deliberately identical to WBGeo1.0_model1.py's own
-HydrothermalProblemBuilder call, so this is a fair comparison of technique,
+SfepyHydrothermalProblemBuilder call, so this is a fair comparison of technique,
 not different inputs):
     rock_properties = {
         "basement": RockUnitProperties(name="basement", porosity=0.10, permeability=1e-13, k_solid=50, rho_c_solid=3000 * 1300),
@@ -106,9 +106,9 @@ t_bottom=60.0. t1=500000000000.0 (data-driven diffusion timescale, L^2/alpha),
 num_steps=3, include_flow=True.
 
 Then:
-    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import CustomSfepyBuilder
+    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import SfepyCustomBuilder
     from core.simulation_components.simulation_packages.sfepy.sfepy_run import run_simulation_sfepy
-    custom_builder = CustomSfepyBuilder(
+    custom_builder = SfepyCustomBuilder(
         input_file_contents=open("custom_hydrothermal.py").read(),
         mesh_results=mesh_implicit_structured, geomodel_result=structural_model_result,
         print_linear_residuals=True,
@@ -142,7 +142,7 @@ _top_selector = f"vertices in (z > {_mesh_z_max - _z_tolerance!r})"
 # file's "official" conf below): solve steady-state Darcy pressure
 # in-process via SfePy's own public library API. Region/material/equation
 # text below is assembled by THIS file's own code (not read from
-# HydrothermalProblemBuilder), and Gamma_Top/Gamma_Bottom are
+# SfepyHydrothermalProblemBuilder), and Gamma_Top/Gamma_Bottom are
 # coordinate-based selectors, not a captured vertex-id list.
 # =======================================================================
 _stage1_conf_text = '"""\nStage-1 conf: steady-state Darcy pressure. Authored independently of\nHydrothermalProblemBuilder.build_pressure_input_file -- coordinate-based\nboundary regions, own material/variable naming.\n"""\nimport os\nimport tempfile\n\nfilename_mesh = os.environ.get(\'TEMP_MESH_FILE\', \'filename.mesh\')\n\nregions = {\n    \'Omega\': \'all\',\n    \'Omega0\': \'cells of group 0\',\n    \'Omega1\': \'cells of group 1\',\n    \'Omega2\': \'cells of group 2\',\n    \'Gamma_Bottom\': (\'vertices in (z < 10.001)\', \'facet\'),\n    \'Gamma_Top\': (\'vertices in (z > 989.999)\', \'facet\'),\n}\n\nfields = {\n    \'pressure\': (\'real\', 1, \'Omega\', 1),\n}\n\nt0 = 0.0\nt1 = 500000000000.0\nnum_steps = 1\ndt = (t1 - t0) / num_steps\n\nvariables = {\n    \'p\': (\'unknown field\', \'pressure\', 1),\n    \'q\': (\'test field\', \'pressure\', \'p\'),\n}\n\ndef setup_precond(mtx, context):\n    import scipy.sparse as sp\n    import scipy.sparse.linalg as spla\n    diag = mtx.diagonal().copy()\n    diag[diag == 0] = 1.0\n    dinv = sp.diags(1.0 / diag)\n    scaled = (dinv @ mtx).tocsc()\n    ilu = spla.spilu(scaled, drop_tol=1e-3, fill_factor=2)\n    def solve(b):\n        return ilu.solve(dinv @ b)\n    return spla.LinearOperator(mtx.shape, solve)\n\nmaterials = {\n    \'m0\': ({\'k_over_mu\': [[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]]},),\n    \'m1\': ({\'k_over_mu\': [[9.999999999999999e-09, 0.0, 0.0], [0.0, 9.999999999999999e-09, 0.0], [0.0, 0.0, 9.999999999999999e-09]]},),\n    \'m2\': ({\'k_over_mu\': [[1e-09, 0.0, 0.0], [0.0, 1e-09, 0.0], [0.0, 0.0, 1e-09]]},),\n}\n\nebcs = {\n    \'p_bottom\': (\'Gamma_Bottom\', {\'p.0\': 1000000.0}),\n    \'p_top\': (\'Gamma_Top\', {\'p.0\': 0.0}),\n}\n\nintegrals = {\n    \'i\': 1,\n}\n\nequations = {\n    \'flow\': """dw_diffusion.i.Omega0(m0.k_over_mu, q, p)\n  + dw_diffusion.i.Omega1(m1.k_over_mu, q, p)\n  + dw_diffusion.i.Omega2(m2.k_over_mu, q, p)\n  = 0""",\n}\n\nsolvers = {\n    \'ls\': (\'ls.scipy_iterative\', {\n        \'method\': \'bicgstab\',\n        \'i_max\': 500,\n        \'eps_r\': 1e-8,\n        \'setup_precond\': setup_precond,\n    }),\n    \'newton\': (\'nls.newton\', {\n        \'i_max\': 5,\n        \'eps_a\': 1e-6,\n        \'is_linear\': False,\n        \'report_status\': True,\n    }),\n    \'ts\': (\'ts.simple\', {\n        \'t0\': t0,\n        \'t1\': t1,\n        \'n_step\': num_steps,\n        \'verbose\': 1,\n    }),\n}\n\n_stage1_output_dir = tempfile.mkdtemp(prefix="stage1_pressure_")\n\noptions = {\n    \'nls\': \'newton\',\n    \'ls\': \'ls\',\n    \'ts\': \'ts\',\n    \'save_times\': \'all\',\n    \'output_dir\': _stage1_output_dir,\n}\n'
@@ -154,7 +154,7 @@ _stage1_conf_text = _stage1_conf_text.replace(
     "('vertices in (z > 989.999)', 'facet')",
     f"({_top_selector!r}, 'vertex')",
 )
-# Use exactly the same pressure solver as HydrothermalProblemBuilder.
+# Use exactly the same pressure solver as SfepyHydrothermalProblemBuilder.
 _stage1_conf_text = _stage1_conf_text.replace(
     """'ls': ('ls.scipy_iterative', {
         'method': 'bicgstab',
@@ -229,7 +229,7 @@ _grad_p = np.linalg.solve(_normal, _rhs)
 # same rock/fluid properties as stage 2's materials below. Assumes
 # mesh cell order is preserved through the mesh export/SfePy round trip
 # (concatenated in the mesh's own block order), same assumption
-# HydrothermalProblemBuilder's own compute_darcy_velocity depends on.
+# SfepyHydrothermalProblemBuilder's own compute_darcy_velocity depends on.
 _group_ids_and_k_over_mu = [(0, 1e-10), (1, 9.999999999999999e-09), (2, 1e-09)]
 _gid_to_region_name = {0: 'Omega0', 1: 'Omega1', 2: 'Omega2'}
 _stage1_velocity = {}

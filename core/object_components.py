@@ -157,7 +157,7 @@ class MeshType(StrEnum):
     generation approaches available (create_implicit_structured_mesh,
     create_structured_mesh_data, create_unstructured_mesh_data). Set
     automatically by each of those on the MeshResults they return, so
-    downstream consumers (e.g. HydrothermalProblemBuilder) can read a
+    downstream consumers (e.g. SfepyHydrothermalProblemBuilder) can read a
     mesh's own provenance instead of requiring it to be passed separately
     and kept in sync by hand.
     """

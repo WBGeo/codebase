@@ -25,15 +25,15 @@ from core.meshing_components.mesh_format.vtk.VTK_format import VTKInputs
 from core.object_components import MeshResults, StructuralModelResults
 from core.simulation_components.simulation_packages.golem.golem_input_parser import custom_material_blocks
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder,
+    GolemCustomBuilder,
     GolemHydrothermalProblemBuilder,
     GolemSimpleReservoirProblemBuilder,
     _block_lithology_ids,
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_input_parser import custom_sfepy_group_properties
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    CustomSfepyBuilder,
-    HydrothermalProblemBuilder,
+    SfepyCustomBuilder,
+    SfepyHydrothermalProblemBuilder,
     enumerate_rock_units,
     is_custom_sfepy_builder,
 )
@@ -50,7 +50,7 @@ _CATEGORY_COLORS = {"fault": _FAULT_COLOR, "fracture": "#ff1744", "well": "#ffd6
 _FALLBACK_ROCK_COLORS = ["#d9e2e8", "#4e79a7", "#59a14f", "#b07aa1", "#76b7b2", "#edc948", "#9c755f"]
 _CATEGORY_HEADERS = {"fault": "Faults", "fracture": "Fractures", "well": "Wells"}
 
-# CustomSfepyBuilder's damage zone is only a cell selection, without a
+# SfepyCustomBuilder's damage zone is only a cell selection, without a
 # properties object that could carry a name.
 _CUSTOM_SFEPY_FAULT_ZONE_NAME = "fault_zone"
 
@@ -190,7 +190,7 @@ def _sfepy_layout(builder) -> _MaterialLayout:
     if builder.geomodel_result is None:
         raise ValueError(
             "plot_builder_materials needs builder.geomodel_result to resolve lithology "
-            "names and colors -- construct the CustomSfepyBuilder with geomodel_result set."
+            "names and colors -- construct the SfepyCustomBuilder with geomodel_result set."
         )
     mesh = builder.mesh_results
     grid, offsets = _mesh_grid(mesh)
@@ -256,7 +256,7 @@ def _golem_hydrothermal_layout(builder: GolemHydrothermalProblemBuilder) -> _Mat
     return _MaterialLayout("GOLEM", grid, cell_material, materials, builder.geomodel_result)
 
 
-def _custom_golem_layout(builder: CustomGolemBuilder) -> _MaterialLayout:
+def _custom_golem_layout(builder: GolemCustomBuilder) -> _MaterialLayout:
     """Custom GOLEM input: the material each [Materials] subsection assigns to its blocks.
 
     Blocks are classified by dimension (3D rock, 2D fault, lower-dimensional
@@ -334,11 +334,11 @@ def _simple_reservoir_layout(builder: GolemSimpleReservoirProblemBuilder) -> _Ma
 
 
 def _material_layout(builder) -> _MaterialLayout:
-    if isinstance(builder, (HydrothermalProblemBuilder, CustomSfepyBuilder)):
+    if isinstance(builder, (SfepyHydrothermalProblemBuilder, SfepyCustomBuilder)):
         layout = _sfepy_layout(builder)
     elif isinstance(builder, GolemHydrothermalProblemBuilder):
         layout = _golem_hydrothermal_layout(builder)
-    elif isinstance(builder, CustomGolemBuilder):
+    elif isinstance(builder, GolemCustomBuilder):
         layout = _custom_golem_layout(builder)
     elif isinstance(builder, GolemSimpleReservoirProblemBuilder):
         layout = _simple_reservoir_layout(builder)
@@ -521,8 +521,8 @@ def plot_builder_materials(
 ) -> pv.Plotter:
     """Preview the material assignment of a SfePy or GOLEM problem builder.
 
-    Works for HydrothermalProblemBuilder, CustomSfepyBuilder,
-    GolemHydrothermalProblemBuilder, CustomGolemBuilder and
+    Works for SfepyHydrothermalProblemBuilder, SfepyCustomBuilder,
+    GolemHydrothermalProblemBuilder, GolemCustomBuilder and
     GolemSimpleReservoirProblemBuilder, with the same colours, legend and
     view for all of them.
 

@@ -1,6 +1,6 @@
 """Static reading of custom SfePy input files (no execution).
 
-Used by the material preview to show the coefficients a CustomSfepyBuilder
+Used by the material preview to show the coefficients a SfepyCustomBuilder
 file assigns to each mesh group, without running user code.
 """
 import ast

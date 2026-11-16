@@ -23,7 +23,7 @@ from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartIn
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults
 from core.meshing_components.explicit.unstructured.mesh_data import LithoMappingMode, LithoMappingModeType, WellData
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem, RockUnitProperties, FluidProperties,
+    SfepyHydrothermalProblemBuilder, SfepyCustomBuilder, SfepyProblem, RockUnitProperties, FluidProperties,
     enumerate_rock_units, check_mesh_has_known_type, check_mesh_has_lithology_mapping,
     check_mesh_has_no_engineering_objects,
 )
@@ -35,7 +35,7 @@ from core.simulation_components.simulation_packages.simulation_export import (
     export_simulation_results as _export_simulation_results,
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
+    GolemCustomBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
     GolemSimpleReservoirProblemBuilder,
 )
 from core.simulation_components.simulation_packages.golem.golem_run import (
@@ -87,7 +87,7 @@ class GolemProblem(pydantic.BaseModel):
     """
     hydrothermal: Optional[GolemHydrothermalProblemBuilder] = None
     simple_reservoir: Optional[GolemSimpleReservoirProblemBuilder] = None
-    custom: Optional[CustomGolemBuilder] = None
+    custom: Optional[GolemCustomBuilder] = None
 
     def model_post_init(self, __context) -> None:
         configured = sum(
@@ -128,7 +128,7 @@ class HydrothermalOptions_Root(pydantic.BaseModel):
     fluid: FluidProperties = FluidProperties()
     rock_properties: Dict[str, RockUnitProperties] = {}
     # Always present/editable in the form (so its fields have somewhere to
-    # live), but only actually used by HydrothermalProblemBuilder if
+    # live), but only actually used by SfepyHydrothermalProblemBuilder if
     # enable_fault_zone=True on build_hydrothermal_problem below -- keeping
     # that as a plain checkbox parameter (rather than an in-form toggle)
     # avoids relying on CtrlIf's condition-path scoping, which isn't
@@ -304,7 +304,7 @@ def build_hydrothermal_problem(
         diffusion timescale (roughly the time to reach thermal equilibrium).
     :param num_steps: Number of uniform time steps between start_time and end_time.
     :param print_linear_residuals: Include the linear solver residuals in the solver output.
-    :param linear_solver: "direct" or "iterative" (see HydrothermalProblemBuilder.LINEAR_SOLVERS).
+    :param linear_solver: "direct" or "iterative" (see SfepyHydrothermalProblemBuilder.LINEAR_SOLVERS).
     :param linear_solver_i_max: Max iterations for the iterative linear solver.
     :param linear_solver_eps_r: Relative residual tolerance for the iterative linear solver.
     :return: The problem definition, wrapped in the shared SfepyProblem envelope so it can
@@ -328,7 +328,7 @@ def build_hydrothermal_problem(
     else:
         fault_zone_properties = None
 
-    return SfepyProblem(hydrothermal=HydrothermalProblemBuilder(
+    return SfepyProblem(hydrothermal=SfepyHydrothermalProblemBuilder(
         mesh_results=mesh_results,
         geomodel_result=geomodel_result,
         rock_properties=rock_properties,
@@ -399,7 +399,7 @@ def build_custom_sfepy_problem(
         check (referenced-group count vs. lithology count), and required if
         fault_zone_n_voxels is set.
     :param fault_zone_n_voxels: If set, gives cells within this many structural-grid voxels
-        of any active fault's trace their own group id (see the returned CustomSfepyBuilder's
+        of any active fault's trace their own group id (see the returned SfepyCustomBuilder's
         fault_group_id) -- the same "damage zone" cell selection Build SfepyHydrothermal Problem
         uses, referenceable from the custom file as 'cells of group N'. No material/equation
         is auto-generated for it; that's entirely up to the custom file. None (default)
@@ -436,7 +436,7 @@ def build_custom_sfepy_problem(
     except UnicodeDecodeError as e:
         raise ValueError("Custom SfePy input file is not valid UTF-8 text.") from e
 
-    return SfepyProblem(custom=CustomSfepyBuilder(
+    return SfepyProblem(custom=SfepyCustomBuilder(
         input_file_contents=content, mesh_results=mesh_results, geomodel_result=geomodel_result,
         fault_zone_n_voxels=fault_zone_n_voxels,
     ))
@@ -759,7 +759,7 @@ def build_custom_golem_problem(
     except UnicodeDecodeError as e:
         raise ValueError("Custom GOLEM input file is not valid UTF-8 text.") from e
 
-    return GolemProblem(custom=CustomGolemBuilder(
+    return GolemProblem(custom=GolemCustomBuilder(
         input_file_contents=content,
         mesh_results=mesh_results,
         geomodel_result=geomodel_result,

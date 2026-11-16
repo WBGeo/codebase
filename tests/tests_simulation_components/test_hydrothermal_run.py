@@ -6,7 +6,7 @@ import pytest
 from core.object_components import SimulationResults
 from core.simulation_components.output_format.vtk.unified_format_vtk import SfepyOutputType
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties,
+    SfepyHydrothermalProblemBuilder, SfepyCustomBuilder, RockUnitProperties,
 )
 import core.simulation_components.simulation_packages.sfepy.sfepy_run as sfepy_run
 from core.simulation_components.simulation_packages.simulation_export import export_simulation_results
@@ -34,7 +34,7 @@ def test_check_convergence_raises_for_non_converged_run():
 def test_check_convergence_raises_for_nonzero_condition_code():
     """Any non-zero condition code counts as not converged -- no
     solver-specific reason is attached (a fixed code->reason mapping isn't
-    reliable across the arbitrary SfePy solver backends a CustomSfepyBuilder
+    reliable across the arbitrary SfePy solver backends a SfepyCustomBuilder
     file can configure), but the raw code itself is still shown."""
     stdout = "cond: 2, iter: 5, err0: 1.0, err: 0.5\n"
     with pytest.raises(RuntimeError, match="cond: 2"):
@@ -136,12 +136,12 @@ def test_run_simulation_sfepy_dispatches_hydrothermal_problem_builder(monkeypatc
         return sentinel_result
 
     def fake_run_custom(problem, keep_files_dir=None, output_dir=None, stream_output=False):
-        raise AssertionError("should not be called for a HydrothermalProblemBuilder")
+        raise AssertionError("should not be called for a SfepyHydrothermalProblemBuilder")
 
     monkeypatch.setattr(sfepy_run, "_run_hydrothermal_problem", fake_run_hydrothermal)
     monkeypatch.setattr(sfepy_run, "_run_custom_sfepy_problem", fake_run_custom)
 
-    fake_builder = HydrothermalProblemBuilder.__new__(HydrothermalProblemBuilder)
+    fake_builder = SfepyHydrothermalProblemBuilder.__new__(SfepyHydrothermalProblemBuilder)
     result = run_simulation_sfepy(fake_builder, keep_files_dir="some/dir", stream_output=True)
     assert result is sentinel_result
     assert received["builder"] is fake_builder
@@ -154,7 +154,7 @@ def test_run_simulation_sfepy_dispatches_custom_sfepy_builder(monkeypatch):
     received = {}
 
     def fake_run_hydrothermal(builder, keep_files_dir=None, output_dir=None, stream_output=False):
-        raise AssertionError("should not be called for a CustomSfepyBuilder")
+        raise AssertionError("should not be called for a SfepyCustomBuilder")
 
     def fake_run_custom(problem, keep_files_dir=None, output_dir=None, stream_output=False):
         received["problem"] = problem
@@ -163,7 +163,7 @@ def test_run_simulation_sfepy_dispatches_custom_sfepy_builder(monkeypatch):
     monkeypatch.setattr(sfepy_run, "_run_hydrothermal_problem", fake_run_hydrothermal)
     monkeypatch.setattr(sfepy_run, "_run_custom_sfepy_problem", fake_run_custom)
 
-    fake_problem = CustomSfepyBuilder.__new__(CustomSfepyBuilder)
+    fake_problem = SfepyCustomBuilder.__new__(SfepyCustomBuilder)
     result = run_simulation_sfepy(fake_problem)
     assert result is sentinel_result
     assert received["problem"] is fake_problem
@@ -189,7 +189,7 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
     monkeypatch.setattr(sfepy_run, "load_vtk_results", lambda out: sentinel_sim)
 
     fake_mask = np.array([True, False, True])
-    problem = CustomSfepyBuilder.__new__(CustomSfepyBuilder)
+    problem = SfepyCustomBuilder.__new__(SfepyCustomBuilder)
     problem.input_file_contents = "regions = {}"
     problem.mesh_results = model1_implicit_mesh
     problem.mesh_type = model1_implicit_mesh.mesh_type
@@ -206,7 +206,7 @@ def test_run_custom_sfepy_problem_passes_fault_zone_args_through(monkeypatch, mo
 
 
 # -----------------------------------------------------------------------------
-# HydrothermalProblemBuilder solver default / PETSc configuration
+# SfepyHydrothermalProblemBuilder solver default / PETSc configuration
 # -----------------------------------------------------------------------------
 
 def test_hydrothermal_builder_default_solver_is_petsc(
@@ -225,7 +225,7 @@ def test_hydrothermal_builder_default_solver_is_petsc(
         builder_module.importlib.util, "find_spec",
         lambda name: object() if name == "petsc4py" else original_find_spec(name),
     )
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
     )
@@ -249,7 +249,7 @@ def test_run_simulation_sfepy_default_petsc_when_available(
     """
     pytest.importorskip("petsc4py")
 
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         include_flow=False,
@@ -278,7 +278,7 @@ def test_run_simulation_sfepy_end_to_end_implicit_mesh(model1_implicit_mesh, mod
     Checks the result is physically sensible (boundary values respected,
     temperature stays within [t_top, t_bottom]) rather than just "didn't crash".
     """
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         include_flow=True,
@@ -319,7 +319,7 @@ def test_run_simulation_sfepy_output_dir_persists_both_stages(
     both stages' files together for either stage (see
     _run_hydrothermal_problem's output_dir docstring).
     """
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         include_flow=True,
@@ -352,7 +352,7 @@ def test_run_simulation_sfepy_pure_conduction_is_static_with_homogeneous_propert
         name: RockUnitProperties(name=name, porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6)
         for name in ("basement", "rock1", "rock2")
     }
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         rock_properties=homogeneous,
@@ -390,7 +390,7 @@ def test_run_simulation_sfepy_fault_zone_with_flow_end_to_end(
     fault_zone_properties = RockUnitProperties(
         name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2.3e6
     )
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh,
         geomodel_result=model2_faulted_structural_result,
         fault_zone_properties=fault_zone_properties,
@@ -417,8 +417,8 @@ def test_run_simulation_sfepy_fault_zone_with_flow_end_to_end(
 @pytest.mark.slow
 def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, model1_structural_result, tmp_path):
     """
-    Real end-to-end run of a CustomSfepyBuilder. Reuses
-    HydrothermalProblemBuilder.build_heat_input_file's own generated text
+    Real end-to-end run of a SfepyCustomBuilder. Reuses
+    SfepyHydrothermalProblemBuilder.build_heat_input_file's own generated text
     as the "custom" input -- an already-trusted, real SfePy file with all
     staging/sequencing self-contained (no velocity hand-off needed since
     include_flow=False), giving genuine coverage of the whole custom
@@ -429,7 +429,7 @@ def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, mo
         name: RockUnitProperties(name=name, porosity=0.15, permeability=1e-14, k_solid=2.5, rho_c_solid=2.2e6)
         for name in ("basement", "rock1", "rock2")
     }
-    reference_builder = HydrothermalProblemBuilder(
+    reference_builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         rock_properties=homogeneous,
@@ -441,7 +441,7 @@ def test_run_simulation_sfepy_custom_builder_end_to_end(model1_implicit_mesh, mo
     reference_builder.build_heat_input_file(heat_file)
     input_file_contents = open(heat_file).read()
 
-    custom_builder = CustomSfepyBuilder(
+    custom_builder = SfepyCustomBuilder(
         input_file_contents=input_file_contents,
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
@@ -467,11 +467,11 @@ def test_run_simulation_sfepy_custom_builder_fault_zone_end_to_end(
     model2_implicit_mesh, model2_faulted_structural_result, tmp_path
 ):
     """
-    Real end-to-end run of a CustomSfepyBuilder with fault_zone_n_voxels set,
+    Real end-to-end run of a SfepyCustomBuilder with fault_zone_n_voxels set,
     on a real faulted mesh -- proves the extracted
     lithology_to_group_idx/compute_fault_zone_cell_mask functions produce a
     fault_group_id that SfePy can actually resolve (not just one
-    check_custom_sfepy_regions accepts). Reuses HydrothermalProblemBuilder's
+    check_custom_sfepy_regions accepts). Reuses SfepyHydrothermalProblemBuilder's
     own generated Omega_fault region text as the "custom" input, same trick
     as test_run_simulation_sfepy_custom_builder_end_to_end -- homogeneous
     properties (including the fault zone) so pure conduction stays exactly
@@ -483,7 +483,7 @@ def test_run_simulation_sfepy_custom_builder_fault_zone_end_to_end(
     }
     fault_zone_properties = RockUnitProperties(name="fault_zone")
 
-    reference_builder = HydrothermalProblemBuilder(
+    reference_builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh,
         geomodel_result=model2_faulted_structural_result,
         rock_properties=rock_properties,
@@ -497,7 +497,7 @@ def test_run_simulation_sfepy_custom_builder_fault_zone_end_to_end(
     reference_builder.build_heat_input_file(heat_file)
     input_file_contents = open(heat_file).read()
 
-    custom_builder = CustomSfepyBuilder(
+    custom_builder = SfepyCustomBuilder(
         input_file_contents=input_file_contents,
         mesh_results=model2_implicit_mesh,
         geomodel_result=model2_faulted_structural_result,

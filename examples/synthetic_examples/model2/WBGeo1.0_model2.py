@@ -31,10 +31,10 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_abaqus)
 
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    HydrothermalProblemBuilder, CustomSfepyBuilder, RockUnitProperties, FluidProperties)
+    SfepyHydrothermalProblemBuilder, SfepyCustomBuilder, RockUnitProperties, FluidProperties)
 from core.simulation_components.simulation_packages.sfepy.sfepy_run import run_simulation_sfepy
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    GolemHydrothermalProblemBuilder, GolemFaultProperties, CustomGolemBuilder, GolemSimpleReservoirProblemBuilder)
+    GolemHydrothermalProblemBuilder, GolemFaultProperties, GolemCustomBuilder, GolemSimpleReservoirProblemBuilder)
 from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
 from core.simulation_components.simulation_packages.simulation_export import export_simulation_results
 from core.simulation_components.simulation_visualization.simulation_visualization import (
@@ -327,7 +327,7 @@ fault_zone_properties = RockUnitProperties(
     name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2.3e6
 )
 
-builder = HydrothermalProblemBuilder(
+builder = SfepyHydrothermalProblemBuilder(
     mesh_results=mesh_explicit_unstructured,
     geomodel_result=structural_model_result,
     rock_properties=rock_properties,
@@ -374,7 +374,7 @@ plot_cross_section_2D(data_by_time, "T", origin=(1250, 500, 500), normal=(0, 1, 
 with open(cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/custom_hydrothermal.py") as f:
     custom_input_file_contents = f.read()
 
-custom_builder = CustomSfepyBuilder(
+custom_builder = SfepyCustomBuilder(
     input_file_contents=custom_input_file_contents,
     mesh_results=mesh_explicit_unstructured,
     geomodel_result=structural_model_result,
@@ -442,7 +442,7 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(1250, 500, 500), normal=
 # with open(cwd + "/examples/synthetic_examples/model2/input_data/simulation_files/custom_hydrothermal.i",
 #           encoding="utf-8") as f:
 #     custom_golem_input = f.read()
-# custom_golem_problem = CustomGolemBuilder(
+# custom_golem_problem = GolemCustomBuilder(
 #     input_file_contents=custom_golem_input,
 #     mesh_results=mesh_explicit_unstructured,
 #     geomodel_result=structural_model_result,
@@ -526,7 +526,7 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(1250, 500, 500), normal=
 #           encoding="utf-8") as f:
 #     reservoir_input = f.read()
 # custom_reservoir_results = run_simulation_golem(
-#     problem=CustomGolemBuilder(
+#     problem=GolemCustomBuilder(
 #         input_file_contents=reservoir_input,
 #         mesh_results=reservoir_mesh,
 #         geomodel_result=structural_model_result,

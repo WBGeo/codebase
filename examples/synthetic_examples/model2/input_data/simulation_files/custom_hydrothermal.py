@@ -1,16 +1,16 @@
 """
 From-scratch custom SfePy input file for model2 (real fault, active damage
 zone, unstructured mesh, include_flow=True) -- a two-stage (pressure -> Darcy
-velocity -> transient heat) solve via CustomSfepyBuilder, written WITHOUT
-using anything HydrothermalProblemBuilder generates.
+velocity -> transient heat) solve via SfepyCustomBuilder, written WITHOUT
+using anything SfepyHydrothermalProblemBuilder generates.
 
 WHAT THIS FILE DEMONSTRATES
 -----------------------------
-HydrothermalProblemBuilder generates its pressure/heat input files itself
+SfepyHydrothermalProblemBuilder generates its pressure/heat input files itself
 (build_pressure_input_file/build_heat_input_file). This file shows the
 complementary case: a two-stage hydrothermal problem (fault zone, active
 damage zone, unstructured mesh, include_flow=True) written from first
-principles for CustomSfepyBuilder, without calling
+principles for SfepyCustomBuilder, without calling
 build_pressure_input_file/build_heat_input_file and without any literal
 enumerated vertex-id list. It uses only:
   - map_mat_id_to_lithology / enumerate_rock_units / compute_fault_zone_cell_mask
@@ -24,11 +24,11 @@ enumerated vertex-id list. It uses only:
     flat-boundary SfePy region by hand, independent of this codebase.
   - The segregated pressure/heat two-stage physics, dw_advect_div_free
     advective coupling, and data-driven diffusion-timescale default that
-    HydrothermalProblemBuilder itself implements (see
+    SfepyHydrothermalProblemBuilder itself implements (see
     sfepy_model_builder.py's module docstring and
-    HydrothermalProblemBuilder's class docstring).
+    SfepyHydrothermalProblemBuilder's class docstring).
 
-Verified end-to-end against a real HydrothermalProblemBuilder run with
+Verified end-to-end against a real SfepyHydrothermalProblemBuilder run with
 identical settings (same mesh, same rock/fault-zone properties,
 include_flow=True, num_steps=2): T mean agrees to within 2e-6 (36.68905 both
 sides), max node-by-node |T diff| = 9e-6 over a 10-60 range. Not expected to
@@ -80,16 +80,16 @@ WBGeo1.0_model2.py), built with:
         curve_mesh_size=5)
 
 Rock/fluid/fault-zone properties (deliberately identical to
-WBGeo1.0_model2.py's own HydrothermalProblemBuilder call, so this is a fair
+WBGeo1.0_model2.py's own SfepyHydrothermalProblemBuilder call, so this is a fair
 comparison of technique, not different inputs) -- see that script for the
 literal values. Boundary conditions: p_top=0.0, p_bottom=1000000.0,
 t_top=10.0, t_bottom=60.0. t0=0.0, t1=5.0e11, num_steps=3 time
 increments (four stored SFePy states), include_flow=True.
 
 Then:
-    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import CustomSfepyBuilder
+    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import SfepyCustomBuilder
     from core.simulation_components.simulation_packages.sfepy.sfepy_run import run_simulation_sfepy
-    custom_builder = CustomSfepyBuilder(
+    custom_builder = SfepyCustomBuilder(
         input_file_contents=open("custom_hydrothermal.py").read(),
         mesh_results=mesh_explicit_unstructured, geomodel_result=structural_model_result,
         fault_zone_n_voxels=1,
@@ -111,12 +111,12 @@ os.makedirs(_output_dir, exist_ok=True)
 # file's "official" conf below): solve steady-state Darcy pressure
 # in-process via SfePy's own public library API. Region/material/equation
 # text below is assembled by THIS file's own code (not read from
-# HydrothermalProblemBuilder), and Gamma_Top/Gamma_Bottom are
+# SfepyHydrothermalProblemBuilder), and Gamma_Top/Gamma_Bottom are
 # coordinate-based selectors, not a captured vertex-id list.
 # =======================================================================
 _stage1_conf_text = """\"\"\"
 Stage-1 conf: steady-state Darcy pressure. Authored independently of
-HydrothermalProblemBuilder.build_pressure_input_file -- coordinate-based
+SfepyHydrothermalProblemBuilder.build_pressure_input_file -- coordinate-based
 boundary regions, own material/variable naming.
 \"\"\"
 import os

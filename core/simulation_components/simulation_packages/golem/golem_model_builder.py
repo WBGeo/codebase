@@ -61,12 +61,12 @@ def _block_lithology_ids(mesh: MeshResults) -> Dict[int, int]:
 
 
 @wbgeo_type(name="Custom GOLEM Problem", color="#e07a5f",
-            identifier="CustomGolemBuilder")
+            identifier="GolemCustomBuilder")
 @dataclass
-class CustomGolemBuilder:
+class GolemCustomBuilder:
     """Run caller-supplied GOLEM input text against a WBGeo mesh.
 
-    This is the GOLEM counterpart of ``CustomSfepyBuilder``. The custom input
+    This is the GOLEM counterpart of ``SfepyCustomBuilder``. The custom input
     must use ``${GOLEM_MESH_FILE}`` in its ``FileMeshGenerator``; the runner
     replaces that token with the exported Exodus path inside Docker.
     """
@@ -115,7 +115,7 @@ class CustomGolemBuilder:
         ]
         if sum(supplied) != 1:
             raise ValueError(
-                "CustomGolemBuilder requires exactly one of mesh_results, mesh1, "
+                "GolemCustomBuilder requires exactly one of mesh_results, mesh1, "
                 "mesh2, or mesh_file."
             )
 
@@ -327,11 +327,11 @@ class GolemHydrothermalProblemBuilder:
     # retains support for a spatially constant pressure initial condition.
     initial_pressure: Optional[float] = None
     # None generates the same linear bottom-to-top temperature profile as
-    # HydrothermalProblemBuilder. A number retains support for a constant IC.
+    # SfepyHydrothermalProblemBuilder. A number retains support for a constant IC.
     initial_temperature: Optional[float] = None
     start_time: float = 0.0
     # None: the model's thermal diffusion timescale (default_diffusion_timescale),
-    # as in HydrothermalProblemBuilder.
+    # as in SfepyHydrothermalProblemBuilder.
     end_time: Optional[float] = None
     # Number of uniform time steps; the step size is derived as
     # (end_time - start_time) / num_steps, so the three can't contradict

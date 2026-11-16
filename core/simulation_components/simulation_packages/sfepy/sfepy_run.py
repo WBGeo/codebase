@@ -1,9 +1,9 @@
 """
-Runs the SfePy input files HydrothermalProblemBuilder generates
+Runs the SfePy input files SfepyHydrothermalProblemBuilder generates
 (sfepy_model_builder.py) and loads the results back into a
 SimulationResults object -- split out from the builder to keep "build the
 input data" and "run the simulation" as separate concerns, matching the
-Workbench's component/connector model: HydrothermalProblemBuilder is the
+Workbench's component/connector model: SfepyHydrothermalProblemBuilder is the
 input-data-generator component, run_simulation_sfepy() here is the run
 component that takes it as input.
 
@@ -30,8 +30,8 @@ from core.object_components import MeshResults, SimulationResults
 from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus
 from core.simulation_components.output_format.vtk.unified_format_vtk import load_vtk_results, SfepyOutputType
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    HydrothermalProblemBuilder,
-    CustomSfepyBuilder,
+    SfepyHydrothermalProblemBuilder,
+    SfepyCustomBuilder,
     MESH_TYPE_CODES,
     enumerate_rock_units,
     is_custom_sfepy_builder,
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 #: other value = not converged. Every backend agrees on 0 meaning
 #: converged (nls.newton's 1/2 vs. nls.petsc's -1 on failure -- see the
 #: same nls.py: `condition = 0 if converged else -1`), but not on what a
-#: given non-zero code specifically means. CustomSfepyBuilder lets a user
+#: given non-zero code specifically means. SfepyCustomBuilder lets a user
 #: configure any SfePy nonlinear solver, so guessing a specific reason per
 #: code (e.g. "linesearch gave up" for 2) risks attaching a wrong,
 #: solver-specific explanation to a code some other, unanticipated solver
@@ -62,7 +62,7 @@ def _check_convergence(stdout: str, input_file: str) -> None:
     Raise if any nonlinear solve reported in `stdout` didn't converge.
 
     Requires 'report_status': True on the generated input file's 'newton'
-    solver config (HydrothermalProblemBuilder._newton_ts_options_blocks) --
+    solver config (SfepyHydrothermalProblemBuilder._newton_ts_options_blocks) --
     without it, SfePy only prints per-iteration residuals, with no
     definitive final "did this converge" signal to check. A transient
     solve with num_steps > 1 runs one nonlinear solve per time step, each
@@ -123,7 +123,7 @@ def _run_sfepy_input_file(
     load_vtk_results() itself only cares about the VTK files on disk.
 
     fault_zone_cell_mask/fault_group_id (both from
-    HydrothermalProblemBuilder, both None if no fault zone is active):
+    SfepyHydrothermalProblemBuilder, both None if no fault zone is active):
     boolean array (one entry per mesh cell, concatenated in mesh_results
     .elements block order) and the extra material group id it maps to.
     When given, cells where the mask is True get their `mat_id` overridden
@@ -190,7 +190,7 @@ def _run_sfepy_input_file(
     if mesh_type_code == "unstr":
         # Drop non-volume blocks (dim != 3: fault surfaces, boundary/
         # "extended" surfaces, wells, sources -- see
-        # HydrothermalProblemBuilder._map_mat_id_to_lithology's docstring)
+        # SfepyHydrothermalProblemBuilder._map_mat_id_to_lithology's docstring)
         # ourselves, rather than relying on Exo_format.py's own unstructured
         # export path, which strips a hardcoded NUM_SIDE_BLOCKS=6 trailing
         # blocks -- correct only when there are exactly 6 non-volume blocks
@@ -207,7 +207,7 @@ def _run_sfepy_input_file(
         # Exo_format.py's exporter takes). Boundary conditions
         # (Gamma_Top/Gamma_Bottom) don't depend on this: they're built from
         # mesh_results.point_sets directly in
-        # HydrothermalProblemBuilder._region_lines(), never from Exodus
+        # SfepyHydrothermalProblemBuilder._region_lines(), never from Exodus
         # side sets, so switching export type here doesn't affect them.
         volume_elements = [
             block for block in mesh_results.elements
@@ -260,7 +260,7 @@ def _run_sfepy_input_file(
             ids = np.full(n, i, dtype=int)
             if fault_zone_cell_mask is not None:
                 # Relabels in place -- does NOT reorder cells, so this stays
-                # consistent with HydrothermalProblemBuilder.compute_darcy_velocity()'s
+                # consistent with SfepyHydrothermalProblemBuilder.compute_darcy_velocity()'s
                 # matching per-block mask split (both preserve each cell's
                 # relative/global order, just partition it by group).
                 block_mask = fault_zone_cell_mask[offset:offset + n]
@@ -331,7 +331,7 @@ def _run_sfepy_input_file(
 
 
 def _run_hydrothermal_problem(
-    builder: HydrothermalProblemBuilder, keep_files_dir: Optional[str] = None,
+    builder: SfepyHydrothermalProblemBuilder, keep_files_dir: Optional[str] = None,
     output_dir: Optional[str] = None, stream_output: bool = False,
 ) -> SimulationResults:
     """
@@ -342,15 +342,15 @@ def _run_hydrothermal_problem(
     downstream components, rather than a file path callers have to
     separately load.
 
-    The HydrothermalProblemBuilder-specific half of the public
+    The SfepyHydrothermalProblemBuilder-specific half of the public
     run_simulation_sfepy() dispatcher below (see its docstring) -- kept as
     its own function, not inlined, so this already-tested two-stage logic
-    stays untouched by the CustomSfepyBuilder branch.
+    stays untouched by the SfepyCustomBuilder branch.
 
     A standalone function taking the builder as input (not a method on it)
     to match the Workbench's @wbgeo_component style, where components are
     plain functions with typed inputs/outputs rather than methods on a
-    stateful class -- HydrothermalProblemBuilder itself is the input-data
+    stateful class -- SfepyHydrothermalProblemBuilder itself is the input-data
     generator (its constructor arguments are the component's configurable
     inputs); this is the actual "run" component.
 
@@ -509,26 +509,26 @@ def _run_hydrothermal_problem(
 
 
 def _run_custom_sfepy_problem(
-    problem: CustomSfepyBuilder, keep_files_dir: Optional[str] = None,
+    problem: SfepyCustomBuilder, keep_files_dir: Optional[str] = None,
     output_dir: Optional[str] = None, stream_output: bool = False,
 ) -> SimulationResults:
     """
-    Run a CustomSfepyBuilder's file once and return the result -- no
+    Run a SfepyCustomBuilder's file once and return the result -- no
     velocity hand-off, no merge step, unlike _run_hydrothermal_problem's
     two-stage sequence. The file is assumed to already contain all
     staging/sequencing logic and to write out everything it needs in one
     sfepy-run invocation. problem.fault_zone_cell_mask/fault_group_id
-    (both None unless CustomSfepyBuilder.fault_zone_n_voxels was set) are
+    (both None unless SfepyCustomBuilder.fault_zone_n_voxels was set) are
     passed through to _run_sfepy_input_file the same way
     _run_hydrothermal_problem already does -- the mat_id relabeling itself
-    is entirely generic, not HydrothermalProblemBuilder-specific.
+    is entirely generic, not SfepyHydrothermalProblemBuilder-specific.
 
     The returned SimulationResults.solver_output carries the raw solver
     output under the "custom" key, same purpose as
     _run_hydrothermal_problem's "pressure"/"heat" keys.
 
     problem.input_file_contents is written to a fresh temp file here (not
-    at CustomSfepyBuilder construction time) for the same reason
+    at SfepyCustomBuilder construction time) for the same reason
     _run_hydrothermal_problem writes its generated input files at run
     time: the content is what survives @wbgeo_type serialization, a temp
     path would not.
@@ -583,14 +583,14 @@ def _read_text(path: str) -> str:
 
 
 def run_simulation_sfepy(
-    problem: Union[HydrothermalProblemBuilder, CustomSfepyBuilder], keep_files_dir: Optional[str] = None,
+    problem: Union[SfepyHydrothermalProblemBuilder, SfepyCustomBuilder], keep_files_dir: Optional[str] = None,
     output_dir: Optional[str] = None, stream_output: bool = False,
 ) -> SimulationResults:
     """
     Run either kind of SfePy problem and return a SimulationResults in the
-    same format regardless of which one was given -- a HydrothermalProblemBuilder
+    same format regardless of which one was given -- a SfepyHydrothermalProblemBuilder
     (auto-generated two-stage pressure/heat problem, see
-    _run_hydrothermal_problem) or a CustomSfepyBuilder (a user-supplied,
+    _run_hydrothermal_problem) or a SfepyCustomBuilder (a user-supplied,
     already-complete SfePy input file with its own internal
     staging/sequencing logic, see _run_custom_sfepy_problem). One runner
     for both, dispatching on type, so callers (and the Workbench) don't
@@ -600,7 +600,7 @@ def run_simulation_sfepy(
     output_dir: optional directory to persist SfePy's own raw VTK output
     into instead of the default temp-and-delete behavior -- see
     _run_hydrothermal_problem's output_dir docstring for the two-stage
-    subdirectory layout used when problem is a HydrothermalProblemBuilder.
+    subdirectory layout used when problem is a SfepyHydrothermalProblemBuilder.
     For script/library callers only: the Workbench has no on-disk-path
     affordance, so its "Run Simulation" component always leaves this at
     the default (None) -- use the "Export Simulation Results" component

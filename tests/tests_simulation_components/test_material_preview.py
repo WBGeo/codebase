@@ -13,15 +13,15 @@ from matplotlib.colors import to_rgb
 import core.simulation_components.simulation_packages.golem.golem_model_builder as golem_builder
 from core.simulation_components.simulation_packages.golem.golem_input_parser import custom_material_blocks
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder,
+    GolemCustomBuilder,
     GolemHydrothermalProblemBuilder,
     GolemSimpleReservoirProblemBuilder,
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_input_parser import custom_sfepy_group_properties
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    CustomSfepyBuilder,
+    SfepyCustomBuilder,
     FluidProperties,
-    HydrothermalProblemBuilder,
+    SfepyHydrothermalProblemBuilder,
     RockUnitProperties,
 )
 from core.simulation_components.simulation_visualization.material_preview import (
@@ -75,7 +75,7 @@ def _structural_color(geomodel, name):
 
 @pytest.fixture
 def sfepy_builder(model1_implicit_mesh, model1_structural_result):
-    return HydrothermalProblemBuilder(mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+    return SfepyHydrothermalProblemBuilder(mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
                                       rock_properties=_ROCKS, linear_solver="iterative")
 
 
@@ -155,7 +155,7 @@ def test_simulation_visualization_reexports_the_preview():
 
 def test_sfepy_fault_zone_is_an_opaque_fault_material(model2_implicit_mesh, model2_faulted_structural_result):
     fault = RockUnitProperties(name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2.3e6)
-    builder = HydrothermalProblemBuilder(mesh_results=model2_implicit_mesh,
+    builder = SfepyHydrothermalProblemBuilder(mesh_results=model2_implicit_mesh,
                                          geomodel_result=model2_faulted_structural_result,
                                          fault_zone_properties=fault, fault_zone_n_voxels=1,
                                          linear_solver="iterative")
@@ -180,7 +180,7 @@ def test_sfepy_fault_zone_is_an_opaque_fault_material(model2_implicit_mesh, mode
 # -----------------------------------------------------------------------------
 
 def test_custom_sfepy_values_come_from_the_file(model1_implicit_mesh, model1_structural_result):
-    builder = CustomSfepyBuilder(input_file_contents=_read_example("custom_hydrothermal.py"),
+    builder = SfepyCustomBuilder(input_file_contents=_read_example("custom_hydrothermal.py"),
                                  mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result)
     plotter = plot_builder_materials(builder, show_plotter=False, property_name="porosity")
     (values, _), = _scalar_actors(plotter, "porosity")
@@ -189,14 +189,14 @@ def test_custom_sfepy_values_come_from_the_file(model1_implicit_mesh, model1_str
 
 
 def test_custom_sfepy_without_geomodel_raises(model1_implicit_mesh):
-    builder = CustomSfepyBuilder(input_file_contents=_read_example("custom_hydrothermal.py"),
+    builder = SfepyCustomBuilder(input_file_contents=_read_example("custom_hydrothermal.py"),
                                  mesh_results=model1_implicit_mesh)
     with pytest.raises(ValueError, match="geomodel_result"):
         plot_builder_materials(builder, show_plotter=False)
 
 
 def test_custom_golem_blocks_get_their_lithology(model1_implicit_mesh, model1_structural_result):
-    builder = CustomGolemBuilder(input_file_contents=_read_example("custom_hydrothermal.i"),
+    builder = GolemCustomBuilder(input_file_contents=_read_example("custom_hydrothermal.i"),
                                  mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result)
     layout = _material_layout(builder)
     assert {m.lithology for m in layout.materials} == {"basement", "rock1", "rock2"}

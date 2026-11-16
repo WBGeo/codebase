@@ -184,7 +184,7 @@ rock_properties = {
 }
 fluid = FluidProperties(mu=1.0e-3, k_fluid=15, rho_c_fluid=2400000)
 
-builder = HydrothermalProblemBuilder(
+builder = SfepyHydrothermalProblemBuilder(
     mesh_results=mesh_implicit_structured,
     geomodel_result=structural_model_result,
     rock_properties=rock_properties,
@@ -207,7 +207,7 @@ fault_zone_properties = RockUnitProperties(
     name="fault_zone", porosity=0.02, permeability=1e-19, k_solid=0.5, rho_c_solid=2300000
 )
 
-builder = HydrothermalProblemBuilder(
+builder = SfepyHydrothermalProblemBuilder(
     mesh_results=mesh_explicit_unstructured,
     geomodel_result=structural_model_result,
     rock_properties=rock_properties,
@@ -272,7 +272,7 @@ Example call in the codebase:
 with open("examples/synthetic_examples/model1/input_data/simulation_files/ custom_hydrothermal.py", encoding="utf-8") as f:
     custom_input_file_contents = f.read()
 
-custom_builder = CustomSfepyBuilder(
+custom_builder = SfepyCustomBuilder(
     input_file_contents=custom_input_file_contents,
     mesh_results=mesh_implicit_structured,
     geomodel_result=structural_model_result,
@@ -723,7 +723,7 @@ reservoir_auxiliary_files_dir = (
     + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
 )
 
-model_transient = problem=CustomGolemBuilder(
+model_transient = problem=GolemCustomBuilder(
         input_file_contents=reservoir_input_trans,
         input_file_path=reservoir_input_trans_path,
         auxiliary_files_dir=reservoir_auxiliary_files_dir,
@@ -782,7 +782,7 @@ Important runner inputs are:
 
 | Argument | Default | Meaning |
 | --- | --- | --- |
-| `problem` | — | GOLEM problem created by `GolemHydrothermalProblemBuilder`, `GolemSimpleReservoirProblemBuilder`, or `CustomGolemBuilder`. |
+| `problem` | — | GOLEM problem created by `GolemHydrothermalProblemBuilder`, `GolemSimpleReservoirProblemBuilder`, or `GolemCustomBuilder`. |
 | `image_name` | `None` | Docker image containing GOLEM. If provided, GOLEM runs inside a container; otherwise, it runs on the host. |
 | `golem_binary` | `"/golem/golem-opt"` | Path to the GOLEM executable inside the Docker container or on the host. |
 | `output_dir` | `<workspace_dir>/golem_output` | Host directory where simulation results and generated files are saved. |

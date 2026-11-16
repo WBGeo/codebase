@@ -4,12 +4,12 @@ Auto-generates SfePy input file(s) for a simplified, single-phase Darcy flow
 boundary regions directly from a WBGeo MeshResults + StructuralModelResults
 pair, instead of a hand-written static file with hardcoded regions.
 
-This is the input-data side only: HydrothermalProblemBuilder builds the
+This is the input-data side only: SfepyHydrothermalProblemBuilder builds the
 generated SfePy input files and their configuration. Actually running them
 (subprocess launch, output loading) lives in sfepy_run.py,
 split out to keep "build the input data" and "run the simulation" as
 separate concerns -- matching the Workbench's component/connector model,
-where HydrothermalProblemBuilder is the input-data-generator component and
+where SfepyHydrothermalProblemBuilder is the input-data-generator component and
 run_simulation_sfepy() (sfepy_run.py) is the run component.
 
 Solved as two sequential, single-physics stages (pressure, then temperature),
@@ -25,9 +25,9 @@ Wired up as Workbench components in simulation_workbench_components.py
 including a SmartInput sidebar for per-rock-unit, fluid, and fault-zone
 property editing (matching structural_workbench_components.py's
 interpolation-options pattern). build_hydrothermal_problem wraps its
-HydrothermalProblemBuilder in a shared SfepyProblem envelope (also
+SfepyHydrothermalProblemBuilder in a shared SfepyProblem envelope (also
 defined in this file) so it and build_custom_sfepy_problem's
-CustomSfepyBuilder output register as the same Workbench type -- run_simulation
+SfepyCustomBuilder output register as the same Workbench type -- run_simulation
 is one component accepting either, rather than two separate Run components.
 """
 import importlib.util
@@ -160,7 +160,7 @@ class RockUnitProperties(BaseModel):
         return self.porosity * fluid.rho_c_fluid + (1 - self.porosity) * self.rho_c_solid
 
 
-#: Valid `linear_solver` keywords for HydrothermalProblemBuilder, and the
+#: Valid `linear_solver` keywords for SfepyHydrothermalProblemBuilder, and the
 #: tradeoff each one represents. Both stages (pressure, temperature) are
 #: solved as *separate*, single-physics linear systems (see module
 #: docstring) to avoid mixing pressure (~1e6 Pa) and temperature (~10s of
@@ -210,13 +210,13 @@ def check_mesh_has_known_type(mesh_results: MeshResults) -> None:
     normally set automatically by create_implicit_structured_mesh/
     create_structured_mesh_data/create_unstructured_mesh_data. Used both as
     a Workbench input_checks pre-check (build_hydrothermal_problem) and
-    internally in HydrothermalProblemBuilder.__post_init__ -- pre-checks can
+    internally in SfepyHydrothermalProblemBuilder.__post_init__ -- pre-checks can
     be skipped by a caller (see docs/developers/components.md), so it's
     also enforced there.
     """
     if mesh_results.mesh_type is None:
         raise ValueError(
-            "mesh_results.mesh_type is None -- HydrothermalProblemBuilder needs to know "
+            "mesh_results.mesh_type is None -- SfepyHydrothermalProblemBuilder needs to know "
             "which meshing component produced this mesh (create_implicit_structured_mesh, "
             "create_structured_mesh_data, or create_unstructured_mesh_data), which normally "
             "set this automatically. If mesh_results was constructed manually (e.g. in a "
@@ -232,7 +232,7 @@ def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
     was called with mapping_litho="automatic_centers" or "automatic_corners"
     (not "manual" or "none", neither of which produce a block_id tag). Used
     both as a Workbench input_checks pre-check (build_hydrothermal_problem)
-    and internally in HydrothermalProblemBuilder._map_mat_id_to_lithology --
+    and internally in SfepyHydrothermalProblemBuilder._map_mat_id_to_lithology --
     pre-checks can be skipped by a caller (see docs/developers/components.md),
     so it's also enforced there.
     """
@@ -241,7 +241,7 @@ def check_mesh_has_lithology_mapping(mesh_results: MeshResults) -> None:
     if "block_id" not in cell_data:
         raise ValueError(
             "mesh_results has no lithology mapping (cell_data['block_id']) -- "
-            "HydrothermalProblemBuilder needs the mesh's per-block lithology mapping. "
+            "SfepyHydrothermalProblemBuilder needs the mesh's per-block lithology mapping. "
             "For unstructured meshes, make sure create_unstructured_mesh_data was called "
             "with mapping_litho='automatic_centers' or 'automatic_corners' (not 'manual' "
             "or 'none', neither of which produce a block_id tag). Implicit and structured "
@@ -265,7 +265,7 @@ def check_mesh_has_no_engineering_objects(mesh_results: MeshResults) -> None:
         bad_types = sorted(set(b.type for b in bad))
         raise ValueError(
             f"Unsupported cell type(s) detected: {bad_types}. "
-            "CustomSfepyBuilder does not support line or vertex cells."
+            "SfepyCustomBuilder does not support line or vertex cells."
         )
 
 
@@ -291,11 +291,11 @@ def map_mat_id_to_lithology(mesh_results: MeshResults) -> Dict[int, int]:
     the exported/solved mesh.
 
     Standalone module-level function (not just a method on
-    HydrothermalProblemBuilder) so CustomSfepyBuilder can reuse the exact
+    SfepyHydrothermalProblemBuilder) so SfepyCustomBuilder can reuse the exact
     same mat_id/"cells of group N" numbering to validate a user-supplied
     SfePy file against a mesh, without needing to construct a
-    HydrothermalProblemBuilder just to get it. Every place that needs a
-    lithology mapping (HydrothermalProblemBuilder._region_lines,
+    SfepyHydrothermalProblemBuilder just to get it. Every place that needs a
+    lithology mapping (SfepyHydrothermalProblemBuilder._region_lines,
     build_pressure_input_file, build_heat_input_file,
     compute_darcy_velocity, compute_cell_materials,
     check_custom_sfepy_regions) iterates this mapping's keys instead of
@@ -318,7 +318,7 @@ def extract_referenced_groups(input_file_contents: str) -> Set[int]:
     Best-effort scan of a SfePy input file's raw source text for every
     'cells of group N' region-selector literal. Text-based, not
     exec()-based: SfePy input files can use either a module-level
-    `regions = {...}` dict (what HydrothermalProblemBuilder generates) or
+    `regions = {...}` dict (what SfepyHydrothermalProblemBuilder generates) or
     a top-level `define()` function -- exec()-then-read-the-`regions`-
     attribute only works for the first style. A plain text search works
     for both, and never executes untrusted uploaded code (unlike
@@ -346,7 +346,7 @@ def check_custom_sfepy_regions(
     mat_ids when e.g. a fault splits it into disconnected mesh blocks.
 
     extra_valid_groups: additional group ids to accept beyond real
-    lithologies -- e.g. CustomSfepyBuilder.fault_group_id, an id
+    lithologies -- e.g. SfepyCustomBuilder.fault_group_id, an id
     injected at run time (not present in mesh_results.cell_data at all)
     for a "damage zone" of cells reassigned away from their host
     lithology (see compute_fault_zone_cell_mask).
@@ -378,7 +378,7 @@ def enumerate_rock_units(geomodel_result: StructuralModelResults) -> List[Tuple[
     """
     Ordered (lithology_id, formation_name), oldest(1)->youngest(N), plus
     basement(0). A module-level function (not just a method on
-    HydrothermalProblemBuilder) so it can also be used to enumerate rock
+    SfepyHydrothermalProblemBuilder) so it can also be used to enumerate rock
     unit names for a smart-options form before a builder is constructed
     (see simulation_workbench_components.py).
     """
@@ -406,7 +406,7 @@ def lithology_to_group_idx(geomodel_result: StructuralModelResults) -> Dict[int,
 
     Standalone module-level function so it's reusable by anything that
     wants a fault-zone cell mask without going through
-    HydrothermalProblemBuilder (e.g. CustomSfepyBuilder).
+    SfepyHydrothermalProblemBuilder (e.g. SfepyCustomBuilder).
     """
     frame = geomodel_result.structural_frame
     mapping: Dict[int, int] = {}
@@ -464,10 +464,10 @@ def compute_fault_zone_cell_mask(
     might be reused across faulted/unfaulted models.
 
     Standalone module-level function (not just a method on
-    HydrothermalProblemBuilder) so it's reusable by any caller wanting the
-    same "damage zone" cell selection without HydrothermalProblemBuilder's
+    SfepyHydrothermalProblemBuilder) so it's reusable by any caller wanting the
+    same "damage zone" cell selection without SfepyHydrothermalProblemBuilder's
     other machinery (rock-unit enumeration, auto-generated materials,
-    etc.) -- e.g. CustomSfepyBuilder, which only needs the cell selection
+    etc.) -- e.g. SfepyCustomBuilder, which only needs the cell selection
     itself and leaves what to *do* with it entirely to the custom file.
     """
     frame = geomodel_result.structural_frame
@@ -553,10 +553,10 @@ def default_diffusion_timescale(
     return length_scale ** 2 / alpha
 
 
-@wbgeo_type(name='Hydrothermal Problem', color='#e07a5f',
-            identifier='HydrothermalProblemBuilder')
+@wbgeo_type(name='SfePy Hydrothermal Problem', color='#e07a5f',
+            identifier='SfepyHydrothermalProblemBuilder')
 @dataclass
-class HydrothermalProblemBuilder:
+class SfepyHydrothermalProblemBuilder:
     """
     Builds SfePy problem-description files for a coupled Darcy flow + heat
     transport problem, solved as two sequential single-physics stages.
@@ -983,7 +983,7 @@ options = {{
 
         content = f'''"""
 Auto-generated SfePy problem: steady-state Darcy pressure (stage 1 of 2).
-Generated by HydrothermalProblemBuilder -- do not edit by hand.
+Generated by SfepyHydrothermalProblemBuilder -- do not edit by hand.
 """
 import os
 import numpy as np
@@ -1215,7 +1215,7 @@ equations = {{
         content = f'''"""
 Auto-generated SfePy problem: heat transport.
 {stage_docline}
-Generated by HydrothermalProblemBuilder -- do not edit by hand.
+Generated by SfepyHydrothermalProblemBuilder -- do not edit by hand.
 """
 import os
 import numpy as np
@@ -1290,21 +1290,21 @@ equations = {{
         return output_path
 
 
-@wbgeo_type(name='Custom SfePy Problem', color='#e07a5f', identifier='CustomSfepyBuilder')
+@wbgeo_type(name='Custom SfePy Problem', color='#e07a5f', identifier='SfepyCustomBuilder')
 @dataclass
-class CustomSfepyBuilder:
+class SfepyCustomBuilder:
     """
     Wraps a user-supplied, already-complete SfePy input file (with its own
     internal staging/sequencing logic -- e.g. a hand-written GOLEM-style
     coupled problem) instead of auto-generating one like
-    HydrothermalProblemBuilder does. Runs through the same
+    SfepyHydrothermalProblemBuilder does. Runs through the same
     run_simulation_sfepy() and returns the same SimulationResults type.
 
     input_file_contents is stored as text, not a file path: @wbgeo_type
     instances are serialized/reconstructed between separate Workbench
     component executions, and a temp file path would not survive that
     round trip. The content is only written to disk transiently at run
-    time, matching how HydrothermalProblemBuilder's own generated input
+    time, matching how SfepyHydrothermalProblemBuilder's own generated input
     files work.
 
     Validated at construction against mesh_results (known mesh type,
@@ -1315,26 +1315,26 @@ class CustomSfepyBuilder:
     equations, only structural mismatches with the mesh. sfepy-run's own
     region resolution remains the final authority at run time.
 
-    Unlike HydrothermalProblemBuilder, no pressure/heat staging, no
+    Unlike SfepyHydrothermalProblemBuilder, no pressure/heat staging, no
     velocity handoff -- the file is assumed to already contain everything
     it needs and gets run in a single sfepy-run invocation (see
     run_simulation_sfepy in sfepy_run.py). On an unstructured
     mesh, the same mesh_type_code == "unstr" pre-filter
-    HydrothermalProblemBuilder relies on (_run_sfepy_input_file, dropping
+    SfepyHydrothermalProblemBuilder relies on (_run_sfepy_input_file, dropping
     non-volume blocks before Exodus export) applies here too -- so a
     custom file cannot reference a non-volume (fault-surface/boundary)
     block by group number on an unstructured mesh, the same limitation
-    HydrothermalProblemBuilder already has. mesh_results with any
+    SfepyHydrothermalProblemBuilder already has. mesh_results with any
     well/source (dim < 2) block is rejected outright at construction (see
     check_mesh_has_no_engineering_objects) -- not supported yet.
 
     fault_zone_n_voxels: optional opt-in for a "damage zone" cell
-    selection, the same mechanism HydrothermalProblemBuilder uses (see
+    selection, the same mechanism SfepyHydrothermalProblemBuilder uses (see
     compute_fault_zone_cell_mask) -- a band of cells straddling each
     active fault's trace gets reassigned its own group id
     (self.fault_group_id), referenceable from the custom file as
     'cells of group {fault_group_id}' (e.g. as its own 'Omega_fault'
-    region). Unlike HydrothermalProblemBuilder, no material/equation is
+    region). Unlike SfepyHydrothermalProblemBuilder, no material/equation is
     auto-generated for this group -- the custom file's author decides
     what to do with it; this only provides the cell selection. Requires
     geomodel_result (raises if not given). None (default) leaves the
@@ -1385,11 +1385,11 @@ class CustomSfepyBuilder:
                 )
 
 
-def is_custom_sfepy_builder(problem: Union[HydrothermalProblemBuilder, CustomSfepyBuilder]) -> bool:
+def is_custom_sfepy_builder(problem: Union[SfepyHydrothermalProblemBuilder, SfepyCustomBuilder]) -> bool:
     """
-    True for a CustomSfepyBuilder, False for a HydrothermalProblemBuilder.
+    True for a SfepyCustomBuilder, False for a SfepyHydrothermalProblemBuilder.
 
-    Deliberately not `isinstance(problem, CustomSfepyBuilder)`: in the real
+    Deliberately not `isinstance(problem, SfepyCustomBuilder)`: in the real
     Workbench runtime, @wbgeo_type's real decorator (a no-op locally and
     under pytest, where no backend instance is registered) wraps the
     decorated class in a subscripted generic for its own bookkeeping, and
@@ -1398,15 +1398,15 @@ def is_custom_sfepy_builder(problem: Union[HydrothermalProblemBuilder, CustomSfe
     confirmed live in the Docker Workbench, not reproducible locally, which
     is why the existing test suite never caught it. Comparing
     type(problem).__name__ instead never touches the (possibly wrapped)
-    CustomSfepyBuilder symbol for a class/isinstance check at all -- it
+    SfepyCustomBuilder symbol for a class/isinstance check at all -- it
     only reads .__name__ off the real class actually used to construct
     `problem`, which is unaffected by how that class's *name* happens to
     be bound at module level elsewhere. Also robust to a bare
-    CustomSfepyBuilder.__new__(CustomSfepyBuilder) with __init__ never run
+    SfepyCustomBuilder.__new__(SfepyCustomBuilder) with __init__ never run
     (used by test_run_simulation_sfepy_dispatches_custom_sfepy_builder),
     unlike a hasattr(problem, "input_file_contents") check.
     """
-    return type(problem).__name__ == "CustomSfepyBuilder"
+    return type(problem).__name__ == "SfepyCustomBuilder"
 
 
 @wbgeo_type(name='SfePy Problem', color='#e07a5f', identifier='SfepyProblem')
@@ -1414,26 +1414,26 @@ def is_custom_sfepy_builder(problem: Union[HydrothermalProblemBuilder, CustomSfe
 class SfepyProblem:
     """
     Single Workbench-visible envelope around either problem-definition
-    type (HydrothermalProblemBuilder or CustomSfepyBuilder), so both
+    type (SfepyHydrothermalProblemBuilder or SfepyCustomBuilder), so both
     Build components' outputs register as the exact same type and a
     single Run Simulation component's input port can accept either.
 
     Necessary because this DSL matches ports by one single registered
     type, not by structural/union compatibility: a
-    Union[HydrothermalProblemBuilder, CustomSfepyBuilder]-typed port was
+    Union[SfepyHydrothermalProblemBuilder, SfepyCustomBuilder]-typed port was
     tried and confirmed live in the Docker Workbench to just silently
-    register with type "HydrothermalProblemBuilder" (the Union's first
+    register with type "SfepyHydrothermalProblemBuilder" (the Union's first
     member) -- no actual union semantics, and it would have rejected a
-    CustomSfepyBuilder connection. Making both Build components return
+    SfepyCustomBuilder connection. Making both Build components return
     this identical SfepyProblem type sidesteps that limitation entirely,
-    at the Workbench boundary only -- internally, HydrothermalProblemBuilder/
-    CustomSfepyBuilder are untouched, still built/validated exactly as
+    at the Workbench boundary only -- internally, SfepyHydrothermalProblemBuilder/
+    SfepyCustomBuilder are untouched, still built/validated exactly as
     before; this is purely an outer wrapper.
 
     Exactly one of hydrothermal/custom is set, enforced in __post_init__.
     """
-    hydrothermal: Optional[HydrothermalProblemBuilder] = None
-    custom: Optional[CustomSfepyBuilder] = None
+    hydrothermal: Optional[SfepyHydrothermalProblemBuilder] = None
+    custom: Optional[SfepyCustomBuilder] = None
 
     def __post_init__(self):
         if (self.hydrothermal is None) == (self.custom is None):
@@ -1441,6 +1441,6 @@ class SfepyProblem:
                 "SfepyProblem needs exactly one of hydrothermal or custom set, not both or neither."
             )
 
-    def inner(self) -> Union[HydrothermalProblemBuilder, CustomSfepyBuilder]:
+    def inner(self) -> Union[SfepyHydrothermalProblemBuilder, SfepyCustomBuilder]:
         """The actual problem definition this envelope wraps, whichever kind it is."""
         return self.hydrothermal if self.hydrothermal is not None else self.custom

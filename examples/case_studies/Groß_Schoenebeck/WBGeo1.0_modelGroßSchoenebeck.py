@@ -26,7 +26,7 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, EllipseRefinement,
     LinearSourceRefinement, FunctionSourceRefinement, TriangulationRefinement, FaultRefinement)
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder,
+    GolemCustomBuilder,
 )
 
 from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
@@ -370,7 +370,7 @@ with open(reservoir_input_path, "r") as f:
 
 # Solving the problem with Golem
 model_GS_Xindyu_transient_results = run_simulation_golem(
-    problem=CustomGolemBuilder(
+    problem=GolemCustomBuilder(
         input_file_contents=reservoir_input,
         mesh_results=mesh_unstructured_with_objects,
         geomodel_result=structural_model_result,
@@ -408,7 +408,7 @@ reservoir_auxiliary_files_dir = (
 
 # Solving the problem with Golem
 model_GS_Xindyu_sready_results = run_simulation_golem(
-    problem=CustomGolemBuilder(
+    problem=GolemCustomBuilder(
         input_file_contents=reservoir_input_trans,
         input_file_path=reservoir_input_trans_path,
         auxiliary_files_dir=reservoir_auxiliary_files_dir,

@@ -5,10 +5,10 @@ from meshio import CellBlock
 import core.simulation_components.simulation_packages.golem.golem_model_builder as golem_builder
 from core.object_components import MeshType
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
-    HydrothermalProblemBuilder,
+    SfepyHydrothermalProblemBuilder,
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    CustomGolemBuilder,
+    GolemCustomBuilder,
     GolemFaultProperties,
     GolemHydrothermalProblemBuilder,
     GolemSimpleReservoirProblemBuilder,
@@ -104,12 +104,12 @@ def _synthetic_unstructured_mesh(base_mesh, *, include_geological_fault=False):
 
 
 # -----------------------------------------------------------------------------
-# CustomGolemBuilder -- text handling only, no GOLEM/Docker
+# GolemCustomBuilder -- text handling only, no GOLEM/Docker
 # -----------------------------------------------------------------------------
 
 def test_custom_golem_builder_rejects_missing_mesh_placeholder(model1_implicit_mesh):
     with pytest.raises(ValueError, match="GOLEM_MESH_FILE"):
-        CustomGolemBuilder(
+        GolemCustomBuilder(
             input_file_contents="[Mesh]\n[]\n[Outputs]\n[]\n",
             mesh_results=model1_implicit_mesh,
         )
@@ -125,7 +125,7 @@ def test_custom_golem_builder_rejects_unknown_mesh_type(model1_implicit_mesh):
         "[Outputs]\n[]\n"
     )
     with pytest.raises(ValueError, match="implicit, structured, or unstructured"):
-        CustomGolemBuilder(input_file_contents=content, mesh_results=mesh)
+        GolemCustomBuilder(input_file_contents=content, mesh_results=mesh)
 
 
 def test_custom_golem_builder_updates_existing_residual_flag(
@@ -140,7 +140,7 @@ def test_custom_golem_builder_updates_existing_residual_flag(
         "  print_linear_residuals = true\n"
         "[]\n"
     )
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=content,
         mesh_results=model1_implicit_mesh,
         print_linear_residuals=False,
@@ -164,7 +164,7 @@ def test_custom_golem_builder_injects_residual_flag_into_outputs(
         "[Outputs]\n"
         "[]\n"
     )
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=content,
         mesh_results=model1_implicit_mesh,
         print_linear_residuals=True,
@@ -236,7 +236,7 @@ def test_hydrothermal_builder_time_defaults_match_sfepy(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
     )
-    sfepy = HydrothermalProblemBuilder(
+    sfepy = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         linear_solver="iterative",
@@ -482,7 +482,7 @@ def test_simple_reservoir_rejects_nonpositive_physical_input(
         )
 
 # -----------------------------------------------------------------------------
-# CustomGolemBuilder -- hierarchical mesh placeholders
+# GolemCustomBuilder -- hierarchical mesh placeholders
 # -----------------------------------------------------------------------------
 
 def _custom_golem_input(mesh_placeholder):
@@ -501,7 +501,7 @@ def _custom_golem_input(mesh_placeholder):
 
 
 def test_custom_golem_builder_accepts_hierarchical_mesh1(model1_implicit_mesh):
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=_custom_golem_input("${GOLEM_MESH1_FILE}"),
         mesh1=model1_implicit_mesh,
     )
@@ -511,7 +511,7 @@ def test_custom_golem_builder_accepts_hierarchical_mesh1(model1_implicit_mesh):
 
 
 def test_custom_golem_builder_accepts_hierarchical_mesh2(model1_implicit_mesh):
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=_custom_golem_input("${GOLEM_MESH2_FILE}"),
         mesh2=model1_implicit_mesh,
     )
@@ -524,7 +524,7 @@ def test_custom_golem_builder_rejects_unconnected_hierarchical_mesh(
     model1_implicit_mesh,
 ):
     with pytest.raises(ValueError, match=r"connected mesh.*GOLEM_MESH2_FILE"):
-        CustomGolemBuilder(
+        GolemCustomBuilder(
             input_file_contents=_custom_golem_input("${GOLEM_MESH2_FILE}"),
             mesh1=model1_implicit_mesh,
         )
@@ -533,7 +533,7 @@ def test_custom_golem_builder_rejects_unconnected_hierarchical_mesh(
 def test_custom_golem_builder_rejects_multiple_mesh_sources(model1_implicit_mesh):
     content = _custom_golem_input("${GOLEM_MESH1_FILE}")
     with pytest.raises(ValueError, match="exactly one of mesh_results, mesh1, mesh2, or mesh_file"):
-        CustomGolemBuilder(
+        GolemCustomBuilder(
             input_file_contents=content,
             mesh1=model1_implicit_mesh,
             mesh2=model1_implicit_mesh,
@@ -543,7 +543,7 @@ def test_custom_golem_builder_rejects_multiple_mesh_sources(model1_implicit_mesh
 def test_custom_golem_builder_accepts_external_mesh_file(tmp_path):
     mesh_path = tmp_path / "existing_mesh.exo"
     mesh_path.write_bytes(b"existing-exodus")
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=_custom_golem_input("${GOLEM_MESH_FILE}"),
         mesh_file=str(mesh_path),
     )
@@ -557,7 +557,7 @@ def test_custom_golem_builder_accepts_external_mesh_file(tmp_path):
 def test_custom_golem_builder_accepts_external_mesh_file_name(tmp_path):
     mesh_path = tmp_path / "existing_mesh.exo"
     mesh_path.write_bytes(b"existing-exodus")
-    builder = CustomGolemBuilder(
+    builder = GolemCustomBuilder(
         input_file_contents=_custom_golem_input("${GOLEM_MESH_FILE}"),
         mesh_file=str(mesh_path),
         mesh_file_name="reservoir.exo",
@@ -567,7 +567,7 @@ def test_custom_golem_builder_accepts_external_mesh_file_name(tmp_path):
 
 def test_custom_golem_builder_rejects_missing_external_mesh_file(tmp_path):
     with pytest.raises(ValueError, match="mesh_file does not exist"):
-        CustomGolemBuilder(
+        GolemCustomBuilder(
             input_file_contents=_custom_golem_input("${GOLEM_MESH_FILE}"),
             mesh_file=str(tmp_path / "missing.exo"),
         )
@@ -577,7 +577,7 @@ def test_custom_golem_builder_rejects_external_mesh_with_hierarchy_placeholder(t
     mesh_path = tmp_path / "existing_mesh.exo"
     mesh_path.write_bytes(b"existing-exodus")
     with pytest.raises(ValueError, match="without a connected mesh"):
-        CustomGolemBuilder(
+        GolemCustomBuilder(
             input_file_contents=_custom_golem_input("${GOLEM_MESH1_FILE}"),
             mesh_file=str(mesh_path),
         )
