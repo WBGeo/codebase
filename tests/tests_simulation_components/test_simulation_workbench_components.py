@@ -19,7 +19,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder im
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     GolemCustomBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
-    GolemSimpleReservoirProblemBuilder,
+    GolemSimpleReservoirBuilder,
 )
 import core.simulation_components.simulation_workbench_components as swc
 from core.simulation_components.simulation_workbench_components import (
@@ -412,8 +412,8 @@ def test_build_golem_simple_reservoir_problem_forwards_without_real_meshing(
     # Use an instance of the real expected type so GolemProblem's Pydantic
     # validation succeeds, but bypass __init__/__post_init__ so no Gmsh or
     # reservoir mesh generation occurs.
-    sentinel = GolemSimpleReservoirProblemBuilder.__new__(
-        GolemSimpleReservoirProblemBuilder
+    sentinel = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
     )
     received = {}
 
@@ -421,7 +421,7 @@ def test_build_golem_simple_reservoir_problem_forwards_without_real_meshing(
         received.update(kwargs)
         return sentinel
 
-    monkeypatch.setattr(swc, "GolemSimpleReservoirProblemBuilder", fake_builder)
+    monkeypatch.setattr(swc, "GolemSimpleReservoirBuilder", fake_builder)
 
     result = build_golem_simple_reservoir_problem(
         geomodel_result=model1_structural_result,
@@ -533,8 +533,8 @@ def test_golem_problem_accepts_each_of_the_three_problem_kinds():
     fake_hydro = GolemHydrothermalProblemBuilder.__new__(
         GolemHydrothermalProblemBuilder
     )
-    fake_simple = GolemSimpleReservoirProblemBuilder.__new__(
-        GolemSimpleReservoirProblemBuilder
+    fake_simple = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
     )
     fake_custom = GolemCustomBuilder.__new__(GolemCustomBuilder)
 
@@ -554,8 +554,8 @@ def test_golem_problem_requires_exactly_one_inner_problem():
     fake_hydro = GolemHydrothermalProblemBuilder.__new__(
         GolemHydrothermalProblemBuilder
     )
-    fake_simple = GolemSimpleReservoirProblemBuilder.__new__(
-        GolemSimpleReservoirProblemBuilder
+    fake_simple = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
     )
     with pytest.raises(ValueError, match="exactly one"):
         GolemProblem(
@@ -586,8 +586,8 @@ def test_run_golem_simulation_unwraps_all_problem_types_without_running_docker(
         )
         problem = GolemProblem(hydrothermal=fake_inner)
     elif kind == "simple_reservoir":
-        fake_inner = GolemSimpleReservoirProblemBuilder.__new__(
-            GolemSimpleReservoirProblemBuilder
+        fake_inner = GolemSimpleReservoirBuilder.__new__(
+            GolemSimpleReservoirBuilder
         )
         problem = GolemProblem(simple_reservoir=fake_inner)
     else:
@@ -629,8 +629,8 @@ def test_run_golem_simulation_deletes_output_folder_right_away(monkeypatch, tmp_
         return SimulationResults(solver="golem")
 
     monkeypatch.setattr(swc, "_run_simulation_golem", fake_run)
-    problem = GolemProblem(simple_reservoir=GolemSimpleReservoirProblemBuilder.__new__(
-        GolemSimpleReservoirProblemBuilder))
+    problem = GolemProblem(simple_reservoir=GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder))
     if fails:
         with pytest.raises(RuntimeError, match="GOLEM failed"):
             run_golem_simulation(problem=problem)
@@ -649,8 +649,8 @@ def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkey
 
     monkeypatch.setattr(swc, "_run_simulation_golem", fake_run)
 
-    fake_inner = GolemSimpleReservoirProblemBuilder.__new__(
-        GolemSimpleReservoirProblemBuilder
+    fake_inner = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
     )
     problem = GolemProblem(simple_reservoir=fake_inner)
 

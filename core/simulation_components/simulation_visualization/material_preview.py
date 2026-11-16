@@ -27,7 +27,7 @@ from core.simulation_components.simulation_packages.golem.golem_input_parser imp
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     GolemCustomBuilder,
     GolemHydrothermalProblemBuilder,
-    GolemSimpleReservoirProblemBuilder,
+    GolemSimpleReservoirBuilder,
     _block_lithology_ids,
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_input_parser import custom_sfepy_group_properties
@@ -292,7 +292,7 @@ def _custom_golem_layout(builder: GolemCustomBuilder) -> _MaterialLayout:
     return _MaterialLayout("GOLEM", grid, cell_material, materials, builder.geomodel_result)
 
 
-def _simple_reservoir_layout(builder: GolemSimpleReservoirProblemBuilder) -> _MaterialLayout:
+def _simple_reservoir_layout(builder: GolemSimpleReservoirBuilder) -> _MaterialLayout:
     """Simple reservoir: one rock, geological faults, two fractures, a well.
 
     Its properties are scalar fields on the builder (rock_porosity, ...),
@@ -340,7 +340,7 @@ def _material_layout(builder) -> _MaterialLayout:
         layout = _golem_hydrothermal_layout(builder)
     elif isinstance(builder, GolemCustomBuilder):
         layout = _custom_golem_layout(builder)
-    elif isinstance(builder, GolemSimpleReservoirProblemBuilder):
+    elif isinstance(builder, GolemSimpleReservoirBuilder):
         layout = _simple_reservoir_layout(builder)
     else:
         raise TypeError(
@@ -523,7 +523,7 @@ def plot_builder_materials(
 
     Works for SfepyHydrothermalProblemBuilder, SfepyCustomBuilder,
     GolemHydrothermalProblemBuilder, GolemCustomBuilder and
-    GolemSimpleReservoirProblemBuilder, with the same colours, legend and
+    GolemSimpleReservoirBuilder, with the same colours, legend and
     view for all of them.
 
     Without property_name, every material gets one colour: lithologies their

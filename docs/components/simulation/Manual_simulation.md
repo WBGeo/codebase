@@ -48,7 +48,7 @@ hydrothermal problem from a WBGeo mesh, structural model, rock
 properties, fluid properties, boundary conditions, and optional fault
 properties.
 
-**GOLEM Simple Reservoir Problem** --- builds a dedicated reservoir
+**GOLEM Simple Reservoir** --- builds a dedicated reservoir
 model for GOLEM, including the reservoir mesh and support for synthetic
 fractures, a well, and injection/extraction source behaviour.
 
@@ -374,9 +374,9 @@ problem_golem = GolemHydrothermalProblemBuilder(
 ```
 
 
-### GOLEM: Simple Reservoir Problem
+### GOLEM: Simple Reservoir
 
-> **Workbench component:** `Build GOLEM Simple Reservoir Problem`
+> **Workbench component:** `Build GOLEM Simple Reservoir`
 
 The simple-reservoir builder supports two synthetic fractures, a well, an injection source,
 geological faults already present in the structural model, local mesh
@@ -565,7 +565,7 @@ The following advanced inputs expose the solver configuration:
 Example call in the codebase:
 
 ``` python
-reservoir_problem_model2 = GolemSimpleReservoirProblemBuilder(
+reservoir_problem_model2 = GolemSimpleReservoirBuilder(
     geomodel_result=structural_model_result,
 
     # Unstructured mesh
@@ -648,7 +648,7 @@ reservoir_problem_model2 = GolemSimpleReservoirProblemBuilder(
 
 > **Note:** model1 and model2 in the examples demonstrate how to use
 > the **GOLEM** and **SfePy** simulation workflows. For the
-> **GOLEM Simple Reservoir Problem**, the simulation results can be
+> **GOLEM Simple Reservoir**, the simulation results can be
 > exported as an **Exodus** file and opened in **ParaView**. For
 > improved visualisation of the reservoir results, use the provided
 > ParaView state file `model1_reservoir_visualisation.pvsm` and `model2_reservoir_visualisation.pvsm`.
@@ -782,7 +782,7 @@ Important runner inputs are:
 
 | Argument | Default | Meaning |
 | --- | --- | --- |
-| `problem` | — | GOLEM problem created by `GolemHydrothermalProblemBuilder`, `GolemSimpleReservoirProblemBuilder`, or `GolemCustomBuilder`. |
+| `problem` | — | GOLEM problem created by `GolemHydrothermalProblemBuilder`, `GolemSimpleReservoirBuilder`, or `GolemCustomBuilder`. |
 | `image_name` | `None` | Docker image containing GOLEM. If provided, GOLEM runs inside a container; otherwise, it runs on the host. |
 | `golem_binary` | `"/golem/golem-opt"` | Path to the GOLEM executable inside the Docker container or on the host. |
 | `output_dir` | `<workspace_dir>/golem_output` | Host directory where simulation results and generated files are saved. |
@@ -912,7 +912,7 @@ folder right after the run, since the result already contains everything.
 Once the execution of a simulation has been done, SfePy and
 GOLEM results can use the same result plotting functions. 
 
-For the **GOLEM Simple Reservoir Problem**, the saved ParaView state
+For the **GOLEM Simple Reservoir**, the saved ParaView state
 file `model1_reservoir_visualisation.pvsm` and `model2_reservoir_visualisation.pvsm`
 can be opened in **ParaView** for
 more detailed visualisation of the simulation results. The state files

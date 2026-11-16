@@ -36,7 +36,7 @@ from core.simulation_components.simulation_packages.simulation_export import (
 )
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     GolemCustomBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
-    GolemSimpleReservoirProblemBuilder,
+    GolemSimpleReservoirBuilder,
 )
 from core.simulation_components.simulation_packages.golem.golem_run import (
     run_simulation_golem as _run_simulation_golem,
@@ -86,7 +86,7 @@ class GolemProblem(pydantic.BaseModel):
     Run GOLEM Simulation component through this envelope.
     """
     hydrothermal: Optional[GolemHydrothermalProblemBuilder] = None
-    simple_reservoir: Optional[GolemSimpleReservoirProblemBuilder] = None
+    simple_reservoir: Optional[GolemSimpleReservoirBuilder] = None
     custom: Optional[GolemCustomBuilder] = None
 
     def model_post_init(self, __context) -> None:
@@ -555,7 +555,7 @@ def build_golem_hydrothermal_problem(
                 "(or at layout_center), with refinement in metres around them and a "
                 "background mesh size that follows the model size. This only prepares the "
                 "problem; Docker/GOLEM is started by Run GOLEM Simulation.",
-    title='Build GOLEM Simple Reservoir Problem',
+    title='Build GOLEM Simple Reservoir',
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
@@ -671,7 +671,7 @@ def build_golem_simple_reservoir_problem(
     if isinstance(wells, dict):
         raise ValueError("The simple reservoir takes a plain list of wells; hierarchical (keyed) "
                          "well data from Load Well is not supported here.")
-    return GolemProblem(simple_reservoir=GolemSimpleReservoirProblemBuilder(
+    return GolemProblem(simple_reservoir=GolemSimpleReservoirBuilder(
         geomodel_result=geomodel_result,
         mesh_size=mesh_size,
         curve_mesh_size=curve_mesh_size,

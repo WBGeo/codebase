@@ -15,7 +15,7 @@ from core.simulation_components.simulation_packages.golem.golem_input_parser imp
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     GolemCustomBuilder,
     GolemHydrothermalProblemBuilder,
-    GolemSimpleReservoirProblemBuilder,
+    GolemSimpleReservoirBuilder,
 )
 from core.simulation_components.simulation_packages.sfepy.sfepy_input_parser import custom_sfepy_group_properties
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
@@ -213,7 +213,7 @@ def test_custom_golem_blocks_get_their_lithology(model1_implicit_mesh, model1_st
 def test_simple_reservoir_categories(monkeypatch, model1_implicit_mesh, model1_structural_result):
     fake_mesh = _synthetic_unstructured_mesh(model1_implicit_mesh, include_geological_fault=True)
     monkeypatch.setattr(golem_builder, "create_unstructured_mesh_data", lambda **kwargs: fake_mesh)
-    builder = GolemSimpleReservoirProblemBuilder(geomodel_result=model1_structural_result, mesh_size=25.0,
+    builder = GolemSimpleReservoirBuilder(geomodel_result=model1_structural_result, mesh_size=25.0,
                                                  curve_mesh_size=4.0, time_sequence=[10.0, 20.0, 50.0])
     layout = _material_layout(builder)
     assert [(m.name, m.category) for m in layout.materials] == [

@@ -32,7 +32,7 @@ from core.simulation_components.output_format.exodus.unified_format_exodus impor
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
     GolemCustomBuilder,
     GolemHydrothermalProblemBuilder,
-    GolemSimpleReservoirProblemBuilder,
+    GolemSimpleReservoirBuilder,
 )
 
 from core.simulation_components.simulation_packages.golem.golem_input_parser import (
@@ -102,7 +102,7 @@ def validate_golem_input(content: str, mesh_results, mesh_type: MeshType) -> Non
         raise ValueError("The mesh has no exportable material blocks")
 
     # A material section does not have to correspond one-to-one with a mesh
-    # block.  GolemSimpleReservoirProblemBuilder intentionally groups several
+    # block.  GolemSimpleReservoirBuilder intentionally groups several
     # mesh blocks into sections such as [uniform_rock], [fractures], and [well].
     # Validate the actual block assignments instead of counting subsections.
     # Material assignments may use either numeric Exodus block IDs or names
@@ -407,7 +407,7 @@ def _builder_block_names(problem) -> Dict[int, str]:
             names[index + 1] = problem._rock_name(problem.block_lithology[index])
         for ordinal, index in enumerate(problem.fault_blocks):
             names[index + 1] = list(problem.fault_properties)[ordinal]
-    elif isinstance(problem, GolemSimpleReservoirProblemBuilder):
+    elif isinstance(problem, GolemSimpleReservoirBuilder):
         groups = (
             (problem.volume_blocks, "reservoir_rock"),
             (problem.geological_fault_blocks, "geological_fault"),
@@ -427,7 +427,7 @@ CONTAINER_WORKSPACE = "/project"
 def run_simulation_golem(
     problem: Union[
         GolemHydrothermalProblemBuilder,
-        GolemSimpleReservoirProblemBuilder,
+        GolemSimpleReservoirBuilder,
         GolemCustomBuilder,
     ],
     image_name: Optional[str] = None,

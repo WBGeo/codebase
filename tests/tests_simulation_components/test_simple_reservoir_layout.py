@@ -1,5 +1,5 @@
 """
-GolemSimpleReservoirProblemBuilder on structural models of different size.
+GolemSimpleReservoirBuilder on structural models of different size.
 
 The doublet layout keeps its physical size, the refinement around it stays
 in metres, the background mesh size follows the model, and a layout that
@@ -13,7 +13,7 @@ import pytest
 
 import core.simulation_components.simulation_packages.golem.golem_model_builder as golem_builder
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    GolemSimpleReservoirProblemBuilder,
+    GolemSimpleReservoirBuilder,
 )
 from core.simulation_components.simulation_workbench_components import build_golem_simple_reservoir_problem
 from test_golem_model_builder import _synthetic_unstructured_mesh
@@ -49,7 +49,7 @@ def _planes(builder):
     ((5000, 7000, -300, 900, -2000, -500), 36.0),   # off-origin, smallest axis 1200 m
 ])
 def test_layout_keeps_physical_size_and_mesh_follows_model(fake_mesher, model1_structural_result, extent, mesh_size):
-    builder = GolemSimpleReservoirProblemBuilder(
+    builder = GolemSimpleReservoirBuilder(
         geomodel_result=_model_with_extent(model1_structural_result, extent))
     center = np.array([(extent[0] + extent[1]) / 2, (extent[2] + extent[3]) / 2, (extent[4] + extent[5]) / 2])
 
@@ -72,22 +72,22 @@ def test_layout_keeps_physical_size_and_mesh_follows_model(fake_mesher, model1_s
 
 
 def test_model1_layout_is_unchanged(fake_mesher, model1_structural_result):
-    builder = GolemSimpleReservoirProblemBuilder(geomodel_result=model1_structural_result)
-    np.testing.assert_allclose(builder.fracture_planes[0], GolemSimpleReservoirProblemBuilder.REFERENCE_FRACTURE_PLANES[0])
-    np.testing.assert_allclose(builder.fracture_planes[1], GolemSimpleReservoirProblemBuilder.REFERENCE_FRACTURE_PLANES[1])
-    np.testing.assert_allclose(builder.wells[0], GolemSimpleReservoirProblemBuilder.REFERENCE_WELLS[0])
+    builder = GolemSimpleReservoirBuilder(geomodel_result=model1_structural_result)
+    np.testing.assert_allclose(builder.fracture_planes[0], GolemSimpleReservoirBuilder.REFERENCE_FRACTURE_PLANES[0])
+    np.testing.assert_allclose(builder.fracture_planes[1], GolemSimpleReservoirBuilder.REFERENCE_FRACTURE_PLANES[1])
+    np.testing.assert_allclose(builder.wells[0], GolemSimpleReservoirBuilder.REFERENCE_WELLS[0])
 
 
 def test_too_small_model_is_rejected_naming_the_axis(fake_mesher, model1_structural_result):
     small = _model_with_extent(model1_structural_result, (0, 300, 0, 300, 0, 300))
     with pytest.raises(ValueError, match=r"does not fit into the model: x: .*reservoir is 0\.\.300") as error:
-        GolemSimpleReservoirProblemBuilder(geomodel_result=small)
+        GolemSimpleReservoirBuilder(geomodel_result=small)
     assert "y:" not in str(error.value) and "z:" not in str(error.value)
     assert not fake_mesher  # rejected before meshing
 
 
 def test_custom_size_spacing_and_center(fake_mesher, model1_structural_result):
-    builder = GolemSimpleReservoirProblemBuilder(
+    builder = GolemSimpleReservoirBuilder(
         geomodel_result=model1_structural_result,
         fracture_size=50.0, fracture_spacing=300.0, layout_center=(450.0, 400.0, 600.0))
     first, second = _planes(builder)
@@ -99,7 +99,7 @@ def test_custom_size_spacing_and_center(fake_mesher, model1_structural_result):
 
 def test_scale_refinement_with_model_restores_old_scaling(fake_mesher, model1_structural_result):
     large = _model_with_extent(model1_structural_result, (0, 10000, 0, 10000, 0, 10000))
-    builder = GolemSimpleReservoirProblemBuilder(geomodel_result=large, scale_refinement_with_model=True)
+    builder = GolemSimpleReservoirBuilder(geomodel_result=large, scale_refinement_with_model=True)
     assert builder.refinement.wells.SizeMin == pytest.approx(50.0)
 
 

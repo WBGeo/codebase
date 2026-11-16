@@ -57,7 +57,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder im
     SfepyHydrothermalProblemBuilder, SfepyCustomBuilder, RockUnitProperties, FluidProperties)
 from core.simulation_components.simulation_packages.sfepy.sfepy_run import run_simulation_sfepy
 from core.simulation_components.simulation_packages.golem.golem_model_builder import (
-    GolemHydrothermalProblemBuilder, GolemCustomBuilder, GolemSimpleReservoirProblemBuilder)
+    GolemHydrothermalProblemBuilder, GolemCustomBuilder, GolemSimpleReservoirBuilder)
 from core.simulation_components.simulation_packages.golem.golem_run import run_simulation_golem
 from core.simulation_components.simulation_packages.simulation_export import export_simulation_results
 from core.simulation_components.simulation_visualization.simulation_visualization import (
@@ -346,7 +346,7 @@ plot_cross_section_2D(custom_golem_results, "T", origin=(500, 500, 500), normal=
 # The builder meshes the model itself: a doublet of two 100 m fracture planes 200 m apart and a well,
 # centred in the model, with injection and extraction at the plane centres. All rock units get the
 # same rock properties. The time sequence below reproduces the model 1 benchmark (20 output states).
-# reservoir_problem = GolemSimpleReservoirProblemBuilder(
+# reservoir_problem = GolemSimpleReservoirBuilder(
 #     geomodel_result=structural_model_result,
 #     mesh_size=50.0,
 #     curve_mesh_size=5.0,

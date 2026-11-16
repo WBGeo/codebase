@@ -11,7 +11,7 @@ from core.simulation_components.simulation_packages.golem.golem_model_builder im
     GolemCustomBuilder,
     GolemFaultProperties,
     GolemHydrothermalProblemBuilder,
-    GolemSimpleReservoirProblemBuilder,
+    GolemSimpleReservoirBuilder,
 )
 from core.simulation_components.simulation_packages.golem.golem_run import (
     validate_golem_input,
@@ -60,7 +60,7 @@ def _synthetic_hydrothermal_unstructured_mesh(base_mesh, *, with_fault=True):
 def _synthetic_unstructured_mesh(base_mesh, *, include_geological_fault=False):
     """Small synthetic material layout used without invoking Gmsh.
 
-    Ordering matches GolemSimpleReservoirProblemBuilder's documented contract:
+    Ordering matches GolemSimpleReservoirBuilder's documented contract:
     3D volume(s), optional geological fault(s), two synthetic fractures,
     one well, then six exterior-boundary blocks.
     """
@@ -364,7 +364,7 @@ def test_hydrothermal_builder_fault_input_uses_frac_and_supg(
 
 
 # -----------------------------------------------------------------------------
-# GolemSimpleReservoirProblemBuilder -- mock Gmsh/mesh creation completely
+# GolemSimpleReservoirBuilder -- mock Gmsh/mesh creation completely
 # -----------------------------------------------------------------------------
 
 def test_simple_reservoir_builder_scales_classifies_and_generates_input_without_meshing(
@@ -385,7 +385,7 @@ def test_simple_reservoir_builder_scales_classifies_and_generates_input_without_
         fake_create_unstructured_mesh_data,
     )
 
-    builder = GolemSimpleReservoirProblemBuilder(
+    builder = GolemSimpleReservoirBuilder(
         geomodel_result=model1_structural_result,
         mesh_size=25.0,
         curve_mesh_size=4.0,
@@ -467,7 +467,7 @@ def test_simple_reservoir_time_control_validation(
     )
 
     with pytest.raises(ValueError, match=message):
-        GolemSimpleReservoirProblemBuilder(
+        GolemSimpleReservoirBuilder(
             geomodel_result=model1_structural_result,
             time_sequence=time_sequence,
         )
@@ -478,7 +478,7 @@ def test_simple_reservoir_rejects_nonpositive_physical_input(
 ):
     # Validation happens before any mesh generation, so this test cannot invoke Gmsh.
     with pytest.raises(ValueError, match="rock_permeability"):
-        GolemSimpleReservoirProblemBuilder(
+        GolemSimpleReservoirBuilder(
             geomodel_result=model1_structural_result,
             rock_permeability=0.0,
         )
