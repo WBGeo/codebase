@@ -420,6 +420,10 @@ def _builder_block_names(problem) -> Dict[int, str]:
     return names
 
 
+#: Where run_simulation_golem mounts the host workspace_dir inside the GOLEM container.
+CONTAINER_WORKSPACE = "/project"
+
+
 def run_simulation_golem(
     problem: Union[
         GolemHydrothermalProblemBuilder,
@@ -456,7 +460,12 @@ def run_simulation_golem(
         raise ValueError("nproc must be >= 1")
 
     create_docker = image_name is not None
-    if create_docker and shutil.which("docker") is None:
+    # Call the Docker CLI by its full path. On Windows, gmsh.initialize()
+    # overwrites the process PATH with a stale copy (os.environ keeps the
+    # right one), so a bare "docker" fails with WinError 2 in any script
+    # that meshed with gmsh before running GOLEM.
+    docker = shutil.which("docker") if create_docker else None
+    if create_docker and docker is None:
         raise RuntimeError("Docker CLI not found, but image_name was given. Install Docker or omit "
                            "image_name to run GOLEM on the host.")
     if not create_docker and shutil.which("mpiexec") is None:
@@ -629,8 +638,12 @@ def run_simulation_golem(
                 f'{shlex.join(golem_command)}'
             )
             create_command = [
-                "docker", "create", "--name", container_name, "-i",
-                "-v", f"{project}:{workspace_dir}",
+                docker, "create", "--name", container_name, "-i",
+                # workspace_dir is a host path (it may be relative or a Windows
+                # path, which Docker rejects as a mount target). GOLEM runs in
+                # container_run, filled by docker cp below, so the workspace
+                # is mounted at a fixed container path.
+                "-v", f"{project}:{CONTAINER_WORKSPACE}",
                 image_name,
                 "-c", docker_command,
             ]
@@ -647,7 +660,7 @@ def run_simulation_golem(
             # Copy the complete staging directory so the input and mesh exist in
             # the container independently of the host bind mount.
             copied = subprocess.run(
-                ["docker", "cp", str(run_dir) + "/.",
+                [docker, "cp", str(run_dir) + "/.",
                  f"{container_name}:{container_run}"],
                 text=True, capture_output=True, check=False,
             )
@@ -657,7 +670,7 @@ def run_simulation_golem(
                     + copied.stdout + copied.stderr
                 )
 
-            transcript = _stream_process(["docker", "start", "-a", container_name], stream_output=stream_output)
+            transcript = _stream_process([docker, "start", "-a", container_name], stream_output=stream_output)
 
             # Copy the ENTIRE GOLEM working directory back from the container.
             # Some MOOSE outputs (especially CSV when no file_base is given) are
@@ -666,7 +679,7 @@ def run_simulation_golem(
             container_snapshot.mkdir(exist_ok=True)
 
             copied_back = subprocess.run(
-                ["docker", "cp", f"{container_name}:{container_run}/.",
+                [docker, "cp", f"{container_name}:{container_run}/.",
                  str(container_snapshot)],
                 text=True, capture_output=True, check=False,
             )
@@ -949,7 +962,7 @@ def run_simulation_golem(
     finally:
         if container_created:
             removed = subprocess.run(
-                ["docker", "rm", "-f", container_name],
+                [docker, "rm", "-f", container_name],
                 text=True, capture_output=True, check=False,
             )
             if removed.returncode:

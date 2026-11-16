@@ -25,6 +25,10 @@ def _generated_hydro_input(model1_implicit_mesh, model1_structural_result, tmp_p
     return builder, path.read_text()
 
 
+# What the faked shutil.which returns for the Docker CLI; golem_run must call this full path.
+DOCKER = "/usr/bin/docker"
+
+
 @pytest.fixture(autouse=True)
 def _isolate_golem_execution_environment(monkeypatch):
     """Ensure Docker regression tests do not depend on the developer's shell."""
@@ -320,7 +324,7 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
 
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
         nonlocal docker_cp_count
-        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+        if len(command) >= 4 and command[:2] == [DOCKER, "cp"]:
             docker_cp_count += 1
         commands.append(command)
 
@@ -329,7 +333,7 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
         # transcript writing, preservation, and loader call are exercised.
         if (
             len(command) >= 4
-            and command[:2] == ["docker", "cp"]
+            and command[:2] == [DOCKER, "cp"]
             and docker_cp_count == 2
         ):
             destination = Path(command[3])
@@ -381,16 +385,20 @@ def test_run_simulation_golem_stages_commands_and_loads_result_without_docker(
     assert set(result.block_names.values()) == {"basement", "rock1", "rock2"}
 
     # docker create/cp/cp/rm were constructed, but our fake handled all of them.
-    create_commands = [cmd for cmd in commands if cmd[:2] == ["docker", "create"]]
+    create_commands = [cmd for cmd in commands if cmd[:2] == [DOCKER, "create"]]
     assert len(create_commands) == 1
     create = create_commands[0]
     assert "registry.example/golem:test" in create
+    # The host workspace is mounted at a fixed, absolute container path: the
+    # host path itself may be relative or a Windows path.
+    mount = create[create.index("-v") + 1]
+    assert mount == f"{(tmp_path / 'project').resolve()}:/project"
     docker_shell = create[create.index("-c") + 1]
     assert "mpiexec -n 3 --allow-run-as-root" in docker_shell
     assert "/golem/golem-opt -i /tmp/wbgeo_golem_run/wbgeo.i" in docker_shell
 
-    assert streamed["command"][0:3] == ["docker", "start", "-a"]
-    assert any(cmd[:3] == ["docker", "rm", "-f"] for cmd in commands)
+    assert streamed["command"][0:3] == [DOCKER, "start", "-a"]
+    assert any(cmd[:3] == [DOCKER, "rm", "-f"] for cmd in commands)
 
     # Real staging/output-preservation code still ran.
     assert (output_dir / "golem_stdout.txt").read_text() == "fake GOLEM stdout\n"
@@ -513,13 +521,13 @@ def test_run_simulation_golem_custom_problem_keeps_checkpoint_directory(
 
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
         nonlocal docker_cp_count
-        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+        if len(command) >= 4 and command[:2] == [DOCKER, "cp"]:
             docker_cp_count += 1
         commands.append(command)
 
         if (
             len(command) >= 4
-            and command[:2] == ["docker", "cp"]
+            and command[:2] == [DOCKER, "cp"]
             and docker_cp_count == 2
         ):
             destination = Path(command[3])
@@ -635,11 +643,11 @@ def test_run_simulation_golem_stages_selected_hierarchical_custom_mesh(
 
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
         nonlocal docker_cp_count
-        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+        if len(command) >= 4 and command[:2] == [DOCKER, "cp"]:
             docker_cp_count += 1
         if (
             len(command) >= 4
-            and command[:2] == ["docker", "cp"]
+            and command[:2] == [DOCKER, "cp"]
             and docker_cp_count == 2
         ):
             destination = Path(command[3])
@@ -729,11 +737,11 @@ def test_run_simulation_golem_stages_auxiliary_hierarchy_csvs_as_files(
 
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
         nonlocal docker_cp_count
-        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+        if len(command) >= 4 and command[:2] == [DOCKER, "cp"]:
             docker_cp_count += 1
         if (
             len(command) >= 4
-            and command[:2] == ["docker", "cp"]
+            and command[:2] == [DOCKER, "cp"]
             and docker_cp_count == 2
         ):
             destination = Path(command[3])
@@ -809,9 +817,9 @@ def test_run_simulation_golem_stages_external_mesh_file_without_export(
 
     def fake_subprocess_run(command, text=True, capture_output=True, check=False):
         nonlocal docker_cp_count
-        if len(command) >= 4 and command[:2] == ["docker", "cp"]:
+        if len(command) >= 4 and command[:2] == [DOCKER, "cp"]:
             docker_cp_count += 1
-        if len(command) >= 4 and command[:2] == ["docker", "cp"] and docker_cp_count == 2:
+        if len(command) >= 4 and command[:2] == [DOCKER, "cp"] and docker_cp_count == 2:
             destination = Path(command[3])
             destination.mkdir(parents=True, exist_ok=True)
             out_dir = destination / "output"
@@ -902,7 +910,7 @@ def test_direct_golem_modes_execute_and_copy_results(
     command = commands[0][0]
     assert command[:4] == ["mpiexec", "-n", "2", "--allow-run-as-root"]
     assert str(binary) in command
-    assert not any(item[0][0] == "docker" for item in commands)
+    assert not any(item[0][0] in ("docker", DOCKER) for item in commands)
 
 
 def test_direct_modes_failure_reports_diagnostics_and_skips_result_loading(
