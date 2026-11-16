@@ -105,7 +105,7 @@ the simulation either in a Docker container or directly on the host.
 >   for the codebase. The required
 >   input files are staged in the container, and the simulation results are
 >   copied back to the host. The container is removed after execution.
-> - *Host execution:** GOLEM runs directly on the host. 
+> - **Host execution:** GOLEM runs directly on the host.
 >   The workbench with visual editor uses this mode with a remote mpiexec.
 >
 > In codebase, the `golem_binary` parameter specifies the GOLEM executable path in the
@@ -888,11 +888,6 @@ buf = export_simulation_results(problem_golem_results, format="exodus")
 with open("simulation_golem_results.zip", "wb") as f:
     f.write(buf.getvalue())
 ```
-
-The Exodus file is written from the result, not copied from GOLEM. It
-contains the same fields, time steps and blocks; side sets, node sets and
-QA records are not included (they belong to the input mesh and the input
-file).
 
 In scripts, GOLEM's original output files can additionally be kept by
 passing `output_dir` to `run_simulation_golem()`:
