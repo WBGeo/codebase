@@ -1,3 +1,12 @@
+"""Synthetic model 4: 2 faults, no unconformities, 1 stratigraphic group.
+
+Run it cell by cell (#%%) from the repository root; each main section starts with a
+banner, each sub-section with a numbered cell title.
+
+Sections (same order as the Workbench components)
+  1. Structural modeling: fault modeling only (fault input data, fault frame, cross-cutting fault model)
+"""
+
 # Uncomment the two lines below to enable detailed log output from all WBGeo components.
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
@@ -14,13 +23,11 @@ from core.structural_modeling_components.general_faults import check_fault_model
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import (
     plot_fault_model_2D, plot_fault_model_3D, plot_fault_input_data_3D)
 
-#%%
-
 cwd = os.getcwd()
 
-# WORKFLOW Synthetic Model 4: 2 faults, no unconformities, 1 stratigraphic group
-
-#%%
+# ==============================================================================
+#%% 1. Structural modeling
+# ==============================================================================
 
 # Create a grid for the model
 grid = RegularGrid(
@@ -28,7 +35,7 @@ grid = RegularGrid(
     resolution=(100, 50, 50)
 )
 
-#%%
+#%% 1.1 Fault input data
 
 # Create input data for the fault elements
 data_faults = InputData_FaultElements(name='Faults_Model_4',
@@ -39,12 +46,10 @@ data_faults = InputData_FaultElements(name='Faults_Model_4',
                                       fault_names=['fault1', 'fault2']
                                       )
 
-#%%
-
 # Plot fault input data without model context
 plot_fault_input_data_3D(data_faults)
 
-#%%
+#%% 1.2 Fault frame
 
 # Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
@@ -54,13 +59,11 @@ fault_frame = general_faults.build_fault_frame(
 
 fault_frame.detailed_report()
 
-#%%
-
 # Plot the fault input data (2D and 3D possible)
 plot_fault_model_2D(fault_frame)
 plot_fault_model_3D(fault_frame)
 
-#%%
+#%% 1.3 Fault model
 
 # Compute fault model result.
 #
@@ -80,7 +83,7 @@ print(f"cross_cutting: {fault_model_result.cross_cutting}")
 assert fault_model_result.cross_cutting is True
 assert fault_model_result.fault_frame.domain_map is None
 
-#%%
+#%% 1.4 Plot the cross-cutting fault model in 3D
 
 # Inspect the cross-cutting result directly in 3D. plot_fault_model_3D
 # highlights the exact line where fault1 and fault2's surfaces actually
@@ -91,7 +94,7 @@ assert fault_model_result.fault_frame.domain_map is None
 # no domain_map to color them from.
 plot_fault_model_3D(fault_model_result.fault_frame)
 
-#%%
+#%% 1.5 Plot the cross-cutting fault model in 2D
 
 # Inspect the same result in 2D. Domain-map coloring is skipped (and warns,
 # since domain_map is None), but the fault contours -- including right where
@@ -99,7 +102,7 @@ plot_fault_model_3D(fault_model_result.fault_frame)
 # only need each fault's own scalar_field/scalar_value, not the domain map.
 plot_fault_model_2D(fault_model_result.fault_frame)
 
-#%%
+#%% 1.6 Cross-cutting check
 
 # A cross-cutting fault model cannot be wired into Compute Structural Model --
 # this is enforced both as a Workbench input_checks pre-check (so the

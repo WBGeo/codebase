@@ -1,3 +1,13 @@
+"""Synthetic model 6: no faults, 2 unconformities, 3 stratigraphic groups.
+
+Run it cell by cell (#%%) from the repository root; each main section starts with a
+banner, each sub-section with a numbered cell title.
+
+Sections (same order as the Workbench components)
+  1. Structural modeling: input data, structural frame, structural model
+  2. Meshing: the meshes this model supports, plots, export and engineering objects (optional)
+"""
+
 # Uncomment the two lines below to enable detailed log output from all WBGeo components.
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
@@ -24,13 +34,11 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
 
-#%%
-
 cwd = os.getcwd()
 
-# WORKFLOW Synthetic Model 6: no faults, 2 unconformities, 3 stratigraphic groups
-
-#%%
+# ==============================================================================
+#%% 1. Structural modeling
+# ==============================================================================
 
 # Create a grid for the model
 grid = RegularGrid(
@@ -38,7 +46,7 @@ grid = RegularGrid(
     resolution=(50, 50, 50)
 )
 
-#%%
+#%% 1.1 Input data
 
 # Create input data for the structural elements
 data_elements = InputData_StructuralElements(name='Model_6',
@@ -53,12 +61,10 @@ data_elements = InputData_StructuralElements(name='Model_6',
                                                  cwd + "/examples/synthetic_examples/model6/input_data/geological_data/model6_orientations_df.csv")
                                              )
 
-#%%
-
 # Plot input data without model context
 plot_input_data_3D(data_elements)
 
-#%%
+#%% 1.2 Structural frame
 
 # Create a StructuralFrame
 frame = general.build_structural_frame(input_data_elements=data_elements,
@@ -67,13 +73,11 @@ frame = general.build_structural_frame(input_data_elements=data_elements,
 
 frame.detailed_report()
 
-#%%
-
 # Plot the input data (2D and 3D possible)
 plot_structural_model_2D(frame)
 plot_structural_model_3D(frame)
 
-#%%
+#%% 1.3 Interpolation settings (optional)
 
 # Set another interpolation method per group
 # frame["Shallow_Strat"].set_interpolation_method("Universal Co-Kriging")
@@ -87,7 +91,7 @@ plot_structural_model_3D(frame)
 
 # frame.detailed_report()
 
-#%%
+#%% 1.4 Structural model
 
 # Compute structural model result
 structural_model_result = general.compute_structural_model(
@@ -96,19 +100,15 @@ structural_model_result = general.compute_structural_model(
     verbose=True,
 )
 
-#%%
-
 # Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame)
 plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
-
-#%%
 
 # Optional: Plotting age masks and scalar fields
 # frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
-#%%
+#%% 1.5 Surface gradients (optional)
 
 # Optional: Compute gradients at the surface mesh vertices
 # from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
@@ -120,7 +120,9 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #                                                    gradients_faults_dict,
 #                                                    mesh_type="unmasked")
 
-#%%
+# ==============================================================================
+#%% 2. Meshing
+# ==============================================================================
 
 # Compute 3D meshes based on the structural model result using different meshing approaches
 
@@ -138,13 +140,13 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
 # Explicit structured mesh
 # Not available here: the structured mesh doesn't support models whose layers don't span the whole model extent yet.
 
-#%%
+#%% 2.1 Plot the meshes
 
 # Plot the meshing results
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 
-#%%
+#%% 2.2 Export a mesh (optional)
 
 # Optional: Export a mesh, here the unstructured mesh to Exodus.
 # The other exporters work the same way (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
@@ -154,7 +156,7 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 # with open("model6_unstructured_mesh.exo", "wb") as f:
 #     f.write(buf.getvalue())
 
-#%%
+#%% 2.3 Engineering objects (optional)
 
 # Optional: Add engineering objects to the unstructured mesh (only works for unstructured meshes).
 # This model's wells, sources, shafts, planes and ellipses are in input_data/engineering_objects/.

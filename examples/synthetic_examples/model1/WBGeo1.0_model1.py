@@ -1,3 +1,26 @@
+"""Synthetic model 1: two stratigraphic groups, no faults, no unconformities.
+
+One of the two detailed examples (with model 2). Run it cell by cell (#%%) from the
+repository root; each main section starts with a banner,
+each sub-section with a numbered cell title.
+
+Sections (same order as the Workbench components)
+  1. Structural modeling: grid, input data, structural frame, structural model
+  2. Meshing
+     2.1 Plot the meshes (implicit structured, explicit unstructured, explicit structured mesh)
+     2.2 Export a mesh (optional)
+     2.3 Engineering objects and mesh refinement (optional)
+  3. Simulation with GOLEM (requires Docker with the GOLEM image)
+     3.1 Rock and fluid properties
+     3.2 Generated hydrothermal problem
+     3.3 Custom input file
+     3.4 Simple reservoir (optional)
+     3.5 Simple reservoir from a custom input file (optional)
+  4. Alternative: simulation with SfePy (optional)
+     4.1 Generated hydrothermal problem
+     4.2 Custom input file
+"""
+
 # Uncomment the two lines below to enable detailed log output from all WBGeo components.
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
@@ -40,15 +63,11 @@ from core.simulation_components.simulation_packages.simulation_export import exp
 from core.simulation_components.simulation_visualization.simulation_visualization import (
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials, plot_variable_time_series)
 
-#%%
-
 cwd = os.getcwd()
 
-# WORKFLOW Synthetic Model 1: no faults, no unconformities, 2 stratigraphic groups
-# This is one of the two detailed examples (with model 2): structural model, meshes, engineering
-# objects with all refinement options, and simulations with SfePy and GOLEM.
-
-#%%
+# ==============================================================================
+#%% 1. Structural modeling
+# ==============================================================================
 
 # Create a grid for the model
 grid = RegularGrid(
@@ -56,7 +75,7 @@ grid = RegularGrid(
     resolution=(50, 50, 50)
 )
 
-#%%
+#%% 1.1 Input data
 
 # Create input data for the structural elements
 data_elements = InputData_StructuralElements(name='Model_1',
@@ -67,12 +86,10 @@ data_elements = InputData_StructuralElements(name='Model_1',
                                                  cwd + "/examples/synthetic_examples/model1/input_data/geological_data/model1_orientations_df.csv")
                                              )
 
-#%%
-
 # Plot input data without model context
 plot_input_data_3D(data_elements)
 
-#%%
+#%% 1.2 Structural frame
 
 # Create a StructuralFrame
 frame = general.build_structural_frame(input_data_elements=data_elements,
@@ -81,13 +98,11 @@ frame = general.build_structural_frame(input_data_elements=data_elements,
 
 frame.detailed_report()
 
-#%%
-
 # Plot the input data (2D and 3D possible)
 plot_structural_model_2D(frame)
 plot_structural_model_3D(frame)
 
-#%%
+#%% 1.3 Interpolation settings (optional)
 
 # Set another interpolation method per group
 # frame["Strat_Series1"].set_interpolation_method("Ordinary Kriging")
@@ -97,7 +112,7 @@ plot_structural_model_3D(frame)
 
 # frame.detailed_report()
 
-#%%
+#%% 1.4 Structural model
 
 # Compute structural model result
 structural_model_result = general.compute_structural_model(
@@ -106,19 +121,17 @@ structural_model_result = general.compute_structural_model(
     verbose=True,
 )
 
-#%%
-
 # Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame)
 plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
-
-#%%
 
 # Optional: Plotting age masks and scalar fields
 # frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
-#%%
+# ==============================================================================
+#%% 2. Meshing
+# ==============================================================================
 
 # Compute 3D meshes based on the structural model result using different meshing approaches
 
@@ -138,14 +151,13 @@ mesh_explicit_structured = create_structured_mesh_data(
     refinement_data=[20, 20, 20],
 )
 
-#%%
+#%% 2.1 Plot the meshes
 
-# Plot the meshing results
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=True)
 
-#%%
+#%% 2.2 Export a mesh (optional)
 
 # Optional: Export a mesh, here the structured mesh to Exodus.
 # The other exporters work the same way (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
@@ -155,7 +167,7 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # with open("model1_structured_mesh.exo", "wb") as f:
 #     f.write(buf.getvalue())
 
-#%%
+#%% 2.3 Engineering objects and mesh refinement (optional)
 
 # Optional: Add engineering objects to the unstructured mesh (only works for unstructured meshes)
 
@@ -232,11 +244,18 @@ plot_mesh_3d(mesh_explicit_structured, structural_model_result, show_plotter=Tru
 # )
 # plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)
 
-#%%
+# ==============================================================================
+#%% 3. Simulation with GOLEM (requires Docker with the GOLEM image)
+# ==============================================================================
 
-# Simulate heat and fluid flow with SfePy on the unstructured mesh (generated hydrothermal problem)
-# The SfePy simulations use the PETSc solver and need petsc4py (e.g. in Docker). Without it, pass
-# linear_solver="iterative" to the generated problem; the custom input files use PETSc themselves.
+# GOLEM runs in a Docker container started from the image below; the run files are kept in
+# workspace_dir. Plots accept "T"/"p" as well as GOLEM's own names "temperature"/"pore_pressure".
+golem_image = "registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest"
+golem_workspace = os.environ.get("GOLEM_PROJECT_DIR", "./projects")
+
+#%% 3.1 Rock and fluid properties
+
+# One entry per rock unit of the structural model (used by GOLEM and by the SfePy alternative in section 4)
 rock_properties = {
     "basement": RockUnitProperties(
         name="basement", porosity=0.10, permeability=1e-13,
@@ -258,130 +277,72 @@ fluid = FluidProperties(
     heat_capacity=1200,
 )
 
-builder = SfepyHydrothermalProblemBuilder(
+#%% 3.2 GOLEM: generated hydrothermal problem
+
+golem_problem = GolemHydrothermalProblemBuilder(
     mesh_results=mesh_explicit_unstructured,
     geomodel_result=structural_model_result,
     rock_properties=rock_properties,
     fluid=fluid,
-    include_flow=True,
+    p_top=0.0,
+    p_bottom=1.0e6,
+    t_top=10.0,
+    t_bottom=60.0,
     end_time=5e11,
     num_steps=3,
-    print_linear_residuals=True,
 )
-
-#%%
 
 # Check the material assignment before running the solver
-plot_builder_materials(builder)
-plot_builder_materials(builder, property_name="porosity")
+plot_builder_materials(golem_problem)
 
-#%%
-
-# Run the simulation (stream_output=True prints SfePy's output while it runs)
-data_by_time = run_simulation_sfepy(builder, stream_output=True)
-
-#%%
-
-# Plot the simulation results
-final_time = max(data_by_time.nodes_by_time.keys())
-plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
-plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
-plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
-plot_variable_time_series(data_by_time, "T", point=(500, 500, 500))
-
-#%%
-
-# Optional: Export the results (VTK files with a ParaView collection, plus input files and solver output)
-# buf = export_simulation_results(data_by_time, format="vtk")
-# with open("model1_sfepy_results.zip", "wb") as f:
-#     f.write(buf.getvalue())
-
-#%%
-
-# Simulate with a hand-written SfePy input file instead of the generated one (custom problem).
-# custom_hydrothermal.py solves the same two-stage problem (pressure, Darcy velocity, heat) as the
-# generated builder above; on this mesh it reproduces that result exactly (see the file's docstring).
-with open(cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/custom_hydrothermal.py") as f:
-    custom_input_file_contents = f.read()
-
-custom_builder = SfepyCustomBuilder(
-    input_file_contents=custom_input_file_contents,
-    mesh_results=mesh_explicit_unstructured,
-    geomodel_result=structural_model_result,
+# Run the simulation (stream_output=True prints GOLEM's output while it runs)
+golem_results = run_simulation_golem(
+    problem=golem_problem,
+    image_name=golem_image,
+    workspace_dir=golem_workspace,
+    nproc=4,
+    stream_output=True,
 )
 
-plot_builder_materials(custom_builder)
-plot_builder_materials(custom_builder, property_name="porosity")
+# Plot the simulation results
+golem_final_time = max(golem_results.nodes_by_time.keys())
+plot_variable_at_a_time(golem_results, "T", time=0, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(golem_results, "T", time=golem_final_time, cmap="coolwarm", show_edges=True)
+plot_variable_at_a_time(golem_results, "p", time=golem_final_time, cmap="coolwarm", show_edges=True)
+plot_cross_section_2D(golem_results, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+plot_variable_time_series(golem_results, "T", point=(500, 500, 500))
 
-custom_data_by_time = run_simulation_sfepy(custom_builder, stream_output=True)
-
-#%%
-
-# Compare with the generated problem and plot the results
-custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
-print("SfepyHydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
-print("SfepyCustomBuilder        T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())
-plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=True)
-plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
-
-#%%
-
-# Optional: Simulate with GOLEM (requires Docker with the GOLEM image), generated hydrothermal problem.
-# Same rock and fluid properties as the SfePy problem above. Plots accept "T"/"p" as well as GOLEM's
-# own names "temperature"/"pore_pressure".
-# golem_problem = GolemHydrothermalProblemBuilder(
-#     mesh_results=mesh_explicit_unstructured,
-#     geomodel_result=structural_model_result,
-#     rock_properties=rock_properties,
-#     fluid=fluid,
-#     p_top=0.0,
-#     p_bottom=1.0e6,
-#     t_top=10.0,
-#     t_bottom=60.0,
-#     end_time=5e11,
-#     num_steps=3,
-# )
-# plot_builder_materials(golem_problem)
-# golem_results = run_simulation_golem(
-#     problem=golem_problem,
-#     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#     workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
-#     nproc=4,
-# )
-# golem_final_time = max(golem_results.nodes_by_time.keys())
-# plot_variable_at_a_time(golem_results, "T", time=golem_final_time, cmap="coolwarm", show_edges=True)
-# plot_cross_section_2D(golem_results, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+# Optional: Export the results (Exodus file, plus input files and solver output)
 # buf = export_simulation_results(golem_results, format="exodus")
 # with open("model1_golem_results.zip", "wb") as f:
 #     f.write(buf.getvalue())
 
-#%%
+#%% 3.3 GOLEM: custom input file
 
-# Optional: Simulate with GOLEM (requires Docker with the GOLEM image), custom input file
-# with open(cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/custom_hydrothermal.i",
-#           encoding="utf-8") as f:
-#     custom_golem_input = f.read()
-# custom_golem_problem = GolemCustomBuilder(
-#     input_file_contents=custom_golem_input,
-#     mesh_results=mesh_explicit_unstructured,
-#     geomodel_result=structural_model_result,
-# )
-# plot_builder_materials(custom_golem_problem, show_edges=True)
-# plot_builder_materials(custom_golem_problem, property_name="porosity_initial")
-# custom_golem_results = run_simulation_golem(
-#     problem=custom_golem_problem,
-#     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#     workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
-#     nproc=4,
-#     stream_output=True,
-# )
-# custom_golem_final_time = max(custom_golem_results.nodes_by_time.keys())
-# plot_cross_section_2D(custom_golem_results, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+# Simulate with a hand-written GOLEM input file instead of the generated one (custom problem)
+with open(cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/custom_hydrothermal.i",
+          encoding="utf-8") as f:
+    custom_golem_input = f.read()
+custom_golem_problem = GolemCustomBuilder(
+    input_file_contents=custom_golem_input,
+    mesh_results=mesh_explicit_unstructured,
+    geomodel_result=structural_model_result,
+)
+plot_builder_materials(custom_golem_problem, show_edges=True)
+plot_builder_materials(custom_golem_problem, property_name="porosity_initial")
+custom_golem_results = run_simulation_golem(
+    problem=custom_golem_problem,
+    image_name=golem_image,
+    workspace_dir=golem_workspace,
+    nproc=4,
+    stream_output=True,
+)
+custom_golem_final_time = max(custom_golem_results.nodes_by_time.keys())
+plot_cross_section_2D(custom_golem_results, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
 
-#%%
+#%% 3.4 GOLEM: simple reservoir (optional)
 
-# Optional: Simulate a simple reservoir with GOLEM (requires Docker with the GOLEM image).
+# Optional: Simulate a simple reservoir with GOLEM.
 # The builder meshes the model itself: a doublet of two 100 m fracture planes 200 m apart and a well,
 # centred in the model, with injection and extraction at the plane centres. All rock units get the
 # same rock properties. The time sequence below reproduces the model 1 benchmark (20 output states).
@@ -416,19 +377,19 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 # plot_builder_materials(reservoir_problem, property_name="rock_porosity", cmap="plasma", opacity=0.25)
 # reservoir_results = run_simulation_golem(
 #     problem=reservoir_problem,
-#     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#     workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
+#     image_name=golem_image,
+#     workspace_dir=golem_workspace,
 #     nproc=4,
 # )
 # plot_cross_section_2D(reservoir_results, "T", origin=reservoir_problem.injection_point, normal=(0, 1, 0), cmap="coolwarm")
 # plot_cross_section_2D(reservoir_results, "p", origin=reservoir_problem.injection_point, normal=(0, 1, 0), cmap="coolwarm")
 # The ParaView state model1_reservoir_visualisation.pvsm shows the results (see paraview_readme.md).
 
-#%%
+#%% 3.5 GOLEM: simple reservoir from a custom input file (optional)
 
-# Optional: Simulate the same simple reservoir with GOLEM from a custom input file
-# (requires Docker with the GOLEM image). The mesh is built explicitly with the same geometry as the
-# generated builder above; model1_simple_reservoir.i refers to its material blocks.
+# Optional: Simulate the same simple reservoir with GOLEM from a custom input file.
+# The mesh is built explicitly with the same geometry as the generated builder above;
+# model1_simple_reservoir.i refers to its material blocks.
 # reservoir_mesh = create_unstructured_mesh_data(
 #     geomodel_result=structural_model_result,
 #     extent=(0, 1000, 0, 1000, 0, 1000),
@@ -454,8 +415,73 @@ plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(
 #         mesh_results=reservoir_mesh,
 #         geomodel_result=structural_model_result,
 #     ),
-#     image_name="registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest",
-#     workspace_dir=os.environ.get("GOLEM_PROJECT_DIR", "./projects"),
+#     image_name=golem_image,
+#     workspace_dir=golem_workspace,
 #     nproc=4,
 # )
 # plot_cross_section_2D(custom_reservoir_results, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+
+# ==============================================================================
+#%% 4. Alternative: simulation with SfePy (optional)
+# ==============================================================================
+
+# SfePy runs inside the WBGeo Python environment (no Docker needed for the solver itself). The
+# simulations use the PETSc solver and need petsc4py (e.g. in Docker). Without it, pass
+# linear_solver="iterative" to the generated problem; the custom input files use PETSc themselves.
+# The rock and fluid properties are the ones of section 3.1.
+
+#%% 4.1 SfePy: generated hydrothermal problem
+
+# builder = SfepyHydrothermalProblemBuilder(
+#     mesh_results=mesh_explicit_unstructured,
+#     geomodel_result=structural_model_result,
+#     rock_properties=rock_properties,
+#     fluid=fluid,
+#     include_flow=True,
+#     end_time=5e11,
+#     num_steps=3,
+#     print_linear_residuals=True,
+# )
+
+# Check the material assignment before running the solver
+# plot_builder_materials(builder)
+# plot_builder_materials(builder, property_name="porosity")
+
+# Run the simulation (stream_output=True prints SfePy's output while it runs)
+# data_by_time = run_simulation_sfepy(builder, stream_output=True)
+
+# Plot the simulation results
+# final_time = max(data_by_time.nodes_by_time.keys())
+# plot_variable_at_a_time(data_by_time, "T", time=0, cmap="coolwarm", show_edges=True)
+# plot_variable_at_a_time(data_by_time, "T", time=final_time, cmap="coolwarm", show_edges=True)
+# plot_variable_at_a_time(data_by_time, "p", time=final_time, cmap="coolwarm", show_edges=True)
+# plot_cross_section_2D(data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
+# plot_variable_time_series(data_by_time, "T", point=(500, 500, 500))
+
+# Optional: Export the results (VTK files with a ParaView collection, plus input files and solver output)
+# buf = export_simulation_results(data_by_time, format="vtk")
+# with open("model1_sfepy_results.zip", "wb") as f:
+#     f.write(buf.getvalue())
+
+#%% 4.2 SfePy: custom input file
+
+# Simulate with a hand-written SfePy input file instead of the generated one (custom problem).
+# custom_hydrothermal.py solves the same two-stage problem (pressure, Darcy velocity, heat) as the
+# generated builder above; on this mesh it reproduces that result exactly (see the file's docstring).
+# with open(cwd + "/examples/synthetic_examples/model1/input_data/simulation_files/custom_hydrothermal.py") as f:
+#     custom_input_file_contents = f.read()
+# custom_builder = SfepyCustomBuilder(
+#     input_file_contents=custom_input_file_contents,
+#     mesh_results=mesh_explicit_unstructured,
+#     geomodel_result=structural_model_result,
+# )
+# plot_builder_materials(custom_builder)
+# plot_builder_materials(custom_builder, property_name="porosity")
+# custom_data_by_time = run_simulation_sfepy(custom_builder, stream_output=True)
+
+# Compare with the generated problem and plot the results
+# custom_final_time = max(custom_data_by_time.nodes_by_time.keys())
+# print("SfepyHydrothermalProblemBuilder T mean:", data_by_time.node_data_by_time[final_time]["T"].mean())
+# print("SfepyCustomBuilder              T mean:", custom_data_by_time.node_data_by_time[custom_final_time]["T"].mean())
+# plot_variable_at_a_time(custom_data_by_time, "T", time=custom_final_time, cmap="coolwarm", show_edges=True)
+# plot_cross_section_2D(custom_data_by_time, "T", origin=(500, 500, 500), normal=(0, 1, 0), cmap="coolwarm")
