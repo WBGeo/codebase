@@ -2619,7 +2619,9 @@ def create_unstructured_mesh_data(
         geomodel_result (StructuralModelResults | CSVSurfaceModelResults, optional): Workbench model input.
         rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
         rotation_angle_translate (float, optional): Rotation angle in degrees in the XY plane with additional translation. The mesh center is used as the reference point. If xt/yt/zt are omitted, the transformed mesh is centered at (0, 0, 0).
-        xt, yt, zt (float, optional): Target coordinates of the transformed mesh center, used only with rotation_angle_translate. If specified, all three values must be provided together.
+        xt (float, optional): Target x coordinate of the transformed mesh center, used only with rotation_angle_translate. xt, yt and zt must be provided together.
+        yt (float, optional): Target y coordinate of the transformed mesh center (see xt).
+        zt (float, optional): Target z coordinate of the transformed mesh center (see xt).
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
         shafts (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z), direction vectors (dx, dy, dz)
@@ -2982,7 +2984,7 @@ def create_unstructured_mesh_data(
         mesh_type=MeshType.UNSTRUCTURED,
 )
 # TODO: Turn this into a wbgeo component once union types are supported
-def load_csv_surface_coordinates(surface_csv_dir) -> CSVSurfaceModelResults:
+def load_csv_surface_coordinates(surface_csv_dir: typing.Union[str, Path]) -> CSVSurfaceModelResults:
   """Load surface point coordinates from CSV files for extent and meshing.
 
   Each CSV represents one surface and contains a header with ``x``, ``y``,
