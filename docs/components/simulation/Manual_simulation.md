@@ -128,7 +128,7 @@ Choose the builder corresponding to the solver and model type.
 
 ### SfePy: Auto-generated Hydrothermal Problem
 
-> **Workbench component:** `Build Sfepy Hydrothermal Problem`
+> **Workbench component:** `Build SfePy Hydrothermal Problem`
 
 In the Workbench, this component requires connections to both a mesh and
 the structural model used to generate that mesh.
@@ -232,7 +232,7 @@ fracture-enhanced conduit.
 
 ### SfePy: User-supplied Problem
 
-> **Workbench component:** `Build Sfepy Custom Problem`
+> **Workbench component:** `Build SfePy Custom Problem`
 
 This component brings a complete SfePy `.py` input into the Workbench.
 In the Workbench, this component requires connections to both a mesh and
@@ -243,7 +243,7 @@ The component accepts the following parameters:
 -   **`fault_zone_n_voxels`** *(optional)*: If set, gives cells within
     this many structural-grid voxels of any active fault's trace their
     own region id --- the same damage-zone cell selection
-    `Build Sfepy Hydrothermal Problem` uses, referenceable from the custom
+    `Build SfePy Hydrothermal Problem` uses, referenceable from the custom
     file as `cells of group N`.
 
 In the codebase, the mesh and structural model are provided through two
@@ -751,7 +751,7 @@ files/frac_aperture.csv
 
 #### Run SfePy
 
-> **Workbench component:** `Run Sfepy Simulation`
+> **Workbench component:** `Run SfePy Simulation`
 
 Both SfePy builders connect to the same runner.
 
@@ -1279,9 +1279,9 @@ Both solver pipelines converge to the same WBGeo result type:
 
 ``` text
 SfePy:
-Build Sfepy Hydrothermal Problem ─┐
-                                  ├─> Run Sfepy Simulation ─┐
-Build Sfepy Custom Problem ───────┘                         │
+Build SfePy Hydrothermal Problem ─┐
+                                  ├─> Run SfePy Simulation ─┐
+Build SfePy Custom Problem ───────┘                         │
                                                             ├─> SimulationResults
 GOLEM:                                                      │        │
 Build GOLEM Hydrothermal Problem ─┐                         │        ├─> Visualisation / Inspection

@@ -1416,7 +1416,7 @@ class SfepyProblem:
     Single Workbench-visible envelope around either problem-definition
     type (SfepyHydrothermalProblemBuilder or SfepyCustomBuilder), so both
     Build components' outputs register as the exact same type and a
-    single Run Simulation component's input port can accept either.
+    single Run SfePy Simulation component's input port can accept either.
 
     Necessary because this DSL matches ports by one single registered
     type, not by structural/union compatibility: a

@@ -602,7 +602,7 @@ def run_simulation_sfepy(
     _run_hydrothermal_problem's output_dir docstring for the two-stage
     subdirectory layout used when problem is a SfepyHydrothermalProblemBuilder.
     For script/library callers only: the Workbench has no on-disk-path
-    affordance, so its "Run Simulation" component always leaves this at
+    affordance, so its "Run SfePy Simulation" component always leaves this at
     the default (None) -- use the "Export Simulation Results" component
     (export_simulation_results()) to get a file out of a Workbench run.
 

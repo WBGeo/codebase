@@ -252,7 +252,7 @@ SmartGolemHydrothermalOptions = typing.Annotated[
                 "to give cells near any fault their own separate material "
                 "(from the options' Fault Zone Properties group) instead of "
                 "treating them as ordinary lithology.",
-    title='Build Sfepy Hydrothermal Problem',
+    title='Build SfePy Hydrothermal Problem',
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
@@ -308,7 +308,7 @@ def build_hydrothermal_problem(
     :param linear_solver_i_max: Max iterations for the iterative linear solver.
     :param linear_solver_eps_r: Relative residual tolerance for the iterative linear solver.
     :return: The problem definition, wrapped in the shared SfepyProblem envelope so it can
-        connect into the same Run Simulation component as Build Sfepy Custom Problem's output.
+        connect into the same Run SfePy Simulation component as Build SfePy Custom Problem's output.
 
     Raises:
         ValueError: mesh_results has no known mesh_type, or no lithology mapping
@@ -362,7 +362,7 @@ def build_hydrothermal_problem(
                 "cannot catch wrong material properties or malformed "
                 "equations -- sfepy-run's own region resolution remains the "
                 "final authority at run time.",
-    title='Build Sfepy Custom Problem',
+    title='Build SfePy Custom Problem',
     color='#e07a5f',
     border_color='#000000',
     group='Simulation',
@@ -376,7 +376,7 @@ def build_hydrothermal_problem(
     # collapsed into a single node -- see docs/developers/components.md's
     # is_object_type row) purely from the presence of a
     # BasicallyABufferedFile parameter, confirmed live via
-    # objectType=true/typeMagic=2 vs Build SfepyHydrothermal Problem's
+    # objectType=true/typeMagic=2 vs Build SfePy Hydrothermal Problem's
     # objectType=false/typeMagic=0. Forcing False matches Build
     # Hydrothermal Problem's normal (non-collapsed) presentation.
     is_object_type=False,
@@ -400,12 +400,12 @@ def build_custom_sfepy_problem(
         fault_zone_n_voxels is set.
     :param fault_zone_n_voxels: If set, gives cells within this many structural-grid voxels
         of any active fault's trace their own group id (see the returned SfepyCustomBuilder's
-        fault_group_id) -- the same "damage zone" cell selection Build SfepyHydrothermal Problem
+        fault_group_id) -- the same "damage zone" cell selection Build SfePy Hydrothermal Problem
         uses, referenceable from the custom file as 'cells of group N'. No material/equation
         is auto-generated for it; that's entirely up to the custom file. None (default)
         leaves only the mesh's real lithology groups available, exactly like today.
     :return: The custom problem definition, wrapped in the shared SfepyProblem envelope so it
-        can connect into the same Run Simulation component as Build Sfepy Hydrothermal Problem's
+        can connect into the same Run SfePy Simulation component as Build SfePy Hydrothermal Problem's
         output. Not restricted to hydrothermal physics -- the file can define any SfePy
         physics; only the mesh/region bookkeeping is validated, not the equations themselves.
 
@@ -443,13 +443,13 @@ def build_custom_sfepy_problem(
 
 
 @wbgeo_component(
-    description='Runs the given problem definition (from either Build Sfepy '
-                'Hydrothermal Problem or Build Sfepy Custom Problem) -- the '
+    description='Runs the given problem definition (from either Build SfePy '
+                'Hydrothermal Problem or Build SfePy Custom Problem) -- the '
                 'two-stage SfePy hydrothermal solve (steady-state pressure, '
                 'then transient advective-conductive heat transport) for a '
                 'Hydrothermal problem, or a single sfepy-run invocation for a '
                 'Custom SfePy problem.',
-    title='Run Sfepy Simulation',
+    title='Run SfePy Simulation',
     color='pink',
     border_color='#000000',
     group='Simulation',
@@ -459,7 +459,7 @@ def build_custom_sfepy_problem(
 )
 def run_simulation(problem: SfepyProblem) -> SimulationResults:
     """
-    :param problem: Problem definition from Build Sfepy Hydrothermal Problem or Build Sfepy Custom Problem.
+    :param problem: Problem definition from Build SfePy Hydrothermal Problem or Build SfePy Custom Problem.
     :return: Simulation results for every solved/saved time step.
     """
     return _run_simulation_sfepy(problem.inner())
@@ -824,7 +824,7 @@ def export_simulation_results(
     format: SimulationExportFormatType = SimulationExportFormat.AUTO.value,
 ) -> BasicallyABufferedFile:
     """
-    :param simulation_result: Simulation results from Run Simulation or Run GOLEM Simulation.
+    :param simulation_result: Simulation results from Run SfePy Simulation or Run GOLEM Simulation.
     :param format: "auto" (Exodus for GOLEM, VTK otherwise), "vtk" or "exodus".
     :return: A ZIP with the results plus the solver's tables (CSV), input file(s) and console output.
     """
