@@ -456,7 +456,6 @@ plot_cross_section_2D(custom_golem_results, "T", origin=(1250, 500, 500), normal
 # )
 # plot_cross_section_2D(reservoir_results, "T", origin=reservoir_problem.injection_point, normal=(0, 1, 0), cmap="coolwarm")
 # plot_cross_section_2D(reservoir_results, "p", origin=reservoir_problem.injection_point, normal=(0, 1, 0), cmap="coolwarm")
-# The ParaView state model2_reservoir_visualisation.pvsm shows the results (see paraview_readme.md).
 
 #%% 3.5 GOLEM: simple reservoir from a custom input file (optional)
 
@@ -492,10 +491,12 @@ plot_cross_section_2D(custom_golem_results, "T", origin=(1250, 500, 500), normal
 #     ),
 #     image_name=golem_image,
 #     workspace_dir=golem_workspace,
+#     output_dir=golem_workspace + "/golem_custom_reservoir_output",  # read by the ParaView state
 #     nproc=4,
 #     stream_output=True,
 # )
 # plot_cross_section_2D(custom_reservoir_results, "T", origin=(1150.0, 500.0, 500.0), normal=(0, 1, 0), cmap="coolwarm")
+# The ParaView state model2_reservoir_visualisation.pvsm shows the results (see paraview_readme.md).
 
 # ==============================================================================
 #%% 4. Alternative: simulation with SfePy (optional)

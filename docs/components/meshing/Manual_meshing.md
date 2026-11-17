@@ -56,7 +56,7 @@ applies to the result of whichever method was used.
 
 ### 1. Explicit structured mesh
 
-> **Workbench component:** `Create Structured Mesh`
+> **Workbench component:** `Create Structured Explicit Mesh`
 
 Structured meshes are composed of hexahedral elements arranged on a
 regular grid, which provides good numerical stability and accuracy and
@@ -132,7 +132,7 @@ spatial limits of the mesh.
 
 ### 2. Explicit unstructured mesh
 
-> **Workbench component:** `Create Unstructured Mesh`
+> **Workbench component:** `Create Unstructured Explicit Mesh`
 
 Unstructured meshes are composed of tetrahedral elements arranged
 irregularly, generated using the open-source package **Gmsh**. They
@@ -168,19 +168,28 @@ the following convention:
 Files whose names start with `fault` are therefore interpreted as fault
 surfaces rather than ordinary stratigraphic surfaces.
 
-The CSV workflow automatically distinguishes between complete gridded
-surfaces and incomplete or scattered point sets. If a CSV already
-contains a complete gridded surface, its coordinates are used directly
-and the surface interpolation step is skipped. If the CSV contains a
-downsampled, incomplete, or scattered representation of a surface, the
-surface is interpolated before the unstructured mesh geometry is
-constructed.
+Every CSV surface is interpolated onto a regular grid (radial basis
+functions, controlled by `smooth`) before the unstructured mesh geometry
+is constructed. Complete gridded surfaces as well as downsampled,
+incomplete, or scattered point sets can therefore be supplied.
+
+For models containing faults, a single geological horizon may be split
+into several disconnected surface patches. Such a horizon can be supplied
+as several CSV files that share a surface identifier and carry an
+additional patch index, for example:
+
+    surface_0_1.csv
+    surface_0_2.csv
+    surface_0_3.csv
+
+These files belong to the same geological surface but represent separate
+parts of it, split by the fault geometry.
 
 
 #### Engineering objects
 
 All engineering objects below are optional, loaded from CSV files, and
-passed into `Create Unstructured Mesh` alongside the structural model
+passed into `Create Unstructured Explicit Mesh` alongside the structural model
 output.
 
 **`wells`** --- well trajectories, each a straight line or a polyline (a
@@ -261,9 +270,17 @@ Each row defines a single point belonging to a plane: `id, x, y, z`.
 Rows sharing an `id` belong to the same plane, and each plane needs at
 least four points. Lines starting with `#` are ignored.
 
-    # id, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4
-    1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0
-    2, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1
+    # id, x, y, z
+    1, 50, 50, 150
+    1, 970, 50, 150
+    1, 970, 970, 150
+    1, 50, 970, 150
+    2, 50, 50, 300
+    2, 970, 50, 300
+    2, 970, 970, 300
+    2, 50, 970, 300
+
+This defines two horizontal planes, at z = 150 and z = 300.
 
 ``` python
 planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model2/input_data/engineering_objects/model_2_planes.csv")
@@ -316,7 +333,7 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
 #### Mesh generation parameters
 
 
--   **`tolerance`** *(`"reconstructed"` only)*: The maximum allowable deviation (in model
+-   **`tolerance`** *(CSV surface input only)*: The maximum allowable deviation (in model
     coordinate units) when adjusting surface boundaries to match the
     model extent. During interpolation, surface coordinates can shift
     slightly due to numerical precision or grid discretisation, so the
@@ -352,8 +369,8 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
         necessarily parallel to the global coordinate axes.
 
     If `extent` is not supplied, the domain is inferred from the geological
-    input. With `geomodel_result`, the structural-model extent is used. With
-    `surface_csv_dir`, the combined minimum and maximum X, Y, and Z
+    input. With a structural model, the structural-model extent is used.
+    With CSV surfaces, the combined minimum and maximum X, Y, and Z
     coordinates from all geological surface CSV files are used.
 
 -   **`extent_z`** *(optional)*: Defines absolute Z limits
@@ -369,7 +386,7 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     explicit `extent` is supplied, that extent takes precedence and is
     used unchanged.
 
--   **`smooth`** *(`"reconstructed"` only)*: The smoothing parameter for the Radial Basis Function
+-   **`smooth`** *(CSV surface input only)*: The smoothing parameter for the Radial Basis Function
     (RBF) interpolation used to rebuild surfaces. Larger values produce
     smoother surfaces by reducing small-scale noise; smaller values
     preserve more detail from the original surface geometry.
@@ -403,31 +420,30 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     one physical group per line, with block IDs on the same line merged
     together:
 
-```{=html}
-<!-- -->
-```
-    # block ids to be merged
-    # all blocks must be listed here, even if not merged with another
+        # block ids to be merged
+        # all blocks must be listed here, even if not merged with another
 
-    27, 29, 31
-    21, 26
-    20, 24, 25, 30, 18, 17
-    22, 23, 28, 19, 16, 13, 11
-    12, 14, 15
-    6, 7, 8, 9, 10
-    1
-    2
-    3
-    4
-    5
+        27, 29, 31
+        21, 26
+        20, 24, 25, 30, 18, 17
+        22, 23, 28, 19, 16, 13, 11
+        12, 14, 15
+        6, 7, 8, 9, 10
+        1
+        2
+        3
+        4
+        5
 
-Here, blocks 1--5 are each listed alone and so are assigned their own
-physical group, while blocks 27, 29, and 31 are listed together and
-merged into a single physical group. - **`refinement`** *(optional)*:
-Local mesh-refinement settings. Refinement can be applied around wells,
-sources, shafts, triangulated surfaces, ellipses, extra planes, faults,
-and user-defined general points or line segments. See [Mesh
-refinement](#mesh-refinement) below.
+    Here, blocks 1--5 are each listed alone and so are assigned their own
+    physical group, while blocks 27, 29, and 31 are listed together and
+    merged into a single physical group.
+
+-   **`refinement`** *(optional)*: Local mesh-refinement settings.
+    Refinement can be applied around wells, sources, shafts, triangulated
+    surfaces, ellipses, extra planes, faults, and user-defined general
+    points or line segments. See [Mesh refinement](#mesh-refinement)
+    below.
 
 -   **`rotation_angle`** *(optional)*: Rotates the mesh coordinates in
     the x-y plane while preserving the original z coordinates. Before
@@ -509,35 +525,15 @@ refinement](#mesh-refinement) below.
     modes and must not be supplied together. The translation coordinates
     `xt`, `yt`, and `zt` are only valid with `rotation_angle_translate`.
 
--   **`interpolated_surface_csv_dir`** *(optional)*: Directory in which
-    the interpolated geological surfaces are saved as CSV files. This is
-    useful for inspecting the surfaces used for meshing or reusing the
-    interpolated surfaces in a later workflow.
-
-For models containing faults, a single geological horizon may be split
-into several disconnected surface patches. Consequently, the
-interpolation output can contain more than one CSV file for the same
-geological surface. The files use a common surface identifier with an
-additional patch index, for example:
-
-    surface_0_1.csv
-    surface_0_2.csv
-    surface_0_3.csv
-
-These files belong to the same geological surface but represent separate
-parts of that surface because the surface has been split by the fault
-geometry. They may be kept as separate patches for meshing or combined
-later when a single point set for the complete horizon is required.
-
 In the codebase, an additional argument is required as the first input:
 
--   **`geomodel_result` or `surface_csv_dir`**: `geomodel_result`
-    contains the output of the structural model, including geological
-    surfaces and their vertices, faults, normal vectors, model extent,
-    and grid points with material identifiers for each geological layer.
-    Alternatively, geological surfaces can be provided as CSV files by
-    passing the path to their directory through `surface_csv_dir`. The
-    required CSV structure is described above.
+-   **`geomodel_result`**: The output of the structural model, including
+    geological surfaces and their vertices, faults, normal vectors, model
+    extent, and grid points with material identifiers for each geological
+    layer. Alternatively, geological surfaces stored as CSV files can be
+    passed as `load_csv_surface_coordinates("<directory>")`, which reads
+    all CSV files of the directory. The required CSV structure is
+    described above.
 
 Example of creating an unstructured mesh from structural-model results:
 
@@ -549,14 +545,12 @@ mesh_unstructured_with_objects = create_unstructured_mesh_data(
     shafts=shafts,
     extra_planes=planes,
     triangulations=triangulations,
-    tolerance=50,
     mesh_size=30,
     curve_mesh_size=5,
     gmsh_flag=True,
     mapping_litho="automatic_centers",
     refinement=refinement,
     rotation_angle=30.0,
-    interpolated_surface_csv_dir="model2_interpolated_surfaces",
 )
 ```
 
@@ -570,9 +564,7 @@ applies the local refinement definitions. In this example,
 `rotation_angle=30.0` first expresses the x-y coordinates relative to
 the centre of the mesh bounding box and then applies a 30° rotation
 about the resulting local z-axis. The original z coordinates remain
-unchanged. If `interpolated_surface_csv_dir` is provided, the
-interpolated geological surfaces are also saved in the specified
-directory.
+unchanged.
 
 ##### Rotation and translation examples in the codebase
 
@@ -662,7 +654,7 @@ mesh_explicit_unst_from_file = create_unstructured_mesh_data(
 ```
 
 This generates an unstructured tetrahedral mesh from the CSV files
-stored in the directory specified by `surface_csv_dir`. Because no full
+in the directory passed to `load_csv_surface_coordinates()`. Because no full
 `extent` is supplied, X and Y limits are inferred from the combined CSV
 surface coordinates. `extent_z=[-1000, 500]` replaces only the inferred Z
 limits with the absolute values `zmin=-1000` and `zmax=500`. When using CSV files, `mapping_litho` should be set to `"none"` to skip lithological mapping.
@@ -784,7 +776,7 @@ refinement.ellipses = EllipseRefinement(
 )
 ```
 
-##### General point and line refinement (Currebtly only in codebase)
+##### General point and line refinement (currently only in the codebase)
 
 `GeneralRefinement` provides refinement that is independent of the
 predefined geological and engineering objects. It can be used for a
@@ -890,13 +882,13 @@ mesh_implicit_structured = create_implicit_structured_mesh(
 
 ### 4. Export the mesh
 
-> **Workbench component:** `Download Mesh`
+> **Workbench component:** `Export Mesh`
 
 The Workbench provides a unified export interface for meshes generated
 by any of the three methods above. Meshes can be exported to **Exodus**,
 **Gmsh**, **Abaqus**, **Ansys**, **FeFlow**, **STL**, **VTK**, **VTU**,
 and **VTM** formats --- in the visual interface (visual DSL),
-`Download Mesh` exposes all of these through a single format selector.
+`Export Mesh` exposes all of these through a single format selector.
 
 > **Note:** The Gmsh, STL, and FeFlow exports currently support
 > unstructured meshes only; they are not yet implemented for structured
@@ -961,9 +953,9 @@ plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, style="sur
 
 ## Output
 
-> **Workbench:** The `Mesh` output port of `Create Structured Mesh`,
-> `Create Unstructured Mesh`, or `Create Structured Implicit Mesh`
-> carries the result. It can be connected directly to `Download Mesh`
+> **Workbench:** The `Mesh` output port of `Create Structured Explicit Mesh`,
+> `Create Unstructured Explicit Mesh`, or `Create Structured Implicit Mesh`
+> carries the result. It can be connected directly to `Export Mesh`
 > for export, or inspected in-place using `Plot Mesh in 3D`.
 
 Each meshing method returns a `MeshResults` object:

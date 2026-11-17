@@ -379,6 +379,7 @@ plot_cross_section_2D(custom_golem_results, "T", origin=(500, 500, 500), normal=
 #     problem=reservoir_problem,
 #     image_name=golem_image,
 #     workspace_dir=golem_workspace,
+#     output_dir=golem_workspace + "/golem_simple_reservoir_output",  # read by the ParaView state
 #     nproc=4,
 # )
 # plot_cross_section_2D(reservoir_results, "T", origin=reservoir_problem.injection_point, normal=(0, 1, 0), cmap="coolwarm")

@@ -30,13 +30,13 @@ The Workbench currently provides five problem-building routes.
 
 ### SfePy problem definitions
 
-**Sfepy Hydrothermal Problem** --- auto-generated from the mesh and structural
+**SfePy Hydrothermal Problem** --- auto-generated from the mesh and structural
 model. Material regions and boundary regions are inferred from the
 lithology mapping and mesh information. The built-in formulation solves
 simplified single-phase Darcy flow followed by advective-conductive heat
 transport.
 
-**Sfepy Custom SfePy Problem** --- wraps a complete user-supplied SfePy `.py`
+**Custom SfePy Problem** --- wraps a complete user-supplied SfePy `.py`
 input file. The custom file specifies a user-defined problem with its
 variables, materials, equations and solvers. 
 
@@ -101,8 +101,8 @@ the simulation either in a Docker container or directly on the host.
 > **Execution environments:** `run_simulation_golem()` supports two execution modes:
 >
 > - **Docker execution:** When `image_name` is provided, GOLEM runs inside a
->   temporary Docker container created from the specified image. This is valid
->   for the codebase. The required
+>   temporary Docker container created from the specified image. This mode
+>   is available in the codebase. The required
 >   input files are staged in the container, and the simulation results are
 >   copied back to the host. The container is removed after execution.
 > - **Host execution:** GOLEM runs directly on the host.
@@ -166,7 +166,6 @@ The component accepts the following parameters:
 -   **`linear_solver_i_max`**, **`linear_solver_eps_r`** *(optional)*:
     Maximum iterations and relative residual tolerance for the iterative
     linear solver. Default `500` and `1e-8`.
--   **`linear_solver_eps_r`** *(optional)*: Linear-solver controls.
 
 In the codebase, the mesh and structural model are provided through two
 additional parameters:
@@ -233,7 +232,7 @@ fracture-enhanced conduit.
 
 ### SfePy: User-supplied Problem
 
-> **Workbench component:** `Build Custom SfePy Problem`
+> **Workbench component:** `Build Sfepy Custom Problem`
 
 This component brings a complete SfePy `.py` input into the Workbench.
 In the Workbench, this component requires connections to both a mesh and
@@ -244,7 +243,7 @@ The component accepts the following parameters:
 -   **`fault_zone_n_voxels`** *(optional)*: If set, gives cells within
     this many structural-grid voxels of any active fault's trace their
     own region id --- the same damage-zone cell selection
-    `Build Hydrothermal Problem` uses, referenceable from the custom
+    `Build Sfepy Hydrothermal Problem` uses, referenceable from the custom
     file as `cells of group N`.
 
 In the codebase, the mesh and structural model are provided through two
@@ -253,6 +252,7 @@ additional parameters:
 -   **`mesh_results`**: The mesh to solve on. Meshes containing wells or
     sources are rejected --- not supported by this component.
 -   **`geomodel_result`**: The structural model.
+
 In the codebase, the properties configured through **`options`** in the
 Workbench are provided through three separate parameters:
 
@@ -269,7 +269,7 @@ SfePy during simulation execution.
 Example call in the codebase:
 
 ``` python
-with open("examples/synthetic_examples/model1/input_data/simulation_files/ custom_hydrothermal.py", encoding="utf-8") as f:
+with open("examples/synthetic_examples/model1/input_data/simulation_files/custom_hydrothermal.py", encoding="utf-8") as f:
     custom_input_file_contents = f.read()
 
 custom_builder = SfepyCustomBuilder(
@@ -356,7 +356,6 @@ golem_fault_properties = GolemFaultProperties(
     heat_capacity=fault_zone_properties.heat_capacity,
     fluid_modulus=fault_zone_properties.fluid_modulus,
     aperture=40,
-    permeability_model="constant",
 )
 
 problem_golem = GolemHydrothermalProblemBuilder(
@@ -475,8 +474,6 @@ The component accepts the following parameters in the Workbench:
     `3.0`.
 -   **`extraction_rate`** *(optional)*: Extraction source rate. Default
     `3.0`.
--   **`source_start_time`** *(optional)*: Time at which the
-    injection/extraction sources become active. Default `0.0`.
 -   **`start_time`** *(optional)*: Simulation start time. Default `0.0`.
 -   **`end_time`** *(optional)*: Simulation end time. Default `None`.
 
@@ -528,6 +525,8 @@ and the fracture planes can also be given as explicit coordinates:
 -   **`extraction_point`** *(optional)*: Explicit `(x, y, z)` extraction
     location. If `None`, the automatically positioned centre of the
     second synthetic fracture is used.
+-   **`source_start_time`** *(optional)*: Time at which the
+    injection/extraction sources become active. Default `0.0`.
 -   **`source_end_time`** *(optional)*: Time at which the sources stop.
     Default `None`; when omitted, the builder sets it to the resolved simulation `end_time`, so the sources remain active until the simulation ends.
 
@@ -663,15 +662,21 @@ In the Workbench, this component requires connections to both a mesh and
 the structural model used to generate that mesh.
 
 
-The relevant inputs are:
+The component accepts the following parameters in the Workbench:
+
+-   **`input_file`**: Path (relative to the codebase root) to the
+    complete GOLEM/MOOSE `.i` file.
+-   **`print_linear_residuals`** *(optional)*: Include GOLEM's linear
+    residuals in the solver output. Default `True`.
+
+In the codebase, the builder takes the file content instead of a path,
+plus the mesh and the following additional parameters:
 
 -   **`input_file_contents`**: Complete text of the custom GOLEM/MOOSE
     `.i` file.
 -   **`input_file_path`** *(optional)*: Path of the original `.i` file.
--   **`print_linear_residuals`**: Controls residual output.
-
-
-In the codebase, the structural model results and the following additional parameters are accepted:
+-   **`mesh_results`** or **`mesh_file`**: The WBGeo mesh, or the path
+    of an existing Exodus mesh file (see the table below).
 -   **`auxiliary_files_dir`** *(optional)*: Directory containing auxiliary
     files required by a custom GOLEM input, for example, CSV files defining transient injection rate or fracture aperture.
      The directory must already exist. The runner copies its
@@ -689,7 +694,7 @@ The following mesh inputs are supported:
 | Builder input | Placeholder in the `.i` file | Behaviour |
 | --- | --- | --- |
 | `mesh_results=...` | `${GOLEM_MESH_FILE}` | Use the WBGeo mesh. |
-| `mesh_file="/path/to/mesh.exo"` | `${GOLEM_MESH_FILE}` | Use an existing mesh file. 
+| `mesh_file="/path/to/mesh.exo"` | `${GOLEM_MESH_FILE}` | Use an existing mesh file. |
 
 Regardless of the selected mesh source, use `${GOLEM_MESH_FILE}` in the
  `.i` file to reference the mesh:
@@ -723,16 +728,15 @@ reservoir_auxiliary_files_dir = (
     + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
 )
 
-model_transient = problem=GolemCustomBuilder(
-        input_file_contents=reservoir_input_trans,
-        input_file_path=reservoir_input_trans_path,
-        auxiliary_files_dir=reservoir_auxiliary_files_dir,
-        mesh_file=cwd
-        + "/examples/case_studies/Groß_Schoenebeck/"
-          "GS_steady_state/wbgeo_out.e",
-        geomodel_result=structural_model_result,
-        print_linear_residuals=True,
-    ),
+model_transient = GolemCustomBuilder(
+    input_file_contents=reservoir_input_trans,
+    input_file_path=reservoir_input_trans_path,
+    auxiliary_files_dir=reservoir_auxiliary_files_dir,
+    mesh_file=cwd
+    + "/examples/case_studies/Groß_Schoenebeck/"
+      "GS_steady_state/wbgeo_out.e",
+    geomodel_result=structural_model_result,
+    print_linear_residuals=True,
 )
 ```
 
@@ -922,7 +926,8 @@ available directly in WBGeo.
 
 ### Plot Materials
 
-> **Workbench inspector:** `Plot Materials`
+> **Workbench inspectors:** `Plot Materials` (SfePy problems) and
+> `Plot GOLEM Materials` (GOLEM problems)
 
 This inspector provides a visual inspection of material assignments and
 properties in the simulation mesh before running the simulation. It helps
@@ -987,7 +992,7 @@ depend on the selected problem builder and its material definitions.
 
 ### Plot a variable at a time step
 
-> **Workbench inspector:** `Plot Variable (Final Time)`
+> **Workbench inspector:** `Plot Variable (Time Step)`
 
 This inspector provides a 3D visualization of a simulation result
 variable at a selected time step. It displays the spatial distribution
@@ -1274,17 +1279,14 @@ Both solver pipelines converge to the same WBGeo result type:
 
 ``` text
 SfePy:
-Build Hydrothermal Problem ─┐
-                            ├─> Run Simulation ──────────────┐
-Build Custom SfePy Problem ─┘                                │
-                                                             ├─> SimulationResults
-GOLEM:                                                       │
-Build GOLEM Hydrothermal Problem ─┐                          │
-Build GOLEM Simple Reservoir ─────┼─> Run GOLEM Simulation ─┘
-Build Custom GOLEM Problem ───────┘
-                                                                  │
-                                                                  ├─> Visualisation / Inspection
-                                                                  └─> Export Simulation Results
+Build Sfepy Hydrothermal Problem ─┐
+                                  ├─> Run Sfepy Simulation ─┐
+Build Sfepy Custom Problem ───────┘                         │
+                                                            ├─> SimulationResults
+GOLEM:                                                      │        │
+Build GOLEM Hydrothermal Problem ─┐                         │        ├─> Visualisation / Inspection
+Build GOLEM Simple Reservoir ─────┼─> Run GOLEM Simulation ─┘        └─> Export Simulation Results
+Build GOLEM Custom Problem ───────┘
 ```
 
 `SimulationResults` is a time-dependent container for geometry,
