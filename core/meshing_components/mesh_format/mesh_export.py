@@ -5,7 +5,10 @@ from py_api_wbgeo.nodesapi import wbgeo_component, BasicallyABufferedFile, Annot
 
 from core.meshing_components.mesh_format.abaqus.Abaqus_format import export_mesh_results_to_abaqus
 from core.meshing_components.mesh_format.ansys.Ansys_format import export_mesh_results_to_ansys
-from core.meshing_components.mesh_format.exodus.Exo_format import export_mesh_results_to_exodus, exodus_type_for
+from core.meshing_components.mesh_format.exodus.Exo_format import (
+    export_mesh_results_to_exodus,
+    exodus_type_for,
+)
 from core.meshing_components.mesh_format.feflow.Feflow_format import export_mesh_results_to_feflow
 from core.meshing_components.mesh_format.gmsh.GMSH_format import export_mesh_results_to_gmsh
 from core.meshing_components.mesh_format.stl.STL_format import export_mesh_results_to_stl
@@ -38,9 +41,10 @@ MeshFormatType_A = typing.Annotated[
 
 
 @wbgeo_component(
-  title="Download Mesh",
+  title="Export Mesh",
   description="Export Mesh to a selection of formats",
-  group="Export",
+  group="Meshing",
+  positionInGroup=-1,
   identifier="wbgeo::export_mesh_results",
 )
 def export_mesh_results(mesh: MeshResults, format: MeshFormatType_A = MeshFormatType.Exodus) -> BasicallyABufferedFile:
@@ -51,12 +55,8 @@ def export_mesh_results(mesh: MeshResults, format: MeshFormatType_A = MeshFormat
   elif format == MeshFormatType.ANSYS:
     return export_mesh_results_to_ansys(mesh)
   elif format == MeshFormatType.Exodus:
-    # Passes the mesh's own recorded type explicitly -- without this,
-    # export_mesh_results_to_exodus's default (MeshType.UNSTRUCTURED)
-    # applies regardless of the mesh's true type, which crashes outright
-    # for implicit/structured meshes (they only ever have 1 element block,
-    # fewer than the unstructured path's minimum) and silently produces
-    # weaker side-sets even after the dim-based fix.
+    # Export path from the mesh's own recorded type (unstructured if unset;
+    # unknown types raise) -- see exodus_type_for.
     return export_mesh_results_to_exodus(mesh, type=exodus_type_for(mesh))
   elif format == MeshFormatType.Feflow:
     return export_mesh_results_to_feflow(mesh)

@@ -2,7 +2,6 @@ import unittest
 import pickle
 import os
 import gmsh
-import hashlib
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import (
     fragment_surfaces
 )
@@ -102,36 +101,8 @@ class TestFragmentSurfacesFromPKL(unittest.TestCase):
 
         self.assertIsInstance(tri_group_tags, list)
 
-    # boundary consistency (regression style)
-    def test_regression_hash(self):
-
-        ov, well_tags, shaft_tags, tri_group_tags, tri_surface_tags, source_tag, boundary_tags = fragment_surfaces(
-            self.inputs["surfaces"],
-            self.inputs["bounds"],
-            self.inputs["ref_surface_indices"],
-            self.inputs["wells"],
-            self.inputs["extra_planes"],
-            self.inputs["sources"],
-            self.inputs["mine_shafts"],
-            ellipses=self.inputs["ellipses"],
-            triangulations=self.inputs["triangulations"],
-            mesh_size=self.inputs["mesh_size"],
-            curve_mesh_size=self.inputs["curve_mesh_size"],
-        )
-
-        snapshot = {
-            "ov_len": len(ov),
-            "well_tags_len": len(well_tags),
-            "shaft_tags_len": len(shaft_tags),
-            "tri_group_tags_len": len(tri_group_tags),
-            "tri_surface_tags_len": len(tri_surface_tags),
-            "boundary_tags_len": len(boundary_tags),
-        }
-
-        current_hash = hashlib.md5(pickle.dumps(snapshot)).hexdigest()
-        expected_hash = self.inputs.get("expected_hash", current_hash)
-
-        self.assertEqual(current_hash, expected_hash)
+    # A self-derived expected hash was removed: it could never detect a regression.
+    # Structural invariants are asserted by the tests above.
 
 ##########################################
 if __name__ == "__main__":

@@ -117,5 +117,19 @@ class TestPlaneValidation(unittest.TestCase):
         validate_planes(planes, self.extent)
 
 ####################################
+
+    def test_validate_hierarchical_planes(self):
+        validate_planes({
+            1: [[0, 0, 5, 1, 0, 5, 0, 1, 5]],
+            2: [[2, 2, 6, 3, 2, 6, 2, 3, 6]],
+        }, self.extent)
+
+    def test_hierarchical_plane_outside_raises(self):
+        with self.assertRaises(ValueError):
+            validate_planes({
+                1: [[0, 0, 5, 1, 0, 5, 0, 1, 5]],
+                2: [[2, 2, 6, 30, 2, 6, 2, 3, 6]],
+            }, self.extent)
+
 if __name__ == "__main__":
     unittest.main()

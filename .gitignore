@@ -15,3 +15,5 @@ file*
 **/.DS_Store
 core/torch_env/
 docker/
+# GOLEM workspace of the examples (workspace_dir="./projects")
+/projects/

@@ -64,6 +64,8 @@ services:
       MINIO_HOST: "minio:9000"
       BACKEND_HOST: "backend:8081"
       PREPARE_TEMPLATES: "false" # Whether templates should be pre-executed on start
+      GOLEM_BINARY: "/golem/golem-opt" # where golem can be found
+      GOLEM_WORKSPACE: "/shared_golem_workspace" # where golem should work
     volumes:
       # option 1, for local development, this points the runners the core and example to link to your local "codebase"'s core and example directories
       # if this file is located at the root of the "codebase" project, the defaults work
@@ -79,6 +81,28 @@ services:
       
       # cache installed python packages (of the codebase) even across image updates
       - "pythonDepCache:/opt/venv"
+      # For golem to run
+      - shared_golem_workspace:/shared_golem_workspace
+      - mpiexec_ssh_keys:/root/.ssh/
+    links:
+      - golem_runner
+
+  golem_runner:
+    # container that has MOOSE/GOLEM installed
+    image: registry.git.rwth-aachen.de/wbgeo/container-registry/golem:latest
+    pull_policy: always
+    expose:
+      - "22"  # for ssh
+    volumes:
+      - shared_golem_workspace:/shared_golem_workspace
+      - mpiexec_ssh_keys:/root/.ssh/
+    environment:
+      GOLEM_BINARY: "/golem/golem-opt"
+      GOLEM_WORKSPACE: "/shared_golem_workspace"
+    entrypoint: [ "/wbgeo_golem/golem_start.sh" ]
+
 
 volumes:
   pythonDepCache: # a cache for installed python packages
+  shared_golem_workspace: # shared volume for the workspace
+  mpiexec_ssh_keys: # used to allow SSH connection for mpiexec

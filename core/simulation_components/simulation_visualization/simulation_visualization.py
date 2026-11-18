@@ -1,8 +1,9 @@
 """
-Visualization for the SfePy hydrothermal simulation pipeline: plotting
-SimulationResults (3D snapshots, cross-sections, before/after diffs) and a
-pre-flight material-assignment check for HydrothermalProblemBuilder before
-running a solve that can take a while.
+Plotting of SimulationResults (3D snapshots, cross-sections, before/after
+diffs, line and time-series samples) for both simulators.
+
+The pre-solve material preview lives in material_preview.py and is
+re-exported here as plot_builder_materials.
 
 PyVista styling (camera angle, show_bounds, legend face style) follows the
 conventions established in
@@ -14,7 +15,7 @@ own ad-hoc defaults.
 """
 import inspect
 import logging
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,37 +23,34 @@ import pyvista as pv
 from matplotlib.ticker import FormatStrFormatter
 from scipy.interpolate import griddata
 
-from core.meshing_components.mesh_format.vtk.VTK_format import VTKInputs
 from core.object_components import SimulationResults
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    CustomSfepyBuilder,
-    HydrothermalProblemBuilder,
-    RockUnitProperties,
-    enumerate_rock_units,
-    is_custom_sfepy_builder,
+from core.simulation_components.simulation_visualization.material_preview import (  # noqa: F401  (re-export)
+    plot_builder_materials,
 )
 
 logger = logging.getLogger(__name__)
 
-# Deliberately not used for any lithology -- the fault zone should always
-# stand out distinctly rather than risk blending in with a lithology's own
-# color (see plot_builder_materials).
-_FAULT_ZONE_COLOR = "#111111"
-
-# CustomSfepyBuilder has no RockUnitProperties-based fault_zone_properties.name
-# to pull a real name from (its fault-zone cells are only a group-id
-# selection -- see CustomSfepyBuilder.fault_group_id) -- plot_builder_materials
-# uses this fixed label for that material instead, when applicable.
-_CUSTOM_BUILDER_FAULT_ZONE_NAME = "fault_zone"
-
 # Human-readable label (with units, where known) for a solved variable's
 # raw name -- falls back to the raw name itself for anything not listed
-# here (e.g. a future variable, or cell_data like block_id), so this never
-# needs to be kept in lockstep with every possible var_name.
+# here (e.g. a future variable, a custom builder's own field, or cell_data
+# like block_id), so this never needs to be kept in lockstep with every
+# possible var_name. Covers the names the generated hydrothermal builders
+# write: SfePy "T"/"p", GOLEM "temperature"/"pore_pressure".
 _VARIABLE_LABELS = {
     "T": "Temperature (°C)",
+    "temperature": "Temperature (°C)",
     "p": "Pressure (Pa)",
+    "pore_pressure": "Pressure (Pa)",
 }
+
+# The same physical variable under each simulator's name. Stored results keep
+# the solver's own names; a requested var_name is only mapped onto a field
+# that exists, so var_name="T" works for a GOLEM result and
+# var_name="temperature" for a SfePy one. Custom builders' fields are untouched.
+_VARIABLE_ALIASES = (
+    ("T", "temperature"),
+    ("p", "pore_pressure"),
+)
 
 
 def _variable_label(var_name: str) -> str:
@@ -60,26 +58,9 @@ def _variable_label(var_name: str) -> str:
     return _VARIABLE_LABELS.get(var_name, var_name)
 
 
-def _format_rock_properties(props: RockUnitProperties) -> str:
-    """
-    Compact one-line summary of a RockUnitProperties for legend labels --
-    porosity, permeability, solid thermal conductivity, solid volumetric
-    heat capacity, in that order (matching the constructor's own field
-    order). Scientific notation for permeability/heat capacity, which
-    routinely span many orders of magnitude (e.g. 1e-19 to 1e-13 m^2),
-    plain notation for porosity/conductivity, which don't.
-
-    Plain-ASCII labels (poro/perm/k_s/rhoc), not Greek symbols (phi/k/
-    lambda/rho*c) -- PyVista's legend text actor does not reliably render
-    non-ASCII glyphs, so this isn't a style choice, it's required for the
-    text to display correctly.
-    """
-    return (
-        f"poro={props.porosity:g} "
-        f"perm={props.permeability:.1e}m2 "
-        f"k_s={props.k_solid:g}W/mK "
-        f"rhoc={props.rho_c_solid:.1e}J/m3K"
-    )
+def _time_step_index(sim: SimulationResults, time: float) -> int:
+    """Zero-based saved-step index for a simulation time key."""
+    return sorted(sim.nodes_by_time).index(time)
 
 
 def _apply_camera_convention(plotter: pv.Plotter) -> None:
@@ -140,7 +121,7 @@ def _build_grid_geometry(sim: SimulationResults, time: float) -> pv.Unstructured
         ValueError: `time` isn't a key in `sim.nodes_by_time`.
     """
     if time not in sim.nodes_by_time:
-        raise ValueError(f"Time {time} not found in simulation results.")
+        _validate_saved_time(sim, time)
 
     nodes = sim.nodes_by_time[time]
     cells = sim.cells_by_time.get(time, None)
@@ -223,22 +204,105 @@ def build_grid_from_class(
     return mesh
 
 
-def _default_var_name(sim: SimulationResults, time: float) -> str:
-    """
-    Pick a variable to plot when none was given: "T" if present (this
-    pipeline's own hydrothermal convention), otherwise whatever field the
-    sim actually has at `time` -- a CustomSfepyBuilder result can solve
-    arbitrary physics and isn't guaranteed to produce a "T" field at all.
+# VTK bookkeeping arrays are not physical simulation results.  Compare names
+# case-insensitively so files produced by different exporters behave alike.
+_METADATA_FIELDS = {
+    "globalnodeid", "pedigreenodeid", "globalelementid",
+    "pedigreeelementid", "globalcellid", "pedigreecellid",
+    "vtkoriginalpointids", "vtkoriginalcellids", "vtkghosttype",
+}
+
+
+def _available_variables(sim: SimulationResults, time: float) -> List[str]:
+    """Return numeric scalar result fields, preserving their original order.
+
+    Works with arbitrary field names (e.g. T, temperature, temp, te) and
+    ignores VTK identifier arrays. Vector/tensor fields can still be plotted
+    explicitly with ``var_name`` where supported by the plotting function.
     """
     node_data = sim.node_data_by_time.get(time, {})
     cell_data = sim.cell_data_by_time.get(time, {})
-    if "T" in node_data or "T" in cell_data:
-        return "T"
-    for name in node_data:
-        return name
-    for name in cell_data:
-        return name
-    raise ValueError(f"sim has no data fields at time {time} to plot.")
+    variables = []
+    for fields in (node_data, cell_data):
+        for name, values in fields.items():
+            if name.lower() in _METADATA_FIELDS or name in variables:
+                continue
+            array = np.asarray(values)
+            if array.ndim != 1 or not np.issubdtype(array.dtype, np.number):
+                continue
+            variables.append(name)
+    return variables
+
+
+def _default_var_name(sim: SimulationResults, time: float) -> str:
+    """Temperature if the result has it under either simulator's name, else the first scalar field."""
+    variables = _available_variables(sim, time)
+    if not variables:
+        raise ValueError(f"No numeric scalar simulation fields found at time {time}.")
+    for name in _VARIABLE_ALIASES[0]:
+        if name in variables:
+            return name
+    return variables[0]
+
+
+def _resolve_var_name(sim: SimulationResults, time: float, var_name: Optional[str]) -> str:
+    """The field to plot for a requested var_name.
+
+    None picks the default (_default_var_name). A name that exists at `time`
+    is used as is. Otherwise a known alias that does exist is used instead
+    (see _VARIABLE_ALIASES); anything else is returned unchanged, so the
+    caller's usual "not found" error lists the available fields.
+    """
+    if var_name is None:
+        return _default_var_name(sim, time)
+    fields = set(sim.node_data_by_time.get(time, {})) | set(sim.cell_data_by_time.get(time, {}))
+    if var_name in fields:
+        return var_name
+    for group in _VARIABLE_ALIASES:
+        if var_name in group:
+            for alias in group:
+                if alias in fields:
+                    logger.info("Variable %r not in this result; using %r instead.", var_name, alias)
+                    return alias
+    return var_name
+
+
+def _validate_saved_time(sim: SimulationResults, time: float, parameter: str = "time") -> None:
+    """Raise an informative error with all saved step indices and actual time values."""
+    times = sorted(sim.nodes_by_time)
+    if not times:
+        raise ValueError("sim has no time steps.")
+    if time not in sim.nodes_by_time:
+        available = ", ".join(f"step {i}: {t:g}" for i, t in enumerate(times))
+        raise ValueError(
+            f"Invalid {parameter}={time!r}. Available saved time steps "
+            f"(index: time value): {available}. "
+            "Pass the actual time value, not the zero-based step index."
+        )
+
+
+def _validate_cross_section_inputs(sim: SimulationResults, var_name: str,
+                                   time_a: float, time_b: float) -> None:
+    """Validate both times and point-data field before building/slicing a mesh."""
+    _validate_saved_time(sim, time_a, "time_a")
+    _validate_saved_time(sim, time_b, "time_b")
+    for time in dict.fromkeys((time_a, time_b)):
+        if var_name not in sim.node_data_by_time.get(time, {}):
+            raise _variable_not_found_error(sim, time, var_name, point_only=True)
+
+
+def _variable_not_found_error(sim: SimulationResults, time: float, var_name: str, *, point_only: bool = False) -> ValueError:
+    """Explain an invalid variable name and list fields actually present at this timestep."""
+    node_names = list(sim.node_data_by_time.get(time, {}))
+    cell_names = list(sim.cell_data_by_time.get(time, {}))
+    available = node_names if point_only else list(dict.fromkeys(node_names + cell_names))
+    kind = "point-data variables" if point_only else "variables"
+    listed = ", ".join(repr(name) for name in available) if available else "(none)"
+    return ValueError(
+        f"Variable {var_name!r} not found at time {time}. "
+        f"Available {kind}: {listed}. "
+        "Variable names are case-sensitive; use an exact name from the list."
+    )
 
 
 # ----------------------------------------------------------------------
@@ -274,10 +338,11 @@ def plot_variable_at_a_time(
     isosurface-of-a-3D-volume use case) -- a 3D analogue of the contour
     lines plot_cross_section_2D already draws in its 2D matplotlib slices.
 
-    time defaults to the final saved time step; var_name defaults to "T"
-    if present, else whatever field the sim actually has (see
-    _default_var_name) -- a CustomSfepyBuilder result need not solve
-    hydrothermal physics at all.
+    time defaults to the final saved time step; var_name defaults to the
+    temperature ("T" for SfePy, "temperature" for GOLEM) if present, else
+    whatever field the sim actually has (see _default_var_name) -- a custom
+    builder's result need not solve hydrothermal physics at all. "T" and
+    "temperature" (and "p"/"pore_pressure") are accepted for either simulator.
 
     off_screen/window_size/anti_aliasing tune the render's own resource
     footprint rather than what's shown -- this is the only 3D plot in the
@@ -295,13 +360,13 @@ def plot_variable_at_a_time(
         raise ValueError("sim has no time steps.")
     if time is None:
         time = max(sim.nodes_by_time.keys())
-    if var_name is None:
-        var_name = _default_var_name(sim, time)
+    _validate_saved_time(sim, time)
+    var_name = _resolve_var_name(sim, time, var_name)
 
     grid = build_grid_from_class(sim, time, var_names=[var_name])
 
     if var_name not in grid.point_data and var_name not in grid.cell_data:
-        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
+        raise _variable_not_found_error(sim, time, var_name)
 
     surf = _extract_surface_compat(grid)
     surf.points *= scale
@@ -328,7 +393,7 @@ def plot_variable_at_a_time(
         # redundant scalar bar even though color= is a fixed solid color
         # here, not scalars=.
         plotter.add_mesh(contours, color=contour_color, line_width=2, show_scalar_bar=False)
-    plotter.add_text(f"{_variable_label(var_name)} at time {time}", font_size=20, position="upper_edge")
+    plotter.add_text(f"{_variable_label(var_name)} at time step {_time_step_index(sim, time)}", font_size=20, position="upper_edge")
     plotter.show_bounds(location="furthest", grid=True)
     _apply_camera_convention(plotter)
     plotter.show()
@@ -367,6 +432,7 @@ def plot_variable_difference(
         time_a = times[0]
     if time_b is None:
         time_b = times[-1]
+    var_name = _resolve_var_name(sim, time_a, var_name)
 
     # Built once and reused for both timesteps when they share geometry
     # (the common case -- see _same_geometry) instead of building two full
@@ -374,14 +440,14 @@ def plot_variable_difference(
     grid = _build_grid_geometry(sim, time_a)
     _attach_time_data(grid, sim, time_a, var_names=[var_name])
     if var_name not in grid.point_data:
-        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_a}.")
+        raise _variable_not_found_error(sim, time_a, var_name, point_only=True)
     val_a = np.asarray(grid.point_data[var_name]).copy()
 
     if not _same_geometry(sim, time_a, time_b):
         grid = _build_grid_geometry(sim, time_b)
     _attach_time_data(grid, sim, time_b, var_names=[var_name])
     if var_name not in grid.point_data:
-        raise ValueError(f"Variable '{var_name}' not found (as point data) at time {time_b}.")
+        raise _variable_not_found_error(sim, time_b, var_name, point_only=True)
     val_b = grid.point_data[var_name]
 
     diff = val_b - val_a
@@ -401,7 +467,7 @@ def plot_variable_difference(
         surf, scalars=diff_name, cmap=cmap, show_edges=show_edges, clim=(-max_abs, max_abs),
         scalar_bar_args={"title": f"Δ {_variable_label(var_name)}"},
     )
-    plotter.add_text(f"Change in {_variable_label(var_name)}: t={time_a} -> t={time_b}", font_size=18, position="upper_edge")
+    plotter.add_text(f"Change in {_variable_label(var_name)}: step {_time_step_index(sim, time_a)} -> step {_time_step_index(sim, time_b)}", font_size=18, position="upper_edge")
     plotter.show_bounds(location="furthest", grid=True)
     _apply_camera_convention(plotter)
     plotter.show()
@@ -484,10 +550,11 @@ def plot_cross_section_2D(
     side with matplotlib -- filled contours plus contour lines, sharing one
     color scale so the two panels are directly, visually comparable (unlike
     two separate 3D PyVista plots/camera views). time_a/time_b default to
-    the first and last saved time steps; var_name defaults to "T" if
-    present, else whatever field the sim actually has (see
-    _default_var_name) -- a CustomSfepyBuilder result need not solve
-    hydrothermal physics at all.
+    the first and last saved time steps; var_name defaults to the
+    temperature ("T" for SfePy, "temperature" for GOLEM) if present, else
+    whatever field the sim actually has (see _default_var_name) -- a custom
+    builder's result need not solve hydrothermal physics at all. "T" and
+    "temperature" (and "p"/"pore_pressure") are accepted for either simulator.
 
     normal defaults to (0, 1, 0) -- a slice perpendicular to Y, spanning
     X and Z -- matching how this pipeline's own example models are laid
@@ -512,8 +579,9 @@ def plot_cross_section_2D(
         time_a = times[0]
     if time_b is None:
         time_b = times[-1]
-    if var_name is None:
-        var_name = _default_var_name(sim, time_a)
+    var_name = _resolve_var_name(sim, time_a, var_name)
+
+    _validate_cross_section_inputs(sim, var_name, time_a, time_b)
 
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
 
@@ -544,7 +612,7 @@ def plot_cross_section_2D(
         last_cf = ax.contourf(UG, VG, Z, levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
         cs = ax.contour(UG, VG, Z, levels=levels, colors="k", linewidths=0.5)
         ax.clabel(cs, inline=True, fontsize=7, fmt="%.1f")
-        ax.set_title(f"t={t}")
+        ax.set_title(f"Time step {_time_step_index(sim, t)}")
         ax.set_xlabel(u_label)
         ax.set_ylabel(v_label)
         ax.set_aspect("equal")
@@ -582,6 +650,9 @@ def plot_cross_section_difference_2D(
         time_a = times[0]
     if time_b is None:
         time_b = times[-1]
+    var_name = _resolve_var_name(sim, time_a, var_name)
+
+    _validate_cross_section_inputs(sim, var_name, time_a, time_b)
 
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
 
@@ -616,7 +687,7 @@ def plot_cross_section_difference_2D(
     ax.set_ylabel(v_label)
     ax.set_aspect("equal")
     fig.colorbar(cf, ax=ax, orientation="vertical", label=f"Δ {_variable_label(var_name)}", fraction=0.046, pad=0.04)
-    fig.suptitle(f"Δ {_variable_label(var_name)} cross-section (origin={origin}, normal={normal}): t={time_a} -> t={time_b}")
+    fig.suptitle(f"Δ {_variable_label(var_name)} cross-section (origin={origin}, normal={normal}): step {_time_step_index(sim, time_a)} -> step {_time_step_index(sim, time_b)}")
     plt.show()
 
 
@@ -641,9 +712,12 @@ def plot_variable_along_line(
     and plot it against distance along the line (via PyVista's own
     pv.Line(...).sample(grid), which linearly interpolates from the mesh).
     """
+    _validate_saved_time(sim, time, "time")
+    var_name = _resolve_var_name(sim, time, var_name)
+    if (var_name not in sim.node_data_by_time.get(time, {})
+            and var_name not in sim.cell_data_by_time.get(time, {})):
+        raise _variable_not_found_error(sim, time, var_name)
     grid = build_grid_from_class(sim, time, var_names=[var_name])
-    if var_name not in grid.point_data and var_name not in grid.cell_data:
-        raise ValueError(f"Variable '{var_name}' not found at time {time}.")
 
     line = pv.Line(p0, p1, resolution=n_samples)
     sampled = line.sample(grid)
@@ -657,7 +731,7 @@ def plot_variable_along_line(
     plt.plot(distances, values, "-k")
     plt.xlabel("Distance along line")
     plt.ylabel(_variable_label(var_name))
-    plt.title(f"{_variable_label(var_name)} along line at time {time}")
+    plt.title(f"{_variable_label(var_name)} along line at time step {_time_step_index(sim, time)}")
     plt.grid(True)
     plt.tight_layout()
     plt.show()
@@ -679,7 +753,7 @@ def _sample_point_on_mesh(
     if var_name not in mesh.point_data and var_name not in mesh.cell_data:
         raise ValueError(f"Variable '{var_name}' not found.")
 
-    pt = pv.PolyData(np.array([point]))
+    pt = pv.PolyData(np.asarray([point], dtype=float))
     sampled = pt.sample(mesh)
     if sampled.n_points == 0 or not np.any(sampled["vtkValidPointMask"]):
         logger.warning("Point %s is outside mesh bounds %s", point, mesh.bounds)
@@ -699,6 +773,7 @@ def print_variable_at_point(
     sampling) and log it. Returns the sampled value, or None (with a
     warning logged) if `point` falls outside the mesh's bounds.
     """
+    var_name = _resolve_var_name(sim, time, var_name)
     grid = build_grid_from_class(sim, time, var_names=[var_name])
     value = _sample_point_on_mesh(grid, var_name, point)
     if value is not None:
@@ -711,6 +786,8 @@ def plot_variable_time_series(
     var_name: str,
     point: Tuple[float, float, float],
     decimals: int = 3,
+    time_step_start: Optional[int] = None,
+    time_step_end: Optional[int] = None,
 ) -> None:
     """
     Sample var_name at a single point across every saved time step and plot
@@ -721,6 +798,27 @@ def plot_variable_time_series(
     times = sorted(sim.nodes_by_time.keys())
     if not times:
         raise ValueError("sim has no time steps.")
+    start = 0 if time_step_start is None else time_step_start
+    end = len(times) - 1 if time_step_end is None else time_step_end
+    available_steps = ", ".join(f"step {i}: {t:g}" for i, t in enumerate(times))
+    for label, index in (("time_step_start", start), ("time_step_end", end)):
+        if isinstance(index, bool) or not isinstance(index, (int, np.integer)) or not 0 <= index < len(times):
+            raise ValueError(
+                f"Invalid {label}={index!r}. Available saved time steps "
+                f"(index: time value): {available_steps}. "
+                "For time series, pass a zero-based step index, not the physical time value."
+            )
+    if start > end:
+        raise ValueError(
+            f"time_step_start={start} must be <= time_step_end={end}. "
+            f"Available saved time steps (index: time value): {available_steps}."
+        )
+    selected_times = times[start:end + 1]
+    var_name = _resolve_var_name(sim, selected_times[0], var_name)
+    for t in selected_times:
+        if (var_name not in sim.node_data_by_time.get(t, {})
+                and var_name not in sim.cell_data_by_time.get(t, {})):
+            raise _variable_not_found_error(sim, t, var_name)
 
     # Geometry is built once (for times[0]) and reused across every
     # subsequent timestep when it's unchanged (the common case -- see
@@ -728,7 +826,7 @@ def plot_variable_time_series(
     # saved step just to sample one point.
     mesh = _build_grid_geometry(sim, times[0])
     values = []
-    for t in times:
+    for t in selected_times:
         if not _same_geometry(sim, times[0], t):
             mesh = _build_grid_geometry(sim, t)
         _attach_time_data(mesh, sim, t, var_names=[var_name])
@@ -739,169 +837,11 @@ def plot_variable_time_series(
     values = np.array(values)
 
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(times, values, "-o", color="tab:red")
-    ax.set_xlabel("Time")
+    ax.plot(range(start, end + 1), values, "-o", color="tab:red")
+    ax.set_xlabel("Time step")
     ax.set_ylabel(_variable_label(var_name))
-    ax.set_title(f"{_variable_label(var_name)} at point {point} over time")
+    ax.set_title(f"{_variable_label(var_name)} at point {point} over time steps")
     ax.grid(True)
     ax.yaxis.set_major_formatter(FormatStrFormatter(f"%.{decimals}f"))
     plt.tight_layout()
     plt.show()
-
-
-# ----------------------------------------------------------------------
-# Pre-flight material-assignment check (before running a solve)
-# ----------------------------------------------------------------------
-
-def plot_builder_materials(
-    builder: Union[HydrothermalProblemBuilder, CustomSfepyBuilder],
-    style: str = "surface",
-    show_edges: bool = True,
-    show_plotter: bool = True,
-) -> pv.Plotter:
-    """
-    Plot builder.mesh_results in 3D, one solid color per distinct material
-    (lithologies, plus the fault zone if active), with a legend -- lets a
-    mistaken material assignment (e.g. a fault zone landing in the wrong
-    place, or fault_activity not restricting it as expected) be caught by
-    eye before running a solve that can take a while, rather than only after.
-
-    Works for both HydrothermalProblemBuilder and CustomSfepyBuilder
-    results. HydrothermalProblemBuilder has a structured rock_properties/
-    fault_zone_properties (RockUnitProperties) for every material, so each
-    legend entry there gets a one-line summary (porosity/permeability/
-    thermal conductivity/heat capacity, the actual values this solve
-    uses). CustomSfepyBuilder has no such object -- a custom file writes
-    its `materials` block directly in raw SfePy syntax, so there's nothing
-    to summarize -- its legend entries are the bare material name instead.
-    Either way requires builder.geomodel_result (raises a clear error for
-    a CustomSfepyBuilder built with geomodel_result=None): that's also
-    where lithology names, colors, and grouping come from, for both
-    builder types.
-
-    Reuses core.meshing_components.mesh_format.vtk.VTK_format.VTKInputs to
-    build the combined PyVista grid, rather than re-implementing the meshio
-    -> PyVista conversion -- that class already iterates mesh_results.elements
-    in the same block/cell order the per-cell materials array does, so the
-    two line up without needing a separate ordering assumption.
-
-    Legend matches structural_modeling_visualization.plot_structural_model_3D's
-    legend for the *same* structural model (builder.geomodel_result is that
-    same model, so this is directly reconstructable), rather than an
-    independent styling:
-    - Colors come from each StructuralElement's own .color (never None
-      after construction) instead of an independent fallback palette, so
-      the same lithology reads as the same color across the structural
-      model plot, the mesh plot, and this one. Basement isn't part of any
-      structural_groups entry; given the same grey plot_mesh_3d already
-      uses for it ("#808080").
-    - Legend entries are grouped under a bold-ish header row per
-      structural_groups entry (its real group name, e.g. "Strat_Series1"),
-      each followed by "• element_name" bullets in that element's color --
-      not a flat list of bare material names.
-    - Top-to-bottom order matches plot_structural_model_3D's: a "Fault
-      Zone" section first (if active), then structural_groups in their
-      stored order (youngest group at the top, oldest at the bottom -- the
-      first entry in PyVista's `labels` list renders at the top), then
-      "Basement" last (it sits below/outside every defined group, the
-      oldest thing in the model).
-
-    show_edges defaults to True (useful for spotting individual cell
-    assignment during interactive debugging), but turns visually noisy on
-    a fine mesh -- every cell's edge starts blending into the next,
-    especially in a static screenshot rather than an interactive,
-    zoomable view. Set False for anything above roughly 50k cells, or for
-    a clean, publication/gallery-style render.
-    """
-    is_custom = is_custom_sfepy_builder(builder)
-
-    if is_custom:
-        if builder.geomodel_result is None:
-            raise ValueError(
-                "plot_builder_materials needs builder.geomodel_result to resolve "
-                "lithology names and colors -- construct the CustomSfepyBuilder "
-                "with geomodel_result set."
-            )
-        # Same per-cell partition HydrothermalProblemBuilder.compute_cell_materials()
-        # builds (mat_id_to_lithology + fault_zone_cell_mask, in mesh_results.elements
-        # block order), just resolving names via the standalone enumerate_rock_units
-        # instead of a rock_properties dict -- CustomSfepyBuilder has none.
-        lith_names = dict(enumerate_rock_units(builder.geomodel_result))
-        names = []
-        offset = 0
-        for mat_id, lith_id in builder.mat_id_to_lithology.items():
-            block = builder.mesh_results.elements[mat_id]
-            n = len(block.data)
-            block_names = np.full(n, lith_names[lith_id], dtype=object)
-            if builder.fault_zone_cell_mask is not None:
-                block_mask = builder.fault_zone_cell_mask[offset:offset + n]
-                block_names[block_mask] = _CUSTOM_BUILDER_FAULT_ZONE_NAME
-            names.append(block_names)
-            offset += n
-        materials = np.concatenate(names) if names else np.array([], dtype=object)
-        fault_name = _CUSTOM_BUILDER_FAULT_ZONE_NAME if builder.fault_group_id is not None else None
-    else:
-        materials = builder.compute_cell_materials()
-        fault_name = builder.fault_zone_properties.name if builder.fault_zone_properties is not None else None
-
-    present = set(np.unique(materials).tolist())
-    grid = VTKInputs(builder.mesh_results.nodes, builder.mesh_results.elements).create_mesh()
-
-    frame = builder.geomodel_result.structural_frame
-
-    color_by_name: Dict[str, str] = {"basement": "#808080"}
-    for group in frame.structural_groups:
-        for elem in group.structural_elements:
-            color_by_name[elem.name] = elem.color
-    if fault_name is not None:
-        color_by_name[fault_name] = _FAULT_ZONE_COLOR
-
-    if not is_custom:
-        properties_by_name: Dict[str, RockUnitProperties] = dict(builder.rock_properties)
-        if fault_name is not None:
-            properties_by_name[fault_name] = builder.fault_zone_properties
-
-    def legend_entry(name: str) -> Tuple[str, str, str]:
-        """(material_name, legend_label, color) for one material -- label includes rock properties when available."""
-        if is_custom:
-            label = f"• {name}"
-        else:
-            label = f"• {name}  ({_format_rock_properties(properties_by_name[name])})"
-        return name, label, color_by_name[name]
-
-    # (header, [(material_name, legend_label, color), ...])
-    sections: List[Tuple[str, List[Tuple[str, str, str]]]] = []
-    if fault_name is not None and fault_name in present:
-        sections.append(("Fault Zone", [legend_entry(fault_name)]))
-    for group in frame.structural_groups:  # stored youngest -> oldest, same as structural_groups itself
-        entries = [legend_entry(elem.name) for elem in group.structural_elements if elem.name in present]
-        if entries:
-            sections.append((group.name, entries))
-    if "basement" in present:
-        sections.append(("Basement", [legend_entry("basement")]))
-
-    plotter = pv.Plotter(off_screen=not show_plotter)
-    for _, entries in sections:
-        for name, _label, color in entries:
-            cell_ids = np.where(materials == name)[0]
-            sub = grid.extract_cells(cell_ids)
-            plotter.add_mesh(sub, show_edges=show_edges, style=style, color=color)
-
-    flat_legend: List[Tuple[str, str]] = []
-    for header, entries in sections:
-        flat_legend.append((header, "black"))
-        flat_legend.extend((label, color) for _name, label, color in entries)
-
-    if flat_legend:
-        plotter.add_legend(
-            labels=flat_legend,
-            size=(0.32, 0.03 * len(flat_legend)),
-            loc="lower right",
-            face="rectangle",
-        )
-
-    plotter.show_bounds(location="furthest", grid=True)
-    _apply_camera_convention(plotter)
-    if show_plotter:
-        plotter.show()
-    return plotter

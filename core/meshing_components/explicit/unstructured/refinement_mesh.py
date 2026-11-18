@@ -1,7 +1,7 @@
-from typing import Union, Optional
-from pydantic import BaseModel
-from py_api_wbgeo.nodesapi import wbgeo_type
+from typing import List, Optional, Tuple, Union
 
+from pydantic import BaseModel, Field
+from py_api_wbgeo.nodesapi import wbgeo_type
 
 # ------------------------
 # Wells
@@ -50,6 +50,38 @@ class FunctionSourceRefinement(BaseModel):
 
 
 # ------------------------
+# Mine shafts
+# ------------------------
+@wbgeo_type(
+    name="Linear Shaft Refinement",
+    identifier="LinearShaftRefinement",
+)
+class LinearShaftRefinement(BaseModel):
+    """
+    Refines the mesh according to perpendicular distance from
+    the axis of the nearest mine shaft.
+    """
+    SizeMin: float
+    SizeMax: float
+    DistMin: float
+    DistMax: float
+
+
+@wbgeo_type(
+    name="Function Shaft Refinement",
+    identifier="FunctionShaftRefinement",
+)
+class FunctionShaftRefinement(BaseModel):
+    """
+    User-defined mesh-size expression based on perpendicular
+    distance from the nearest mine-shaft axis.
+
+    Use DIST in the expression for the axis distance.
+    """
+    expression: str
+
+
+# ------------------------
 # Triangulation
 # ------------------------
 @wbgeo_type(name="Triangulation Refinement", identifier="TriangulationRefinement")
@@ -57,11 +89,10 @@ class TriangulationRefinement(BaseModel):
     """
     Mesh refinement around triangulated surfaces.
     """
-    hmin: float = 3.0
-    hmax: float = 30.0
-    d1: float = 50.0
-    d2: float = 100.0
-    enabled: bool = True
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float = 60.0
 
 
 # ------------------------
@@ -72,11 +103,10 @@ class EllipseRefinement(BaseModel):
     """
     Mesh refinement around elliptical regions.
     """
-    hmin: float = 3.0
-    hmax: float = 30.0
-    d1: float = 30.0
-    d2: float = 80.0
-    enabled: bool = True
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float = 60.0
 
 
 # ------------------------
@@ -87,21 +117,81 @@ class FaultRefinement(BaseModel):
     """
     Mesh refinement around fault surfaces.
     """
-    hmin: float = 3.0
-    hmax: float = 30.0
-    d1: float = 20.0
-    d2: float = 60.0
-    enabled: bool = True
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float = 60.0
 
+
+@wbgeo_type(name="Extra Plane Refinement",
+    identifier="ExtraPlaneRefinement",
+)
+class ExtraPlaneRefinement(BaseModel):
+    """
+    Mesh refinement around extra planes using
+    distance-based linear scaling.
+    """
+    SizeMin: float = 3.0
+    SizeMax: float = 30.0
+    DistMin: float = 20.0
+    DistMax: float =60.0
+
+Coordinate3D = Tuple[float, float, float]
+
+
+@wbgeo_type(
+    name="General Refinement",
+    identifier="GeneralRefinement",
+)
+class GeneralRefinement(BaseModel):
+    """
+    General point- or line-based refinement.
+
+    One coordinate:
+        coordinates=[(x, y, z)]
+
+        DIST is the Euclidean distance from that point.
+
+    Two coordinates:
+        coordinates=[
+            (x1, y1, z1),
+            (x2, y2, z2),
+        ]
+
+        DIST is the distance from the finite line segment connecting
+        the two coordinates.
+
+    Linear refinement:
+        Set SizeMin and DistMax.
+
+    Function refinement:
+        Set expression and use DIST inside the expression.
+    """
+    coordinates: List[Coordinate3D]
+
+    SizeMin: Optional[float] = None
+    DistMax: Optional[float] = None
+    expression: Optional[str] = None
 
 # ------------------------
 # MAIN CONTAINER
 # ------------------------
 @wbgeo_type(name="Mesh Refinement", identifier="Refinement")
 class Refinement(BaseModel):
+    """Configuration of optional mesh-refinement regions and strategies.
+
+    Each field enables refinement around the corresponding geometric feature.
+    Linear strategies specify element sizes and distance thresholds, while
+    function strategies use a Gmsh mesh-size expression. The ``general`` field
+    accepts one or multiple point- or line-based refinements.
+
+    ``extra_planes`` is the preferred Python attribute name. The legacy
+    ``extraplanes`` input name remains accepted for compatibility.
     """
-    Container for all mesh refinement options.
-    """
+
+    class Config:
+        allow_population_by_field_name = True  # Pydantic v1
+        populate_by_name = True  # Pydantic v2
 
     wells: Optional[
         Union[LinearWellRefinement, FunctionWellRefinement]
@@ -111,6 +201,24 @@ class Refinement(BaseModel):
         Union[LinearSourceRefinement, FunctionSourceRefinement]
     ] = None
 
-    triangulation: Optional[TriangulationRefinement] = None
+    shafts: Optional[
+        Union[LinearShaftRefinement, FunctionShaftRefinement]
+    ] = None
+
+    # One or more general point/line refinements
+    general: Optional[
+        Union[
+            GeneralRefinement,
+            List[GeneralRefinement],
+        ]
+    ] = None
+
+    triangulations: Optional[TriangulationRefinement] = None
     ellipses: Optional[EllipseRefinement] = None
+    extra_planes: Optional[ExtraPlaneRefinement] = Field(default=None, alias="extraplanes")
+
+    @property
+    def extraplanes(self) -> Optional[ExtraPlaneRefinement]:
+        """Legacy attribute alias for :attr:`extra_planes`."""
+        return self.extra_planes
     faults: Optional[FaultRefinement] = None

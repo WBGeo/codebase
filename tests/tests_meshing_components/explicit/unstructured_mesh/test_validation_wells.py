@@ -117,6 +117,9 @@ class TestGeometryUtilities(unittest.TestCase):
         # should not raise
         validate_wells([], extent)
 
-#############################################
+    # Hierarchical dictionaries are intentionally NOT passed directly to
+    # validate_wells. hierarchical_mesh selects key 1/2 first and the ordinary
+    # validator receives a normal list of well polylines.
+
 if __name__ == "__main__":
     unittest.main()

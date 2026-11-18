@@ -76,7 +76,7 @@ class LoadPlanesTestCase(unittest.TestCase):
     def test_missing_value(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("(missing x, y, or z value)")
+            re.escape("non-numeric plane value")
         ):
             load_planes_from_csv(
                data_dir + "invalid_planes_missing_value.csv"
@@ -85,7 +85,7 @@ class LoadPlanesTestCase(unittest.TestCase):
     def test_invalid_column_count(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Invalid plane line")
+            re.escape("expected 4 plane columns")
         ):
             load_planes_from_csv(
                data_dir + "invalid_planes_columns.csv"
@@ -94,7 +94,7 @@ class LoadPlanesTestCase(unittest.TestCase):
     def test_non_numeric_values(self):
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Non-numeric value in plane definition")
+            re.escape("non-numeric plane value")
         ):
             load_planes_from_csv(
                 data_dir + "invalid_planes_non_numeric.csv"
@@ -104,7 +104,7 @@ class LoadPlanesTestCase(unittest.TestCase):
         # fewer than 4 points → cannot define a plane polygon
         with self.assertRaisesRegex(
             ValueError,
-            re.escape("Some plane(s) ['1'] are missing required number of points (minimum 4)")
+            re.escape("Some plane(s) ['1'] have fewer than 4 points.")
         ):
             load_planes_from_csv(
                 data_dir + "invalid_planes_not_enough_points.csv"

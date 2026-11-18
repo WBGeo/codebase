@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import re
 import shutil
 import tempfile
 
@@ -12,9 +13,13 @@ import numpy as np
 import pytest
 
 from core.object_components import SimulationResults
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    RockUnitProperties, FluidProperties, HydrothermalProblemBuilder, CustomSfepyBuilder, SfepyProblem,
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
+    RockUnitProperties, FluidProperties, SfepyHydrothermalProblemBuilder, SfepyCustomBuilder, SfepyProblem,
     map_mat_id_to_lithology,
+)
+from core.simulation_components.simulation_packages.golem.golem_model_builder import (
+    GolemCustomBuilder, GolemFaultProperties, GolemHydrothermalProblemBuilder,
+    GolemSimpleReservoirBuilder,
 )
 import core.simulation_components.simulation_workbench_components as swc
 from core.simulation_components.simulation_workbench_components import (
@@ -23,6 +28,12 @@ from core.simulation_components.simulation_workbench_components import (
     hydrothermal_problem_smart_options_to_data, run_simulation,
     build_custom_sfepy_problem,
     export_simulation_results, _DEFAULT_FAULT_ZONE_PROPERTIES,
+    build_golem_hydrothermal_problem, build_golem_simple_reservoir_problem,
+    build_custom_golem_problem, run_golem_simulation, GolemProblem,
+    GolemHydrothermalOptions, GolemHydrothermalOptions_Root,
+    golem_hydrothermal_problem_smart_options,
+    golem_hydrothermal_problem_smart_options_to_data,
+    _DEFAULT_GOLEM_FAULT_PROPERTIES,
 )
 
 
@@ -55,6 +66,22 @@ def test_build_hydrothermal_problem_applies_options(model1_implicit_mesh, model1
     assert problem.rock_properties["rock1"].porosity == pytest.approx(0.33)
     # basement/rock2 not given in options -> still filled with defaults
     assert "basement" in problem.rock_properties
+
+
+def test_build_hydrothermal_problem_forwards_shared_time_and_initial_controls(
+    model1_implicit_mesh, model1_structural_result
+):
+    """Same input names as Build GOLEM Hydrothermal Problem for the shared physics."""
+    problem = build_hydrothermal_problem(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        start_time=10.0, end_time=1010.0, num_steps=4,
+        initial_temperature=20.0, print_linear_residuals=True,
+    ).inner()
+    assert problem.start_time == pytest.approx(10.0)
+    assert problem.end_time == pytest.approx(1010.0)
+    assert problem.num_steps == 4
+    assert problem.initial_temperature == pytest.approx(20.0)
+    assert problem.print_linear_residuals is True
 
 
 def test_enable_fault_zone_false_ignores_options_fault_zone_properties(
@@ -167,7 +194,7 @@ def test_build_custom_sfepy_problem_reads_and_decodes_file(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
     )
     assert isinstance(problem, SfepyProblem)
-    assert isinstance(problem.custom, CustomSfepyBuilder)
+    assert isinstance(problem.custom, SfepyCustomBuilder)
     assert problem.custom.input_file_contents == text
 
 
@@ -217,7 +244,7 @@ def test_run_simulation_unwraps_hydrothermal_problem(monkeypatch):
         return sentinel_result
 
     monkeypatch.setattr(swc, "_run_simulation_sfepy", fake_run)
-    fake_builder = HydrothermalProblemBuilder.__new__(HydrothermalProblemBuilder)
+    fake_builder = SfepyHydrothermalProblemBuilder.__new__(SfepyHydrothermalProblemBuilder)
     problem = SfepyProblem.__new__(SfepyProblem)
     problem.hydrothermal, problem.custom = fake_builder, None
 
@@ -235,7 +262,7 @@ def test_run_simulation_unwraps_custom_sfepy_problem(monkeypatch):
         return sentinel_result
 
     monkeypatch.setattr(swc, "_run_simulation_sfepy", fake_run)
-    fake_builder = CustomSfepyBuilder.__new__(CustomSfepyBuilder)
+    fake_builder = SfepyCustomBuilder.__new__(SfepyCustomBuilder)
     problem = SfepyProblem.__new__(SfepyProblem)
     problem.hydrothermal, problem.custom = None, fake_builder
 
@@ -260,6 +287,389 @@ def test_export_simulation_results_calls_through(monkeypatch):
     assert received["format"] == "vtk"
 
 
+
+# -----------------------------------------------------------------------------
+# GOLEM Workbench components -- same pattern as the SfePy Workbench tests.
+# These tests never start Docker, GOLEM, MPI, or Gmsh.
+# -----------------------------------------------------------------------------
+
+def test_golem_smart_options_form_enumerates_rock_units(model1_structural_result):
+    ctrl_group = golem_hydrothermal_problem_smart_options(
+        geomodel_result=model1_structural_result
+    )
+    rock_group = next(
+        c for c in ctrl_group.inner if getattr(c, "id", None) == "rock_properties"
+    )
+    assert {g.id for g in rock_group.inner} == {"basement", "rock1", "rock2"}
+
+    fault_group = next(
+        c for c in ctrl_group.inner if getattr(c, "id", None) == "fault_properties"
+    )
+    assert fault_group.id == "fault_properties"
+
+
+def test_golem_smart_options_to_data_roundtrip():
+    form_submission = {
+        "root.fluid.mu": 7.5e-4,
+        "root.rock_properties.rock1.name": "rock1",
+        "root.rock_properties.rock1.porosity": 0.21,
+        "root.fault_properties.name": "main_fault",
+        "root.fault_properties.porosity": 0.8,
+        "root.fault_properties.aperture": 0.025,
+    }
+
+    options = golem_hydrothermal_problem_smart_options_to_data(
+        _input=json.dumps(form_submission)
+    )
+
+    assert isinstance(options, GolemHydrothermalOptions)
+    assert options.root.fluid.mu == pytest.approx(7.5e-4)
+    assert options.root.rock_properties["rock1"].porosity == pytest.approx(0.21)
+    assert options.root.fault_properties.name == "main_fault"
+    assert options.root.fault_properties.aperture == pytest.approx(0.025)
+
+
+def test_build_golem_hydrothermal_problem_without_options_uses_defaults(
+    model1_implicit_mesh, model1_structural_result
+):
+    problem = build_golem_hydrothermal_problem(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+    )
+
+    assert isinstance(problem, GolemProblem)
+    assert problem.hydrothermal is not None
+    assert problem.simple_reservoir is None
+    assert problem.custom is None
+
+    builder = problem.inner()
+    assert isinstance(builder, GolemHydrothermalProblemBuilder)
+    assert builder.fluid == FluidProperties()
+    assert set(builder.rock_properties) == {"basement", "rock1", "rock2"}
+    # The Workbench supplies one default template even for a fault-free mesh.
+    assert _DEFAULT_GOLEM_FAULT_PROPERTIES.name == "fault"
+
+
+def test_build_golem_hydrothermal_problem_applies_smart_options(
+    model1_implicit_mesh, model1_structural_result
+):
+    fault = GolemFaultProperties(
+        name="fault_template",
+        porosity=0.7,
+        permeability=2.0e-12,
+        aperture=0.03,
+    )
+    options = GolemHydrothermalOptions(
+        root=GolemHydrothermalOptions_Root(
+            fluid=FluidProperties(mu=8.0e-4),
+            rock_properties={
+                "rock1": RockUnitProperties(name="rock1", porosity=0.31)
+            },
+            fault_properties=fault,
+        )
+    )
+
+    builder = build_golem_hydrothermal_problem(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        options=options,
+        p_bottom=2.5e6,
+        t_bottom=80.0,
+        end_time=14400.0,
+        num_steps=4,
+        output_interval=2,
+        print_linear_residuals=False,
+    ).inner()
+
+    assert isinstance(builder, GolemHydrothermalProblemBuilder)
+    assert builder.mesh_results is model1_implicit_mesh
+    assert builder.geomodel_result is model1_structural_result
+    assert builder.fluid.mu == pytest.approx(8.0e-4)
+    assert builder.rock_properties["rock1"].porosity == pytest.approx(0.31)
+    assert builder.p_bottom == pytest.approx(2.5e6)
+    assert builder.t_bottom == pytest.approx(80.0)
+    assert builder.dt == pytest.approx(3600.0)
+    assert builder.num_steps == 4
+    assert builder.output_interval == 2
+    assert builder.print_linear_residuals is False
+
+
+def test_build_golem_hydrothermal_problem_rejects_missing_lithology_mapping(
+    model1_implicit_mesh, model1_structural_result
+):
+    bad_mesh = model1_implicit_mesh.model_copy(update={"cell_data": None})
+
+    with pytest.raises(ValueError, match="no lithology mapping"):
+        build_golem_hydrothermal_problem(
+            mesh_results=bad_mesh,
+            geomodel_result=model1_structural_result,
+        )
+
+
+def test_build_golem_simple_reservoir_problem_forwards_without_real_meshing(
+    monkeypatch, model1_structural_result
+):
+    # Use an instance of the real expected type so GolemProblem's Pydantic
+    # validation succeeds, but bypass __init__/__post_init__ so no Gmsh or
+    # reservoir mesh generation occurs.
+    sentinel = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
+    )
+    received = {}
+
+    def fake_builder(**kwargs):
+        received.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(swc, "GolemSimpleReservoirBuilder", fake_builder)
+
+    result = build_golem_simple_reservoir_problem(
+        geomodel_result=model1_structural_result,
+        mesh_size=20.0,
+        curve_mesh_size=3.0,
+        mapping_litho="automatic_centers",
+        initial_pressure=1.2e7,
+        initial_temperature=145.0,
+        boundary_pressure=1.1e7,
+        boundary_temperature=140.0,
+        injection_temperature=65.0,
+        injection_rate=4.5,
+        extraction_rate=4.0,
+        start_time=10.0,
+        end_time=1000.0,
+    )
+
+    assert isinstance(result, GolemProblem)
+    assert result.hydrothermal is None
+    assert result.simple_reservoir is sentinel
+    assert result.custom is None
+    assert result.inner() is sentinel
+
+    assert received["geomodel_result"] is model1_structural_result
+    assert received["mesh_size"] == pytest.approx(20.0)
+    assert received["curve_mesh_size"] == pytest.approx(3.0)
+    assert received["mapping_litho"] == "automatic_centers"
+    assert received["initial_pressure"] == pytest.approx(1.2e7)
+    assert received["initial_temperature"] == pytest.approx(145.0)
+    assert received["boundary_pressure"] == pytest.approx(1.1e7)
+    assert received["boundary_temperature"] == pytest.approx(140.0)
+    assert received["injection_temperature"] == pytest.approx(65.0)
+    assert received["injection_rate"] == pytest.approx(4.5)
+    assert received["extraction_rate"] == pytest.approx(4.0)
+    assert received["start_time"] == pytest.approx(10.0)
+    assert received["end_time"] == pytest.approx(1000.0)
+
+
+def test_build_custom_golem_problem_reads_input_file(
+    repo_tmp_path, model1_implicit_mesh, model1_structural_result
+):
+    text = """[Mesh]
+  [input_mesh]
+    type = FileMeshGenerator
+    file = ${GOLEM_MESH_FILE}
+  []
+[]
+[Outputs]
+[]
+"""
+    file_path = repo_tmp_path / "custom_golem.i"
+    file_path.write_text(text, encoding="utf-8")
+
+    problem = build_custom_golem_problem(
+        input_file=os.path.relpath(file_path, _repo_root()),
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        print_linear_residuals=False,
+    )
+
+    assert isinstance(problem, GolemProblem)
+    assert problem.hydrothermal is None
+    assert problem.simple_reservoir is None
+    assert problem.custom is not None
+
+    builder = problem.inner()
+    assert isinstance(builder, GolemCustomBuilder)
+    assert builder.input_file_contents == text
+    assert builder.mesh_results is model1_implicit_mesh
+    assert builder.geomodel_result is model1_structural_result
+    assert builder.print_linear_residuals is False
+
+
+def test_build_custom_golem_problem_rejects_missing_placeholder(
+    repo_tmp_path, model1_implicit_mesh
+):
+    file_path = repo_tmp_path / "bad_custom_golem.i"
+    file_path.write_text("[Mesh]\n[]\n[Outputs]\n[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="GOLEM_MESH_FILE"):
+        build_custom_golem_problem(
+            input_file=os.path.relpath(file_path, _repo_root()),
+            mesh_results=model1_implicit_mesh,
+        )
+
+
+def test_build_custom_golem_problem_rejects_non_utf8_file(
+    repo_tmp_path, model1_implicit_mesh
+):
+    file_path = repo_tmp_path / "custom_golem_bad_encoding.i"
+    file_path.write_bytes(b"\xff\xfe\x00\x01not utf-8")
+
+    with pytest.raises(ValueError, match="not valid UTF-8"):
+        build_custom_golem_problem(
+            input_file=os.path.relpath(file_path, _repo_root()),
+            mesh_results=model1_implicit_mesh,
+        )
+
+
+def test_build_custom_golem_problem_rejects_missing_file(model1_implicit_mesh):
+    with pytest.raises(ValueError, match="not found"):
+        build_custom_golem_problem(
+            input_file="examples/own_data/does_not_exist.i",
+            mesh_results=model1_implicit_mesh,
+        )
+
+
+def test_golem_problem_accepts_each_of_the_three_problem_kinds():
+    fake_hydro = GolemHydrothermalProblemBuilder.__new__(
+        GolemHydrothermalProblemBuilder
+    )
+    fake_simple = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
+    )
+    fake_custom = GolemCustomBuilder.__new__(GolemCustomBuilder)
+
+    hydro = GolemProblem(hydrothermal=fake_hydro)
+    simple = GolemProblem(simple_reservoir=fake_simple)
+    custom = GolemProblem(custom=fake_custom)
+
+    assert hydro.inner() is fake_hydro
+    assert simple.inner() is fake_simple
+    assert custom.inner() is fake_custom
+
+
+def test_golem_problem_requires_exactly_one_inner_problem():
+    with pytest.raises(ValueError, match="exactly one"):
+        GolemProblem()
+
+    fake_hydro = GolemHydrothermalProblemBuilder.__new__(
+        GolemHydrothermalProblemBuilder
+    )
+    fake_simple = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
+    )
+    with pytest.raises(ValueError, match="exactly one"):
+        GolemProblem(
+            hydrothermal=fake_hydro,
+            simple_reservoir=fake_simple,
+        )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["hydrothermal", "simple_reservoir", "custom"],
+)
+def test_run_golem_simulation_unwraps_all_problem_types_without_running_docker(
+    monkeypatch, kind
+):
+    sentinel_result = SimulationResults()
+    received = {}
+
+    def fake_run(**kwargs):
+        received.update(kwargs)
+        return sentinel_result
+
+    monkeypatch.setattr(swc, "_run_simulation_golem", fake_run)
+
+    if kind == "hydrothermal":
+        fake_inner = GolemHydrothermalProblemBuilder.__new__(
+            GolemHydrothermalProblemBuilder
+        )
+        problem = GolemProblem(hydrothermal=fake_inner)
+    elif kind == "simple_reservoir":
+        fake_inner = GolemSimpleReservoirBuilder.__new__(
+            GolemSimpleReservoirBuilder
+        )
+        problem = GolemProblem(simple_reservoir=fake_inner)
+    else:
+        fake_inner = GolemCustomBuilder.__new__(GolemCustomBuilder)
+        problem = GolemProblem(custom=fake_inner)
+
+    result = run_golem_simulation(
+        problem=problem,
+        nproc=6,
+    )
+
+    assert result is sentinel_result
+    assert received["problem"] is fake_inner
+    assert received["image_name"] == os.environ.get("GOLEM_IMAGE")
+    assert received["golem_binary"] == os.environ.get("GOLEM_BINARY", "/golem/golem-opt")
+    assert received["workspace_dir"].startswith(os.environ.get("GOLEM_WORKSPACE", "golem_workspace") + "/")
+    assert received["temporary"] is True
+    # The runner now supplies an absolute, unique per-run output directory.
+    output_dir = pathlib.Path(received["output_dir"])
+    assert output_dir.is_absolute()
+    assert output_dir.parent.name == "golem_output"
+    assert re.fullmatch(r"[0-9a-f]{32}", output_dir.name)
+    assert received["nproc"] == 6
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_run_golem_simulation_deletes_output_folder_right_away(monkeypatch, tmp_path, fails):
+    """The result is self-contained, so GOLEM's output folder goes immediately (X4)."""
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+
+    def fake_run(**kwargs):
+        output_dir = pathlib.Path(kwargs["output_dir"])
+        output_dir.mkdir(parents=True)
+        (output_dir / "wbgeo.e").write_bytes(b"result")
+        seen["output_dir"] = output_dir
+        if fails:
+            raise RuntimeError("GOLEM failed")
+        return SimulationResults(solver="golem")
+
+    monkeypatch.setattr(swc, "_run_simulation_golem", fake_run)
+    problem = GolemProblem(simple_reservoir=GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder))
+    if fails:
+        with pytest.raises(RuntimeError, match="GOLEM failed"):
+            run_golem_simulation(problem=problem)
+    else:
+        assert run_golem_simulation(problem=problem).solver == "golem"
+    assert not seen["output_dir"].exists()
+
+
+def test_run_golem_simulation_uses_runner_defaults_without_running_docker(monkeypatch):
+    sentinel_result = SimulationResults()
+    received = {}
+
+    def fake_run(**kwargs):
+        received.update(kwargs)
+        return sentinel_result
+
+    monkeypatch.setattr(swc, "_run_simulation_golem", fake_run)
+
+    fake_inner = GolemSimpleReservoirBuilder.__new__(
+        GolemSimpleReservoirBuilder
+    )
+    problem = GolemProblem(simple_reservoir=fake_inner)
+
+    result = run_golem_simulation(problem=problem)
+
+    assert result is sentinel_result
+    assert received["problem"] is fake_inner
+    assert received["image_name"] == os.environ.get("GOLEM_IMAGE")
+    assert received["golem_binary"] == os.environ.get("GOLEM_BINARY", "/golem/golem-opt")
+    assert received["workspace_dir"].startswith(os.environ.get("GOLEM_WORKSPACE", "golem_workspace") + "/")
+    assert received["temporary"] is True
+    # The runner now supplies an absolute, unique per-run output directory.
+    output_dir = pathlib.Path(received["output_dir"])
+    assert output_dir.is_absolute()
+    assert output_dir.parent.name == "golem_output"
+    assert re.fullmatch(r"[0-9a-f]{32}", output_dir.name)
+    assert received["nproc"] == 4
+
+
 # -----------------------------------------------------------------------------
 # Inspector components -- only the pre-plot logic (final_time/origin
 # computation) and correct forwarding to the underlying plot_* function, not
@@ -279,7 +689,7 @@ def test_export_simulation_results_calls_through(monkeypatch):
 @pytest.mark.slow
 def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_implicit_mesh, model1_structural_result):
     problem = build_hydrothermal_problem(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=5e9,
     )
     sim = run_simulation(problem)
 
@@ -290,7 +700,7 @@ def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_imp
         received.update(kwargs)
 
     monkeypatch.setattr(swc, "plot_variable_at_a_time", fake_plot)
-    swc.inspect_simulation_result_plot_variable_at_a_time(simulation_result=sim, _inspector=None)
+    swc.inspect_simulation_result_plot_variable_at_a_time(simulation_result=sim)
 
     assert received["simulation_result"] is sim
     assert received["cmap"] == "coolwarm"
@@ -303,11 +713,8 @@ def test_inspect_plot_variable_at_a_time_uses_final_time(monkeypatch, model1_imp
     assert received["off_screen"] is True
     assert received["window_size"] == (800, 600)
     assert received["anti_aliasing"] is False
-    # time/var_name intentionally left unset here -- plot_variable_at_a_time's
-    # own defaults (final saved time step, "T" if present) apply, matching
-    # this inspector's documented behavior.
-    assert "time" not in received
-    assert "var_name" not in received
+    # The inspector forwards the final saved time to the plotting function.
+    assert received["time"] == pytest.approx(max(sim.nodes_by_time))
 
 
 @pytest.mark.integration
@@ -316,7 +723,7 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
     monkeypatch, model1_implicit_mesh, model1_structural_result
 ):
     problem = build_hydrothermal_problem(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=5e9,
     )
     sim = run_simulation(problem)
     first_time = min(sim.nodes_by_time.keys())
@@ -336,9 +743,43 @@ def test_inspect_plot_cross_section_2D_uses_mesh_centroid_as_origin(
     assert received["cmap"] == "coolwarm"
 
 
+def _offset_simulation_result():
+    """Two saved steps on a small mesh in real-world coordinates, far from (500, 500, 500)."""
+    nodes = np.array([[3.2e5, 5.6e6, -800.0], [3.3e5, 5.6e6, -800.0],
+                      [3.2e5, 5.7e6, -800.0], [3.2e5, 5.6e6, -200.0]])
+    sim = SimulationResults()
+    for t in (0.0, 1.0):
+        sim.nodes_by_time[t] = nodes
+        sim.node_data_by_time[t] = {"T": np.full(len(nodes), 10.0 + t)}
+    return sim
+
+
+def test_inspect_plot_cross_section_2D_defaults_to_centroid_for_real_coordinates(monkeypatch):
+    sim = _offset_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_cross_section_2D", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None)
+
+    assert received["origin"] == pytest.approx(tuple(sim.nodes_by_time[0.0].mean(axis=0)))
+    assert received["normal"] == (0, 1, 0)
+
+
+def test_inspect_plot_cross_section_2D_uses_explicit_origin(monkeypatch):
+    sim = _offset_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_cross_section_2D", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_cross_section_2D(
+        simulation_result=sim, _inspector=None, origin=(3.25e5, 5.65e6, -500.0), normal=(1, 0, 0))
+
+    assert received["origin"] == (3.25e5, 5.65e6, -500.0)
+    assert received["normal"] == (1, 0, 0)
+
+
 def test_inspect_simulation_result_stdout_prints_each_stage(capsys):
     sim = SimulationResults()
-    sim.sfepy_stdout = {"pressure": "pressure solver log", "heat": "heat solver log"}
+    sim.solver_output = {"pressure": "pressure solver log", "heat": "heat solver log"}
 
     swc.inspect_simulation_result_stdout(simulation_result=sim, _inspector=None)
 
@@ -348,8 +789,22 @@ def test_inspect_simulation_result_stdout_prints_each_stage(capsys):
 
 
 def test_inspect_simulation_result_stdout_handles_missing_stdout(capsys):
-    sim = SimulationResults()  # sfepy_stdout left at its default (None)
+    sim = SimulationResults()  # solver_output left empty
 
     swc.inspect_simulation_result_stdout(simulation_result=sim, _inspector=None)
 
     assert "No solver output" in capsys.readouterr().out
+
+
+def test_sfepy_hydrothermal_node_keeps_input_positions_of_saved_pipelines():
+    """Saved Workbench pipelines (e.g. examples/.../WBGeo1.0_model1.json) store
+    input values by position, so existing inputs must keep their index and new
+    inputs may only be appended."""
+    import inspect
+    func = getattr(build_hydrothermal_problem, "__wrapped__", build_hydrothermal_problem)
+    names = list(inspect.signature(func).parameters)
+    assert names[:16] == [
+        "mesh_results", "geomodel_result", "options", "include_flow", "enable_fault_zone",
+        "fault_zone_n_voxels", "start_time", "end_time", "num_steps", "p_top", "p_bottom",
+        "t_top", "t_bottom", "linear_solver", "linear_solver_i_max", "linear_solver_eps_r",
+    ]

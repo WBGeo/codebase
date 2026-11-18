@@ -1,7 +1,11 @@
 import logging
 import typing
 import re
+from pathlib import Path
+from pydantic.dataclasses import dataclass
+from pydantic_numpy import NpNDArrayFp64
 import gmsh
+from py_api_wbgeo import smartcontrols
 
 logger = logging.getLogger(__name__)
 import meshio
@@ -14,11 +18,28 @@ from numpy.typing import NDArray
 from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults, MeshType
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
-from core.meshing_components.explicit.unstructured.create_clean_surface import data_preparation
-from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
-                                                               LinearSourceRefinement,FunctionSourceRefinement,)
-from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
+from core.meshing_components.explicit.unstructured.structural_surfaces import build_grid_litho, import_structural_surfaces
+from core.meshing_components.explicit.unstructured.domain_geometry import (
+    domain_aabb, domain_local_coordinates, normalize_domain, point_inside_domain, points_inside_domain
+)
+from core.meshing_components.explicit.unstructured.refinement_fields import source_point_size
+from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement,
+                                                                           LinearWellRefinement,
+                                                                           FunctionWellRefinement,
+                                                                           LinearSourceRefinement,
+                                                                           FunctionSourceRefinement,
+                                                                           LinearShaftRefinement,
+                                                                           FunctionShaftRefinement,
+                                                                           GeneralRefinement,
+                                                                           ExtraPlaneRefinement,
+                                                                           EllipseRefinement,
+                                                                           TriangulationRefinement)
+from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
 from enum import Enum, StrEnum
+
+
+
+
 
 
 MESH_ENGINEERING_COLOR = '#99b3cc'
@@ -162,46 +183,14 @@ def point_on_line_segment(pt: Tuple[float, float, float], p1: Tuple[float, float
     return max(ratios) - min(ratios) < tol
 
 
-def _check_extent_format(extent: List[float]) -> None:
-    """
-    Validate the format of a spatial extent.
-
-    Args:
-    extent (List[float]): Spatial extent defined as: [xmin, xmax, ymin, ymax, zmin, zmax]
-
-    Raises:
-    ValueError: If extent is None or does not contain exactly 6 values.
-    """
-
-    if extent is None:
-        raise ValueError("Extent is None")
-
-    if len(extent) != 6:
-        raise ValueError(
-            f"Extent must be [xmin, xmax, ymin, ymax, zmin, zmax], got {extent}"
-        )
+def _check_extent_format(extent) -> None:
+    """Validate either a legacy 6-value extent or an 8-corner oriented box."""
+    normalize_domain(extent)
 
 
-def point_inside_extent(point: Tuple[float, float, float], extent: List[float]) -> bool:
-    """
-    Check whether a 3D point lies inside or on the boundary of an extent.
-
-    Args:
-    point (tuple(float, float, float)): The point coordinates (x, y, z).
-    extent (List[float]): Spatial extent defined as:[xmin, xmax, ymin, ymax, zmin, zmax]
-
-    Returns
-    bool : True if the point is inside or on the boundary of the extent, False otherwise.
-    """
-    x, y, z = point
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
-    return (
-        xmin <= x <= xmax and
-        ymin <= y <= ymax and
-        zmin <= z <= zmax
-    )
-
+def point_inside_extent(point: Tuple[float, float, float], extent) -> bool:
+    """Return True when a point is inside the legacy or 8-corner domain."""
+    return point_inside_domain(point, extent)
 
 def assert_point_inside_extent(point: Tuple[float, float, float], extent: List[float], obj_type: str = "",
     obj_id: Optional[int] = None, point_idx: Optional[int] = None) -> None:
@@ -272,83 +261,43 @@ def validate_wells(wells: List[Tuple[float, ...]], extent: List[float]) -> None:
             )
 
 
-def validate_sources(sources: List[Tuple[float, float, float]], extent: List[float]) -> None:
-    """
-    Validate that all point sources lie inside or on the boundary of the model extent.
-    Each source is defined by a single 3D coordinate (x, y, z).
-    All sources are checked individually against the model extent.
-
-    Args:
-    sources (List[Tuple[float, float, float]]): Collection of point sources, each defined by its (x, y, z) coordinates.
-    extent (List[float]): Model extent in the form [xmin, xmax, ymin, ymax, zmin, zmax].
-
-    Raises:
-    ValueError: If any source lies outside the given extent.
-            The error message specifies:
-              - the source number (1-based), and
-              - the offending point coordinates.
-    """
-
+def validate_sources(sources, extent) -> None:
+    """Validate point sources for a normal or hierarchical data set."""
     _check_extent_format(extent)
+    groups = sources.values() if isinstance(sources, dict) else (sources,)
+    for group in groups:
+        for i, source in enumerate(group):
+            if len(source) != 3:
+                raise ValueError(f"Source '{i + 1}' must contain exactly 3 coordinates (x, y, z).")
+            x, y, z = map(float, source)
+            if not np.all(np.isfinite([x, y, z])):
+                raise ValueError(f"Source '{i + 1}' contains non-finite coordinates.")
+            assert_point_inside_extent((x, y, z), extent, obj_type="Source", obj_id=i + 1)
 
-    for i, (x, y, z) in enumerate(sources):
-
-        assert_point_inside_extent(
-            (x, y, z),
-            extent,
-            obj_type="Source",
-            obj_id=i + 1,  # user-facing index
-        )
-
-
-def validate_shafts(shafts: List[Dict[str, Tuple[float, ...]]], extent: List[float],) -> None:
-    """
-    Validate if shaft center lies inside or on the model extent.
-
-    Args:
-    shafts (List[Dict[str, Tuple[float, ...]]]): Collection of shaft definitions. Each shaft must be a dictionary with keys:
-              - "center": (x, y, z)
-              - "axis": (ax, ay, az)
-              - "radius": float
-    extent (List[float]): Model extent in the form[xmin, xmax, ymin, ymax, zmin, zmax].
-
-    Raises:
-    ValueError: If a shaft has a center outside the model extent.
-    """
-
+def validate_shafts(shafts, extent) -> None:
+    """Validate shaft centers/radii/axes for normal or hierarchical data."""
     _check_extent_format(extent)
-
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
-    def assert_center_inside( point: Tuple[float, float, float], shaft_id: int,) -> None:
-        """
-        Assert that a shaft center lies inside or on the model extent.
-        """
-
-        x, y, z = point
-
-        if not (
-            xmin <= x <= xmax and
-            ymin <= y <= ymax and
-            zmin <= z <= zmax
-        ):
-
-            raise ValueError(
-                f"Shaft '{shaft_id}' center {tuple(point)} is outside extent {extent}"
-            )
-
-
-    for i, shaft in enumerate(shafts):
-
-        center: NDArray[np.float64] = np.asarray(shaft["center"], dtype=float)
-        axis:   NDArray[np.float64] = np.asarray(shaft["axis"],   dtype=float)
-        radius: float = float(shaft["radius"])
-
-
-        #extent check (center only)
-        assert_center_inside(tuple(center), i + 1)
-
-
+    groups = shafts.values() if isinstance(shafts, dict) else (shafts,)
+    for group in groups:
+        for i, shaft in enumerate(group):
+            # create_unstructured_mesh_data converts flat shaft tuples to dicts;
+            # accepting both here makes validation safe in either call path.
+            if isinstance(shaft, dict):
+                center = np.asarray(shaft["center"], dtype=float)
+                axis = np.asarray(shaft["axis"], dtype=float)
+                radius = float(shaft["radius"])
+            else:
+                vals = np.asarray(shaft, dtype=float).reshape(-1)
+                if vals.size != 7:
+                    raise ValueError(f"Shaft '{i + 1}' must contain 7 values (cx,cy,cz,ax,ay,az,radius).")
+                center, axis, radius = vals[:3], vals[3:6], float(vals[6])
+            if center.shape != (3,) or axis.shape != (3,) or not np.all(np.isfinite(np.r_[center, axis, radius])):
+                raise ValueError(f"Shaft '{i + 1}' contains invalid/non-finite values.")
+            if np.linalg.norm(axis) == 0.0:
+                raise ValueError(f"Shaft '{i + 1}' axis must be non-zero.")
+            if radius <= 0.0:
+                raise ValueError(f"Shaft '{i + 1}' radius must be positive.")
+            assert_point_inside_extent(tuple(center), extent, obj_type="Shaft", obj_id=i + 1)
 
 def fit_plane(points: NDArray[np.float64]) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
@@ -430,35 +379,15 @@ def validate_planes(planes: List[Tuple[float, ...]], extent:List[float], tol: fl
               - or is not planar within the given tolerance.
     """
 
-    xmin: float
-    xmax: float
-    ymin: float
-    ymax: float
-    zmin: float
-    zmax: float
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
+    _check_extent_format(extent)
+
+    if isinstance(planes, dict):
+        for group in planes.values():
+            validate_planes(group, extent, tol=tol)
+        return
 
     def assert_point_inside(point: Tuple[float, float, float], plane_no: int) -> None:
-        """
-        Assert that a plane point lies inside or on the model extent.
-
-        Args:
-        point (tuple(float, float, float)): Point coordinates (x, y, z).
-        plane_no (int): 1-based plane index for user-facing error messages.
-
-        Raises:
-        ValueError: If the point lies outside the extent.
-        """
-        x: float
-        y: float
-        z: float
-        x, y, z = point
-
-        if not (
-            xmin <= x <= xmax and
-            ymin <= y <= ymax and
-            zmin <= z <= zmax
-        ):
+        if not point_inside_domain(point, extent):
             raise ValueError(
                 f"Plane #{plane_no}, point {tuple(point)} "
                 f"is outside extent {extent}"
@@ -528,6 +457,11 @@ def validate_ellipses(ellipses: List[Dict], extent: Optional[List[float]] = None
         ValueError: if any ellipse fails validation
     """
 
+    if isinstance(ellipses, dict):
+        for group in ellipses.values():
+            validate_ellipses(group, extent)
+        return
+
     for idx, e in enumerate(ellipses, start=1):
 
         # --- Required fields ---
@@ -548,15 +482,25 @@ def validate_ellipses(ellipses: List[Dict], extent: Optional[List[float]] = None
         # --- Extent check ---
         if extent is not None:
 
-            xmin, xmax, ymin, ymax, zmin, zmax = extent
-
             R = max(r1, r2)
-
-            if not (
-                xmin <= cx - R and cx + R <= xmax and
-                ymin <= cy - R and cy + R <= ymax and
-                zmin <= cz - R and cz + R <= zmax
-            ):
+            kind, data = normalize_domain(extent)
+            if kind == "extent":
+                xmin, xmax, ymin, ymax, zmin, zmax = data
+                inside = (
+                    xmin <= cx - R and cx + R <= xmax and
+                    ymin <= cy - R and cy + R <= ymax and
+                    zmin <= cz - R and cz + R <= zmax
+                )
+            else:
+                origin = data[0]
+                basis = np.column_stack((data[1]-data[0], data[3]-data[0], data[4]-data[0]))
+                inv_basis = np.linalg.inv(basis)
+                q = inv_basis @ (np.array([cx, cy, cz]) - origin)
+                # A radius-R sphere around the ellipse is conservative.  In local
+                # coordinates its half-width along coordinate i is R*||row_i(B^-1)||.
+                dq = R * np.linalg.norm(inv_basis, axis=1)
+                inside = bool(np.all(q - dq >= -1e-9) and np.all(q + dq <= 1.0 + 1e-9))
+            if not inside:
                 raise ValueError(
                     f"Ellipse #{idx}: center ({cx},{cy},{cz}) with max radius {R} "
                     f"extends outside extent {extent}"
@@ -588,8 +532,11 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
             Valid points (same shape as input).
     """
 
+    if isinstance(points, dict):
+        return {k: validate_triangulation(np.asarray(v, dtype=float), extent, raise_error) for k, v in points.items()}
+
     if not isinstance(points, np.ndarray):
-        raise TypeError("points must be a numpy array")
+        points = np.asarray(points, dtype=float)
 
     if points.ndim != 2:
         raise ValueError("points must have shape (n_points, 3) or (n_points, 4)")
@@ -598,15 +545,8 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
         raise ValueError("points must have 3 or 4 columns (x,y,z[,id])")
 
 
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
     xyz = points[:, :3]  # only spatial coordinates
-
-    mask = (
-        (xyz[:, 0] >= xmin) & (xyz[:, 0] <= xmax) &
-        (xyz[:, 1] >= ymin) & (xyz[:, 1] <= ymax) &
-        (xyz[:, 2] >= zmin) & (xyz[:, 2] <= zmax)
-    )
+    mask = points_inside_domain(xyz, extent)
 
     outside_points = points[~mask]
 
@@ -614,8 +554,7 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
 
         msg = (
             f"{outside_points.shape[0]} triangulation points lie outside the extent.\n"
-            f"Extent: xmin={xmin}, xmax={xmax}, ymin={ymin}, ymax={ymax}, "
-            f"zmin={zmin}, zmax={zmax}\n"
+            f"Domain: {np.asarray(extent).tolist()}\n"
             f"First few invalid points:\n{outside_points[:5]}"
         )
 
@@ -631,7 +570,8 @@ def validate_triangulation(points: np.ndarray, extent: Tuple[float, float, float
 def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Optional[List[int]],
     source_tag: Optional[List[int]], shaft_tags: Optional[List[int]], tri_group_tags: Optional[List[int]], tri_surface_tags: Optional[List[int]],
     grid_litho: pd.DataFrame, mesh_size: float = 20.0, curve_mesh_size: float = 5.0,
-    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value, merge_file: Optional[str] = None) -> MeshResults:
+    boundary_tags: Optional[List[int]] = None, gmsh_flag: bool = False, mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value, merge_file: Optional[str] = None,
+    source_mesh_size: Optional[float] = None) -> MeshResults:
 
   """
     Generate an unstructured 3D tetrahedral mesh using Gmsh and export it
@@ -644,6 +584,8 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
         ov (List[Tuple[int, int]]): Gmsh entities defined as (dimension, tag), typically volume entities resulting from prior fragmentation.
         well_tags (List[int] or None): Gmsh physical group tags associated with wells (dimension = 1).
         source_tag (List[int] or None): Physical group tags of embedded source points (dimension = 0).
+        source_mesh_size (float, optional): Mesh size at the source points (from the source refinement).
+            Without it, the 3D mesher does not refine around the sources even if a refinement field is set.
         shaft_tags (List[int] or None): Physical group tags identifying shaft volumes (dimension = 3).
         tri_group_tags (List[int]): Physical group tags assigned to triangulated *groups* (intermediate grouping before surface tagging).
         tri_surface_tags (List[int]): Physical group tags assigned to triangulated surfaces created from input point sets.
@@ -693,15 +635,24 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   gmsh.model.occ.synchronize()
 
 ##############################
-# Embed sources into all volumes
+# Embed sources into their volumes
 ##############################
+  # source_tag holds physical group tags; embed each group's point entity into
+  # the volume that contains it (OCC fragment usually did that already).
   if source_tag:
 
-    for volume_tag in volumes:
+    for s_tag in source_tag:
 
-        for s_tag in source_tag:
+        for point_tag in gmsh.model.getEntitiesForPhysicalGroup(0, s_tag):
 
-            gmsh.model.mesh.embed(0, [s_tag], 3, volume_tag)
+            xyz = gmsh.model.getValue(0, point_tag, [])
+
+            for volume_tag in volumes:
+
+                if gmsh.model.isInside(3, volume_tag, xyz):
+
+                    gmsh.model.mesh.embed(0, [point_tag], 3, volume_tag)
+                    break
 
   ############################################################
   # Specify global mesh size and mesh the partitioned model
@@ -709,6 +660,13 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
   gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curve_mesh_size)
 
   gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
+
+  if source_tag and source_mesh_size is not None:
+
+    for s_tag in source_tag:
+
+        source_points = [(0, p) for p in gmsh.model.getEntitiesForPhysicalGroup(0, s_tag)]
+        gmsh.model.mesh.setSize(source_points, min(source_mesh_size, mesh_size))
 
   gmsh.option.setNumber("General.Verbosity", 4)
 
@@ -1762,21 +1720,144 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
     return nodes, cells, cell_data
 
 
-WellData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData', controlled='Table|x3')]
+ExtentZData = typing.Annotated[List[float], AnnotatedScriptType(name='extent_z', color='aqua', identifier='mesh::ExtentZData', controlled='Table|2|ZMin|ZMax')]
 
-SourcesData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData', controlled='Table|3|X|Y|Z')]
+WellData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData')]
 
-ShaftData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='shaft_list', color='aqua', identifier='mesh::ShaftListData', controlled='Table|x7')]
+SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData')]
 
-PlaneData = typing.Annotated[List[Tuple[float, ...]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData', controlled='Table|x12')]
+ShaftData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='shaft_list', color='aqua', identifier='mesh::ShaftListData')]
 
-EllipseData = typing.Annotated[List[Dict[str, typing.Any]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
+PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData')]
 
-TriangulationData = typing.Annotated[List[Tuple[float, float, float]], AnnotatedScriptType( name='triangulation', color='aqua',
-        identifier='mesh::TriangulationData',controlled='Table|3|X|Y|Z')]
+EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
+
+TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name='triangulation', color='aqua',
+        identifier='mesh::TriangulationData')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
 WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
+
+
+def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kind: str, label: str):
+    # Create the labeled option between none, linear, and function
+    return smartcontrols.CtrlGroup(id=kind, inner=[
+        smartcontrols.CtrlSelect(label=label, id='ref' + kind,
+                                 options=["None", "Linear", "Function"],
+                                 defaultValue="None"),
+        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Linear\"",
+                             when_true=[smartcontrols.CtrlGroup(id=f"linear", inner=smartcontrols.smart_group_from_type(linearT, None))],
+                             when_false=[]
+                             ),
+        smartcontrols.CtrlIf(condition=f"'$.ref{kind}' == \"Function\"",
+                             when_true=[smartcontrols.CtrlGroup(id=f"function", inner=smartcontrols.smart_group_from_type(functionT, None))],
+                             when_false=[]
+                             )
+    ])
+
+
+def __internal_refinement_opt_form(T: typing.Type, kind: str, label: str, defaults = None):
+  # Create an optional form
+  return smartcontrols.CtrlGroup(id=kind, inner=[
+    smartcontrols.CtrlBool(label=label, id='with_' + kind,
+                             defaultValue=False),
+    smartcontrols.CtrlIf(condition=f"'$.with_{kind}' == \"true\"",
+                         when_true=[smartcontrols.CtrlGroup(id=f"present", inner=smartcontrols.smart_group_from_type(T, defaults))],
+                         when_false=[]
+                         )
+  ])
+
+
+def __internal_refinement_to_data(data, kind: str, linearT: typing.Type, functionT: typing.Type):
+    # turn the __internal_refinement_form back into a given type
+    if data is None or kind not in data:
+        return None
+    data = data[kind]
+    if f"ref{kind}" not in data:
+        return None
+    if data[f"ref{kind}"] == "Linear":
+        return linearT(**data["linear"])
+    if data[f"ref{kind}"] == "Function":
+        return functionT(**data["function"])
+    return None
+
+
+def __internal_refinement_opt_to_data(data, kind: str, T: typing.Type):
+  # turn the __internal_refinement_form back into a given type
+  if data is None or kind not in data:
+    return None
+  data = data[kind]
+  # The form may send the checkbox as a JSON boolean or as the string "true"/"false".
+  if str(data.get(f"with_{kind}", False)).lower() != "true" or "present" not in data:
+    return None
+  return T(**data["present"])
+
+
+@wbgeo_component(identifier='wbgeo:__internal__refined_form_well' ,
+                 title='__internal__refined_form_well' )
+def __internal__refined_form(wells: Optional[WellData] = None,
+                             sources: Optional[SourcesData] = None,
+                             shafts: Optional[ShaftData] = None,
+                             extra_planes: Optional[PlaneData] = None,
+                             ellipses: Optional[EllipseData] = None,
+                             triangulations: Optional[TriangulationData] = None,
+                             ) -> smartcontrols.CtrlGroup:
+    inner: typing.List[smartcontrols.ASmartControl] = [
+      smartcontrols.CtrlLabel(
+        label='To define refinements, please connect a well/sources/etc. and execute them once, before clicking Update Controls'),
+    ]
+    if wells is not None:
+        inner.append(__internal_refinement_form(LinearWellRefinement, FunctionWellRefinement, 'well', 'Well Refinement:'))
+    if sources is not None:
+        inner.append(__internal_refinement_form(LinearSourceRefinement, FunctionSourceRefinement, 'source', 'Source Refinement:'))
+    if shafts is not None:
+        inner.append(__internal_refinement_form(LinearShaftRefinement, FunctionShaftRefinement, 'shafts', 'Shafts Refinement:'))
+    if extra_planes is not None:
+      inner.append(__internal_refinement_opt_form(ExtraPlaneRefinement, 'extra_planes', 'Extra Planes Refinement:', ExtraPlaneRefinement()))
+    if ellipses is not None:
+      inner.append(__internal_refinement_opt_form(EllipseRefinement, 'ellipses', 'Ellipses Refinement:', EllipseRefinement()))
+    if triangulations is not None:
+      inner.append(__internal_refinement_opt_form(TriangulationRefinement, 'triangulations', 'Triangulations Refinement:', TriangulationRefinement()))
+
+
+    return smartcontrols.CtrlGroup(id='root', inner=inner + [
+        smartcontrols.CtrlLabel(
+            label='General refinement not yet supported'), # TODO: ALu - will be added seperatly
+    ])
+
+@wbgeo_component(identifier='wbgeo:__internal__refined_options_to_data_well',
+                 title='__internal__refined_options_to_data_well')
+def __internal__refined_options_to_data(_input: smartcontrols.SmartInputFormData) -> typing.Optional[Refinement]:
+    data = smartcontrols.form_data_as_dict(_input)
+    if "root" not in data:
+        return None
+    data = data["root"]
+    ret = Refinement()
+    ret.wells = __internal_refinement_to_data(data, 'well', LinearWellRefinement, FunctionWellRefinement)
+    ret.sources = __internal_refinement_to_data(data, 'source', LinearSourceRefinement, FunctionSourceRefinement)
+    ret.shafts = __internal_refinement_to_data(data, 'shafts', LinearShaftRefinement, FunctionShaftRefinement)
+    ret.extra_planes = __internal_refinement_opt_to_data(data, 'extra_planes', ExtraPlaneRefinement)
+    ret.ellipses = __internal_refinement_opt_to_data(data, 'ellipses', EllipseRefinement)
+    ret.triangulations = __internal_refinement_opt_to_data(data, 'triangulations', TriangulationRefinement)
+
+    # TODO: ALu: general refinements
+
+    if (ret.wells is None and ret.sources is None and ret.shafts is None and
+            ret.general is None and ret.triangulations is None
+            and ret.ellipses is None and ret.extra_planes is None):
+        return None # if everything is empty -> None
+
+    return ret
+
+
+SmartRefinement = typing.Annotated[
+    # Must list every parameter of __internal__refined_form, by the names the
+    # mesher uses for them; unlisted ones receive unrelated mesher inputs.
+    Refinement, smartcontrols.SmartInput(inputs=['wells', 'sources', 'shafts',
+                                                 'extra_planes', 'ellipses', 'triangulations'],
+                                    to_form=__internal__refined_form,
+                                    to_data=__internal__refined_options_to_data)]
+
 
 @wbgeo_component(description='Loads a well from a wells.CSV file',
                  title='Load Well',  # The title shown in the GUI
@@ -1785,18 +1866,31 @@ WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
                  return_name='Wells',  # the name for the returned-port
+                 is_object_type=True,  # render as object
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
-    """
-    Load well trajectories from a CSV file.
+    """Load well trajectories grouped by well identifier.
+
+    CSV rows have no header and use ``id,x,y,z`` (four columns), or
+    ``id,x,y,z,key`` (five columns) when ``key_hierarchical=True``.
+    Repeated IDs supply consecutive 3D points for the same well; each
+    well must contain at least two points. Blank lines and lines beginning
+    with ``#`` are ignored.
+
+    Args:
+        well_file: Path to the well CSV file.
+        key_hierarchical: Whether to group wells by an additional key.
+            Hierarchical output is organized under keys 1 and 2.
 
     Returns:
-        If key_hierarchical=False:
-            List[Tuple] → [(x1,y1,z1,x2,y2,z2,...), ...]
-        If key_hierarchical=True:
-            Dict[int, List[Tuple]] → {1: [...], 2: [...]}
-    """
+        Without hierarchy, a list of flattened coordinate tuples
+        ``(x1, y1, z1, x2, y2, z2, ...)``. With hierarchy, a dictionary
+        mapping keys 1 and 2 to lists of those tuples.
+
+    Raises:
+        ValueError: If a row has the wrong column count, coordinates
+            are non-numeric, or a well has fewer than two points."""
 
     named_well_data = {}
 
@@ -1893,97 +1987,57 @@ SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color
                  identifier='wbgeo::meshing_load_source_from_csv',  # a unique identifier
                  return_name='Sources',  # the name for the returned-port
                  )  # inputs are handled via the method signature
-def load_sources_from_csv(source_file: SourceCSVDataType) -> SourcesData:
-    """
-    Load point sources from a CSV file.
-    The CSV file must contain exactly one point per source and follow the format: id, x, y, z
+def load_sources_from_csv(source_file: SourceCSVDataType, key_hierarchical: bool = False) -> SourcesData:
+    """Load individual point sources from a CSV file.
 
-    Notes:
-        - Lines starting with `#` are ignored.
-        - Multiple rows with the same `id` are NOT allowed.
-        - Each source must be defined by exactly one 3D point.
-        - The output format is a list of flat coordinate tuples:
-          [(x, y, z), ...]
+    CSV rows have no header and use ``id,x,y,z`` or, in hierarchical
+    mode, ``id,x,y,z,key``. Hierarchy keys must be 1 or 2. Blank lines
+    and comment lines beginning with ``#`` are ignored.
 
     Args:
-        source_file (str): Path to the CSV file containing source definitions.
+        source_file: Path to the source CSV file.
+        key_hierarchical: Whether to read the final hierarchy-key column.
 
     Returns:
-        SourcesData: A list of sources, where each source is represented as a flat uple of coordinates (x, y, z).
+        A list of ``(x, y, z)`` tuples, or a dictionary mapping
+        keys 1 and 2 to lists of such tuples when hierarchical.
 
     Raises:
-        ValueError:
-            - If a row does not contain exactly four columns.
-            - If x, y, or z values are missing.
-            - If any coordinate value is non-numeric.
-            - If a source ID appears more than once in the file.
-    """
-
-    # format of the csv is: id, x, y, z\n
-    named_source_data: Mapping[str, List[Tuple[float]]] = {}
-
-    # load csv file
+        ValueError: For incorrect column counts, invalid/non-finite
+            coordinates, invalid hierarchy keys, or duplicate source IDs
+            within the same hierarchy group."""
+    named = {}
     with open(source_file, "r") as f:
-
-        for line in f.readlines():
-
-            if line.startswith("#"):
+        for line_no, line in enumerate(f, 1):
+            if not line.strip() or line.lstrip().startswith("#"):
                 continue
-
-            parts = [s.strip() for s in line.split(",")]
-
-            # CHECK NUMBER OF COLUMNS FIRST
-            if len(parts) != 4:
-                raise ValueError(
-                    f"Invalid source line (expected 4 columns: id,x,y,z): {line}"
-                )
-
-            source_id, source_x, source_y, source_z = parts
-
-            # check empty values (for instance x, y or z is missing)
-            if not all([source_x, source_y, source_z]):
-                raise ValueError(
-                    f"(missing x, y, or z value): {line.strip()}"
-                )
-
-            # check for non-numeric values
+            parts = [x.strip() for x in line.split(",")]
+            expected = 5 if key_hierarchical else 4
+            if len(parts) != expected:
+                raise ValueError(f"Line {line_no}: expected {expected} columns ({'id,x,y,z,key' if key_hierarchical else 'id,x,y,z'}).")
+            source_id, *rest = parts
             try:
-                values = [
-                    float(source_x),
-                    float(source_y),
-                    float(source_z),
-                ]
-            except ValueError:
-                raise ValueError(
-                    f"Non-numeric value in source definition: {line.strip()}"
-                )
-
-            if source_id not in named_source_data:
-                named_source_data[source_id] = []
-
-            named_source_data[source_id].append(values)
-
-
-    # ensure that we have only one point per source
-    if any(len(source) > 1 for source in named_source_data.values()):
-        incorrect_sources = [
-            source_id
-            for source_id, source_data in named_source_data.items()
-            if len(source_data) > 1
-        ]
-
-        raise ValueError(
-            f"Some source(s) {incorrect_sources} has more than one coordinates"
-        )
-
-    # format right now is {key: [(x,y,z)]}
-    # -> map it to [x1, y1, z1] for each source
-    return [
-        tuple(coord for source_group in source_data for coord in source_group)
-        for source_data in named_source_data.values()
-    ]
+                x, y, z = map(float, rest[:3])
+                key = int(rest[3]) if key_hierarchical else None
+            except ValueError as exc:
+                raise ValueError(f"Line {line_no}: non-numeric source value: {line.strip()}") from exc
+            if not np.all(np.isfinite([x, y, z])):
+                raise ValueError(f"Line {line_no}: source coordinates must be finite.")
+            if key_hierarchical and key not in (1, 2):
+                raise ValueError(f"Line {line_no}: hierarchical key must be 1 or 2, got {key}.")
+            ident = (source_id, key) if key_hierarchical else source_id
+            if ident in named:
+                raise ValueError(f"Duplicate source definition for source ID '{source_id}'" + (f" and key {key}" if key_hierarchical else ""))
+            named[ident] = (x, y, z)
+    if not key_hierarchical:
+        return list(named.values())
+    out = {1: [], 2: []}
+    for (_, key), value in named.items():
+        out[key].append(value)
+    return out
 
 
+# the file must end with "ellipses.csv", e.g., "example_ellipses.csv", etc.
 EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::ellipse_csv', controlled='RemoteFile|endswith=ellipses.csv')]
 
 @wbgeo_component(
@@ -1994,156 +2048,80 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
+    is_object_type=True,  # render as object
 )
-def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType) -> EllipseData:
-    """
-    Load ellipses from a CSV file and return them as a list of dictionaries.
-    The CSV file should contain one ellipse per row, with optional ID columns.
-    Each row must contain at least the required parameters for defining an ellipse.
+def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: bool = False) -> EllipseData:
+    """Load ellipse definitions from a CSV file.
 
-    Format:
-        - Optional ID column (first column) is automatically detected and ignored if present.
-        - Required fields: cx, cy, cz, r1, r2
-            - cx, cy, cz: coordinates of the ellipse center
-            - r1: semi-major axis length
-            - r2: semi-minor axis length
-        - Optional fields (if present):
-            - angle1, angle2: start and end angles in radians for a partial ellipse (default: 0.0, 2*pi)
-            - zAxis: normal vector of the ellipse plane (default: [0, 0, 1])
-            - xAxis: x-axis direction of the ellipse plane (optional; auto-generated if not provided)
-
-    Example CSV rows:
-        1, 100, 200, 50, 30           # ellipse with center (100,200,50) and radii 30,50
-        2, 150, 250, 60, 40, 0, 3.14  # ellipse with angles
-        3, 200, 300, 70, 50, 0, 6.28, 0,0,1  # ellipse with zAxis
-        4, 250, 350, 80, 60, 0, 6.28, 0,0,1, 1,0,0  # ellipse with zAxis and xAxis
+    Rows have no header. Accepted numeric fields (without an optional
+    leading ID) are ``cx,cy,cz,r1,r2``, optionally followed by
+    ``angle1,angle2``, then ``zAxis_x,zAxis_y,zAxis_z``, then
+    ``xAxis_x,xAxis_y,xAxis_z`` (5, 7, 10, or 13 fields).
+    An optional leading ID is accepted for each layout. Hierarchical
+    mode requires an additional final ``key`` column (1 or 2).
+    Omitted angles default to 0 and 2*pi; omitted zAxis defaults to
+    (0, 0, 1). Blank lines and ``#`` comments are ignored.
 
     Args:
-        ellipse_file (str): Path to the CSV file containing ellipse definitions.
+        ellipse_file: Path to the ellipse CSV file.
+        key_hierarchical: Whether the final column is a hierarchy key.
 
     Returns:
-        EllipseData: A list of ellipses, each represented as a dictionary with keys:
-            - 'center': tuple[float, float, float] - center coordinates
-            - 'radii': tuple[float, float] - semi-major and semi-minor axes
-            - 'angle1': float (optional) - start angle in radians
-            - 'angle2': float (optional) - end angle in radians
-            - 'zAxis': list[float] (optional) - normal vector
-            - 'xAxis': list[float] (optional) - x-axis vector
+        A list of ellipse dictionaries containing center, radii,
+        angle1, angle2, and zAxis (and xAxis if supplied), or a
+        dictionary grouping those lists under keys 1 and 2.
 
     Raises:
-        ValueError: If a row has an invalid number of columns, missing numeric values,
-                    or contains non-numeric data in required fields.
-    """
-
+        ValueError: For unsupported column layouts, invalid numeric
+            fields or hierarchy keys, or ellipse validation failures
+            such as non-positive radii."""
+    ellipses_by_key = {1: [], 2: []}
     ellipses = []
-
     with open(ellipse_file, "r") as f:
-
-        for line_number, line in enumerate(f, start=1):
-
+        for line_number, line in enumerate(f, 1):
             line = line.strip()
-
             if not line or line.startswith("#"):
                 continue
-
             parts = [p.strip() for p in line.split(",")]
+            key = None
+            if key_hierarchical:
+                if len(parts) < 6:
+                    raise ValueError(f"Line {line_number}: hierarchical ellipse row is missing its key.")
+                try:
+                    key = int(parts[-1])
+                except ValueError as exc:
+                    raise ValueError(f"Line {line_number}: ellipse hierarchy key must be integer 1 or 2.") from exc
+                if key not in (1, 2):
+                    raise ValueError(f"Line {line_number}: hierarchical key must be 1 or 2, got {key}.")
+                parts = parts[:-1]
 
-            # Detect optional ID column
+            # Existing accepted layouts: 5/7/10/13 values without ID,
+            # or 6/8/11/14 with an ID in the first column.
             if len(parts) in (6, 8, 11, 14):
                 parts = parts[1:]
-
-            if len(parts) < 5:
-                raise ValueError(
-                    f"Line {line_number}: too few columns ({len(parts)})."
-                )
-
-            # -------------------
-            # Required fields
-            # -------------------
+            if len(parts) not in (5, 7, 10, 13):
+                raise ValueError(f"Line {line_number}: invalid ellipse column count ({len(parts)} after removing ID/key).")
             try:
-                cx = float(parts[0])
-                cy = float(parts[1])
-                cz = float(parts[2])
-                r1 = float(parts[3])
-                r2 = float(parts[4])
-
-            except ValueError:
-                raise ValueError(
-                    f"Line {line_number}: invalid numeric value in required fields"
-                )
-
-            ellipse = {
-                "center": (cx, cy, cz),
-                "radii": (r1, r2),
-            }
-
-            index = 5
-
-            # -------------------
-            # Optional angles
-            # -------------------
-            if len(parts) >= index + 2:
-                angle1 = float(parts[index]) if parts[index] else 0.0
-                angle2 = float(parts[index + 1]) if parts[index + 1] else 2 * np.pi
-
-                ellipse["angle1"] = angle1
-                ellipse["angle2"] = angle2
-
-                index += 2
-            else:
-                ellipse["angle1"] = 0.0
-                ellipse["angle2"] = 2 * np.pi
-
-            # -------------------
-            # Optional zAxis
-            # -------------------
-            if len(parts) >= index + 3:
-                try:
-                    zAxis = [
-                        float(parts[index]),
-                        float(parts[index + 1]),
-                        float(parts[index + 2]),
-                    ]
-                except ValueError:
-                    raise ValueError(
-                        f"Line {line_number}: zAxis must contain 3 numeric values"
-                    )
-
-                if not all(np.isfinite(zAxis)):
-                    raise ValueError(
-                        f"Line {line_number}: zAxis must be 3 finite numbers"
-                    )
-
-                ellipse["zAxis"] = zAxis
-                index += 3
-            else:
-                ellipse["zAxis"] = [0.0, 0.0, 1.0]
-
-            # -------------------
-            # Optional xAxis
-            # -------------------
-            if len(parts) >= index + 3:
-                try:
-                    xAxis = [
-                        float(parts[index]),
-                        float(parts[index + 1]),
-                        float(parts[index + 2]),
-                    ]
-                except ValueError:
-                    raise ValueError(
-                        f"Line {line_number}: xAxis must contain 3 numeric values"
-                    )
-
-                if not all(np.isfinite(xAxis)):
-                    raise ValueError(
-                        f"Line {line_number}: xAxis must be 3 finite numbers"
-                    )
-
-                ellipse["xAxis"] = xAxis
-
-            ellipses.append(ellipse)
-
-    return ellipses
+                cx, cy, cz, r1, r2 = map(float, parts[:5])
+            except ValueError as exc:
+                raise ValueError(f"Line {line_number}: invalid numeric value in ellipse required fields.") from exc
+            e = {"center": (cx, cy, cz), "radii": (r1, r2), "angle1": 0.0, "angle2": 2*np.pi, "zAxis": [0.0, 0.0, 1.0]}
+            idx = 5
+            try:
+                if len(parts) >= 7:
+                    e["angle1"] = float(parts[idx]) if parts[idx] else 0.0
+                    e["angle2"] = float(parts[idx+1]) if parts[idx+1] else 2*np.pi
+                    idx += 2
+                if len(parts) >= idx + 3:
+                    e["zAxis"] = [float(v) for v in parts[idx:idx+3]]
+                    idx += 3
+                if len(parts) >= idx + 3:
+                    e["xAxis"] = [float(v) for v in parts[idx:idx+3]]
+            except ValueError as exc:
+                raise ValueError(f"Line {line_number}: invalid numeric value in optional ellipse fields.") from exc
+            validate_ellipses([e], None)
+            (ellipses_by_key[key] if key_hierarchical else ellipses).append(e)
+    return ellipses_by_key if key_hierarchical else ellipses
 
 
 # the file must end with "shaftss.csv", e.g., "example_shaftss.csv", etc.
@@ -2156,98 +2134,61 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
                  return_name='Shafts',  # the name for the returned-port
+                 is_object_type=True,  # render as object
                  )  # inputs are handled via the method signature
-def load_shafts_from_csv(shaft_file: ShaftCSVDataType) -> ShaftData:
-    """
-    Load shaft definitions from a CSV file.
-    Each shaft is defined by a single row with the following format: id, cx, cy, cz, ax, ay, az, radius
-    where:
-        - (cx, cy, cz) is the shaft center point
-        - (ax, ay, az) is the shaft axis direction vector
-        - radius is the shaft radius
+def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = False) -> ShaftData:
+    """Load shaft definitions from a CSV file.
 
-    Notes:
-        - Lines starting with `#` are ignored.
-        - Each shaft ID must appear exactly once in the file.
-        - All numeric values must be present and valid floating-point numbers.
-        - The output format is a list of flat numeric tuples: [(cx, cy, cz, ax, ay, az, radius), ...]
+    CSV rows have no header and use
+    ``id,cx,cy,cz,ax,ay,az,radius`` (eight columns), or append ``key``
+    as a ninth column in hierarchical mode. The axis vector must be
+    nonzero, the radius positive, and the key 1 or 2.
 
     Args:
-        shaft_file (str): Path to the CSV file containing shaft definitions.
+        shaft_file: Path to the shaft CSV file.
+        key_hierarchical: Whether to read and group by the final key.
 
     Returns:
-        ShaftData: A list of shafts, where each shaft is represented as a flat tuple (cx, cy, cz, ax, ay, az, radius).
+        A list of seven-value tuples ``(cx,cy,cz,ax,ay,az,radius)``,
+        or a dictionary mapping keys 1 and 2 to lists of those tuples.
 
     Raises:
-        ValueError:
-            - If a row does not contain exactly eight columns.
-            - If any required numeric value is missing.
-            - If any value cannot be converted to float.
-            - If a shaft ID is defined more than once.
-    """
-
-    named_shaft_data = {}
-
+        ValueError: For wrong column counts, non-numeric or non-finite
+            values, zero axes, non-positive radii, invalid keys, or
+            duplicate shaft IDs within the same hierarchy group."""
+    named = {}
     with open(shaft_file, "r") as f:
-
-        for line in f.readlines():
-
-            if line.startswith("#"):
+        for line_no, line in enumerate(f, 1):
+            if not line.strip() or line.lstrip().startswith("#"):
                 continue
-
-            parts = [s.strip() for s in line.split(",")]
-
-            if len(parts) != 8:
-                raise ValueError(
-                    f"Invalid shaft line (expected 8 columns): {line.strip()}"
-                )
-
-            shaft_id, cx, cy, cz, ax, ay, az, rad = parts
-
-            # check missing values
-            numeric_fields = {
-                "cx": cx,
-                "cy": cy,
-                "cz": cz,
-                "ax": ax,
-                "ay": ay,
-                "az": az,
-                "radius": rad,
-            }
-
-            missing = [k for k, v in numeric_fields.items() if v == ""]
-
-            if missing:
-                raise ValueError(
-                    f"Missing value(s) {missing} in shaft definition"
-                )
-
-            # check numeric values
+            parts = [x.strip() for x in line.split(",")]
+            expected = 9 if key_hierarchical else 8
+            if len(parts) != expected:
+                raise ValueError(f"Line {line_no}: expected {expected} shaft columns.")
+            shaft_id, *rest = parts
             try:
-                values = [
-                    float(cx),
-                    float(cy),
-                    float(cz),
-                    float(ax),
-                    float(ay),
-                    float(az),
-                    float(rad),
-                ]
-            except ValueError:
-                raise ValueError(
-                    f"Non-numeric value in shaft definition: {line.strip()}"
-                )
-
-            # DUPLICATE ID CHECK
-            if shaft_id in named_shaft_data:
-                raise ValueError(
-                    f"Duplicate shaft definition for shaft ID '{shaft_id}'"
-                )
-
-            named_shaft_data[shaft_id] = values
-
-    return [tuple(v) for v in named_shaft_data.values()]
-
+                vals = tuple(map(float, rest[:7]))
+                key = int(rest[7]) if key_hierarchical else None
+            except ValueError as exc:
+                raise ValueError(f"Line {line_no}: non-numeric shaft value: {line.strip()}") from exc
+            if not np.all(np.isfinite(vals)):
+                raise ValueError(f"Line {line_no}: shaft values must be finite.")
+            if np.linalg.norm(vals[3:6]) == 0.0:
+                raise ValueError(f"Line {line_no}: shaft axis must be non-zero.")
+            if vals[6] <= 0.0:
+                raise ValueError(f"Line {line_no}: shaft radius must be positive.")
+            if key_hierarchical and key not in (1, 2):
+                raise ValueError(f"Line {line_no}: hierarchical key must be 1 or 2, got {key}.")
+            ident = (shaft_id, key) if key_hierarchical else shaft_id
+            if ident in named:
+                raise ValueError(f"Duplicate shaft definition for shaft ID '{shaft_id}'" + (f" and key {key}" if key_hierarchical else ""))
+            named[ident] = vals
+    if not key_hierarchical:
+        return list(named.values())
+    out = {1: [], 2: []}
+    for (_, key), value in named.items():
+        out[key].append(value)
+    return out
 
 # the file must end with "planes.csv", e.g., "example_planes.csv", etc.
 PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::plane_csv', controlled='RemoteFile|endswith=planes.csv')]
@@ -2259,101 +2200,63 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  group=MESH_ENGINEERING_GROUP,
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
                  return_name='planes',  # the name for the returned-port
+                 is_object_type=True,  # render as object
                  )  # inputs are handled via the method signature
-def load_planes_from_csv(plane_file: PlaneCSVDataType) -> PlaneData:
-    """
-    Load plane definitions from a CSV file.
-    Each plane is defined by multiple rows with the same plane ID. Each row provides a 3D point belonging to that plane: id, x, y, z
+def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = False) -> PlaneData:
+    """Load additional planes as grouped 3D points from a CSV file.
 
-    Notes:
-        - Lines starting with `#` are ignored.
-        - Multiple rows with the same `id` belong to the same plane.
-        - Each plane must be defined by at least four points.
-        - All coordinate values must be valid floating-point numbers.
-        - The output format is a list of flat coordinate tuples: [(x1, y1, z1, x2, y2, z2, ..., xN, yN, zN), ...]
+    CSV rows have no header and use ``id,x,y,z`` or, in hierarchical
+    mode, ``id,x,y,z,key``. Repeated IDs contribute points to the same
+    plane. Each plane requires at least four points; hierarchy keys
+    must be 1 or 2.
 
     Args:
-        plane_file (str): Path to the CSV file containing plane point definitions.
+        plane_file: Path to the plane CSV file.
+        key_hierarchical: Whether to read and group by the final key.
 
     Returns:
-        PlaneData: A list of planes, where each plane is represented as a flat tuple containing the concatenated coordinates of its defining points.
+        A list of flattened plane-coordinate tuples
+        ``(x1,y1,z1,x2,y2,z2,...)``, or a dictionary mapping keys
+        1 and 2 to lists of those tuples.
 
     Raises:
-        ValueError:
-            - If a row does not contain exactly four columns (id, x, y, z).
-            - If any coordinate value is missing.
-            - If any coordinate value cannot be converted to float.
-            - If a plane is defined with fewer than four points.
-    """
-
-    # format of the csv is: id, x, y, z\n
-    named_plane_data: Mapping[str, List[Tuple[float]]] = {}
-
-    # load csv file
+        ValueError: For wrong column counts, invalid/non-finite
+            coordinates, invalid keys, or planes with fewer than four
+            points."""
+    named = {}
     with open(plane_file, "r") as f:
-
-        for line in f.readlines():
-
-            if line.startswith("#"):
+        for line_no, line in enumerate(f, 1):
+            if not line.strip() or line.lstrip().startswith("#"):
                 continue
-
-            parts = [s.strip() for s in line.split(",")]
-
-            # CHECK NUMBER OF COLUMNS FIRST
-            if len(parts) != 4:
-                logger.debug("Unexpected parts count %d: %s", len(parts), parts)
-                raise ValueError(
-                    f"Invalid plane line (expected 4 columns: id,x,y,z): {line}"
-                )
-
-            plane_id, plane_x, plane_y, plane_z = parts
-
-            # check empty values (for instance x, y or z is missing)
-            if not all([plane_x, plane_y, plane_z]):
-                raise ValueError(
-                    f"(missing x, y, or z value): {line.strip()}"
-                )
-
-            # check for non-numeric values
+            parts = [x.strip() for x in line.split(",")]
+            expected = 5 if key_hierarchical else 4
+            if len(parts) != expected:
+                raise ValueError(f"Line {line_no}: expected {expected} plane columns.")
+            plane_id, *rest = parts
             try:
-                values = [
-                    float(plane_x),
-                    float(plane_y),
-                    float(plane_z),
-                ]
-            except ValueError:
-                raise ValueError(
-                    f"Non-numeric value in plane definition: {line.strip()}"
-                )
-
-            if plane_id not in named_plane_data:
-                named_plane_data[plane_id] = []
-
-            named_plane_data[plane_id].append(values)
-
-
-    # ensure that we have at least 4 points per plane
-    if any(len(plane) < 4 for plane in named_plane_data.values()):
-        incorrect_planes = [
-            plane_id
-            for plane_id, plane_data in named_plane_data.items()
-            if len(plane_data) < 4
-        ]
-        raise ValueError(
-            f"Some plane(s) {incorrect_planes} are missing required number of points (minimum 4)"
-        )
-
-    # format right now is {key: [(x,y,z)]}
-    # -> map it to [x1, y1, z1, ..., xi, yi, zi] for each plane
-    return [
-        tuple(coord for plane_group in plane_data for coord in plane_group)
-        for plane_data in named_plane_data.values()
-    ]
-
-
+                point = tuple(map(float, rest[:3]))
+                key = int(rest[3]) if key_hierarchical else None
+            except ValueError as exc:
+                raise ValueError(f"Line {line_no}: non-numeric plane value: {line.strip()}") from exc
+            if not np.all(np.isfinite(point)):
+                raise ValueError(f"Line {line_no}: plane coordinates must be finite.")
+            if key_hierarchical and key not in (1, 2):
+                raise ValueError(f"Line {line_no}: hierarchical key must be 1 or 2, got {key}.")
+            ident = (plane_id, key) if key_hierarchical else plane_id
+            named.setdefault(ident, []).append(point)
+    bad = [str(k) for k, pts in named.items() if len(pts) < 4]
+    if bad:
+        raise ValueError(f"Some plane(s) {bad} have fewer than 4 points.")
+    flattened = {k: tuple(c for pt in pts for c in pt) for k, pts in named.items()}
+    if not key_hierarchical:
+        return list(flattened.values())
+    out = {1: [], 2: []}
+    for (_, key), value in flattened.items():
+        out[key].append(value)
+    return out
 
 TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]], AnnotatedScriptType(name='path',
-        color='aqua', identifier='wbgeo::triangulations_planes_csv', controlled='RemoteFile|endswith=.csv')]
+        color='aqua', identifier='wbgeo::triangulations_planes_csv', controlled='RemoteFileList|endswith=.csv')]
 
 @wbgeo_component(
     description='Load planes coordinates from a CSV to do triangulations',
@@ -2363,109 +2266,137 @@ TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]],
     group=MESH_ENGINEERING_GROUP,
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
+    is_object_type=True,  # render as object
 )
-def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData,) -> TriangulationData:
-    """
-    Load plane coordinates from one or multiple CSV files for triangulations.
+def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_hierarchical: bool = False) -> TriangulationData:
+    """Load triangulation points from one or more CSV files.
 
-    Each CSV must have columns: x, y, z. Lines starting with '#' are ignored.
+    CSV rows have no header and use ``x,y,z`` (three columns), or
+    ``x,y,z,key`` (four columns) in hierarchical mode. Hierarchy keys
+    must be 1 or 2. Each output point receives a fourth value: the
+    1-based input-file index identifying its triangulation surface.
+    The hierarchy key selects the output group but is not included in
+    the output point array. Blank lines and ``#`` comments are ignored.
 
-    If multiple files are provided, an additional column 'id' is added:
-    - first file -> id = 1
-    - second file -> id = 2
-    etc.
+    Args:
+        csv_file: One CSV path or a list of CSV paths.
+        key_hierarchical: Whether to read the final hierarchy-key column.
 
     Returns:
-        np.ndarray: Array of shape (N, 4) -> [x, y, z, id]
-    """
+        A float64 array of shape ``(N, 4)`` containing
+        ``[x, y, z, file_id]``, or a dictionary mapping keys 1 and 2
+        to arrays of shape ``(N_key, 4)`` in hierarchical mode.
 
-    if isinstance(csv_file, str):
-        csv_files = [csv_file]
-    else:
-        csv_files = csv_file
-
+    Raises:
+        ValueError: For wrong column counts, invalid/non-finite
+            coordinates, invalid hierarchy keys, or (in non-hierarchical
+            mode) no loaded points."""
+    csv_files = [csv_file] if isinstance(csv_file, str) else list(csv_file)
+    grouped = {1: [], 2: []}
     all_points = []
-
-    for file_id, file_path in enumerate(csv_files, start=1):
-
+    for file_id, file_path in enumerate(csv_files, 1):
         with open(file_path, "r") as f:
-
-            for line_number, line in enumerate(f, start=1):
-
+            for line_number, line in enumerate(f, 1):
                 line = line.strip()
-
                 if not line or line.startswith("#"):
                     continue
-
                 parts = [p.strip() for p in line.split(",")]
-
-                if len(parts) != 3:
-                    raise ValueError(
-                        f"{file_path} line {line_number}: "
-                        f"expected 3 columns (x,y,z), got {len(parts)}"
-                    )
-
+                expected = 4 if key_hierarchical else 3
+                if len(parts) != expected:
+                    raise ValueError(f"{file_path} line {line_number}: expected {expected} columns ({'x,y,z,key' if key_hierarchical else 'x,y,z'}), got {len(parts)}")
                 try:
-                    x, y, z = map(float, parts)
-
-                except ValueError:
-                    raise ValueError(
-                        f"{file_path} line {line_number}: "
-                        f"non-numeric value found: {line}"
-                    )
-
-                all_points.append([x, y, z, file_id])
-
+                    x, y, z = map(float, parts[:3])
+                    key = int(parts[3]) if key_hierarchical else None
+                except ValueError as exc:
+                    raise ValueError(f"{file_path} line {line_number}: non-numeric value found: {line}") from exc
+                if not np.all(np.isfinite([x, y, z])):
+                    raise ValueError(f"{file_path} line {line_number}: coordinates must be finite.")
+                if key_hierarchical and key not in (1, 2):
+                    raise ValueError(f"{file_path} line {line_number}: hierarchical key must be 1 or 2, got {key}.")
+                row = [x, y, z, file_id]
+                (grouped[key] if key_hierarchical else all_points).append(row)
+    if key_hierarchical:
+        return {k: np.asarray(v, dtype=np.float64).reshape((-1, 4)) for k, v in grouped.items()}
     if not all_points:
         raise ValueError("No points loaded from the CSV file(s).")
+    return np.asarray(all_points, dtype=np.float64)
 
-    return np.array(all_points, dtype=np.float64)
+def filter_mesh_to_domain(nodes, cells, cell_data, domain_spec, tol=1e-8):
+    """Remove out-of-domain cells, compact nodes, and preserve per-cell metadata.
+
+    A cell is retained only when every vertex is inside the domain. The domain
+    may be an axis-aligned extent or an eight-corner parallelepiped.
+    """
+    nodes = np.asarray(nodes, dtype=float)
+    inside = points_inside_domain(nodes, domain_spec, tol=tol)
+    original_node_count = len(nodes)
+    kept_cells = []
+    keep_masks = []
+    for block in cells:
+        conn = np.asarray(block.data, dtype=np.int64)
+        keep = np.all(inside[conn], axis=1)
+        keep_masks.append(keep)
+        kept_cells.append(meshio.CellBlock(block.type, conn[keep]))
+
+    # mesh_generator may aggregate original Gmsh blocks into fewer output
+    # blocks without rebuilding gmsh:physical / gmsh:geometrical. Such arrays
+    # must NOT be zipped with the aggregated cells: that silently corrupts tags.
+    filtered_data = {}
+    for name, arrays in cell_data.items():
+        if len(arrays) != len(cells):
+            logger.warning(
+                "Skipping stale cell_data[%r]: %d metadata blocks for %d "
+                "output cell blocks. Rebuild this field during aggregation "
+                "if its physical tags are required.",
+                name, len(arrays), len(cells),
+            )
+            continue
+        if any(len(np.asarray(values)) != len(mask)
+               for values, mask in zip(arrays, keep_masks)):
+            logger.warning(
+                "Skipping misaligned cell_data[%r]: element counts do not "
+                "match output cell blocks", name,
+            )
+            continue
+        filtered_data[name] = [
+            np.asarray(values)[mask]
+            for values, mask in zip(arrays, keep_masks)
+        ]
+
+    used = np.zeros(original_node_count, dtype=bool)
+    for block in kept_cells:
+        used[block.data.ravel()] = True
+    if not np.any(used):
+        raise ValueError("Domain filtering removed every cell; check domain_spec and coordinates")
+    old_to_new = np.full(original_node_count, -1, dtype=np.int64)
+    old_to_new[used] = np.arange(np.count_nonzero(used))
+    filtered_cells = [
+        meshio.CellBlock(block.type, old_to_new[block.data])
+        for block in kept_cells
+    ]
+    logger.info(
+        "Domain filter: nodes %d -> %d; elements %d -> %d",
+        original_node_count, np.count_nonzero(used),
+        sum(len(b.data) for b in cells), sum(len(b.data) for b in filtered_cells),
+    )
+    return nodes[used], filtered_cells, filtered_data
 
 
-def classify_boundary_nodes(nodes: NDArray[np.float64], extent: List[float], tol_ratio: float = 1e-4) -> Dict[str, List[int]]:
-    nodes = np.asarray(nodes)
-
-    xmin, xmax, ymin, ymax, zmin, zmax = extent
-
-    dx = xmax - xmin
-    dy = ymax - ymin
-    dz = zmax - zmin
-
-    tolx = dx * tol_ratio
-    toly = dy * tol_ratio
-    tolz = dz * tol_ratio
-
+def classify_boundary_nodes(nodes: NDArray[np.float64], extent, tol_ratio: float = 1e-4) -> Dict[str, List[int]]:
+    """Classify nodes on the six local faces of either supported domain form."""
+    nodes = np.asarray(nodes, dtype=float)
+    local = np.asarray(domain_local_coordinates(nodes, extent), dtype=float)
     boundary_groups = {
-        "left": [],
-        "right": [],
-        "front": [],
-        "back": [],
-        "bottom": [],
-        "top": [],
+        "left": [], "right": [], "front": [], "back": [], "bottom": [], "top": []
     }
-
-    for i, (x, y, z) in enumerate(nodes):
-
-        if abs(x - xmin) <= tolx:
-            boundary_groups["left"].append(i)
-
-        if abs(x - xmax) <= tolx:
-            boundary_groups["right"].append(i)
-
-        if abs(y - ymin) <= toly:
-            boundary_groups["front"].append(i)
-
-        if abs(y - ymax) <= toly:
-            boundary_groups["back"].append(i)
-
-        if abs(z - zmin) <= tolz:
-            boundary_groups["bottom"].append(i)
-
-        if abs(z - zmax) <= tolz:
-            boundary_groups["top"].append(i)
-
+    tests = (
+        ("left", 0, 0.0), ("right", 0, 1.0),
+        ("front", 1, 0.0), ("back", 1, 1.0),
+        ("bottom", 2, 0.0), ("top", 2, 1.0),
+    )
+    for name, axis, target in tests:
+        boundary_groups[name] = np.flatnonzero(np.abs(local[:, axis] - target) <= tol_ratio).tolist()
     return boundary_groups
-
 
 def build_point_sets(boundary_groups: Dict[str, List[int]], n_nodes: int) -> Dict[str, NDArray[np.int64]]:
     point_sets = {}
@@ -2486,37 +2417,198 @@ def build_point_sets(boundary_groups: Dict[str, List[int]], n_nodes: int) -> Dic
 
 
 
+def meshit_coordinate_transform(
+    nodes,
+    angle_deg,
+    translate=False,
+    xt=None,
+    yt=None,
+    zt=None,
+):
+    """
+    Rotate mesh coordinates in the XY plane and optionally translate the
+    transformed mesh to a specified location.
+
+    The rotation is performed about the horizontal center of the mesh,
+    calculated from the X and Y coordinate bounds. Before rotation, this
+    center is shifted to (0, 0). The Z coordinates are not affected by
+    the rotation.
+
+    When ``translate=False``, only the XY rotation is applied and the
+    original Z coordinates are preserved.
+
+    When ``translate=True``, the rotated mesh can additionally be
+    positioned using ``xt``, ``yt``, and ``zt``. The X and Y coordinates
+    are shifted by ``xt`` and ``yt``. In the Z direction, the mesh is
+    centered using its Z bounds and then shifted to ``zt``.
+
+    If translation is enabled but ``xt``, ``yt``, and ``zt`` are omitted,
+    they default to zero. In this case, the transformed mesh is centered
+    at (0, 0, 0). If any translation coordinate is provided, all three
+    coordinates must be provided.
+
+    Parameters
+    ----------
+    nodes : array_like
+        Mesh node coordinates with shape (N, 3), where the columns
+        represent X, Y, and Z coordinates.
+
+    angle_deg : float
+        Counterclockwise rotation angle in degrees about the Z axis.
+
+    translate : bool, optional
+        If False, apply rotation only and preserve the original Z
+        coordinates. If True, additionally reposition the transformed
+        mesh. Default is False.
+
+    xt : float, optional
+        Target X coordinate of the transformed mesh center.
+        Used only when ``translate=True``. Default is 0.0 when omitted.
+
+    yt : float, optional
+        Target Y coordinate of the transformed mesh center.
+        Used only when ``translate=True``. Default is 0.0 when omitted.
+
+    zt : float, optional
+        Target Z coordinate of the transformed mesh center.
+        Used only when ``translate=True``. Default is 0.0 when omitted.
+
+    Returns
+    -------
+    numpy.ndarray
+        Transformed mesh coordinates with shape (N, 3).
+
+    Raises
+    ------
+    ValueError
+        If only some of ``xt``, ``yt``, and ``zt`` are provided.
+        When translation coordinates are specified, all three must
+        be provided together.
+
+    Notes
+    -----
+    For rotation only, the transformation is:
+
+        X = x - xc
+        Y = y - yc
+
+        x' = X*cos(theta) - Y*sin(theta)
+        y' = X*sin(theta) + Y*cos(theta)
+        z' = z
+
+    where (xc, yc) is the center of the mesh XY bounding box.
+
+    For rotation with translation:
+
+        x' = X*cos(theta) - Y*sin(theta) + xt
+        y' = X*sin(theta) + Y*cos(theta) + yt
+        z' = z - zc + zt
+
+    where (xc, yc, zc) is the center of the mesh bounding box.
+
+    Examples
+    --------
+    Rotate the mesh by 30 degrees while preserving the original
+    Z coordinates:
+
+        transformed = meshit_coordinate_transform(
+            nodes,
+            angle_deg=30.0
+        )
+
+    Rotate the mesh and place its center at (100, 200, 50):
+
+        transformed = meshit_coordinate_transform(
+            nodes,
+            angle_deg=30.0,
+            translate=True,
+            xt=100.0,
+            yt=200.0,
+            zt=50.0
+        )
+    """
+    pts = np.asarray(nodes, dtype=np.float64).copy()
+
+    xc = 0.5 * (pts[:, 0].min() + pts[:, 0].max())
+    yc = 0.5 * (pts[:, 1].min() + pts[:, 1].max())
+
+    # This reproduces the ORIGINAL rotation behavior
+    X = pts[:, 0] - xc
+    Y = pts[:, 1] - yc
+
+    theta = np.deg2rad(float(angle_deg))
+    c = np.cos(theta)
+    s = np.sin(theta)
+
+    transformed = pts.copy()
+
+    transformed[:, 0] = X * c - Y * s
+    transformed[:, 1] = X * s + Y * c
+
+    if translate:
+        if any(v is not None for v in (xt, yt, zt)) and \
+           not all(v is not None for v in (xt, yt, zt)):
+            raise ValueError(
+                "xt, yt, and zt must be provided together."
+            )
+
+        tx = 0.0 if xt is None else float(xt)
+        ty = 0.0 if yt is None else float(yt)
+        tz = 0.0 if zt is None else float(zt)
+
+        zc = 0.5 * (pts[:, 2].min() + pts[:, 2].max())
+
+        transformed[:, 0] += tx
+        transformed[:, 1] += ty
+        transformed[:, 2] = pts[:, 2] - zc + tz
+
+    else:
+        # EXACTLY like original code
+        transformed[:, 2] = pts[:, 2]
+
+    return transformed
+
+
+@wbgeo_type(name='Surface as described', color='#8cb369', identifier='CSVSurfaceModelResults')
+@dataclass
+class CSVSurfaceModelResults:
+  csv_surface_coordinates: List[Tuple[Path, NpNDArrayFp64]]
+
+
 
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
-                 title='Create Unstructured Mesh',  # The title shown in the GUI
+                 title='Create Unstructured Explicit Mesh',  # The title shown in the GUI
                  color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Meshing',
+                 positionInGroup=5,
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
-    geomodel_result: StructuralModelResults,
+    geomodel_result: typing.Union[StructuralModelResults, CSVSurfaceModelResults],
     wells: Optional[WellData] = None,
     sources: Optional[SourcesData] = None,
     shafts: Optional[ShaftData] = None,
     extra_planes: Optional[PlaneData] = None,
     ellipses: Optional[EllipseData] = None,
-    triangulations: Optional[TriangulationsPlanesData] = None,
+    triangulations: Optional[TriangulationData] = None,
     tolerance: float = 50,
     mesh_size: float = 30,
     curve_mesh_size: float = 5,
-    DISTANCE_THRESHOLD: float = 50,
-    PROJECTION_THRESHOLD: float = 60,
-    EXTRUSION_FACTOR: float = 100,
-    z_threshold: float = 10,
     extent: Optional[ExtentData] = None,
+    extent_z: Optional[ExtentZData] = None,
     smooth: float = 1e-5,
     gmsh_flag: bool = False,
     mapping_litho: LithoMappingModeType = LithoMappingMode.AUTOMATIC_CENTERS.value,
     merge_file: Optional[str] = None,
-    refinement: Optional[Refinement] = None,
+    refinement: Optional[SmartRefinement] = None,
+    rotation_angle: Optional[float] = None,
+    rotation_angle_translate: Optional[float] = None,
+    xt: Optional[float] = None,
+    yt: Optional[float] = None,
+    zt: Optional[float] = None,
 ) -> MeshResults:
     """
     Generates an unstructured geological mesh using a geomodel and additional structures
@@ -2524,7 +2616,12 @@ def create_unstructured_mesh_data(
     fragmentation, and meshing using GMSH and returns the final MeshData object.
 
     Args:
-        geomodel_result (StructuralModelResults): Result of a structural geological model, containing a StructuralFrame with the interpolated lithology block, grid, and surface meshes.
+        geomodel_result (StructuralModelResults | CSVSurfaceModelResults, optional): Workbench model input.
+        rotation_angle (float, optional): Rotation angle in degrees in the XY plane. The mesh center in X and Y is shifted to (0, 0) before rotation; the original Z coordinates are preserved.
+        rotation_angle_translate (float, optional): Rotation angle in degrees in the XY plane with additional translation. The mesh center is used as the reference point. If xt/yt/zt are omitted, the transformed mesh is centered at (0, 0, 0).
+        xt (float, optional): Target x coordinate of the transformed mesh center, used only with rotation_angle_translate. xt, yt and zt must be provided together.
+        yt (float, optional): Target y coordinate of the transformed mesh center (see xt).
+        zt (float, optional): Target z coordinate of the transformed mesh center (see xt).
         wells (list of tuples): Each tuple contains coordinates defining the top (, middel) and bottom of a well (x1, y1, z1, x2, y2, z2).
         sources (list of tuples): Each tuple contains coordinates (x, y, z) of a point source.
         shafts (list of tuples): List of coordinates for the centers of mine shaft cylinders (x, y, z), direction vectors (dx, dy, dz)
@@ -2542,11 +2639,8 @@ def create_unstructured_mesh_data(
         tolerance (float): Distance threshold to identify boarder of mesh.
         mesh_size (int): Default mesh size for surface and volume meshing (default is 30).
         curve_mesh_size (int): Mesh size applied to curves (default is 5).
-        DISTANCE_THRESHOLD (float): Maximum distance used to filter overlapping points between surfaces.
-        PROJECTION_THRESHOLD (float): Distance threshold for projecting points when calculating extrusion.
-        EXTRUSION_FACTOR (float): Factor that scales extrusion distance.
-        z_threshold (float): Threshold for determining whether two surfaces on either side of a fault are close in elevation.
-        extent (list): extent of mesh (min_x, max_x, min_y,max_y, min_z, max_z)
+        extent: Optional domain. Either [xmin, xmax, ymin, ymax, zmin, zmax] for the legacy axis-aligned box, or 8 ordered (x, y, z) corners for an oriented box. If omitted, structural-model mode uses the structural-model extent and CSV-surface mode uses the combined min/max x, y, z values of all CSV surfaces.
+        extent_z: Optional absolute Z limits [z_min, z_max] applied only when extent is omitted. For example [-9, 5] replaces the inferred Z limits with zmin=-9 and zmax=5 while preserving the inferred X/Y limits. An explicit extent always takes precedence.
         smooth (float): smoothness factor for interpolation of surfaces
         gmsh_flag (bool):  If True, enables writing the GMSH original mesh to the disk (default=False)
         mapping_litho (str): Controls lithological processing mode.
@@ -2568,6 +2662,7 @@ def create_unstructured_mesh_data(
         MeshResults: An instance of the MeshResults class.
     """
 
+
     # normalize
     if isinstance(mapping_litho, str):
         try:
@@ -2576,6 +2671,24 @@ def create_unstructured_mesh_data(
             raise ValueError(
                 f"Invalid mapping_litho='{mapping_litho}'. "
                 f"Valid options are: {[m.value for m in LithoMappingMode]}"
+            )
+
+    # Input route validation.
+    csv_mode = isinstance(geomodel_result, CSVSurfaceModelResults)
+
+    # CSV surfaces do not contain a structural lithology grid, so lithology
+    # mapping is intentionally disabled for this input route.
+    if csv_mode:
+        if mapping_litho != LithoMappingMode.NONE:
+            logger.info(
+                "surface_csv_dir mode forces mapping_litho='none' "
+                "(requested %r).", mapping_litho.value
+            )
+        mapping_litho = LithoMappingMode.NONE
+        if merge_file is not None:
+            raise ValueError(
+                "merge_file cannot be used with surface_csv_dir because "
+                "CSV-surface mode uses mapping_litho='none'."
             )
 
     # enforce merge_file rules
@@ -2631,28 +2744,75 @@ def create_unstructured_mesh_data(
     ########################
     # extract extent of model
     ########################
-    extent_arr: NDArray[np.float64]
-
-    if extent is None or len(extent) == 0:
-        extent_arr = np.asarray(
-            geomodel_result.structural_frame.grid.extent,
-            dtype=float,
-        )
+    if extent_z is not None:
+        if len(extent_z) != 2:
+            raise ValueError(
+                "extent_z must contain exactly two values: [z_min, z_max]."
+            )
+        extent_z_min, extent_z_max = (float(v) for v in extent_z)
+        if not np.isfinite(extent_z_min) or not np.isfinite(extent_z_max):
+            raise ValueError("extent_z values must be finite.")
+        if extent_z_min >= extent_z_max:
+            raise ValueError("extent_z requires z_min < z_max.")
     else:
-        extent_arr = np.asarray(extent, dtype=float)
+        extent_z_min = extent_z_max = None
+
+    # Load CSV surfaces lazily, or reuse the supplied CSVSurfaceModelResults.
+    # ``extent`` is backward compatible:
+    #   * 6 values -> legacy axis-aligned box
+    #   * 8 (x,y,z) corners -> oriented parallelepiped
+    if extent is None or len(extent) == 0:
+        if csv_mode:
+            # Same default pattern as structural-model mode: infer the domain
+            # from the geological input when no explicit extent is supplied.
+            # For CSV surfaces this is the combined x/y/z min/max of all files.
+            xyz_min = np.min(
+                [xyz.min(axis=0) for _, xyz in geomodel_result.csv_surface_coordinates], axis=0
+            )
+            xyz_max = np.max(
+                [xyz.max(axis=0) for _, xyz in geomodel_result.csv_surface_coordinates], axis=0
+            )
+
+            domain_spec = np.array(
+                [
+                    xyz_min[0], xyz_max[0],
+                    xyz_min[1], xyz_max[1],
+                    xyz_min[2], xyz_max[2],
+                ],
+                dtype=float,
+            )
+        else:
+            domain_spec = np.asarray(
+                geomodel_result.structural_frame.grid.extent, dtype=float
+            )
+
+        if extent_z is not None:
+            domain_spec = np.asarray(domain_spec, dtype=float).copy()
+            domain_spec[4] = extent_z_min
+            domain_spec[5] = extent_z_max
+    else:
+        # An explicitly supplied extent has priority and is never enlarged.
+        domain_spec = np.asarray(extent, dtype=float)
+    normalize_domain(domain_spec)
+    # Some legacy surface interpolation/import code still needs an axis-aligned
+    # bounding range.  This AABB is NOT used to create the final 8-corner volume.
+    extent_arr = domain_aabb(domain_spec)
 
     #################################################
     # check if engineering objects are inside extent
     #################################################
-    validate_wells(wells, extent_arr)
-    validate_sources(sources, extent_arr)
-    validate_shafts(mine_shafts, extent_arr)
-    validate_planes(extra_planes, extent_arr)
-    validate_ellipses(ellipses, extent_arr)
+    validate_wells(wells, domain_spec)
+    validate_sources(sources, domain_spec)
+    validate_shafts(mine_shafts, domain_spec)
+    validate_planes(extra_planes, domain_spec)
+    validate_ellipses(ellipses, domain_spec)
 
     if len(triangulations) > 0:
-        triangulations = np.asarray(triangulations, dtype=np.float64)
-        validate_triangulation(triangulations, extent_arr)
+        if isinstance(triangulations, dict):
+            triangulations = {key: np.asarray(points, dtype=np.float64) for key, points in triangulations.items()}
+        else:
+            triangulations = np.asarray(triangulations, dtype=np.float64)
+        validate_triangulation(triangulations, domain_spec)
 
     # Initialize GMSH
     try:
@@ -2661,30 +2821,68 @@ def create_unstructured_mesh_data(
         ############################################
         # Get data from structural model and clean it
         ############################################
-        cleaned_surfaces: List[NDArray[np.float64]]
-        ref_surface_indices: Dict[int, int]
+        cleaned_surfaces: List[Tuple[str | int, NDArray[np.float64]]]
+        ref_surface_indices: Dict[str | int, int]
         grid_litho: pd.DataFrame
 
-        cleaned_surfaces, ref_surface_indices, grid_litho = data_preparation(geomodel_result, DISTANCE_THRESHOLD=DISTANCE_THRESHOLD,
-            PROJECTION_THRESHOLD=PROJECTION_THRESHOLD, EXTRUSION_FACTOR=EXTRUSION_FACTOR, z_threshold=z_threshold,
-        )
+        if csv_mode:
+            # CSV mode deliberately bypasses data_preparation(): no overlap
+            # removal, fault-side cleaning, projection, or surface extension.
 
-        ########################
-        # Surface interpolation
-        ########################
-        interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth,)
+            cleaned_surfaces = []
+            ref_surface_indices = {}
 
-        ##################
-        # Import surfaces
-        ##################
-        surfaces_original: List[int]
-        bounds: Tuple[float, float, float, float, float, float]
+            for csv_path, xyz in geomodel_result.csv_surface_coordinates:
+                # IMPORTANT: create_surface_grid() expects exactly
+                # (surface_id, points), not extra metadata.
+                surface_id = csv_path.name
+                surface_index = len(cleaned_surfaces)
+                cleaned_surfaces.append((surface_id, xyz))
 
-        surfaces_original, bounds = import_surfaces(
-            interpolated_s,
-            extent_arr,
-            tolerance=tolerance,
-        )
+                # Match structural-model data_preparation(): reference/fault
+                # surfaces are stored separately as name -> cleaned-surface index.
+                if csv_path.stem.lower().startswith("fault"):
+                    ref_surface_indices[surface_id] = surface_index
+                    logger.info(
+                        "CSV fault reference surface %s added at index %d",
+                        surface_id, surface_index,
+                    )
+
+            # No structural lithology exists in CSV mode.
+            grid_litho = pd.DataFrame(
+                columns=["x", "y", "z", "lithology"]
+            )
+
+            logger.info(
+                "Loaded %d CSV surfaces (%d fault/reference surfaces): %s",
+                len(cleaned_surfaces),
+                len(ref_surface_indices),
+                list(ref_surface_indices.keys()),
+            )
+
+        if not csv_mode:
+            ##########################################################
+            # Surfaces straight from the extended masked meshes: one
+            # plane or B-spline surface per piece, no cleaning needed
+            ##########################################################
+            grid_litho = build_grid_litho(geomodel_result)
+            surfaces_original, ref_surface_indices = import_structural_surfaces(geomodel_result)
+        else:
+            ########################
+            # Surface interpolation
+            ########################
+            interpolated_s: List[NDArray[np.float64]] = create_surface_grid(cleaned_surfaces, smooth=smooth,)
+
+            ##################
+            # Import surfaces
+            ##################
+            bounds: Tuple[float, float, float, float, float, float]
+
+            surfaces_original, bounds = import_surfaces(
+                interpolated_s,
+                extent_arr,
+                tolerance=tolerance,
+            )
 
         gmsh.model.occ.synchronize()
 
@@ -2701,8 +2899,12 @@ def create_unstructured_mesh_data(
         source_tag: List[int]
         boundary_tags: List[int]
 
+        # The resolved domain is authoritative. import_surfaces() may return
+        # adjusted surface bounds, but those must not replace an explicit extent
+        # or the inferred extent after extent_z has been applied.
+        fragment_domain = domain_spec
         ov, well_tags, shaft_tags, tri_group_tags, tri_surface_tags, source_tag, boundary_tags = fragment_surfaces(surfaces,
-            bounds, ref_surface_indices, wells, extra_planes, sources, mine_shafts, ellipses=ellipses,
+            fragment_domain, ref_surface_indices, wells, extra_planes, sources, mine_shafts, ellipses=ellipses,
             triangulations=triangulations, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,refinement=refinement,
         )
 
@@ -2715,28 +2917,137 @@ def create_unstructured_mesh_data(
         nodes, cells, cell_data = mesh_generator(ov, extent_arr, well_tags, source_tag, shaft_tags, tri_group_tags,
             tri_surface_tags, grid_litho, mesh_size=mesh_size, curve_mesh_size=curve_mesh_size,
             boundary_tags=boundary_tags, gmsh_flag=gmsh_flag, mapping_litho=mapping_litho, merge_file=merge_file,
+            source_mesh_size=source_point_size(refinement),
         )
+        # 1. Clip generated mesh to the requested domain BEFORE boundary sets.
+        # This also removes unused nodes and remaps all cell connectivity.
+        nodes, cells, cell_data = filter_mesh_to_domain(
+            nodes, cells, cell_data, domain_spec
+        )
+        x_min, y_min, z_min = nodes.min(axis=0)
+        x_max, y_max, z_max = nodes.max(axis=0)
+        nodes_global = nodes.copy()
+
+        # 2. Classify faces against the REQUESTED domain, not the mesh AABB.
+        boundary_domain = domain_spec
+        boundary_groups = classify_boundary_nodes(nodes_global, boundary_domain)
+        point_sets = build_point_sets(boundary_groups, len(nodes_global))
+
+        # 3. Transform ALL node coordinates to the new coordinate system
+        # Without a requested transform, preserve the original coordinates.
+        nodes_local = nodes_global
+
+        if rotation_angle is not None and rotation_angle_translate is not None:
+            raise ValueError(
+                "Use either rotation_angle (pure rotation) or "
+                "rotation_angle_translate (rotation plus centre translation), not both."
+            )
+
+        if rotation_angle is not None:
+            if any(v is not None for v in (xt, yt, zt)):
+                raise ValueError(
+                    "xt/yt/zt are only valid with "
+                    "rotation_angle_translate."
+                )
+            nodes_local = meshit_coordinate_transform(
+                nodes_global,
+                angle_deg=rotation_angle,
+                translate=False,
+            )
+
+        elif rotation_angle_translate is not None:
+            nodes_local = meshit_coordinate_transform(
+                nodes_global,
+                angle_deg=rotation_angle_translate,
+                translate=True,
+                xt=xt,
+                yt=yt,
+                zt=zt,
+            )
+
+        elif any(v is not None for v in (xt, yt, zt)):
+            raise ValueError(
+                "xt/yt/zt require rotation_angle_translate."
+            )
 
     finally:
         gmsh.finalize()
 
 
-    ############
-    # BC nodes
-    ############
-    x_min, y_min, z_min = nodes.min(axis=0)
-    x_max, y_max, z_max = nodes.max(axis=0)
-
-    extent_mesh = np.array([x_min, x_max, y_min, y_max, z_min, z_max])
-
-    boundary_groups_n = classify_boundary_nodes(nodes, extent_mesh)
-    point_sets = build_point_sets(boundary_groups_n, len(nodes))
 
 
     return MeshResults(
         elements=cells,
-        nodes=nodes,
+        nodes=nodes_local,
         point_sets=point_sets,
         cell_data=cell_data,
         mesh_type=MeshType.UNSTRUCTURED,
 )
+# TODO: Turn this into a wbgeo component once union types are supported
+def load_csv_surface_coordinates(surface_csv_dir: typing.Union[str, Path]) -> CSVSurfaceModelResults:
+  """Load surface point coordinates from CSV files for extent and meshing.
+
+  Each CSV represents one surface and contains a header with ``x``, ``y``,
+  and ``z`` columns, followed by one 3D coordinate point per row. Fault and
+  geological surfaces share this format; for example, ``fault1.csv`` and
+  ``surface_0.csv`` both contain::
+
+      x,y,z
+      1598.8658142089844,-40.0,1019.999991966042
+      1615.1783417083404,-40.0,996.7021942749328
+
+  Column names are matched case-insensitively after stripping whitespace.
+  Other columns, if present, are ignored. Non-numeric or non-finite coordinate
+  rows are discarded. Each file must retain at least three valid points.
+  CSV files are processed in filename order; hidden files and non-CSV files
+  are ignored.
+
+  Args:
+      surface_csv_dir: Directory containing one CSV file per surface.
+          A string or path-like value is accepted; ``~`` is expanded.
+
+  Returns:
+      list[tuple[pathlib.Path, numpy.ndarray]]: Pairs of CSV file paths and
+      finite floating-point coordinate arrays of shape ``(N, 3)``.
+
+  Raises:
+      ValueError: If the directory does not exist, contains no CSV files,
+          a CSV lacks an ``x``, ``y``, or ``z`` column, or fewer than three
+          valid coordinate rows remain in a file.
+      pandas.errors.ParserError: If pandas cannot parse a CSV file.
+  """
+  csv_root = Path(surface_csv_dir).expanduser()
+  if not csv_root.is_dir():
+    raise ValueError(
+      f"surface_csv_dir is not a directory: {surface_csv_dir}"
+    )
+  csv_files = sorted(
+    p for p in csv_root.iterdir()
+    if p.is_file()
+    and p.suffix.lower() == ".csv"
+    and not p.name.startswith(".")
+    and not p.name.startswith("._")
+  )
+  if not csv_files:
+    raise ValueError(f"No CSV surface files found in {surface_csv_dir}")
+
+  surfaces = []
+  for csv_path in csv_files:
+    df = pd.read_csv(csv_path)
+    columns = {str(c).strip().lower(): c for c in df.columns}
+    missing = [axis for axis in ("x", "y", "z") if axis not in columns]
+    if missing:
+      raise ValueError(
+        f"{csv_path.name} must contain x, y, z columns; missing {missing}."
+      )
+    xyz = df[[columns["x"], columns["y"], columns["z"]]].apply(
+      pd.to_numeric, errors="coerce"
+    ).to_numpy(dtype=float)
+    xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+    if len(xyz) < 3:
+      raise ValueError(
+        f"{csv_path.name} has fewer than 3 valid x,y,z points."
+      )
+    surfaces.append((csv_path, xyz))
+  return CSVSurfaceModelResults(surfaces)
+
