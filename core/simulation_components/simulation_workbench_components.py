@@ -785,13 +785,14 @@ def run_golem_simulation(
 ) -> SimulationResults:
     """Run GOLEM with an isolated output directory for this execution."""
     run_output_dir = pathlib.Path.cwd() / "golem_output" / uuid.uuid4().hex
+    workspace_dir = os.environ.get('GOLEM_WORKSPACE', 'golem_workspace') + "/" + str(uuid.uuid4())
     try:
         # the `registry.git.rwth-aachen.de/wbgeo/container-registry/pyrunner-base` image comes with golem already installed
         # it is based upon `moose-dev:fixed`
         golem_image = os.environ.get('GOLEM_IMAGE', None)
 
         golem_binary = os.environ.get('GOLEM_BINARY', '/golem/golem-opt')
-        workspace_dir = os.environ.get('GOLEM_WORKSPACE', 'golem_workspace') + "/" + str(uuid.uuid4())
+
         return _run_simulation_golem(
             problem=problem.inner(),
             image_name=golem_image,
@@ -807,6 +808,7 @@ def run_golem_simulation(
         # input, solver output), so GOLEM's output folder can go right away,
         # whether the run succeeded or not.
         shutil.rmtree(run_output_dir, ignore_errors=True)
+        shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 @wbgeo_component(
