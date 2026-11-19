@@ -210,6 +210,7 @@ def test_structural_model_3D_arrow_length_follows_model_size(monkeypatch, size):
         get_surface_points_for_element=lambda name: None,
         get_orientations_for_element=lambda name: ori,
         fault_frame=None,
+        lith_block=None,  # not computed
         grid=RegularGrid(extent=(0, size, 0, size, 0, size), resolution=(4, 4, 4)),
     )
 
