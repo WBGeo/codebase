@@ -39,7 +39,7 @@ def _build_model2_structural_result(*, restrict_fault_to_older_group: bool = Fal
     restrict_fault_to_older_group must be applied (via set_fault_activity_by_group)
     *before* compute_structural_model -- that's when the restriction actually
     takes effect in the real lith_block (domain merging), not just the raw
-    fault_activity dict -- see HydrothermalProblemBuilder's class docstring.
+    fault_activity dict -- see SfepyHydrothermalProblemBuilder's class docstring.
     """
     grid = RegularGrid(extent=(0, 2500, 0, 1000, 0, 1000), resolution=(30, 15, 15))
     data_faults = InputData_FaultElements(

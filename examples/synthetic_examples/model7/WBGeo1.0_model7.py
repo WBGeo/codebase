@@ -1,3 +1,13 @@
+"""Synthetic model 7: 3 faults, 1 unconformity, 2 stratigraphic groups.
+
+Run it cell by cell (#%%) from the repository root; each main section starts with a
+banner, each sub-section with a numbered cell title.
+
+Sections (same order as the Workbench components)
+  1. Structural modeling: fault model, input data, structural frame, structural model
+  2. Meshing: the meshes this model supports, plots, export and engineering objects (optional)
+"""
+
 # Simulate the nodesapi at runtime to also check that (de)serialization is set up correctly
 from examples.pydantic_nodesapi_simulation import register_as_test_nodes_api
 register_as_test_nodes_api()
@@ -19,8 +29,7 @@ from core.structural_modeling_components.structural_modeling_visualization.struc
     plot_fault_input_data_3D, plot_input_data_3D)
 
 from core.meshing_components.explicit.structured.mesh_data import create_structured_mesh_data
-from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
-    load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
+from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, load_wells_from_csv
 from core.meshing_components.meshing_visualization.meshing_visualization import plot_mesh_3d
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
 from core.meshing_components.mesh_format.mesh_export import (
@@ -30,13 +39,11 @@ from core.meshing_components.mesh_format.mesh_export import (
     export_mesh_results_to_vtm, export_mesh_results_to_ansys,
     export_mesh_results_to_abaqus)
 
-#%%
-
 cwd = os.getcwd()
 
-# WORKFLOW Synthetic Model 7: 3 faults, 1 unconformity, 2 stratigraphic groups
-
-#%%
+# ==============================================================================
+#%% 1. Structural modeling
+# ==============================================================================
 
 # Create a grid for the model
 grid = RegularGrid(
@@ -44,7 +51,7 @@ grid = RegularGrid(
     resolution=(50, 50, 50)
 )
 
-#%%
+#%% 1.1 Fault input data
 
 # Create input data for the fault elements
 data_faults = InputData_FaultElements(name='Faults_Model_7',
@@ -54,12 +61,10 @@ data_faults = InputData_FaultElements(name='Faults_Model_7',
                                           cwd + "/examples/synthetic_examples/model7/input_data/geological_data/model7_orientations_df.csv"),
                                       fault_names=["FaultA", "FaultB", "FaultC"])
 
-#%%
-
 # Plot fault input data without model context
 plot_fault_input_data_3D(data_faults)
 
-#%%
+#%% 1.2 Fault frame
 
 # Create FaultFrame
 fault_frame = general_faults.build_fault_frame(
@@ -69,24 +74,20 @@ fault_frame = general_faults.build_fault_frame(
 
 fault_frame.detailed_report()
 
-#%%
-
 # Plot the fault input data (2D and 3D possible)
 plot_fault_model_2D(fault_frame)
 plot_fault_model_3D(fault_frame)
 
-#%%
+#%% 1.3 Fault model
 
 # Compute fault model result
 fault_model_result = general_faults.compute_fault_domains(fault_frame)
-
-#%%
 
 # Plot the fault model results (2D and 3D possible)
 plot_fault_model_2D(fault_model_result.fault_frame)
 plot_fault_model_3D(fault_model_result.fault_frame)
 
-#%%
+#%% 1.4 Structural input data
 
 # Create input data for the structural elements
 data_elements = InputData_StructuralElements(name='Model_7',
@@ -100,12 +101,10 @@ data_elements = InputData_StructuralElements(name='Model_7',
                                                  cwd + "/examples/synthetic_examples/model7/input_data/geological_data/model7_orientations_df.csv")
                                              )
 
-#%%
-
 # Plot input data without model context
 plot_input_data_3D(data_elements)
 
-#%%
+#%% 1.5 Structural frame
 
 # Create a StructuralFrame and include the fault frame
 frame = general.build_structural_frame(input_data_elements=data_elements,
@@ -115,13 +114,11 @@ frame = general.build_structural_frame(input_data_elements=data_elements,
 
 frame.detailed_report()
 
-#%%
-
 # Plot the input data (2D and 3D possible)
 plot_structural_model_2D(frame)
 plot_structural_model_3D(frame)
 
-#%%
+#%% 1.6 Interpolation settings (optional)
 
 # Set another interpolation method per group
 # frame["Top"].set_interpolation_method("Universal Co-Kriging")
@@ -133,7 +130,7 @@ plot_structural_model_3D(frame)
 
 # frame.detailed_report()
 
-#%%
+#%% 1.7 Structural model
 
 # Compute structural model result
 structural_model_result = general.compute_structural_model(
@@ -142,19 +139,15 @@ structural_model_result = general.compute_structural_model(
     verbose=True,
 )
 
-#%%
-
 # Plot the results (2D and 3D possible)
 plot_structural_model_2D(structural_model_result.structural_frame)
 plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
-
-#%%
 
 # Optional: Plotting age masks and scalar fields
 # frame.plot_scalar_field_section(group_nr=0, axis='y', index=12)
 # frame.plot_age_mask_section(group_nr=0, axis='y', index=12)
 
-#%%
+#%% 1.8 Surface gradients (optional)
 
 # Optional: Compute gradients at the surface mesh vertices
 # from core.structural_modeling_components.structural_modeling_utility import surface_mesh_gradients
@@ -166,35 +159,53 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #                                                    gradients_faults_dict,
 #                                                    mesh_type="unmasked")
 
-#%%
+# ==============================================================================
+#%% 2. Meshing
+# ==============================================================================
 
-# Compute 3D meshes based on the structural model result using different meshing approaches.
-# Meshing parameters not yet verified for this model.
+# Compute 3D meshes based on the structural model result using different meshing approaches
 
 # Implicit structured mesh
 mesh_implicit_structured = create_implicit_structured_mesh(geomodel_result=structural_model_result)
 
 # Explicit unstructured mesh
-# NOTE: Currently, the unstructured mesh does not support models
-# with faults where different layers on both sides of the fault lie on nearly same surface.
+mesh_explicit_unstructured = create_unstructured_mesh_data(
+    geomodel_result=structural_model_result,
+    tolerance=50,
+    mesh_size=30,
+    curve_mesh_size=10,
+)
 
 # Explicit structured mesh
-# NOTE: Currently structured mesh does not support models with faults
-#                                                        refinement_data=[10, 10, 10])
+# Not available here: the structured mesh doesn't support models with faults yet.
 
-#%%
+#%% 2.1 Plot the meshes
 
 # Plot the meshing results
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
+plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 
+#%% 2.2 Export a mesh (optional)
 
-#%%
+# Optional: Export a mesh, here the unstructured mesh to Exodus.
+# The other exporters work the same way (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
+# Only the Exodus exporter needs the mesh type ('imp', 'str' or 'unstr'), and some formats
+# support only some mesh types; see the meshing manual.
+# buf = export_mesh_results_to_exodus(mesh_explicit_unstructured, type='unstr')
+# with open("model7_unstructured_mesh.exo", "wb") as f:
+#     f.write(buf.getvalue())
 
-# Optional: Example of how to export the unstructured mesh to Exodus format.
-# Similar functions are available for other formats (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
-# NOTE: Only the Exodus exporter requires a type specification (e.g. 'imp', 'str', 'unstr').
-# In addition, some export formats support only specific mesh types.
-# See the meshing manual/documentation for details.
-# buf = export_mesh_results_to_exodus(mesh_implicit_structured, type='imp')
-# with open("filename_example_mesh.exo", "wb") as f:
-#    f.write(buf.getvalue())
+#%% 2.3 Engineering objects (optional)
+
+# Optional: Add engineering objects to the unstructured mesh (only works for unstructured meshes).
+# This model's wells, sources, shafts, planes and ellipses are in input_data/engineering_objects/.
+# Models 1 and 2 show the full workflow, including all refinement options around the objects.
+# wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model7/input_data/engineering_objects/model_7_wells.csv")
+# mesh_unstructured_with_objects = create_unstructured_mesh_data(
+#     geomodel_result=structural_model_result,
+#     wells=wells,
+#     tolerance=50,
+#     mesh_size=30,
+#     curve_mesh_size=10,
+# )
+# plot_mesh_3d(mesh_unstructured_with_objects, structural_model_result, show_plotter=True)

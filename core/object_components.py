@@ -161,7 +161,7 @@ class MeshType(StrEnum):
     generation approaches available (create_implicit_structured_mesh,
     create_structured_mesh_data, create_unstructured_mesh_data). Set
     automatically by each of those on the MeshResults they return, so
-    downstream consumers (e.g. HydrothermalProblemBuilder) can read a
+    downstream consumers (e.g. SfepyHydrothermalProblemBuilder) can read a
     mesh's own provenance instead of requiring it to be passed separately
     and kept in sync by hand.
     """
@@ -440,20 +440,43 @@ class SimulationResults:
     cell_data_by_time : Dict[float, Dict[str, NpNDArrayFp64]]
         Cell-based data arrays for each timestep.
 
-    sfepy_stdout : Optional[Dict[str, str]]
-        Raw solver stdout, keyed by stage name (e.g. "pressure"/"heat" for a
-        HydrothermalProblemBuilder run, "custom" for a CustomSfepyBuilder
-        run) -- set by run_simulation_sfepy() so solver convergence/quality
-        can be inspected even after a successful run, not only when a solve
-        fails. None if this result wasn't produced by run_simulation_sfepy()
-        (e.g. constructed directly in a test).
+    solver : Optional[str]
+        Which simulator produced the result: "sfepy" or "golem". None for a
+        result built by hand (e.g. in a test).
+
+    solver_output : Dict[str, str]
+        Raw solver console output per stage ("pressure"/"heat" for a SfePy
+        hydrothermal run, "custom" for a custom SfePy file, "golem" for
+        GOLEM), so convergence can be checked on successful runs too.
+
+    solver_tables : Dict[str, Dict[str, NpNDArrayFp64]]
+        Tabular solver output that is not part of the mesh fields, per file
+        name and column, e.g. GOLEM's postprocessor CSVs
+        ({"wbgeo.csv": {"time": [...], "flow_rate": [...]}}). Written back
+        as CSV files on export.
+
+    input_files : Dict[str, str]
+        The input file(s) the solver ran, by file name, for provenance.
+
+    block_names : Dict[int, str]
+        Name of each element block, by the block id used in the result's
+        cell data (ObjectId for GOLEM, mat_id for SfePy).
+
+    The result is self-contained: it holds everything an export needs, so
+    no solver output folder has to be kept on disk after a run. Only
+    declared fields survive the Workbench, which stores a result as JSON of
+    these fields.
     """
     nodes_by_time: Dict[float, NpNDArrayFp64] = field(default_factory=dict)
     cells_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
     celltypes_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
     node_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
     cell_data_by_time: Dict[float, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
-    sfepy_stdout: Optional[Dict[str, str]] = None
+    solver: Optional[str] = None
+    solver_output: Dict[str, str] = field(default_factory=dict)
+    solver_tables: Dict[str, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
+    input_files: Dict[str, str] = field(default_factory=dict)
+    block_names: Dict[int, str] = field(default_factory=dict)
 
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],

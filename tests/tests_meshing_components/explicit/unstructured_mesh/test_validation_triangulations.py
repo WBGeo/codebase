@@ -22,12 +22,11 @@ class TestValidateTriangulation(unittest.TestCase):
         self.assertIsInstance(result, np.ndarray)
         self.assertTrue(np.array_equal(result, pts))
 
-    # INVALID TYPE
-    def test_invalid_type(self):
+    # ARRAY-LIKE INPUT
+    def test_list_input(self):
         pts = [[1, 1, 1], [2, 2, 2]]
-
-        with self.assertRaises(TypeError):
-            validate_triangulation(pts, self.extent)
+        result = validate_triangulation(pts, self.extent)
+        self.assertTrue(np.array_equal(np.asarray(result), np.asarray(pts)))
 
     # INVALID SHAPE (1D)
     def test_invalid_shape(self):
@@ -96,6 +95,9 @@ class TestValidateTriangulation(unittest.TestCase):
         self.assertIsInstance(result, np.ndarray)
         self.assertTrue(np.array_equal(result, pts))
 
-##########################################
+    # Hierarchical triangulation dictionaries are intentionally NOT passed
+    # directly to validate_triangulation. hierarchical_mesh selects key 1/2
+    # first; this validator receives the selected point array.
+
 if __name__ == "__main__":
     unittest.main()

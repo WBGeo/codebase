@@ -16,6 +16,7 @@ from core.meshing_components.pre_checks import pre_check_regular_grid
     color='#cc9999',
     border_color='#000000',
     group='Meshing',
+    positionInGroup=20,
     identifier='wbgeo::create_structured_implicit_mesh_meshio',
     return_name='Mesh',
     input_checks=[pre_check_regular_grid],

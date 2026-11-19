@@ -6,11 +6,17 @@ import logging
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from typing import List, Tuple, Dict, Any, Union, Optional
-
+from scipy.spatial import (
+            Delaunay,
+            cKDTree
+        )
 logger = logging.getLogger(__name__)
 from numpy.typing import NDArray
 from scipy.interpolate import Rbf
 from core.object_components import  ExtentData
+from core.meshing_components.explicit.unstructured.domain_geometry import (
+    add_gmsh_domain_volume, domain_aabb, domain_local_coordinates, normalize_domain
+)
 from core.meshing_components.explicit.unstructured.refinement_mesh import (Refinement, LinearWellRefinement, FunctionWellRefinement,
                                                                LinearSourceRefinement,FunctionSourceRefinement,)
 from core.meshing_components.explicit.unstructured.refinement_fields import (build_refinement_fields, apply_background_fields,build_triangulation_mesh_callback,build_combined_mesh_callback)
@@ -437,7 +443,7 @@ def import_surfaces(interpolated_s: List[NDArray[np.float64]], extent: Optional[
     return surfaces, bounds
 
 
-def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indices: Dict[int, int], wells: List[Tuple[float, ...]],
+def fragment_surfaces(surfaces: List[int], extent: List[float], reference_surface_positions_or_tags: Dict[int, int], wells: List[Tuple[float, ...]],
     extra_planes: List[Tuple[float, ...]], source_points: List[Tuple[float, ...]], mine_shafts: List[Dict[str, Any]], ellipses: List[Dict[str, Any]] = [],
     triangulations: List[np.ndarray] = [] , mesh_size: float = 20.0, curve_mesh_size: float = 5.0, refinement: Optional[Refinement] = None,) -> Tuple[List[Tuple[int, int]], List[List[Tuple[int, int]]],
     List[int], List[int], List[int], Dict[int, List[int]], List[int]]:
@@ -453,7 +459,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     Args:
         surfaces (List[int]): GMSH surface tags to be fragmented.
         extent (List[float]): Model bounding box given as (x_min, x_max, y_min, y_max, z_min, z_max).
-        ref_surface_indices (Dict[int, int]): Mapping that identifies reference surfaces (faults) and their indices
+        reference_surface_positions_or_tags (Dict[int, int]): Mapping that identifies reference surfaces (faults) and their indices
                         in the `surfaces` list. Used to preserve and track fault surfaces.
         wells (List[Tuple[float, ...]]): Well trajectories defined by sequences of (x, y, z) coordinates. Each tuple
                        length must be a multiple of 3.
@@ -483,9 +489,14 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     ##############
     # CREAT A BOX
     ##############
-    x_min, x_max, y_min, y_max, z_min, z_max = extent
+    # ``extent`` supports both the legacy 6-value axis-aligned form and
+    # an 8-corner oriented box.  The AABB is retained only for scale/tolerance
+    # calculations; the actual OCC volume follows the supplied domain exactly.
+    domain_spec = extent
+    x_min, x_max, y_min, y_max, z_min, z_max = domain_aabb(domain_spec)
+    domain_kind, _domain_data = normalize_domain(domain_spec)
 
-    v: int = gmsh.model.occ.addBox(x_min , y_min , z_min, x_max - x_min, y_max - y_min, z_max - z_min)
+    v: int = add_gmsh_domain_volume(gmsh, domain_spec)
 
     def clamp_to_nearest_boundary(val: float, min_val: float, max_val: float) -> float:
       """
@@ -538,9 +549,10 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             for j in range(0, len(coords), 3):
 
                 x, y, z = coords[j], coords[j+1], coords[j+2]
-                x = clamp_to_nearest_boundary(x, x_min, x_max)
-                y = clamp_to_nearest_boundary(y, y_min, y_max)
-                z = clamp_to_nearest_boundary(z, z_min, z_max)
+                if domain_kind == "extent":
+                    x = clamp_to_nearest_boundary(x, x_min, x_max)
+                    y = clamp_to_nearest_boundary(y, y_min, y_max)
+                    z = clamp_to_nearest_boundary(z, z_min, z_max)
                 p = gmsh.model.occ.addPoint(x, y, z)
 
                 points.append(p)
@@ -577,22 +589,26 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             x3_m, y3_m, z3_m,
             x4_m, y4_m, z4_m) = extra_planes[i_layer]
 
-            # Clamp ALL points to extent
-            x1_m = clamp_to_nearest_boundary(x1_m, x_min, x_max)
-            y1_m = clamp_to_nearest_boundary(y1_m, y_min, y_max)
-            z1_m = clamp_to_nearest_boundary(z1_m, z_min, z_max)
+            # Preserve the historical coordinate-wise clamping for the legacy
+            # axis-aligned extent.  For an oriented box the inputs have already
+            # been validated in true box-local coordinates, so no AABB clamping
+            # is applied (it would move points to the wrong faces).
+            if domain_kind == "extent":
+                x1_m = clamp_to_nearest_boundary(x1_m, x_min, x_max)
+                y1_m = clamp_to_nearest_boundary(y1_m, y_min, y_max)
+                z1_m = clamp_to_nearest_boundary(z1_m, z_min, z_max)
 
-            x2_m = clamp_to_nearest_boundary(x2_m, x_min, x_max)
-            y2_m = clamp_to_nearest_boundary(y2_m, y_min, y_max)
-            z2_m = clamp_to_nearest_boundary(z2_m, z_min, z_max)
+                x2_m = clamp_to_nearest_boundary(x2_m, x_min, x_max)
+                y2_m = clamp_to_nearest_boundary(y2_m, y_min, y_max)
+                z2_m = clamp_to_nearest_boundary(z2_m, z_min, z_max)
 
-            x3_m = clamp_to_nearest_boundary(x3_m, x_min, x_max)
-            y3_m = clamp_to_nearest_boundary(y3_m, y_min, y_max)
-            z3_m = clamp_to_nearest_boundary(z3_m, z_min, z_max)
+                x3_m = clamp_to_nearest_boundary(x3_m, x_min, x_max)
+                y3_m = clamp_to_nearest_boundary(y3_m, y_min, y_max)
+                z3_m = clamp_to_nearest_boundary(z3_m, z_min, z_max)
 
-            x4_m = clamp_to_nearest_boundary(x4_m, x_min, x_max)
-            y4_m = clamp_to_nearest_boundary(y4_m, y_min, y_max)
-            z4_m = clamp_to_nearest_boundary(z4_m, z_min, z_max)
+                x4_m = clamp_to_nearest_boundary(x4_m, x_min, x_max)
+                y4_m = clamp_to_nearest_boundary(y4_m, y_min, y_max)
+                z4_m = clamp_to_nearest_boundary(z4_m, z_min, z_max)
 
             # Create OCC points
             p1 = gmsh.model.occ.addPoint(x1_m, y1_m, z1_m)
@@ -612,7 +628,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             surface_mine = gmsh.model.occ.addPlaneSurface([loop])
             surfaces.append(surface_mine)
 
-            ref_surface_indices[len(surfaces) - 1] = len(surfaces) - 1
+            reference_surface_positions_or_tags[len(surfaces) - 1] = len(surfaces) - 1
             extra_planes_surface_indices.add(len(surfaces) - 1)
 
         gmsh.model.occ.synchronize()
@@ -684,39 +700,54 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             # Store for fragmentation
 
             surfaces.append(ellipse_surface)
-            ref_surface_indices[len(surfaces) - 1] = len(surfaces) - 1
+            reference_surface_positions_or_tags[len(surfaces) - 1] = len(surfaces) - 1
 
             ellipse_surface_indices.add(len(surfaces) - 1)
 
         gmsh.model.occ.synchronize()
-
     #############################
     # ADD TRIANGULATED SURFACES
     #############################
+
     if triangulations is not None and len(triangulations) > 0:
 
-        from scipy.spatial import Delaunay
         from sklearn.decomposition import PCA
 
-        triangulations = np.asarray(triangulations)
+        triangulations = np.asarray(
+            triangulations,
+            dtype=np.float64
+        )
+
         # -------------------------------------------------
         # Support:
-        # [x,y,z]                  -> single triangulation group
-        # [x,y,z,id]               -> multiple triangulation groups
+        #
+        # [x,y,z]       -> single triangulation group
+        #
+        # [x,y,z,id]    -> multiple triangulation groups
         # -------------------------------------------------
+
+        if triangulations.ndim != 2:
+            raise ValueError(
+                "triangulations must be a 2D array"
+            )
+
         if triangulations.shape[1] == 3:
 
-            tri_groups = {1: triangulations}
+            tri_groups = {
+                1: triangulations
+            }
 
-        else:
+        elif triangulations.shape[1] == 4:
 
             tri_groups = {}
 
             for row in triangulations:
 
                 x, y, z, pid = row
+
                 pid = int(pid)
-                tri_groups.setdefault(pid, []).append([x, y, z])
+
+                tri_groups.setdefault( pid, [] ).append( [x, y, z] )
 
             for pid in tri_groups:
 
@@ -725,25 +756,140 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                     dtype=np.float64
                 )
 
-        # bookkeeping
+        else:
+
+            raise ValueError(
+                "triangulations must have either "
+                "3 columns [x,y,z] or "
+                "4 columns [x,y,z,id]"
+            )
+
+        # -------------------------------------------------
+        # Bookkeeping
+        # -------------------------------------------------
+
         triangulated_surface_tags = []
 
         # maps triangulation id -> gmsh surfaces
         tri_surface_to_child_fragments = {}
+
         tri_surface_indices = set()
 
-        # Create triangulations separately for each file/id
+        # =================================================
+        # HELPERS
+        # =================================================
 
-        for pid, points in tri_groups.items():
+        def is_closed_boundary(points):
+            """
+            Detect whether first and last point are identical.
+
+            seismic.csv is closed:
+                first point == last point
+
+            seismic_plane_new_offset_1.csv is not.
+            """
+
+            if len(points) < 4:
+                return False
+
+            first = points[0]
+            last = points[-1]
+
+            bbox = np.ptp(
+                points,
+                axis=0
+            )
+
+            scale = max(
+                float(np.linalg.norm(bbox)),
+                1.0
+            )
+
+            tolerance = max(
+                scale * 1.0e-8,
+                1.0e-7
+            )
+
+            return (
+                np.linalg.norm(first - last)
+                <= tolerance
+            )
+
+        # -------------------------------------------------
+
+        def remove_duplicate_closing_point(points):
+            """
+            Remove the final point when it is equal to
+            the first point.
+            """
+
+            if len(points) < 2:
+                return points
+
+            first = points[0]
+            last = points[-1]
+
+            bbox = np.ptp(
+                points,
+                axis=0
+            )
+
+            scale = max(
+                float(np.linalg.norm(bbox)),
+                1.0
+            )
+
+            tolerance = max(
+                scale * 1.0e-8,
+                1.0e-7
+            )
+
+            if np.linalg.norm(first - last) <= tolerance:
+
+                return points[:-1]
+
+            return points
+
+        # -------------------------------------------------
+
+        def create_closed_surface(points):
+            """
+            Create ONE planar OCC surface from an ordered
+            closed boundary.
+
+            The input points are projected to their best-fit
+            plane first.
+            """
 
             if len(points) < 3:
-                continue
+                raise ValueError(
+                    "At least 3 boundary points are required"
+                )
 
-            # Create gmsh points
+            # -------------------------------------------------
+            # Best-fit plane
+            # -------------------------------------------------
 
-            pt_tags = []
+            pca = PCA(
+                n_components=2
+            )
 
-            for p in points:
+            points_2d = pca.fit_transform(
+                points
+            )
+
+            # Reconstruct points on the best-fit plane.
+            points_planar = pca.inverse_transform(
+                points_2d
+            )
+
+            # -------------------------------------------------
+            # Create OCC points
+            # -------------------------------------------------
+
+            point_tags = []
+
+            for p in points_planar:
 
                 tag = gmsh.model.occ.addPoint(
                     float(p[0]),
@@ -752,29 +898,101 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
                     mesh_size
                 )
 
-                pt_tags.append(tag)
+                point_tags.append( tag )
 
+            # -------------------------------------------------
+            # Create boundary lines
+            # -------------------------------------------------
+
+            line_tags = []
+
+            n = len(point_tags)
+
+            for i in range(n):
+
+                a = point_tags[i]
+
+                b = point_tags[
+                    (i + 1) % n
+                ]
+
+                line = gmsh.model.occ.addLine(
+                    a,
+                    b
+                )
+
+                line_tags.append( line )
+
+            # -------------------------------------------------
+            # Closed wire
+            # -------------------------------------------------
+
+            curve_loop = gmsh.model.occ.addCurveLoop(
+                line_tags
+            )
+
+            # -------------------------------------------------
+            # ONE planar surface
+            # -------------------------------------------------
+
+            surface = gmsh.model.occ.addPlaneSurface(
+                [curve_loop]
+            )
+
+            return surface
+
+        # =================================================
+        # Delaunay implementation for normal point clouds
+        # =================================================
+
+        def create_delaunay_surfaces(
+            points,
+            pid,
+            pt_tags
+        ):
+
+            # -------------------------------------------------
             # Project to best-fit plane
-            pca = PCA(n_components=2)
+            # -------------------------------------------------
 
-            points_2d = pca.fit_transform(points)
+            pca = PCA(
+                n_components=2
+            )
 
-            # Local triangulation for THIS group only
-            tri = Delaunay(points_2d)
+            points_2d = pca.fit_transform(
+                points
+            )
 
-            # avoid duplicate edges inside same triangulation
+            # -------------------------------------------------
+            # Delaunay
+            # -------------------------------------------------
+
+            try:
+
+                tri = Delaunay(
+                    points_2d
+                )
+
+            except Exception as e:
+
+                logger.warning( "Delaunay failed for triangulation %s: %s", pid, e )
+
+                return
+
+            # -------------------------------------------------
+            # Avoid duplicate edges
+            # -------------------------------------------------
+
             edge_map = {}
-
-            # store surfaces belonging to this triangulation
-            tri_surface_to_child_fragments[pid] = []
 
             for simplex in tri.simplices:
 
                 try:
+
                     ids = [
-                        simplex[0],
-                        simplex[1],
-                        simplex[2]
+                        int(simplex[0]),
+                        int(simplex[1]),
+                        int(simplex[2])
                     ]
 
                     edges = [
@@ -787,7 +1005,9 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
                     for a, b in edges:
 
-                        key = tuple(sorted((a, b)))
+                        key = tuple(
+                            sorted( (a, b) )
+                        )
 
                         if key in edge_map:
 
@@ -802,31 +1022,227 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
                             edge_map[key] = line
 
-                        line_tags.append(line)
+                        line_tags.append( line )
 
-                    loop = gmsh.model.occ.addCurveLoop(line_tags)
-                    surf = gmsh.model.occ.addPlaneSurface([loop])
+                    # -------------------------------------------------
+                    # Triangle surface
+                    # -------------------------------------------------
 
-                    # IMPORTANT bookkeeping
-                    surfaces.append(surf)
+                    loop = gmsh.model.occ.addCurveLoop(
+                        line_tags
+                    )
 
-                    # IMPORTANT:
-                    # add to ref_surface_indices
-                    ref_surface_indices[surf] = surf
-                    triangulated_surface_tags.append(surf)
+                    surf = gmsh.model.occ.addPlaneSurface(
+                        [loop]
+                    )
 
-                    tri_surface_indices.add(surf)
-                    # keep surfaces grouped by triangulation id
-                    tri_surface_to_child_fragments[pid].append(surf)
+                    # -------------------------------------------------
+                    # Bookkeeping
+                    # -------------------------------------------------
+
+                    surfaces.append( surf )
+
+                    reference_surface_positions_or_tags[
+                        surf
+                    ] = surf
+
+                    triangulated_surface_tags.append( surf )
+
+                    tri_surface_indices.add( surf )
+
+                    tri_surface_to_child_fragments[
+                        pid
+                    ].append(
+                        surf
+                    )
+
+                except Exception as e:
+
+                    logger.warning( "Triangle creation failed for " "triangulation %s: %s", pid, e )
+
+        # =================================================
+        # PROCESS EACH TRIANGULATION GROUP
+        # =================================================
+
+        for pid, points in tri_groups.items():
+
+            if len(points) < 3:
+
+                logger.warning( "Skipping triangulation %s: " "fewer than 3 points", pid )
+
+                continue
+
+            # -------------------------------------------------
+            # Initialize bookkeeping
+            # -------------------------------------------------
+
+            tri_surface_to_child_fragments[
+                pid
+            ] = []
+
+            # =================================================
+            # CLOSED BOUNDARY
+            #
+            # This is seismic.csv
+            # =================================================
+
+            if is_closed_boundary(points):
+
+                logger.info( "Triangulation %s is a closed boundary; " "creating a Gmsh surface", pid )
+
+                try:
+
+                    # Remove duplicated last point
+                    boundary_points = (
+                        remove_duplicate_closing_point( points )
+                    )
+
+                    # -------------------------------------------------
+                    # Create one planar surface
+                    # -------------------------------------------------
+
+                    surf = create_closed_surface(
+                        boundary_points
+                    )
+
+                    # -------------------------------------------------
+                    # Bookkeeping
+                    # -------------------------------------------------
+
+                    surfaces.append( surf )
+
+                    reference_surface_positions_or_tags[
+                        surf
+                    ] = surf
+
+                    triangulated_surface_tags.append( surf )
+
+                    tri_surface_indices.add( surf )
+
+                    tri_surface_to_child_fragments[
+                        pid
+                    ].append(
+                        surf
+                    )
 
                 except Exception as e:
 
                     logger.warning(
-                        "Triangle creation failed for triangulation %s:", pid,
+                        "Closed surface creation failed for "
+                        "triangulation %s: %s. "
+                        "Falling back to Delaunay.",
+                        pid,
                         e
                     )
 
+                    # -------------------------------------------------
+                    # Fallback
+                    # -------------------------------------------------
+
+                    pt_tags = []
+
+                    for p in points:
+
+                        tag = gmsh.model.occ.addPoint(
+                            float(p[0]),
+                            float(p[1]),
+                            float(p[2]),
+                            mesh_size
+                        )
+
+                        pt_tags.append( tag )
+
+                    create_delaunay_surfaces( points, pid, pt_tags )
+
+            # =================================================
+            # NORMAL / OPEN POINT CLOUD
+            #
+            # This is seismic_plane_new_offset_1.csv
+            # =================================================
+
+            else:
+
+                logger.info( "Triangulation %s is an open point set; " "using Delaunay", pid )
+
+                # -------------------------------------------------
+                # Create Gmsh points
+                # -------------------------------------------------
+
+                pt_tags = []
+
+                for p in points:
+
+                    tag = gmsh.model.occ.addPoint(
+                        float(p[0]),
+                        float(p[1]),
+                        float(p[2]),
+                        mesh_size
+                    )
+
+                    pt_tags.append( tag )
+
+                # -------------------------------------------------
+                # Delaunay surfaces
+                # -------------------------------------------------
+
+                create_delaunay_surfaces( points, pid, pt_tags )
+
+        # =================================================
+        # Synchronize OCC
+        # =================================================
+
         gmsh.model.occ.synchronize()
+
+        # =================================================
+        # MESH SETTINGS
+        # Netgen 3D volume optimization has caused segmentation faults
+        # for some geometries; leave Mesh.OptimizeNetgen disabled.
+        # =================================================
+
+        try:
+
+            # -------------------------------------------------
+            # 2D Delaunay surface algorithm
+            # -------------------------------------------------
+
+            gmsh.option.setNumber( "Mesh.Algorithm", 6 )
+
+            # -------------------------------------------------
+            # Allow Gmsh to switch algorithm if necessary
+            # -------------------------------------------------
+
+            gmsh.option.setNumber( "Mesh.AlgorithmSwitchOnFailure", 1 )
+
+            # -------------------------------------------------
+            # Use point characteristic lengths
+            # -------------------------------------------------
+
+            gmsh.option.setNumber( "Mesh.MeshSizeFromPoints", 1 )
+
+            # -------------------------------------------------
+            # Do not derive mesh size from curvature.
+            #
+            # The seismic boundary is already represented by
+            # explicit line segments.
+            # -------------------------------------------------
+
+            gmsh.option.setNumber( "Mesh.MeshSizeFromCurvature", 0 )
+
+            # -------------------------------------------------
+            # Enable optimization.
+            #
+            # This is safe for the 2D surface mesh.
+            # -------------------------------------------------
+
+            gmsh.option.setNumber( "Mesh.Optimize", 1 )
+
+
+        except Exception as e:
+
+            logger.warning( "Could not configure Gmsh mesh options: %s", e )
+
+    gmsh.model.occ.synchronize()
+
 
     ########################################
     # ADD MINE SHAFTS AS CYLINDERAL VOLUMES
@@ -905,7 +1321,6 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     )
 
     gmsh.model.occ.synchronize()
-
     ####################################
     # INPUT FOR ZOP (PARENT ---> CHILD)
     ####################################
@@ -925,35 +1340,39 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             flat_mine_shaft_volumes.extend(shaft if isinstance(shaft, list) else [shaft])
 
         zip_inputs += [(3, tag) for tag in flat_mine_shaft_volumes]
+    # Reference lookup contains list positions for planes/ellipses and
+    # Gmsh tags for triangulated surfaces; preserve each original convention.
     ##########################
     # FIND FAULT SURFACES
     #########################
     counter=0
-    if ref_surface_indices:
+    # Fragments of all fault surfaces, for fault refinement
+    fault_surf: List[Tuple[int, int]] = []
+    if reference_surface_positions_or_tags:
 
-        for _, ref_index in ref_surface_indices.items():
+        for _, reference_position_or_tag in reference_surface_positions_or_tags.items():
                 # SKIP TRIANGULATED SURFACES HERE
 
                 if triangulations is not None and len(triangulations) > 0:
 
-                    if ref_index in tri_surface_indices:
+                    if reference_position_or_tag in tri_surface_indices:
                         continue
 
                 if ellipses:
 
-                    if ref_index in  ellipse_surface_indices:
+                    if reference_position_or_tag in  ellipse_surface_indices:
                         continue
 
                 if extra_planes:
 
-                    if ref_index in  extra_planes_surface_indices:
+                    if reference_position_or_tag in  extra_planes_surface_indices:
                         continue
 
                 counter=1
                 # Now zip with ovv
                 zip_info = list(zip(zip_inputs, ovv))
 
-                logger.debug("before/after fragment relations: %s", ref_index)
+                logger.debug("before/after fragment relations: %s", reference_position_or_tag)
 
                 for e in zip_info:
                     logger.debug("parent %s -> child %s", e[0], e[1])
@@ -962,9 +1381,9 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
                 for i in range(1, len(zipped_list)):
 
-                    if i == ref_index + 1:
+                    if i == reference_position_or_tag + 1:
                         values = list(zipped_list[i][1])
-                        fault_surf = values
+                        fault_surf.extend(values)
 
     # Filter to get only 3D volumes from ov
     fragmented_volumes : List[Tuple[int, int]] = [entity for entity in ov if entity[0] == 3]
@@ -979,9 +1398,10 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     ##################
     # Mesh refinement
     ##################
+
     tri_cfg = (
-        refinement.triangulation
-        if refinement and refinement.triangulation
+        refinement.triangulations
+        if refinement and refinement.triangulations
         else None
     )
 
@@ -997,32 +1417,60 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         else None
     )
 
-    # callbavk
-    if counter==0:
-        fault_surf=None
+    extra_plane_cfg = (
+        refinement.extraplanes
+        if refinement and refinement.extraplanes
+        else None
+    )
+
+    # ---------------------------------------------------------
+    # Extra planes
+    # ---------------------------------------------------------
+    extra_planes_data = extra_planes
+
+    # ---------------------------------------------------------
+    # Mesh-size callback
+    # ---------------------------------------------------------
+    if counter == 0:
+        fault_surf = None
 
     cb = build_combined_mesh_callback(
         triangulations=triangulations,
         ellipses=ellipses,
         fault_surfaces=surfaces,
         fault_fragments=fault_surf,
+        extra_planes=extra_planes_data,
         tri_cfg=tri_cfg,
         ell_cfg=ell_cfg,
-        fault_cfg=fault_cfg
+        fault_cfg=fault_cfg,
+        extra_plane_cfg=extra_plane_cfg,
     )
 
     if cb is not None:
         gmsh.model.mesh.setSizeCallback(cb)
 
-    # Wells + Sources + triangulation
+
+    # ---------------------------------------------------------
+    # Field-based refinement
+    #
+    # Includes:
+    # - wells
+    # - sources
+    # - mine shafts
+    # - general point/line refinements
+    # ---------------------------------------------------------
+
     if not source_points:
-        source=None
+        source = None
 
     if not wells:
-        well_lines=None
+        well_lines = None
 
-    if len(triangulations) == 0:
-        triangulations=None
+    if not mine_shafts:
+        mine_shafts = None
+
+    if triangulations is not None and len(triangulations) == 0:
+        triangulations = None
 
     zip_info = list(zip(zip_inputs, ovv))
 
@@ -1030,8 +1478,12 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
         zip_info=zip_info,
         well_lines=well_lines,
         source_points=source,
+        mine_shafts=mine_shafts,
         triangulations=triangulations,
-        refinement=refinement
+        refinement=refinement,
+
+        # Used as SizeMax by linear general refinement.
+        mesh_size=mesh_size,
     )
 
     apply_background_fields(active_fields)
@@ -1041,8 +1493,8 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
     ##############################################################
     tagsss: List[int] = []  # List to store physical groups
 
-    # Handle the case when there are ref_surface_indices
-    if ref_surface_indices:
+    # Handle the case when there are reference_surface_positions_or_tags
+    if reference_surface_positions_or_tags:
         # Mesh generation for surfaces
         gmsh.model.mesh.setSize(gmsh.model.getEntities(0), mesh_size)
         gmsh.model.mesh.removeDuplicateNodes()
@@ -1072,17 +1524,17 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
         # Loop through fault surfaces
 
-        for _, ref_index in ref_surface_indices.items():
+        for _, reference_position_or_tag in reference_surface_positions_or_tags.items():
             # SKIP TRIANGULATED SURFACES HERE
 
             if triangulations is not None and len(triangulations) > 0:
 
-                if ref_index in tri_surface_indices:
+                if reference_position_or_tag in tri_surface_indices:
                     continue
 
             # Now zip with ovv
             zip_info = list(zip(zip_inputs, ovv))
-            logger.debug("before/after fragment relations: %s", ref_index)
+            logger.debug("before/after fragment relations: %s", reference_position_or_tag)
 
             for e in zip_info:
                 logger.debug("parent %s -> child %s", e[0], e[1])
@@ -1091,7 +1543,7 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
 
             for i in range(1, len(zipped_list)):
 
-                if i == ref_index + 1:
+                if i == reference_position_or_tag + 1:
                     values = [item[1] for item in zipped_list[i][1]]
                     # Filter surfaces outside the box
                     filtered_surfaces = []
@@ -1415,27 +1867,36 @@ def fragment_surfaces(surfaces: List[int], extent: List[float], ref_surface_indi
             xmin_s, ymin_s, zmin_s, xmax_s, ymax_s, zmax_s = \
                 gmsh.model.occ.getBoundingBox(2, surf)
 
-            if abs(xmin_s - x_min) <= tol and abs(xmax_s - x_min) <= tol:
-                boundary_groups["XMIN"].append(surf)
-
-            elif abs(xmin_s - x_max) <= tol and abs(xmax_s - x_max) <= tol:
-                boundary_groups["XMAX"].append(surf)
-
-            elif abs(ymin_s - y_min) <= tol and abs(ymax_s - y_min) <= tol:
-                boundary_groups["YMIN"].append(surf)
-
-            elif abs(ymin_s - y_max) <= tol and abs(ymax_s - y_max) <= tol:
-                boundary_groups["YMAX"].append(surf)
-
-            elif abs(zmin_s - z_min) <= tol and abs(zmax_s - z_min) <= tol:
-                boundary_groups["ZMIN"].append(surf)
-
-            elif abs(zmin_s - z_max) <= tol and abs(zmax_s - z_max) <= tol:
-                boundary_groups["ZMAX"].append(surf)
+            if domain_kind == "extent":
+                if abs(xmin_s - x_min) <= tol and abs(xmax_s - x_min) <= tol:
+                    boundary_groups["XMIN"].append(surf)
+                elif abs(xmin_s - x_max) <= tol and abs(xmax_s - x_max) <= tol:
+                    boundary_groups["XMAX"].append(surf)
+                elif abs(ymin_s - y_min) <= tol and abs(ymax_s - y_min) <= tol:
+                    boundary_groups["YMIN"].append(surf)
+                elif abs(ymin_s - y_max) <= tol and abs(ymax_s - y_max) <= tol:
+                    boundary_groups["YMAX"].append(surf)
+                elif abs(zmin_s - z_min) <= tol and abs(zmax_s - z_min) <= tol:
+                    boundary_groups["ZMIN"].append(surf)
+                elif abs(zmin_s - z_max) <= tol and abs(zmax_s - z_max) <= tol:
+                    boundary_groups["ZMAX"].append(surf)
+            else:
+                # A rotated face is not constant in global x/y/z.  Classify it
+                # by the center of mass in normalized box-local coordinates.
+                center = gmsh.model.occ.getCenterOfMass(2, surf)
+                q = np.asarray(domain_local_coordinates(center, domain_spec))
+                face_distances = {
+                    "XMIN": abs(q[0]), "XMAX": abs(q[0] - 1.0),
+                    "YMIN": abs(q[1]), "YMAX": abs(q[1] - 1.0),
+                    "ZMIN": abs(q[2]), "ZMAX": abs(q[2] - 1.0),
+                }
+                name, distance = min(face_distances.items(), key=lambda item: item[1])
+                if distance <= 1e-4:
+                    boundary_groups[name].append(surf)
 
         # Create physical groups
         boundary_tags = []
-        BOUNDARY_START = 9000
+        BOUNDARY_START = 9091
 
         for i, (name, surfaces) in enumerate(boundary_groups.items()):
 

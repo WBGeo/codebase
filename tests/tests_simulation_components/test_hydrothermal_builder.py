@@ -7,8 +7,8 @@ import pytest
 from pydantic_core import to_jsonable_python
 
 from core.object_components import MeshResults, MeshType
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    HydrothermalProblemBuilder,
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
+    SfepyHydrothermalProblemBuilder,
     RockUnitProperties,
     FluidProperties,
     LINEAR_SOLVERS,
@@ -92,11 +92,11 @@ def test_map_mat_id_to_lithology_drops_non_volume_sentinel_blocks(model1_implici
         "elements": list(model1_implicit_mesh.elements) + [extra_block],
         "cell_data": {"block_id": block_ids},
     })
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=mesh_with_extra_block, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
     )
     assert -1 not in builder.mat_id_to_lithology.values()
-    assert len(model1_implicit_mesh.elements) not in builder.mat_id_to_lithology or True
     # the appended sentinel block's mat_id (last index) must not be a key
     assert (len(mesh_with_extra_block.elements) - 1) not in builder.mat_id_to_lithology
 
@@ -104,14 +104,15 @@ def test_map_mat_id_to_lithology_drops_non_volume_sentinel_blocks(model1_implici
 def test_map_mat_id_to_lithology_standalone_matches_builder(model1_implicit_mesh, model1_structural_result):
     """The refactor extracting map_mat_id_to_lithology out of the builder
     must not change what it computes."""
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
     )
     assert map_mat_id_to_lithology(model1_implicit_mesh) == builder.mat_id_to_lithology
 
 
 # -----------------------------------------------------------------------------
-# extract_referenced_groups / check_custom_sfepy_regions (CustomSfepyBuilder's
+# extract_referenced_groups / check_custom_sfepy_regions (SfepyCustomBuilder's
 # static validation)
 # -----------------------------------------------------------------------------
 
@@ -163,7 +164,7 @@ def test_check_custom_sfepy_regions_does_not_raise_for_unused_group(model1_impli
 
 
 def test_check_custom_sfepy_regions_accepts_extra_valid_group(model1_implicit_mesh):
-    # e.g. CustomSfepyBuilder.fault_group_id -- an id injected at run time,
+    # e.g. SfepyCustomBuilder.fault_group_id -- an id injected at run time,
     # never present in mesh_results.cell_data at all.
     injected_group = len(model1_implicit_mesh.elements)
     text = f"'Omega_fault': 'cells of group {injected_group}',"
@@ -190,7 +191,7 @@ def test_check_mesh_has_no_engineering_objects_raises_for_well(model1_implicit_m
     mesh_with_well = model1_implicit_mesh.model_copy(update={
         "elements": list(model1_implicit_mesh.elements) + [well_block],
     })
-    with pytest.raises(ValueError, match="well/source block"):
+    with pytest.raises(ValueError, match=r"Unsupported cell type\(s\) detected"):
         check_mesh_has_no_engineering_objects(mesh_with_well)
 
 
@@ -199,32 +200,34 @@ def test_check_mesh_has_no_engineering_objects_raises_for_source(model1_implicit
     mesh_with_source = model1_implicit_mesh.model_copy(update={
         "elements": list(model1_implicit_mesh.elements) + [source_block],
     })
-    with pytest.raises(ValueError, match="well/source block"):
+    with pytest.raises(ValueError, match=r"Unsupported cell type\(s\) detected"):
         check_mesh_has_no_engineering_objects(mesh_with_source)
 
 
 # -----------------------------------------------------------------------------
-# HydrothermalProblemBuilder construction
+# SfepyHydrothermalProblemBuilder construction
 # -----------------------------------------------------------------------------
 
 def test_builder_construction_basic(model1_implicit_mesh, model1_structural_result):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
     )
     assert builder.mesh_type == MeshType.IMPLICIT
     assert set(builder.rock_properties.keys()) == {"basement", "rock1", "rock2"}
     assert set(builder.mat_id_to_lithology.values()) == {0, 1, 2}
     assert builder.fault_zone_cell_mask is None
     assert builder.fault_group_id is None
-    assert builder.t1 is not None and builder.t1 > 0
+    assert builder.end_time is not None and builder.end_time > 0
     assert builder.fluid == FluidProperties()
 
 
 def test_builder_fills_defaults_for_unspecified_rock_units(model1_implicit_mesh, model1_structural_result):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
         rock_properties={"rock1": RockUnitProperties(name="rock1", porosity=0.3)},
+        linear_solver="iterative",
     )
     assert builder.rock_properties["rock1"].porosity == pytest.approx(0.3)
     # basement/rock2 not specified -> filled with RockUnitProperties(name=...) defaults
@@ -233,15 +236,23 @@ def test_builder_fills_defaults_for_unspecified_rock_units(model1_implicit_mesh,
 
 def test_builder_invalid_linear_solver_raises(model1_implicit_mesh, model1_structural_result):
     with pytest.raises(ValueError, match="linear_solver"):
-        HydrothermalProblemBuilder(
+        SfepyHydrothermalProblemBuilder(
             mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
             linear_solver="not_a_real_solver",
         )
 
 
-def test_builder_accepts_both_linear_solvers(model1_implicit_mesh, model1_structural_result):
+def test_builder_accepts_all_linear_solvers(monkeypatch, model1_implicit_mesh, model1_structural_result):
+    import core.simulation_components.simulation_packages.sfepy.sfepy_model_builder as builder_module
+
+    # Test solver selection independently of optional PETSc installation.
+    original_find_spec = builder_module.importlib.util.find_spec
+    monkeypatch.setattr(
+        builder_module.importlib.util, "find_spec",
+        lambda name: object() if name == "petsc4py" else original_find_spec(name),
+    )
     for solver in LINEAR_SOLVERS:
-        builder = HydrothermalProblemBuilder(
+        builder = SfepyHydrothermalProblemBuilder(
             mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
             linear_solver=solver,
         )
@@ -251,13 +262,13 @@ def test_builder_accepts_both_linear_solvers(model1_implicit_mesh, model1_struct
 def test_builder_rejects_mesh_with_no_type(model1_implicit_mesh, model1_structural_result):
     bad_mesh = model1_implicit_mesh.model_copy(update={"mesh_type": None})
     with pytest.raises(ValueError, match="mesh_type is None"):
-        HydrothermalProblemBuilder(mesh_results=bad_mesh, geomodel_result=model1_structural_result)
+        SfepyHydrothermalProblemBuilder(mesh_results=bad_mesh, geomodel_result=model1_structural_result, linear_solver="iterative")
 
 
 def test_builder_rejects_mesh_with_no_lithology_mapping(model1_implicit_mesh, model1_structural_result):
     bad_mesh = model1_implicit_mesh.model_copy(update={"cell_data": None})
     with pytest.raises(ValueError, match="no lithology mapping"):
-        HydrothermalProblemBuilder(mesh_results=bad_mesh, geomodel_result=model1_structural_result)
+        SfepyHydrothermalProblemBuilder(mesh_results=bad_mesh, geomodel_result=model1_structural_result, linear_solver="iterative")
 
 
 def test_builder_survives_json_roundtrip(model1_implicit_mesh, model1_structural_result):
@@ -270,32 +281,81 @@ def test_builder_survives_json_roundtrip(model1_implicit_mesh, model1_structural
     stored as dataclass fields, so this also verifies they survive being
     dropped from the JSON and recomputed on the other side.
     """
-    builder = HydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=5e9,
+    builder = SfepyHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=5e9,
+        linear_solver="iterative",
     )
     as_json = json.dumps(to_jsonable_python(builder))
-    rebuilt = HydrothermalProblemBuilder(**json.loads(as_json))
+    rebuilt = SfepyHydrothermalProblemBuilder(**json.loads(as_json))
 
     assert rebuilt.mesh_type == builder.mesh_type
     assert rebuilt.rock_units == builder.rock_units
     assert rebuilt.mat_id_to_lithology == builder.mat_id_to_lithology
     assert rebuilt.rock_properties.keys() == builder.rock_properties.keys()
-    assert rebuilt.t1 == pytest.approx(builder.t1)
+    assert rebuilt.end_time == pytest.approx(builder.end_time)
 
 
 def test_default_diffusion_timescale_is_positive_and_finite(model1_implicit_mesh, model1_structural_result):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
     )
-    assert math.isfinite(builder.t1)
-    assert builder.t1 > 0
+    assert math.isfinite(builder.end_time)
+    assert builder.end_time > 0
 
 
-def test_explicit_t1_is_not_overridden(model1_implicit_mesh, model1_structural_result):
-    builder = HydrothermalProblemBuilder(
-        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, t1=1234.5,
+def test_explicit_end_time_is_not_overridden(model1_implicit_mesh, model1_structural_result):
+    builder = SfepyHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result, end_time=1234.5,
+        linear_solver="iterative",
     )
-    assert builder.t1 == pytest.approx(1234.5)
+    assert builder.end_time == pytest.approx(1234.5)
+
+
+def test_default_end_time_is_offset_by_start_time(model1_implicit_mesh, model1_structural_result):
+    base = SfepyHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
+    )
+    shifted = SfepyHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        start_time=100.0, linear_solver="iterative",
+    )
+    assert shifted.end_time == pytest.approx(base.end_time + 100.0)
+
+
+def test_end_time_before_start_time_raises(model1_implicit_mesh, model1_structural_result):
+    with pytest.raises(ValueError, match="end_time must be greater than start_time"):
+        SfepyHydrothermalProblemBuilder(
+            mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+            start_time=10.0, end_time=5.0, linear_solver="iterative",
+        )
+
+
+@pytest.mark.parametrize("initial_temperature, expected", [(None, "T_initial = None"), (25.0, "T_initial = 25.0")])
+def test_heat_input_file_initial_temperature(
+    model1_implicit_mesh, model1_structural_result, tmp_path, initial_temperature, expected,
+):
+    """None keeps the linear t_bottom -> t_top profile; a number gives a constant
+    initial temperature (same semantics as GolemHydrothermalProblemBuilder)."""
+    builder = SfepyHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        initial_temperature=initial_temperature, include_flow=False, linear_solver="iterative",
+    )
+    out_path = str(tmp_path / "heat.py")
+    builder.build_heat_input_file(out_path, str(tmp_path / "velocity.npz"))
+    content = open(out_path).read()
+    compile(content, out_path, "exec")
+    assert expected in content
+
+    namespace = {}
+    exec(content[content.index("def ic_temp"):content.index("functions = {")], {"np": np}, namespace)
+    coor = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 50.0], [0.0, 0.0, 100.0]])
+    values = namespace["ic_temp"](coor)
+    if initial_temperature is None:
+        np.testing.assert_allclose(values, [builder.t_bottom, 0.5 * (builder.t_bottom + builder.t_top), builder.t_top])
+    else:
+        np.testing.assert_allclose(values, [25.0, 25.0, 25.0])
 
 
 # -----------------------------------------------------------------------------
@@ -305,8 +365,9 @@ def test_explicit_t1_is_not_overridden(model1_implicit_mesh, model1_structural_r
 def test_compute_cell_materials_without_fault_zone_only_uses_lithology_names(
     model1_implicit_mesh, model1_structural_result
 ):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
     )
     materials = builder.compute_cell_materials()
     total_cells = sum(len(mat_id_block.data) for mat_id_block in
@@ -323,8 +384,9 @@ def test_compute_cell_materials_without_fault_zone_only_uses_lithology_names(
 def test_build_pressure_input_file_is_valid_python_and_references_all_lithologies(
     model1_implicit_mesh, model1_structural_result, tmp_path
 ):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
+        linear_solver="iterative",
     )
     out_path = str(tmp_path / "pressure.py")
     builder.build_pressure_input_file(out_path)
@@ -341,9 +403,10 @@ def test_build_pressure_input_file_is_valid_python_and_references_all_lithologie
 def test_build_heat_input_file_pure_conduction_is_valid_python(
     model1_implicit_mesh, model1_structural_result, tmp_path
 ):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         include_flow=False,
+        linear_solver="iterative",
     )
     out_path = str(tmp_path / "heat.py")
     builder.build_heat_input_file(out_path)
@@ -355,7 +418,7 @@ def test_build_heat_input_file_pure_conduction_is_valid_python(
 def test_build_pressure_input_file_direct_solver_uses_scipy_direct(
     model1_implicit_mesh, model1_structural_result, tmp_path
 ):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         linear_solver="direct",
     )
@@ -370,9 +433,10 @@ def test_build_pressure_input_file_direct_solver_uses_scipy_direct(
 def test_build_heat_input_file_with_flow_requires_velocity_path(
     model1_implicit_mesh, model1_structural_result, tmp_path
 ):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         include_flow=True,
+        linear_solver="iterative",
     )
     with pytest.raises(ValueError, match="velocity_npz_path"):
         builder.build_heat_input_file(str(tmp_path / "heat.py"))
@@ -395,9 +459,10 @@ _FAULT_ZONE_PROPS = RockUnitProperties(
 
 
 def test_fault_zone_detected_on_faulted_model(model2_implicit_mesh, model2_faulted_structural_result):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh, geomodel_result=model2_faulted_structural_result,
         fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1,
+        linear_solver="iterative",
     )
     assert builder.fault_zone_cell_mask is not None
     assert builder.fault_zone_cell_mask.any()
@@ -406,10 +471,11 @@ def test_fault_zone_detected_on_faulted_model(model2_implicit_mesh, model2_fault
 
 def test_standalone_fault_zone_functions_match_builder(model2_implicit_mesh, model2_faulted_structural_result):
     """The refactor extracting lithology_to_group_idx/compute_fault_zone_cell_mask
-    out of HydrothermalProblemBuilder must not change what they compute."""
-    builder = HydrothermalProblemBuilder(
+    out of SfepyHydrothermalProblemBuilder must not change what they compute."""
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh, geomodel_result=model2_faulted_structural_result,
         fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1,
+        linear_solver="iterative",
     )
     assert lithology_to_group_idx(model2_faulted_structural_result) == builder._lithology_to_group_idx()
 
@@ -419,9 +485,10 @@ def test_standalone_fault_zone_functions_match_builder(model2_implicit_mesh, mod
 
 
 def test_fault_zone_none_on_fault_free_model(model1_implicit_mesh, model1_structural_result):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model1_implicit_mesh, geomodel_result=model1_structural_result,
         fault_zone_properties=_FAULT_ZONE_PROPS,
+        linear_solver="iterative",
     )
     assert builder.fault_zone_cell_mask is None
     assert builder.fault_group_id is None
@@ -439,17 +506,19 @@ def test_fault_zone_respects_restricted_fault_activity(
     fault_activity entirely). Cross-checks the two known-good cell counts at
     this exact fixture resolution (30x15x15): 764 fully-active, 596 restricted.
     """
-    full_builder = HydrothermalProblemBuilder(
+    full_builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh, geomodel_result=model2_faulted_structural_result,
         fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1,
+        linear_solver="iterative",
     )
     full_count = int(full_builder.fault_zone_cell_mask.sum())
     assert full_count == 764
 
-    restricted_builder = HydrothermalProblemBuilder(
+    restricted_builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh_restricted_activity,
         geomodel_result=model2_faulted_structural_result_restricted_activity,
         fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1,
+        linear_solver="iterative",
     )
     restricted_count = int(restricted_builder.fault_zone_cell_mask.sum())
     assert restricted_count == 596
@@ -457,18 +526,20 @@ def test_fault_zone_respects_restricted_fault_activity(
 
 
 def test_compute_cell_materials_labels_fault_zone_cells(model2_implicit_mesh, model2_faulted_structural_result):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh, geomodel_result=model2_faulted_structural_result,
         fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1,
+        linear_solver="iterative",
     )
     materials = builder.compute_cell_materials()
     assert "fault_zone" in set(np.unique(materials).tolist())
 
 
 def test_fault_zone_region_lines_include_omega_fault(model2_implicit_mesh, model2_faulted_structural_result, tmp_path):
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh, geomodel_result=model2_faulted_structural_result,
         fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1, include_flow=False,
+        linear_solver="iterative",
     )
     out_path = str(tmp_path / "heat.py")
     builder.build_heat_input_file(out_path)
@@ -483,9 +554,10 @@ def test_fault_zone_pressure_input_file_includes_fault_material(
 ):
     """include_flow=True + a fault zone -> build_pressure_input_file must add
     a separate 'm_fault'/Omega_fault diffusion term, not just the heat file."""
-    builder = HydrothermalProblemBuilder(
+    builder = SfepyHydrothermalProblemBuilder(
         mesh_results=model2_implicit_mesh, geomodel_result=model2_faulted_structural_result,
         fault_zone_properties=_FAULT_ZONE_PROPS, fault_zone_n_voxels=1, include_flow=True,
+        linear_solver="iterative",
     )
     out_path = str(tmp_path / "pressure.py")
     builder.build_pressure_input_file(out_path)
@@ -493,3 +565,36 @@ def test_fault_zone_pressure_input_file_includes_fault_material(
     compile(content, out_path, "exec")
     assert "m_fault" in content
     assert "dw_diffusion.i.Omega_fault(m_fault.perm_over_mu, q, p)" in content
+
+
+def test_petsc_solver_fails_early_when_petsc4py_missing(
+    monkeypatch, model1_implicit_mesh, model1_structural_result,
+):
+    import core.simulation_components.simulation_packages.sfepy.sfepy_model_builder as builder_module
+
+    original_find_spec = builder_module.importlib.util.find_spec
+    monkeypatch.setattr(
+        builder_module.importlib.util, "find_spec",
+        lambda name: None if name == "petsc4py" else original_find_spec(name),
+    )
+    with pytest.raises(ImportError, match="linear_solver='petsc' requires petsc4py"):
+        SfepyHydrothermalProblemBuilder(
+            mesh_results=model1_implicit_mesh,
+            geomodel_result=model1_structural_result,
+            linear_solver="petsc",
+        )
+
+
+def test_petsc_missing_dependency_fails_early(monkeypatch, model1_implicit_mesh, model1_structural_result):
+    import core.simulation_components.simulation_packages.sfepy.sfepy_model_builder as builder_module
+
+    original_find_spec = builder_module.importlib.util.find_spec
+    monkeypatch.setattr(
+        builder_module.importlib.util, "find_spec",
+        lambda name: None if name == "petsc4py" else original_find_spec(name),
+    )
+    with pytest.raises(ImportError, match="petsc4py"):
+        SfepyHydrothermalProblemBuilder(
+            mesh_results=model1_implicit_mesh,
+            geomodel_result=model1_structural_result,
+        )

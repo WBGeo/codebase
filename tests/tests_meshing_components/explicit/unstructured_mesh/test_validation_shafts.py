@@ -97,5 +97,21 @@ class TestValidateShafts(unittest.TestCase):
         self.assertIn("Shaft", str(ctx.exception))
 
 ########################################
+
+    def test_valid_hierarchical_shafts(self):
+        extent = [0, 10, 0, 10, 0, 10]
+        validate_shafts({
+            1: [{"center": (5, 5, 5), "axis": (0, 0, 1), "radius": 1}],
+            2: [{"center": (3, 3, 3), "axis": (1, 0, 0), "radius": 1}],
+        }, extent)
+
+    def test_hierarchical_shaft_outside_raises(self):
+        extent = [0, 10, 0, 10, 0, 10]
+        with self.assertRaises(ValueError):
+            validate_shafts({
+                1: [{"center": (5, 5, 5), "axis": (0, 0, 1), "radius": 1}],
+                2: [{"center": (20, 5, 5), "axis": (0, 1, 0), "radius": 1}],
+            }, extent)
+
 if __name__ == "__main__":
     unittest.main()

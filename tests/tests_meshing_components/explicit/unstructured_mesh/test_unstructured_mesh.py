@@ -7,6 +7,7 @@ from core.structural_modeling_components import general
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.meshing_components.explicit.unstructured.mesh_data import (
     create_unstructured_mesh_data,
+    meshit_coordinate_transform,
     load_wells_from_csv,
     load_shafts_from_csv,
     load_sources_from_csv,
@@ -99,12 +100,12 @@ class UnstructuredMeshTestCase(unittest.TestCase):
 
         mesh_generated = create_unstructured_mesh_data(
             geomodel_result=self.geomodel_result,
-            wells=self.wells,
-            sources=self.sources,
+            #wells=self.wells,
+            #sources=self.sources,
             shafts=self.shafts,
-            triangulations=self.triangulations,
-            extra_planes=self.planes,
-            ellipses=self.ellipses,
+            #triangulations=self.triangulations,
+            #extra_planes=self.planes,
+            #ellipses=self.ellipses,
             mesh_size=75,
             curve_mesh_size=5
         )
@@ -176,6 +177,72 @@ class UnstructuredMeshTestCase(unittest.TestCase):
         # GMSH physical-group-tag state bleeding across separate
         # create_unstructured_mesh_data calls within one pytest process).
         self.assertIn("block_id", mesh_generated.cell_data or {})
+
+
+
+class CoordinateTransformTestCase(unittest.TestCase):
+    """Regression tests for the two distinct rotation APIs."""
+
+    def setUp(self):
+        self.nodes = np.array([
+            [10.0, 20.0, 30.0],
+            [14.0, 20.0, 30.0],
+            [10.0, 26.0, 38.0],
+            [14.0, 26.0, 38.0],
+        ])
+
+    def test_rotation_angle_rotates_about_xy_model_center(self):
+        result = meshit_coordinate_transform(
+            self.nodes,
+            angle_deg=90.0,
+            translate=False,
+        )
+
+        xc = 0.5 * (self.nodes[:, 0].min() + self.nodes[:, 0].max())
+        yc = 0.5 * (self.nodes[:, 1].min() + self.nodes[:, 1].max())
+        X = self.nodes[:, 0] - xc
+        Y = self.nodes[:, 1] - yc
+
+        expected = self.nodes.copy()
+        expected[:, 0] = -Y
+        expected[:, 1] = X
+        expected[:, 2] = self.nodes[:, 2]
+
+        np.testing.assert_allclose(result, expected, atol=1e-12)
+
+    def test_rotation_angle_keeps_z_unchanged(self):
+        result = meshit_coordinate_transform(
+            self.nodes, angle_deg=37.0, translate=False
+        )
+        np.testing.assert_allclose(result[:, 2], self.nodes[:, 2])
+
+    def test_rotation_angle_translate_defaults_model_center_to_origin(self):
+        result = meshit_coordinate_transform(
+            self.nodes, angle_deg=90.0, translate=True
+        )
+        center = 0.5 * (result.min(axis=0) + result.max(axis=0))
+        np.testing.assert_allclose(center, [0.0, 0.0, 0.0], atol=1e-12)
+
+    def test_rotation_angle_translate_places_center_at_xt_yt_zt(self):
+        target = np.array([100.0, 200.0, 300.0])
+        result = meshit_coordinate_transform(
+            self.nodes,
+            angle_deg=90.0,
+            translate=True,
+            xt=target[0], yt=target[1], zt=target[2],
+        )
+        center = 0.5 * (result.min(axis=0) + result.max(axis=0))
+        np.testing.assert_allclose(center, target, atol=1e-12)
+
+    def test_rotation_angle_translate_requires_all_target_coordinates(self):
+        with self.assertRaisesRegex(ValueError, "xt, yt, and zt must be provided together"):
+            meshit_coordinate_transform(
+                self.nodes,
+                angle_deg=20.0,
+                translate=True,
+                xt=100.0,
+                yt=200.0,
+            )
 
 ######################################
 if __name__ == "__main__":

@@ -94,5 +94,19 @@ class TestValidateEllipses(unittest.TestCase):
         validate_ellipses(ellipses, self.extent)
 
 ##################################
+
+    def test_valid_hierarchical_ellipses(self):
+        validate_ellipses({
+            1: [{"center": (3, 3, 3), "radii": (1, 1)}],
+            2: [{"center": (7, 7, 7), "radii": (2, 2)}],
+        }, self.extent)
+
+    def test_hierarchical_ellipse_outside_raises(self):
+        with self.assertRaises(ValueError):
+            validate_ellipses({
+                1: [{"center": (3, 3, 3), "radii": (1, 1)}],
+                2: [{"center": (9.5, 5, 5), "radii": (1, 1)}],
+            }, self.extent)
+
 if __name__ == "__main__":
     unittest.main()

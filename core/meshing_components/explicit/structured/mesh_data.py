@@ -139,10 +139,11 @@ def pre_check_no_faults_for_structured_mesh(geomodel_result: StructuralModelResu
 
 # Register this function as a component
 @wbgeo_component(description='Provides structured mesh',
-                 title='Create Structured Mesh',  # The title shown in the GUI
+                 title='Create Structured Explicit Mesh',  # The title shown in the GUI
                  color='#cc9999',  # the color of the components
                  border_color='#000000',  # and its border color
                  group='Meshing',
+                 positionInGroup=15,
                  identifier='wbgeo::create_structured_mesh_data',
                  return_name='Mesh',  # the name for the returned-port
                  input_checks=[pre_check_regular_grid, pre_check_no_faults_for_structured_mesh],

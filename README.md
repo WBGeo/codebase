@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://wbgeo.github.io/"><img alt="Documentation" src="https://img.shields.io/badge/docs-wbgeo.github.io-1f6feb"></a>
   <a href="LICENSE"><img alt="License: EUPL-1.2" src="https://img.shields.io/badge/license-EUPL--1.2-2ea043"></a>
-  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776ab">
+  <img alt="Python 3.12.4+" src="https://img.shields.io/badge/python-3.12.4%2B-3776ab">
 </p>
 
 This repository contains the **backend code for [WBGeo](https://wbgeo.github.io/)**, an open-source

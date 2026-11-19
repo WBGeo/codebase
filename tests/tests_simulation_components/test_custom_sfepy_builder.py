@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 from pydantic_core import to_jsonable_python
 
-from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_builder import (
-    CustomSfepyBuilder,
+from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
+    SfepyCustomBuilder,
     map_mat_id_to_lithology,
 )
 
@@ -14,7 +14,7 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_hydrothermal_bui
 def _valid_input_text(mesh_results):
     """A minimal, syntactically-plausible SfePy-input-file-shaped text that
     references every real group on mesh_results -- enough for
-    CustomSfepyBuilder's static validation to accept."""
+    SfepyCustomBuilder's static validation to accept."""
     valid = map_mat_id_to_lithology(mesh_results)
     lines = "\n".join(f"    'Omega{m}': 'cells of group {m}'," for m in valid)
     return f"regions = {{\n{lines}\n}}\n"
@@ -25,7 +25,7 @@ def _valid_input_text(mesh_results):
 # -----------------------------------------------------------------------------
 
 def test_construction_basic(model1_implicit_mesh, model1_structural_result):
-    builder = CustomSfepyBuilder(
+    builder = SfepyCustomBuilder(
         input_file_contents=_valid_input_text(model1_implicit_mesh),
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
@@ -35,7 +35,7 @@ def test_construction_basic(model1_implicit_mesh, model1_structural_result):
 
 
 def test_construction_without_geomodel_result_is_allowed(model1_implicit_mesh):
-    builder = CustomSfepyBuilder(
+    builder = SfepyCustomBuilder(
         input_file_contents=_valid_input_text(model1_implicit_mesh),
         mesh_results=model1_implicit_mesh,
     )
@@ -45,18 +45,18 @@ def test_construction_without_geomodel_result_is_allowed(model1_implicit_mesh):
 def test_rejects_mesh_with_no_type(model1_implicit_mesh):
     bad_mesh = model1_implicit_mesh.model_copy(update={"mesh_type": None})
     with pytest.raises(ValueError, match="mesh_type is None"):
-        CustomSfepyBuilder(input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=bad_mesh)
+        SfepyCustomBuilder(input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=bad_mesh)
 
 
 def test_rejects_mesh_with_no_lithology_mapping(model1_implicit_mesh):
     bad_mesh = model1_implicit_mesh.model_copy(update={"cell_data": None})
     with pytest.raises(ValueError, match="no lithology mapping"):
-        CustomSfepyBuilder(input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=bad_mesh)
+        SfepyCustomBuilder(input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=bad_mesh)
 
 
 def test_rejects_file_referencing_unknown_group(model1_implicit_mesh):
     with pytest.raises(ValueError, match="do not exist"):
-        CustomSfepyBuilder(
+        SfepyCustomBuilder(
             input_file_contents="'Omega99': 'cells of group 99',",
             mesh_results=model1_implicit_mesh,
         )
@@ -65,7 +65,7 @@ def test_rejects_file_referencing_unknown_group(model1_implicit_mesh):
 def test_geomodel_soft_check_does_not_raise_for_valid_case(model1_implicit_mesh, model1_structural_result):
     # Doesn't raise even though this checks only logs a warning when the
     # counts look off -- construction must always succeed here.
-    builder = CustomSfepyBuilder(
+    builder = SfepyCustomBuilder(
         input_file_contents=_valid_input_text(model1_implicit_mesh),
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
@@ -74,17 +74,17 @@ def test_geomodel_soft_check_does_not_raise_for_valid_case(model1_implicit_mesh,
 
 
 def test_custom_builder_survives_json_roundtrip(model1_implicit_mesh, model1_structural_result):
-    """Mirrors test_builder_survives_json_roundtrip for HydrothermalProblemBuilder:
+    """Mirrors test_builder_survives_json_roundtrip for SfepyHydrothermalProblemBuilder:
     input_file_contents is stored as text specifically so it survives the
     real Workbench backend's serialize/reconstruct cycle between component
     executions (a temp file path would not)."""
-    builder = CustomSfepyBuilder(
+    builder = SfepyCustomBuilder(
         input_file_contents=_valid_input_text(model1_implicit_mesh),
         mesh_results=model1_implicit_mesh,
         geomodel_result=model1_structural_result,
     )
     as_json = json.dumps(to_jsonable_python(builder))
-    rebuilt = CustomSfepyBuilder(**json.loads(as_json))
+    rebuilt = SfepyCustomBuilder(**json.loads(as_json))
 
     assert rebuilt.input_file_contents == builder.input_file_contents
     assert rebuilt.mesh_type == builder.mesh_type
@@ -97,18 +97,18 @@ def test_rejects_mesh_with_well_block(model1_implicit_mesh):
     mesh_with_well = model1_implicit_mesh.model_copy(update={
         "elements": list(model1_implicit_mesh.elements) + [well_block],
     })
-    with pytest.raises(ValueError, match="well/source block"):
-        CustomSfepyBuilder(
+    with pytest.raises(ValueError, match=r"Unsupported cell type\(s\) detected"):
+        SfepyCustomBuilder(
             input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=mesh_with_well,
         )
 
 
 # -----------------------------------------------------------------------------
-# Fault zone (opt-in, same mechanism as HydrothermalProblemBuilder)
+# Fault zone (opt-in, same mechanism as SfepyHydrothermalProblemBuilder)
 # -----------------------------------------------------------------------------
 
 def test_fault_zone_n_voxels_defaults_to_none(model1_implicit_mesh):
-    builder = CustomSfepyBuilder(
+    builder = SfepyCustomBuilder(
         input_file_contents=_valid_input_text(model1_implicit_mesh), mesh_results=model1_implicit_mesh,
     )
     assert builder.fault_zone_n_voxels is None
@@ -118,7 +118,7 @@ def test_fault_zone_n_voxels_defaults_to_none(model1_implicit_mesh):
 
 def test_fault_zone_n_voxels_without_geomodel_result_raises(model1_implicit_mesh):
     with pytest.raises(ValueError, match="geomodel_result is None"):
-        CustomSfepyBuilder(
+        SfepyCustomBuilder(
             input_file_contents=_valid_input_text(model1_implicit_mesh),
             mesh_results=model1_implicit_mesh,
             fault_zone_n_voxels=1,
@@ -126,14 +126,14 @@ def test_fault_zone_n_voxels_without_geomodel_result_raises(model1_implicit_mesh
 
 
 def test_fault_zone_detected_on_faulted_model(model2_implicit_mesh, model2_faulted_structural_result):
-    builder = CustomSfepyBuilder(
+    builder = SfepyCustomBuilder(
         input_file_contents=_valid_input_text(model2_implicit_mesh),
         mesh_results=model2_implicit_mesh,
         geomodel_result=model2_faulted_structural_result,
         fault_zone_n_voxels=1,
     )
     assert builder.fault_zone_cell_mask is not None
-    assert int(builder.fault_zone_cell_mask.sum()) == 764  # same pinned regression number as HydrothermalProblemBuilder
+    assert int(builder.fault_zone_cell_mask.sum()) == 764  # same pinned regression number as SfepyHydrothermalProblemBuilder
     assert builder.fault_group_id == len(model2_implicit_mesh.elements)
 
 
@@ -143,10 +143,23 @@ def test_custom_file_can_reference_fault_group(model2_implicit_mesh, model2_faul
     as an extra_valid_group to check_custom_sfepy_regions."""
     fault_group_id = len(model2_implicit_mesh.elements)
     text = _valid_input_text(model2_implicit_mesh) + f"\nregions['Omega_fault'] = 'cells of group {fault_group_id}'\n"
-    builder = CustomSfepyBuilder(
+    builder = SfepyCustomBuilder(
         input_file_contents=text,
         mesh_results=model2_implicit_mesh,
         geomodel_result=model2_faulted_structural_result,
         fault_zone_n_voxels=1,
     )
     assert builder.fault_group_id == fault_group_id
+
+
+def test_surface_cell_is_not_rejected_as_engineering_object(model1_implicit_mesh):
+    """The dimension-based guard rejects lines/vertices, not surface cells."""
+    from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
+        check_mesh_has_no_engineering_objects,
+    )
+
+    surface = meshio.CellBlock("triangle", np.array([[0, 1, 2]]))
+    mesh_with_surface = model1_implicit_mesh.model_copy(update={
+        "elements": list(model1_implicit_mesh.elements) + [surface],
+    })
+    check_mesh_has_no_engineering_objects(mesh_with_surface)
