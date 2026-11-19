@@ -15,7 +15,12 @@ def pre_check_regular_grid(geomodel_result: StructuralModelResults) -> None:
     vertices lie on the grid lines), which a model on an OctreeGrid doesn't
     have. Raises to block the connection rather than fail somewhere inside the
     mesher or, for the structured mesh, silently build an oversized mesh.
+
+    Other geology inputs (the unstructured mesher also takes surfaces read
+    from CSV files) have no grid, so there is nothing to check.
     """
+    if not isinstance(geomodel_result, StructuralModelResults):
+        return
     if isinstance(geomodel_result.structural_frame.grid, OctreeGrid):
         raise ValueError(
             "Meshing does not support structural models computed on an OctreeGrid yet. "
