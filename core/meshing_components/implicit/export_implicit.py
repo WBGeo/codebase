@@ -16,7 +16,7 @@ from core import workbench_palette as palette
     color=palette.MESH,
     border_color=palette.BORDER,
     group='Meshing',
-    positionInGroup=130,
+    positionInGroup=970,
     identifier='wbgeo::create_structured_implicit_mesh_meshio',
     return_name='Mesh',
 )

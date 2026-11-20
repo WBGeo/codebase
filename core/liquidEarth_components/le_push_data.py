@@ -96,11 +96,11 @@ LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', 
 @wbgeo_component(identifier='geosolution_liquidearth_visualization',  # unique identifier
                  title='Push Geosolution to LiquidEarth',  # human readable (Default) title
                  description='push the geosolution to a new space in Liquid Earth',
-                 color=palette.EXPORT,
+                 color=palette.STRUCTURAL_EXPORT,
                  border_color=palette.BORDER,
                  group='Visualisation',
                  return_name='space link',  # name of the returned port
-                 positionInGroup=10,
+                 positionInGroup=990,
                  )
 def push_geosolution_to_le(geosolution: StructuralModelResults, space_name: str = 'WBGeo: Demo',
                            model_name: str = None, api_token: SecretDataType = None) -> LETarget:

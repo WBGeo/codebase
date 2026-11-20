@@ -182,7 +182,7 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                  identifier='wbgeo::structural_modeling',  # a unique identifier
                  return_name='structural_model',  # the name for the returned-port
                  input_checks=[general_faults.check_fault_model_not_crosscutting],
-                 positionInGroup=50,
+                 positionInGroup=880,
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
@@ -284,7 +284,7 @@ def inspect_structural_model_result_plot_structural_model_3D(
                  group='Inputs',
                  identifier='wbgeo::fault_modeling',
                  return_name='fault_model',
-                 positionInGroup=40,
+                 positionInGroup=890,
                  )
 def compute_fault_frame(
     data_faults: InputData_FaultElements,

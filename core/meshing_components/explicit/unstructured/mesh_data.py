@@ -1867,7 +1867,7 @@ SmartRefinement = typing.Annotated[
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
                  return_name='Wells',  # the name for the returned-port
                  is_object_type=True,  # render as object
-                 positionInGroup=10,
+                 positionInGroup=890,
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
@@ -1987,7 +1987,7 @@ SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color
                  group='Meshing',
                  identifier='wbgeo::meshing_load_source_from_csv',  # a unique identifier
                  return_name='Sources',  # the name for the returned-port
-                 positionInGroup=20,
+                 positionInGroup=880,
                  )  # inputs are handled via the method signature
 def load_sources_from_csv(source_file: SourceCSVDataType, key_hierarchical: bool = False) -> SourcesData:
     """Load individual point sources from a CSV file.
@@ -2051,7 +2051,7 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
     is_object_type=True,  # render as object
-    positionInGroup=50,
+    positionInGroup=850,
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: bool = False) -> EllipseData:
     """Load ellipse definitions from a CSV file.
@@ -2138,7 +2138,7 @@ ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
                  return_name='Shafts',  # the name for the returned-port
                  is_object_type=True,  # render as object
-                 positionInGroup=30,
+                 positionInGroup=870,
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = False) -> ShaftData:
     """Load shaft definitions from a CSV file.
@@ -2205,7 +2205,7 @@ PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
                  return_name='planes',  # the name for the returned-port
                  is_object_type=True,  # render as object
-                 positionInGroup=40,
+                 positionInGroup=860,
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = False) -> PlaneData:
     """Load additional planes as grouped 3D points from a CSV file.
@@ -2272,7 +2272,7 @@ TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]],
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
     is_object_type=True,  # render as object
-    positionInGroup=60,
+    positionInGroup=840,
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_hierarchical: bool = False) -> TriangulationData:
     """Load triangulation points from one or more CSV files.
@@ -2588,7 +2588,7 @@ class CSVSurfaceModelResults:
                  color=palette.MESH,  # the color of the components
                  border_color=palette.BORDER,  # and its border color
                  group='Meshing',
-                 positionInGroup=110,
+                 positionInGroup=990,
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature

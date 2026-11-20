@@ -65,7 +65,7 @@ FaultNames = typing.Annotated[
                  identifier='wbgeo::regular_grid',
                  return_name='grid',
                  is_object_type=True,
-                 positionInGroup=10,
+                 positionInGroup=990,
                  )
 def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
                          resolution: AResolution3 = (50, 50, 50)) -> grid_classes.RegularGrid:
@@ -168,7 +168,7 @@ SmartStructuralInputSmartInputOptions = typing.Annotated[
                  identifier='wbgeo::geo_input_data',
                  return_name='input_data',
                  is_object_type=True,
-                 positionInGroup=20,
+                 positionInGroup=980,
                  )
 def structural_input_data(
     name: str = 'Model 1',
@@ -294,7 +294,7 @@ SmartFaultInputSmartInputOptions = typing.Annotated[
                  identifier='wbgeo::faults_input_data',
                  return_name='faults_data',
                  is_object_type=True,
-                 positionInGroup=30,
+                 positionInGroup=970,
                  )
 def faults_input_data(
     name: str = 'Faults Model 2',

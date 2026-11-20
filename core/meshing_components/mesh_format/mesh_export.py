@@ -45,9 +45,9 @@ MeshFormatType_A = typing.Annotated[
   title="Export Mesh",
   description="Export Mesh to a selection of formats",
   group='Meshing',
-  positionInGroup=900,
+  positionInGroup=0,
   identifier="wbgeo::export_mesh_results",
-  color=palette.EXPORT,
+  color=palette.MESH_EXPORT,
   border_color=palette.BORDER,
 )
 def export_mesh_results(mesh: MeshResults, format: MeshFormatType_A = MeshFormatType.Exodus) -> BasicallyABufferedFile:

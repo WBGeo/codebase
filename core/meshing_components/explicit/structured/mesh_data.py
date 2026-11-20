@@ -143,7 +143,7 @@ def pre_check_no_faults_for_structured_mesh(geomodel_result: StructuralModelResu
                  color=palette.MESH,  # the color of the components
                  border_color=palette.BORDER,  # and its border color
                  group='Meshing',
-                 positionInGroup=120,
+                 positionInGroup=980,
                  identifier='wbgeo::create_structured_mesh_data',
                  return_name='Mesh',  # the name for the returned-port
                  input_checks=[pre_check_no_faults_for_structured_mesh],
