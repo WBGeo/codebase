@@ -90,12 +90,12 @@ def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: G
 SecretDataType = typing.Annotated[str, AnnotatedScriptType(name='secret', color=palette.PARAMETER, identifier='secret', controlled='password')]
 
 #and annotate a string as being a liquid earth link
-LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', identifier='liquidearth_target', color=palette.PARAMETER)]
+LETarget = typing.Annotated[str, AnnotatedScriptType(name="LiquidEarth Space", identifier="liquidearth_target", color=palette.PARAMETER)]
 
 
 @wbgeo_component(identifier='geosolution_liquidearth_visualization',  # unique identifier
-                 title='Push Geosolution to LiquidEarth',  # human readable (Default) title
-                 description='push the geosolution to a new space in Liquid Earth',
+                 title='Push Structural Model to LiquidEarth',  # human readable (Default) title
+                 description="Push the structural model to a new space in LiquidEarth",
                  color=palette.STRUCTURAL_EXPORT,
                  border_color=palette.BORDER,
                  group='Visualisation',
@@ -105,7 +105,7 @@ LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', 
 def push_geosolution_to_le(geosolution: StructuralModelResults, space_name: str = 'WBGeo: Demo',
                            model_name: str = None, api_token: SecretDataType = None) -> LETarget:
     """
-    Push a geosolution to Liquid Earth.
+    Push a structural model to LiquidEarth.
 
     Parameters:
     - geosolution: The geosolution object containing the results.

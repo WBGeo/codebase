@@ -556,7 +556,7 @@ def build_golem_hydrothermal_problem(
                 "(or at layout_center), with refinement in metres around them and a "
                 "background mesh size that follows the model size. This only prepares the "
                 "problem; Docker/GOLEM is started by Run GOLEM Simulation.",
-    title='Build GOLEM Simple Reservoir',
+    title='Build GOLEM Simple Reservoir Problem',
     color=palette.SIMULATION_BUILDER,
     border_color=palette.BORDER,
     group='Simulation',
@@ -665,13 +665,13 @@ def build_golem_simple_reservoir_problem(
     :param layout_center: Centre of the fracture pair. Leave empty for the model centre.
     :param injection_point: Injection point. Leave empty for the centre of the first fracture.
     :param extraction_point: Extraction point. Leave empty for the centre of the second fracture.
-    :param wells: Well path(s), e.g. from Load Well. Leave empty for the default well at the
+    :param wells: Well path(s), e.g. from Load Wells. Leave empty for the default well at the
         second fracture.
     :return: GOLEM problem envelope for Run GOLEM Simulation.
     """
     if isinstance(wells, dict):
         raise ValueError("The simple reservoir takes a plain list of wells; hierarchical (keyed) "
-                         "well data from Load Well is not supported here.")
+                         "well data from Load Wells is not supported here.")
     return GolemProblem(simple_reservoir=GolemSimpleReservoirBuilder(
         geomodel_result=geomodel_result,
         mesh_size=mesh_size,
