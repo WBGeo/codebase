@@ -36,14 +36,13 @@ from core.meshing_components.explicit.unstructured.refinement_mesh import (Refin
                                                                            TriangulationRefinement)
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_type
 from enum import Enum, StrEnum
+from core import workbench_palette as palette
 
 
 
 
 
 
-MESH_ENGINEERING_COLOR = '#99b3cc'
-MESH_ENGINEERING_GROUP = 'Engineering Objects'
 
 class LithoMappingMode(StrEnum):
     NONE = "none"
@@ -72,7 +71,8 @@ LithoMappingModeType = typing.Annotated[
     AnnotatedScriptType(
         name="LithoMappingMode",
         identifier="LithoMappingModeType",
-        controlled="Select|automatic_centers|automatic_corners|manual|none"
+        controlled="Select|automatic_centers|automatic_corners|manual|none",
+        color=palette.PARAMETER,
     ),
 ]
 
@@ -1720,23 +1720,23 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
     return nodes, cells, cell_data
 
 
-ExtentZData = typing.Annotated[List[float], AnnotatedScriptType(name='extent_z', color='aqua', identifier='mesh::ExtentZData', controlled='Table|2|ZMin|ZMax')]
+ExtentZData = typing.Annotated[List[float], AnnotatedScriptType(name='extent_z', color=palette.PARAMETER, identifier='mesh::ExtentZData', controlled='Table|2|ZMin|ZMax')]
 
-WellData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='well_list', color='aqua', identifier='mesh::WellListData')]
+WellData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='well_list', color=palette.MESH_ENGINEERING, identifier='mesh::WellListData')]
 
-SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name='sources', color='aqua', identifier='mesh::SourcesData')]
+SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name='sources', color=palette.MESH_ENGINEERING, identifier='mesh::SourcesData')]
 
-ShaftData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='shaft_list', color='aqua', identifier='mesh::ShaftListData')]
+ShaftData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='shaft_list', color=palette.MESH_ENGINEERING, identifier='mesh::ShaftListData')]
 
-PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='plane_list', color='aqua', identifier='mesh::PlaneListData')]
+PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='plane_list', color=palette.MESH_ENGINEERING, identifier='mesh::PlaneListData')]
 
-EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color='aqua', identifier='mesh::EllipseListData' )]
+EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color=palette.MESH_ENGINEERING, identifier='mesh::EllipseListData' )]
 
-TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name='triangulation', color='aqua',
+TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name='triangulation', color=palette.MESH_ENGINEERING,
         identifier='mesh::TriangulationData')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
-WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
+WellCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::well_csv', controlled='RemoteFile|endswith=wells.csv')]
 
 
 def __internal_refinement_form(linearT: typing.Type, functionT: typing.Type, kind: str, label: str):
@@ -1861,12 +1861,13 @@ SmartRefinement = typing.Annotated[
 
 @wbgeo_component(description='Loads a well from a wells.CSV file',
                  title='Load Well',  # The title shown in the GUI
-                 color=MESH_ENGINEERING_COLOR,  # the color of the components
-                 border_color='#000000',  # and its border color
-                 group=MESH_ENGINEERING_GROUP,
+                 color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
+                 border_color=palette.BORDER,  # and its border color
+                 group='Meshing',
                  identifier='wbgeo::meshing_load_well_from_csv',  # a unique identifier
                  return_name='Wells',  # the name for the returned-port
                  is_object_type=True,  # render as object
+                 positionInGroup=10,
                  )  # inputs are handled via the method signature
 
 def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = False) ->  WellData:
@@ -1977,15 +1978,16 @@ def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = Fal
 
 
 # the file must end with "sources.csv", e.g., "example_sources.csv", etc.
-SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::source_csv', controlled='RemoteFile|endswith=sources.csv')]
+SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::source_csv', controlled='RemoteFile|endswith=sources.csv')]
 
 @wbgeo_component(description='Loads a source from a sources.CSV file',
                  title='Load Source',  # The title shown in the GUI
-                 color=MESH_ENGINEERING_COLOR,  # the color of the components
-                 border_color='#000000',  # and its border color
-                 group=MESH_ENGINEERING_GROUP,
+                 color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
+                 border_color=palette.BORDER,  # and its border color
+                 group='Meshing',
                  identifier='wbgeo::meshing_load_source_from_csv',  # a unique identifier
                  return_name='Sources',  # the name for the returned-port
+                 positionInGroup=20,
                  )  # inputs are handled via the method signature
 def load_sources_from_csv(source_file: SourceCSVDataType, key_hierarchical: bool = False) -> SourcesData:
     """Load individual point sources from a CSV file.
@@ -2038,17 +2040,18 @@ def load_sources_from_csv(source_file: SourceCSVDataType, key_hierarchical: bool
 
 
 # the file must end with "ellipses.csv", e.g., "example_ellipses.csv", etc.
-EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::ellipse_csv', controlled='RemoteFile|endswith=ellipses.csv')]
+EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::ellipse_csv', controlled='RemoteFile|endswith=ellipses.csv')]
 
 @wbgeo_component(
     description='Loads ellipses from an ellipses.CSV file',
     title='Load Ellipse',
-    color=MESH_ENGINEERING_COLOR,  # the color of the components
-    border_color='#000000',  # and its border color
-    group=MESH_ENGINEERING_GROUP,
+    color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
+    border_color=palette.BORDER,  # and its border color
+    group='Meshing',
     identifier='wbgeo::meshing_load_ellipse_from_csv',
     return_name='Ellipses',
     is_object_type=True,  # render as object
+    positionInGroup=50,
 )
 def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: bool = False) -> EllipseData:
     """Load ellipse definitions from a CSV file.
@@ -2125,16 +2128,17 @@ def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: b
 
 
 # the file must end with "shaftss.csv", e.g., "example_shaftss.csv", etc.
-ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::shaft_csv', controlled='RemoteFile|endswith=shafts.csv')]
+ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::shaft_csv', controlled='RemoteFile|endswith=shafts.csv')]
 
 @wbgeo_component(description='Loads a shaft from a shafts.CSV file',
                  title='Load Shaft',  # The title shown in the GUI
-                 color=MESH_ENGINEERING_COLOR,  # the color of the components
-                 border_color='#000000',  # and its border color
-                 group=MESH_ENGINEERING_GROUP,
+                 color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
+                 border_color=palette.BORDER,  # and its border color
+                 group='Meshing',
                  identifier='wbgeo::meshing_load_shaft_from_csv',  # a unique identifier
                  return_name='Shafts',  # the name for the returned-port
                  is_object_type=True,  # render as object
+                 positionInGroup=30,
                  )  # inputs are handled via the method signature
 def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = False) -> ShaftData:
     """Load shaft definitions from a CSV file.
@@ -2191,16 +2195,17 @@ def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = 
     return out
 
 # the file must end with "planes.csv", e.g., "example_planes.csv", etc.
-PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color='aqua', identifier='wbgeo::plane_csv', controlled='RemoteFile|endswith=planes.csv')]
+PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::plane_csv', controlled='RemoteFile|endswith=planes.csv')]
 
 @wbgeo_component(description='Loads a plane from a planes.CSV file',
                  title='Load Plane',  # The title shown in the GUI
-                 color=MESH_ENGINEERING_COLOR,  # the color of the components
-                 border_color='#000000',  # and its border color
-                 group=MESH_ENGINEERING_GROUP,
+                 color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
+                 border_color=palette.BORDER,  # and its border color
+                 group='Meshing',
                  identifier='wbgeo::meshing_load_plane_from_csv',  # a unique identifier
                  return_name='planes',  # the name for the returned-port
                  is_object_type=True,  # render as object
+                 positionInGroup=40,
                  )  # inputs are handled via the method signature
 def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = False) -> PlaneData:
     """Load additional planes as grouped 3D points from a CSV file.
@@ -2256,17 +2261,18 @@ def load_planes_from_csv(plane_file: PlaneCSVDataType, key_hierarchical: bool = 
     return out
 
 TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]], AnnotatedScriptType(name='path',
-        color='aqua', identifier='wbgeo::triangulations_planes_csv', controlled='RemoteFileList|endswith=.csv')]
+        color=palette.PARAMETER, identifier='wbgeo::triangulations_planes_csv', controlled='RemoteFileList|endswith=.csv')]
 
 @wbgeo_component(
     description='Load planes coordinates from a CSV to do triangulations',
     title='Load Triangulations Planes',
-    color=MESH_ENGINEERING_COLOR,  # the color of the components
-    border_color='#000000',  # and its border color
-    group=MESH_ENGINEERING_GROUP,
+    color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
+    border_color=palette.BORDER,  # and its border color
+    group='Meshing',
     identifier='wbgeo::meshing_load_triangulations_planes_from_csv',
     return_name='triangulations_planes',
     is_object_type=True,  # render as object
+    positionInGroup=60,
 )
 def load_triangulations_planes_from_csv(csv_file: TriangulationsPlanesData, key_hierarchical: bool = False) -> TriangulationData:
     """Load triangulation points from one or more CSV files.
@@ -2569,7 +2575,7 @@ def meshit_coordinate_transform(
     return transformed
 
 
-@wbgeo_type(name='Surface as described', color='#8cb369', identifier='CSVSurfaceModelResults')
+@wbgeo_type(name='Surface as described', color=palette.STRUCTURAL_MODEL, identifier='CSVSurfaceModelResults')
 @dataclass
 class CSVSurfaceModelResults:
   csv_surface_coordinates: List[Tuple[Path, NpNDArrayFp64]]
@@ -2579,10 +2585,10 @@ class CSVSurfaceModelResults:
 # Register this function as a component
 @wbgeo_component(description='Provides unstructured mesh',
                  title='Create Unstructured Explicit Mesh',  # The title shown in the GUI
-                 color='#cc9999',  # the color of the components
-                 border_color='#000000',  # and its border color
+                 color=palette.MESH,  # the color of the components
+                 border_color=palette.BORDER,  # and its border color
                  group='Meshing',
-                 positionInGroup=5,
+                 positionInGroup=110,
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
                  )  # inputs are handled via the method signature

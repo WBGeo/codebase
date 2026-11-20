@@ -25,9 +25,10 @@ from pydantic import BaseModel, field_serializer, field_validator, BeforeValidat
 
 from core.structural_modeling_components.structural_objects.structural_objects import StructuralFrame, FaultFrame
 from core.utility.pydantic_bridge import PandasDataFrame, MeshIOCellBlock
+from core import workbench_palette as palette
 
 @wbgeo_type(name='Input input_data for the rock elements of a structural geological model',
-            color='#b0dfa9',
+            color=palette.STRUCTURAL_INPUT,
             identifier='InputData_StructuralElements')
 @dataclass
 class InputData_StructuralElements:
@@ -82,7 +83,7 @@ class InputData_StructuralElements:
 
 
 @wbgeo_type(name='Input input_data for the fault elements of a structural geological model',
-            color='orange',
+            color=palette.STRUCTURAL_INPUT,
             identifier='InputData_FaultElements')
 @dataclass
 class InputData_FaultElements:
@@ -119,7 +120,7 @@ class InputData_FaultElements:
                   f"Removed {_removed} duplicate fault orientation(s) (identical X, Y, Z, formation).")
 
 
-@wbgeo_type(name='Result of a structural geological model', color='#8cb369', identifier='StructuralModelResults')
+@wbgeo_type(name='Result of a structural geological model', color=palette.STRUCTURAL_MODEL, identifier='StructuralModelResults')
 @dataclass
 class StructuralModelResults:
     """
@@ -132,7 +133,7 @@ class StructuralModelResults:
     structural_frame: StructuralFrame  # this is a deepcopy of the structural frame object
 
 
-@wbgeo_type(name='Result of a structural fault model', color='blue', identifier='FaultModelResults')
+@wbgeo_type(name='Result of a structural fault model', color=palette.FAULT_MODEL, identifier='FaultModelResults')
 @dataclass
 class FaultModelResults:
     """
@@ -170,11 +171,12 @@ MeshTypeType = typing.Annotated[
     AnnotatedScriptType(
         name="MeshType",
         identifier="MeshTypeType",
-        controlled="Select|implicit|structured|unstructured"
+        controlled="Select|implicit|structured|unstructured",
+        color=palette.PARAMETER,
     ),
 ]
 
-@wbgeo_type(name='Meshing results', color='green', identifier='MeshResults')
+@wbgeo_type(name='Meshing results', color=palette.MESH, identifier='MeshResults')
 
 class MeshResults(BaseModel):
     """
@@ -413,7 +415,7 @@ class MeshResults(BaseModel):
 
 
 
-@wbgeo_type(name='SimulationResults', color='pink', identifier='SimulationResults')
+@wbgeo_type(name='SimulationResults', color=palette.SIMULATION_RUN, identifier='SimulationResults')
 @dataclass
 class SimulationResults:
     """
@@ -476,6 +478,6 @@ class SimulationResults:
 
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],
-  AnnotatedScriptType(name='extent', color='aqua', identifier='mesh::ExtentData',
+  AnnotatedScriptType(name='extent', color=palette.PARAMETER, identifier='mesh::ExtentData',
                       controlled='Tuple|xmin|xmax|ymin|ymax|zmin|zmax')
 ]

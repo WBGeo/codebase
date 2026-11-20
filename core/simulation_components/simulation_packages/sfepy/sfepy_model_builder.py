@@ -44,6 +44,7 @@ from scipy.spatial import cKDTree
 
 from py_api_wbgeo.nodesapi import wbgeo_type
 from core.object_components import MeshResults, StructuralModelResults, SimulationResults, MeshType
+from core import workbench_palette as palette
 
 logger = logging.getLogger(__name__)
 
@@ -553,7 +554,7 @@ def default_diffusion_timescale(
     return length_scale ** 2 / alpha
 
 
-@wbgeo_type(name='SfePy Hydrothermal Problem', color='#e07a5f',
+@wbgeo_type(name='SfePy Hydrothermal Problem', color=palette.SIMULATION_BUILDER,
             identifier='SfepyHydrothermalProblemBuilder')
 @dataclass
 class SfepyHydrothermalProblemBuilder:
@@ -1290,7 +1291,7 @@ equations = {{
         return output_path
 
 
-@wbgeo_type(name='Custom SfePy Problem', color='#e07a5f', identifier='SfepyCustomBuilder')
+@wbgeo_type(name='Custom SfePy Problem', color=palette.SIMULATION_BUILDER, identifier='SfepyCustomBuilder')
 @dataclass
 class SfepyCustomBuilder:
     """
@@ -1409,7 +1410,7 @@ def is_custom_sfepy_builder(problem: Union[SfepyHydrothermalProblemBuilder, Sfep
     return type(problem).__name__ == "SfepyCustomBuilder"
 
 
-@wbgeo_type(name='SfePy Problem', color='#e07a5f', identifier='SfepyProblem')
+@wbgeo_type(name='SfePy Problem', color=palette.SIMULATION_BUILDER, identifier='SfepyProblem')
 @dataclass
 class SfepyProblem:
     """

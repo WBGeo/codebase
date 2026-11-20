@@ -49,6 +49,67 @@ The picture shows the visualization of this component.
 The execution of the component MUST NOT modify/change its inputs,
 i.e. the inputs are immutable.
 
+#### Colours, groups and order
+
+Colours are not chosen per component. They come from one palette in
+`core/workbench_palette.py`, so a workflow can be read at a glance. The colours
+follow the logo: brown and green for structural modeling, teal and blue for
+meshing, orange and red for process simulation. Within a step, substeps differ
+in lightness:
+
+| Constant             | Colour    | Used for                                                                 |
+|----------------------|-----------|--------------------------------------------------------------------------|
+| `STRUCTURAL_INPUT`   | `#e8c992` | Input data and grid (Regular Grid, Input data, Fault Input Data)         |
+| `FAULT_MODEL`        | `#9cc65a` | Compute Fault Model                                                      |
+| `STRUCTURAL_MODEL`   | `#5fa040` | Compute Structural Model                                                 |
+| `MESH_ENGINEERING`   | `#7fd0cb` | Engineering objects (Load Well, Source, Shaft, Plane, Ellipse, ...)      |
+| `MESH`               | `#3a9fc4` | Mesh creation                                                            |
+| `SIMULATION_BUILDER` | `#f9a93a` | Problem builders                                                         |
+| `SIMULATION_RUN`     | `#e8663e` | Simulation runs                                                          |
+| `EXPORT`             | `#a7b4c2` | Exports and external tools (Export Mesh, Export Simulation Results, LiquidEarth) |
+| `PARAMETER`          | `#e6e6e6` | Parameter types: file paths, tuples, selections, option forms            |
+| `BORDER`             | `#000000` | Border of all components                                                 |
+
+The same rules apply to data types (see [Types](types.md)): a type that carries
+results between components takes the colour of the component that produces it
+(e.g. `MeshResults` uses `MESH`), and parameter types use `PARAMETER`.
+Every colour has a contrast of at least 6:1 to the black text and border.
+
+```python
+from core import workbench_palette as palette
+
+@wbgeo_component(identifier='wbgeo::meshing_load_well_from_csv', title='Load Well',
+                 color=palette.MESH_ENGINEERING, border_color=palette.BORDER,
+                 group='Meshing', positionInGroup=10)
+```
+
+When you add a component:
+
+- **Reuse a colour first.** A new component of an existing kind (another mesher,
+  another problem builder) uses the existing constant. Add a constant only for
+  a new kind of component (a new substep).
+- **New substep:** stay in the hue of the step (brown/green, teal/blue,
+  orange/red) and differ from the sibling shades mainly in lightness, so they
+  stay distinguishable for colour-blind users.
+- **New workflow step:** take a new hue from the logo. The yellow between blue
+  and orange (around `#efb540`) is still free.
+- **Contrast:** at least 4.5:1 against the black text and border.
+- **No literal colours** in decorators; use the palette constants.
+
+The sidebar lists components by `group` and, within a group, by ascending
+`positionInGroup`, so set both for every component, ordered as the components
+are used in the workflow:
+
+- each subgroup gets a block of 100: the first subgroup 10–99, the next 110–199,
+  and so on (e.g. in *Simulation*: SfePy 10–30, GOLEM 110–140);
+- inside a block, use steps of 10 so new components can be inserted;
+- exports always sit at 900;
+- positions must be unique within a group.
+
+`tests/test_workbench_palette.py` checks these rules (palette colours only,
+group and position set, unique positions, contrast). Colours, groups and
+positions are display only: changing them does not affect saved pipelines.
+
 To be able to uniquely identify each component, you MUST follow the following naming scheme:
 `identifier="wbgeo::[semantic_group]_[component_name]".`
 For example, `identifier="wbgeo::interpolation_rbf", tags=["Interpolation"]`

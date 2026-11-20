@@ -16,6 +16,7 @@ import meshio
 from types import SimpleNamespace
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType
 from core.meshing_components.geometry.Nodes import Nodes
+from core import workbench_palette as palette
 
 # Rsample while preserving Z
 def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, extent: List[float]) -> NDArray[np.floating]:
@@ -60,11 +61,11 @@ def resample_preserve_z_nearest(points: NDArray[np.floating], nx: int, ny: int, 
 
 
 
-RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinement_data', color='aqua', identifier='mesh::RefinementData', controlled='List|R')]
+RefinementData = typing.Annotated[List[int], AnnotatedScriptType(name='refinement_data', color=palette.PARAMETER, identifier='mesh::RefinementData', controlled='List|R')]
 
 MeshDev = typing.Annotated[
     Tuple[int, int],
-    AnnotatedScriptType(name='mesh_division', color='pink', identifier='mesh::MeshDev', controlled='Tuple|M1|M2')
+    AnnotatedScriptType(name='mesh_division', color=palette.PARAMETER, identifier='mesh::MeshDev', controlled='Tuple|M1|M2')
 ]
 
 # Prepare geological model's results to be used in creating structured meshing
@@ -139,10 +140,10 @@ def pre_check_no_faults_for_structured_mesh(geomodel_result: StructuralModelResu
 # Register this function as a component
 @wbgeo_component(description='Provides structured mesh',
                  title='Create Structured Explicit Mesh',  # The title shown in the GUI
-                 color='#cc9999',  # the color of the components
-                 border_color='#000000',  # and its border color
+                 color=palette.MESH,  # the color of the components
+                 border_color=palette.BORDER,  # and its border color
                  group='Meshing',
-                 positionInGroup=15,
+                 positionInGroup=120,
                  identifier='wbgeo::create_structured_mesh_data',
                  return_name='Mesh',  # the name for the returned-port
                  input_checks=[pre_check_no_faults_for_structured_mesh],

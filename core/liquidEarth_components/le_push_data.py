@@ -9,6 +9,7 @@ from core.object_components import StructuralModelResults
 from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType
 from py_api_wbgeo.nodesapi import wbgeo_component, AnnotatedScriptType, wbgeo_inspector
 from py_api_wbgeo import apitypes
+from core import workbench_palette as palette
 
 def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: GeoMeshType = GeoMeshType.MASKED) -> ss.UnstructuredData:
     """
@@ -86,19 +87,20 @@ def convert_to_subsurface_mesh(geosolution: StructuralModelResults, mesh_type: G
     return meshes
 
 # define our own data type as a secret
-SecretDataType = typing.Annotated[str, AnnotatedScriptType(name='secret', color='aqua', identifier='secret', controlled='password')]
+SecretDataType = typing.Annotated[str, AnnotatedScriptType(name='secret', color=palette.PARAMETER, identifier='secret', controlled='password')]
 
 #and annotate a string as being a liquid earth link
-LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', identifier='liquidearth_target')]
+LETarget = typing.Annotated[str, AnnotatedScriptType(name='liquidearth_target', identifier='liquidearth_target', color=palette.PARAMETER)]
 
 
 @wbgeo_component(identifier='geosolution_liquidearth_visualization',  # unique identifier
                  title='Push Geosolution to LiquidEarth',  # human readable (Default) title
                  description='push the geosolution to a new space in Liquid Earth',
-                 color='#9FE8C1',
-                 border_color='#000000',
+                 color=palette.EXPORT,
+                 border_color=palette.BORDER,
                  group='Visualisation',
                  return_name='space link',  # name of the returned port
+                 positionInGroup=10,
                  )
 def push_geosolution_to_le(geosolution: StructuralModelResults, space_name: str = 'WBGeo: Demo',
                            model_name: str = None, api_token: SecretDataType = None) -> LETarget:
