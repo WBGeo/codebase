@@ -31,18 +31,20 @@ the type-hints of parameters.
 
 The picture shows the visualization of this component.
 
-| Parameter      | Required   | Description                                                                                         |
-|----------------|------------|-----------------------------------------------------------------------------------------------------|
-| identifier     | required   | A unique identifier. See below for a naming scheme                                                  |
-| title          | required   | The human-readable title shown to users of the workbench                                            |
-| description    | (optional) | The description shown to users of the workbench on request (if absent, a pydoc must be present)     |
-| input_checks   | (optional) | The pre-checks (see below)                                                                          |
-| color          | (optional) | The color of the component                                                                          |
-| border_color   | (optional) | The border color of the component                                                                   |
-| group          | (optional) | The group this component belongs to                                                                 |
-| tags           | (optional) | For internal description                                                                            |
-| return_name    | (optional) | The name of the output port(s), default "result"                                                    |
-| is_object_type | (optional) | Some components should be presented like the result (e.g. the loading component), defaults to False |
+| Parameter        | Required   | Description                                                                                         |
+|------------------|------------|-----------------------------------------------------------------------------------------------------|
+| identifier       | required   | A unique identifier. See below for a naming scheme                                                  |
+| title            | required   | The human-readable title shown to users of the workbench                                            |
+| description      | (optional) | The description shown to users of the workbench on request (if absent, the pydoc is used)           |
+| input_checks     | (optional) | The pre-checks (see below)                                                                          |
+| color            | (optional) | The color of the component                                                                          |
+| border_color     | (optional) | The border color of the component                                                                   |
+| group            | (optional) | The group this component belongs to                                                                 |
+| positionInGroup  | (optional) | The ranking of this item within the list of components of the same group                            |
+| tags             | (optional) | For internal description                                                                            |
+| return_name      | (optional) | The name of the output port(s), default "result"                                                    |
+| is_object_type   | (optional) | Some components should be presented like the result (e.g. the loading component), defaults to False |
+| requires_package | (optional) | The requirements which have to be installed for this component (e.g., `wbgeo[sfepy]`)               |
 
 The execution of the component MUST NOT modify/change its inputs,
 i.e. the inputs are immutable.
