@@ -44,7 +44,7 @@ The picture shows the visualization of this component.
 | tags             | (optional) | For internal description                                                                            |
 | return_name      | (optional) | The name of the output port(s), default "result"                                                    |
 | is_object_type   | (optional) | Some components should be presented like the result (e.g. the loading component), defaults to False |
-| requires_package | (optional) | The requirements which have to be installed for this component (e.g., `wbgeo[sfepy]`                |
+| requires_package | (optional) | The requirements which have to be installed for this component (e.g., `wbgeo[sfepy]`)               |
 
 The execution of the component MUST NOT modify/change its inputs,
 i.e. the inputs are immutable.
