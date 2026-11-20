@@ -1303,3 +1303,8 @@ topology, and numerical fields. It includes:
     e.g. GOLEM's postprocessor CSVs.
 -   **`input_files`** --- the input file(s) the solver ran.
 -   **`block_names`** --- the name of each element block, by block id.
+
+Arrays that do not change between time steps, such as the geometry of an
+unchanged mesh, block ids (`mat_id`, `ObjectId`) or a steady-state field,
+are stored only once and shared by all time steps. A stored result
+therefore grows only with the fields that actually change.

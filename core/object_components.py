@@ -464,6 +464,13 @@ class SimulationResults:
     no solver output folder has to be kept on disk after a run. Only
     declared fields survive the Workbench, which stores a result as JSON of
     these fields.
+
+    Arrays that are the same in every saved time step (the geometry of an
+    unchanged mesh, static cell/node data such as mat_id or ObjectId, a
+    steady-state field) are written to JSON only once and shared again
+    between the time steps when the result is loaded (GitHub issue #3).
+    The per-time-step dicts above look the same either way; the older JSON
+    with one copy per time step can still be read.
     """
     nodes_by_time: Dict[float, NpNDArrayFp64] = field(default_factory=dict)
     cells_by_time: Dict[float, NpNDArrayInt64] = field(default_factory=dict)
@@ -475,6 +482,60 @@ class SimulationResults:
     solver_tables: Dict[str, Dict[str, NpNDArrayFp64]] = field(default_factory=dict)
     input_files: Dict[str, str] = field(default_factory=dict)
     block_names: Dict[int, str] = field(default_factory=dict)
+
+    @field_serializer("nodes_by_time", "cells_by_time", "celltypes_by_time", mode="wrap", when_used="json")
+    def _serialize_geometry(self, value, handler):
+        times = list(value)
+        if len(times) > 1 and all(_same_array(value[times[0]], value[t]) for t in times[1:]):
+            shared = next(iter(handler({times[0]: value[times[0]]}).values()))
+            return {_SHARED_KEY: shared, _TIMES_KEY: times}
+        return handler(value)
+
+    @field_validator("nodes_by_time", "cells_by_time", "celltypes_by_time", mode="wrap")
+    @classmethod
+    def _validate_geometry(cls, value, handler):
+        if isinstance(value, dict) and _SHARED_KEY in value:
+            times = [float(t) for t in value[_TIMES_KEY]]
+            shared = next(iter(handler({times[0]: value[_SHARED_KEY]}).values()))
+            return {t: shared for t in times}
+        return handler(value)
+
+    @field_serializer("node_data_by_time", "cell_data_by_time", mode="wrap", when_used="json")
+    def _serialize_step_data(self, value, handler):
+        times = list(value)
+        if len(times) > 1:
+            first = value[times[0]]
+            static = [name for name, array in first.items()
+                      if all(name in value[t] and _same_array(array, value[t][name]) for t in times[1:])]
+            if static:
+                shared = next(iter(handler({times[0]: {name: first[name] for name in static}}).values()))
+                steps = {t: {name: a for name, a in value[t].items() if name not in static} for t in times}
+                return {_SHARED_KEY: shared, _STEPS_KEY: handler(steps)}
+        return handler(value)
+
+    @field_validator("node_data_by_time", "cell_data_by_time", mode="wrap")
+    @classmethod
+    def _validate_step_data(cls, value, handler):
+        if isinstance(value, dict) and _SHARED_KEY in value:
+            steps = handler(value[_STEPS_KEY])
+            shared = next(iter(handler({0.0: value[_SHARED_KEY]}).values()))
+            return {t: {**shared, **step} for t, step in steps.items()}
+        return handler(value)
+
+
+# JSON keys of the compact per-time-step format of SimulationResults (see its docstring).
+# They cannot clash with time-step keys, which are numbers.
+_SHARED_KEY = "__shared__"
+_TIMES_KEY = "__times__"
+_STEPS_KEY = "__steps__"
+
+
+def _same_array(a, b) -> bool:
+    """Whether a and b are the same array object or equal arrays of the same shape and dtype."""
+    if a is b:
+        return True
+    a, b = np.asarray(a), np.asarray(b)
+    return a.shape == b.shape and a.dtype == b.dtype and np.array_equal(a, b)
 
 ExtentData = typing.Annotated[
   Tuple[float, float, float, float, float, float],

@@ -15,13 +15,12 @@ own ad-hoc defaults.
 """
 import inspect
 import logging
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 from matplotlib.ticker import FormatStrFormatter
-from scipy.interpolate import griddata
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_visualization.material_preview import (  # noqa: F401  (re-export)
@@ -165,6 +164,10 @@ def _same_geometry(sim: SimulationResults, time_a: float, time_b: float) -> bool
     geometry if that ever stops being true.
     """
     nodes_a, nodes_b = sim.nodes_by_time.get(time_a), sim.nodes_by_time.get(time_b)
+    if (nodes_a is not None and nodes_a is nodes_b
+            and sim.cells_by_time.get(time_a) is sim.cells_by_time.get(time_b)
+            and sim.celltypes_by_time.get(time_a) is sim.celltypes_by_time.get(time_b)):
+        return True  # one shared geometry (the normal case since the loaders share it)
     if nodes_a is None or nodes_b is None or nodes_a.shape != nodes_b.shape or not np.array_equal(nodes_a, nodes_b):
         return False
 
@@ -498,40 +501,77 @@ def _in_plane_axes(normal: Sequence[float]) -> Tuple[np.ndarray, np.ndarray, Tup
     return u, v, ("u", "v")
 
 
-def _slice_on_plane_from_grid(
-    mesh: pv.DataSet,
+def _cross_sections_on_plane(
+    sim: SimulationResults,
     var_name: str,
+    times: Sequence[float],
     origin: Tuple[float, float, float],
     normal: Tuple[float, float, float],
     u_axis: np.ndarray,
     v_axis: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    resolution: int,
+) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
     """
-    Slice an already-built (geometry + data attached) grid on the given plane
-    and project onto (u, v) in-plane coordinates -- split from build_grid_from_class
-    so callers needing the same mesh at two timesteps (plot_cross_section_2D,
-    plot_cross_section_difference_2D) can build the (expensive) VTK grid once
-    and just swap data between slices, rather than rebuilding it per timestep.
+    var_name at each of `times` on a regular resolution x resolution grid in
+    the given plane, returned as (UG, VG, [Z per time]) in in-plane (u, v)
+    coordinates; grid points outside the mesh are NaN.
+
+    Every grid point is sampled directly in the 3D mesh (vtkProbeFilter via
+    pyvista's sample): VTK finds the cell containing the point and
+    interpolates with that cell's own shape functions -- the solver's own
+    interpolation, respecting concave outlines and gaps, which a 2D
+    re-triangulation of slice points (the earlier slice + griddata approach)
+    did not. The grid spans the mesh's bounding box in the plane.
+
+    Time steps with the same geometry (the normal case) share one VTK grid
+    and one sampling pass: all requested fields are attached under separate
+    names and interpolated together (GitHub issue #3 -- the slice +
+    griddata version took minutes on large unstructured meshes).
     """
-    if var_name not in mesh.point_data:
-        raise ValueError(f"Variable '{var_name}' not found (as point data).")
-    sliced = mesh.slice(origin=origin, normal=normal)
-    if sliced.n_points == 0:
-        raise RuntimeError("Slice produced no points -- check origin/normal against the model's extent.")
-    pts = sliced.points
-    u = pts @ u_axis
-    v = pts @ v_axis
-    values = np.asarray(sliced.point_data[var_name])
-    return u, v, values
+    n = np.asarray(normal, dtype=float)
+    n = n / np.linalg.norm(n)
+    offset = float(np.dot(np.asarray(origin, dtype=float), n))
 
+    # Group the requested times by geometry, so each distinct mesh is built and sampled once.
+    groups: List[List[float]] = []
+    for t in times:
+        for group in groups:
+            if _same_geometry(sim, group[0], t):
+                group.append(t)
+                break
+        else:
+            groups.append([t])
 
-def _interpolate_to_grid(u, v, values, u_min, u_max, v_min, v_max, resolution):
-    """Linearly interpolate scattered (u, v, values) points onto a regular resolution×resolution grid over [u_min, u_max] x [v_min, v_max]."""
-    ug = np.linspace(u_min, u_max, resolution)
-    vg = np.linspace(v_min, v_max, resolution)
-    UG, VG = np.meshgrid(ug, vg)
-    Z = griddata((u, v), values, (UG, VG), method="linear")
-    return UG, VG, Z
+    meshes = [_build_grid_geometry(sim, group[0]) for group in groups]
+    corners = np.array([[x, y, z] for mesh in meshes
+                        for x in mesh.bounds[0:2] for y in mesh.bounds[2:4] for z in mesh.bounds[4:6]])
+    u_corner, v_corner = corners @ u_axis, corners @ v_axis
+    UG, VG = np.meshgrid(np.linspace(u_corner.min(), u_corner.max(), resolution),
+                         np.linspace(v_corner.min(), v_corner.max(), resolution))
+    probe_points = pv.PolyData(
+        UG.reshape(-1, 1) * u_axis + VG.reshape(-1, 1) * v_axis + offset * n
+    )
+
+    sections: Dict[float, np.ndarray] = {}
+    any_inside = False
+    for group, mesh in zip(groups, meshes):
+        mesh.point_data.clear()
+        mesh.cell_data.clear()
+        for i, t in enumerate(group):
+            values = sim.node_data_by_time.get(t, {}).get(var_name)
+            if values is None:
+                raise ValueError(f"Variable '{var_name}' not found (as point data).")
+            mesh.point_data[f"_section_{i}"] = values
+        sampled = probe_points.sample(mesh)
+        inside = np.asarray(sampled["vtkValidPointMask"]).astype(bool)
+        any_inside |= bool(inside.any())
+        for i, t in enumerate(group):
+            z = np.asarray(sampled[f"_section_{i}"], dtype=float)
+            z[~inside] = np.nan
+            sections[t] = z.reshape(UG.shape)
+    if not any_inside:
+        raise RuntimeError("The plane does not cut the mesh -- check origin/normal against the model's extent.")
+    return UG, VG, [sections[t] for t in times]
 
 
 def plot_cross_section_2D(
@@ -562,10 +602,11 @@ def plot_cross_section_2D(
     normal) so the default view shows a cross section along X rather than
     along Y.
 
-    Only meaningful for point data (T, p) -- the slice is interpolated onto
-    a shared regular 2D grid via scipy.griddata, working for any mesh_type
-    (structured, unstructured, implicit) since it doesn't assume a regular
-    node ordering, just point coordinates + values.
+    Only meaningful for point data (T, p) -- the field is sampled directly in
+    the 3D mesh on a shared regular grid in the plane (see
+    _cross_sections_on_plane), using each cell's own interpolation; this
+    works for any mesh_type (structured, unstructured, implicit). Grid
+    points outside the mesh stay empty.
 
     Note: both panels share one absolute color scale spanning [T_top,
     T_bottom]-type background range, so a real but modest change can still
@@ -585,22 +626,9 @@ def plot_cross_section_2D(
 
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
 
-    # Built once and reused for both timesteps when they share geometry
-    # (the common case -- see _same_geometry) instead of building two full
-    # VTK grids just to slice each at the same plane.
-    mesh = _build_grid_geometry(sim, time_a)
-    _attach_time_data(mesh, sim, time_a, var_names=[var_name])
-    u_a, v_a, val_a = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
-
-    if not _same_geometry(sim, time_a, time_b):
-        mesh = _build_grid_geometry(sim, time_b)
-    _attach_time_data(mesh, sim, time_b, var_names=[var_name])
-    u_b, v_b, val_b = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
-
-    u_min, u_max = min(u_a.min(), u_b.min()), max(u_a.max(), u_b.max())
-    v_min, v_max = min(v_a.min(), v_b.min()), max(v_a.max(), v_b.max())
-    UG, VG, Za = _interpolate_to_grid(u_a, v_a, val_a, u_min, u_max, v_min, v_max, resolution)
-    _, _, Zb = _interpolate_to_grid(u_b, v_b, val_b, u_min, u_max, v_min, v_max, resolution)
+    UG, VG, (Za, Zb) = _cross_sections_on_plane(
+        sim, var_name, (time_a, time_b), origin, normal, u_axis, v_axis, resolution
+    )
 
     vmin = float(np.nanmin([np.nanmin(Za), np.nanmin(Zb)]))
     vmax = float(np.nanmax([np.nanmax(Za), np.nanmax(Zb)]))
@@ -656,22 +684,9 @@ def plot_cross_section_difference_2D(
 
     u_axis, v_axis, (u_label, v_label) = _in_plane_axes(normal)
 
-    # Built once and reused for both timesteps when they share geometry
-    # (the common case -- see _same_geometry) instead of building two full
-    # VTK grids just to slice each at the same plane.
-    mesh = _build_grid_geometry(sim, time_a)
-    _attach_time_data(mesh, sim, time_a, var_names=[var_name])
-    u_a, v_a, val_a = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
-
-    if not _same_geometry(sim, time_a, time_b):
-        mesh = _build_grid_geometry(sim, time_b)
-    _attach_time_data(mesh, sim, time_b, var_names=[var_name])
-    u_b, v_b, val_b = _slice_on_plane_from_grid(mesh, var_name, origin, normal, u_axis, v_axis)
-
-    u_min, u_max = min(u_a.min(), u_b.min()), max(u_a.max(), u_b.max())
-    v_min, v_max = min(v_a.min(), v_b.min()), max(v_a.max(), v_b.max())
-    UG, VG, Za = _interpolate_to_grid(u_a, v_a, val_a, u_min, u_max, v_min, v_max, resolution)
-    _, _, Zb = _interpolate_to_grid(u_b, v_b, val_b, u_min, u_max, v_min, v_max, resolution)
+    UG, VG, (Za, Zb) = _cross_sections_on_plane(
+        sim, var_name, (time_a, time_b), origin, normal, u_axis, v_axis, resolution
+    )
     Z = Zb - Za
 
     max_abs = float(np.nanmax(np.abs(Z)))
