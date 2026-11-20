@@ -13,6 +13,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic.dataclasses import dataclass
 from py_api_wbgeo.nodesapi import wbgeo_type
+from core import workbench_palette as palette
 
 # Type aliases to make intent explicit and keep annotations readable.
 Extent6 = Tuple[float, float, float, float, float, float]
@@ -21,7 +22,7 @@ Resolution3 = Tuple[int, int, int]
 
 @wbgeo_type(
     name="Grid for discretization of a structural geological model",
-    color="#b0dfa9",
+    color=palette.STRUCTURAL_INPUT,
     identifier="RegularGrid",
 )
 @dataclass

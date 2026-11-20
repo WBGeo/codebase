@@ -32,6 +32,7 @@ from py_api_wbgeo.nodesapi import wbgeo_type
 from core.simulation_components.simulation_packages.golem.golem_input_parser import (
     locate_blocks, top_block,
 )
+from core import workbench_palette as palette
 
 #: Mesh types GOLEM builders accept (the single place to extend, e.g. for octree meshes).
 GOLEM_SUPPORTED_MESH_TYPES = frozenset({
@@ -60,7 +61,7 @@ def _block_lithology_ids(mesh: MeshResults) -> Dict[int, int]:
     return result
 
 
-@wbgeo_type(name="Custom GOLEM Problem", color="#e07a5f",
+@wbgeo_type(name="Custom GOLEM Problem", color=palette.SIMULATION_BUILDER,
             identifier="GolemCustomBuilder")
 @dataclass
 class GolemCustomBuilder:
@@ -298,7 +299,7 @@ NL_ABS_TOL = 1e-8
 DTMIN_FRACTION = 1000.0
 
 
-@wbgeo_type(name="GOLEM Hydrothermal Problem", color="#e07a5f",
+@wbgeo_type(name="GOLEM Hydrothermal Problem", color=palette.SIMULATION_BUILDER,
             identifier="GolemHydrothermalProblemBuilder")
 @dataclass
 class GolemHydrothermalProblemBuilder:
@@ -841,7 +842,7 @@ class GolemHydrothermalProblemBuilder:
         with open(output_path, "w", encoding="utf-8") as stream:
             stream.write(content)
         return output_path
-@wbgeo_type(name="GOLEM Simple Reservoir", color="#e07a5f",
+@wbgeo_type(name="GOLEM Simple Reservoir", color=palette.SIMULATION_BUILDER,
             identifier="GolemSimpleReservoirBuilder")
 @dataclass
 class GolemSimpleReservoirBuilder:

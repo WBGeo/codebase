@@ -22,48 +22,50 @@ from core.object_components import InputData_StructuralElements, InputData_Fault
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
   plot_input_data_3D, plot_fault_input_data_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
+from core import workbench_palette as palette
 
 # Add some file path types:
 # The frontend handles these specially (via their identifier); in the backend they are strings.
 # typing.Annotated is used because @wbgeo_type cannot be applied to builtin types.
 CSVFileDataType = typing.Annotated[
-  str, AnnotatedScriptType(name='path', color='aqua', identifier='CSVFileDataType',
+  str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='CSVFileDataType',
                            controlled='RemoteFile|endswith=.csv')]
 SurfaceCSVFileDataType = typing.Annotated[
-  str, AnnotatedScriptType(name='path', color='aqua', identifier='SurfaceCSVFileDataType',
+  str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='SurfaceCSVFileDataType',
                            controlled='RemoteFile|endswith=.csv|contains=surface_points')]
 OrientationsCSVFileDataType = typing.Annotated[
-  str, AnnotatedScriptType(name='path', color='aqua', identifier='OrientationsCSVFileDataType',
+  str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='OrientationsCSVFileDataType',
                            controlled='RemoteFile|endswith=.csv|contains=orientations_')]
 JSONFileDataType = typing.Annotated[
-  str, AnnotatedScriptType(name='path', color='aqua', identifier='JSONFileDataType',
+  str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='JSONFileDataType',
                            controlled='RemoteFile|endswith=.json')]
 
 # todo: ALu improve these by giving them a fixed tuple instead of Table?
 # The following two annotations allow editing of extent/resolution via the web-UI.
 AExtent6 = typing.Annotated[
-  grid_classes.Extent6, AnnotatedScriptType(name='grid_classes.Extent6', color='aqua',
+  grid_classes.Extent6, AnnotatedScriptType(name='grid_classes.Extent6', color=palette.PARAMETER,
                                             identifier='grid_classes.Extent6',
                                             controlled='Tuple|xmin|xmax|ymin|ymax|zmin|zmax')]
 AResolution3 = typing.Annotated[
-  grid_classes.Resolution3, AnnotatedScriptType(name='grid_classes.Resolution3', color='aqua',
+  grid_classes.Resolution3, AnnotatedScriptType(name='grid_classes.Resolution3', color=palette.PARAMETER,
                                                 identifier='grid_classes.Resolution3',
                                                 controlled='Tuple|x|y|z')]
 
 FaultNames = typing.Annotated[
-  typing.List[str], AnnotatedScriptType(name='Fault Names', color='aqua',
+  typing.List[str], AnnotatedScriptType(name='Fault Names', color=palette.PARAMETER,
                                         identifier='wbgeo::FaultNames',
                                         controlled='List|FaultName')]
 
 
 @wbgeo_component(description='Regular (axis-aligned) grid defined by an extent and a 3D resolution',
                  title='Regular Grid',
-                 color='#b0dfa9',
-                 border_color='#000000',
+                 color=palette.STRUCTURAL_INPUT,
+                 border_color=palette.BORDER,
                  group='Inputs',
                  identifier='wbgeo::regular_grid',
                  return_name='grid',
                  is_object_type=True,
+                 positionInGroup=990,
                  )
 def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
                          resolution: AResolution3 = (50, 50, 50)) -> grid_classes.RegularGrid:
@@ -90,12 +92,12 @@ def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
 
 
 GroupNames = typing.Annotated[
-  typing.List[str], AnnotatedScriptType(name='Group Names', color='aqua',
+  typing.List[str], AnnotatedScriptType(name='Group Names', color=palette.PARAMETER,
                                         identifier='wbgeo::GroupNames',
                                         controlled='List|GroupName|header=ORDER MATTERS: From top (younger) to bottom (older). Younger groups will erode older groups forming unconformities.')]
 
 
-@wbgeo_type(name='StructuralInputSmartInputOptions', color='orange',
+@wbgeo_type(name='StructuralInputSmartInputOptions', color=palette.PARAMETER,
             identifier='wbgeo::StructuralInputSmartInputOptions')
 class StructuralInputSmartInputOptions(pydantic.BaseModel):
   root: typing.Dict[str, str]  # mapping of formation name -> grouo
@@ -134,7 +136,7 @@ def structural_input_smart_options(surface_points_file: typing.Optional[SurfaceC
   ]
                    )
 
-StructuralInputMappingOptions = typing.Annotated[typing.Dict[str, typing.Tuple[str, ...]], AnnotatedScriptType(name='wbgeo::StructuralInputMappingOptions', identifier='wbgeo::StructuralInputMappingOptions', color='orange')]
+StructuralInputMappingOptions = typing.Annotated[typing.Dict[str, typing.Tuple[str, ...]], AnnotatedScriptType(name='wbgeo::StructuralInputMappingOptions', identifier='wbgeo::StructuralInputMappingOptions', color=palette.PARAMETER)]
 
 @wbgeo_component(identifier='wbgeo:__internal__structural_input_smart_options_to_data',
                  title='structural_input_smart_options_to_data')
@@ -160,12 +162,13 @@ SmartStructuralInputSmartInputOptions = typing.Annotated[
 
 @wbgeo_component(description='Input data for a Structural Geological Model. Requires surface points, optionally orientations and a mapping file.',
                  title='Input data for Structural Elements',
-                 color='#b0dfa9',
-                 border_color='#000000',
+                 color=palette.STRUCTURAL_INPUT,
+                 border_color=palette.BORDER,
                  group='Inputs',
                  identifier='wbgeo::geo_input_data',
                  return_name='input_data',
                  is_object_type=True,
+                 positionInGroup=980,
                  )
 def structural_input_data(
     name: str = 'Model 1',
@@ -285,12 +288,13 @@ SmartFaultInputSmartInputOptions = typing.Annotated[
 
 @wbgeo_component(description='Input data for Fault Elements. Requires surface points and orientations.',
                  title='Fault Input Data',
-                 color='#b0dfa9',
-                 border_color='#000000',
+                 color=palette.STRUCTURAL_INPUT,
+                 border_color=palette.BORDER,
                  group='Inputs',
                  identifier='wbgeo::faults_input_data',
                  return_name='faults_data',
                  is_object_type=True,
+                 positionInGroup=970,
                  )
 def faults_input_data(
     name: str = 'Faults Model 2',

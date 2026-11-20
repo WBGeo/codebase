@@ -7,15 +7,16 @@ from py_api_wbgeo.nodesapi import wbgeo_component
 from core.meshing_components.explicit.unstructured.mesh_data import classify_boundary_nodes, \
   build_point_sets
 from core.object_components import MeshResults, StructuralModelResults, ExtentData, MeshType
+from core import workbench_palette as palette
 
 
 @wbgeo_component(
     description='Provides structured implicit mesh as unstructured',
     title='Create Structured Implicit Mesh',
-    color='#cc9999',
-    border_color='#000000',
+    color=palette.MESH,
+    border_color=palette.BORDER,
     group='Meshing',
-    positionInGroup=20,
+    positionInGroup=970,
     identifier='wbgeo::create_structured_implicit_mesh_meshio',
     return_name='Mesh',
 )
