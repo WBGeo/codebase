@@ -105,6 +105,35 @@ def _check_convergence(stdout: str, input_file: str) -> None:
         )
 
 
+def _merge_consecutive_cell_blocks(
+    cells: list[CellBlock], mat_ids: list[np.ndarray]
+) -> tuple[list[CellBlock], list[np.ndarray]]:
+    """Merge consecutive cell blocks of the same cell type, together with their mat_ids.
+
+    SfePy keeps one element group per input block, and its VTK writer then
+    writes all cells of a cell type once per group -- with N lithology blocks
+    of hexahedra the result held every cell N times (GitHub issue #4). After
+    merging, the lithology of each cell lives only in its mat_id, which is
+    what the generated input files use anyway (``cells of group N``).
+
+    Only consecutive blocks are merged, so the global cell order -- which the
+    fault-zone mask and SfepyHydrothermalProblemBuilder.compute_darcy_velocity()
+    rely on -- stays exactly as it was.
+    """
+    merged_cells: list[CellBlock] = []
+    merged_ids: list[np.ndarray] = []
+    for block, ids in zip(cells, mat_ids):
+        if merged_cells and merged_cells[-1].type == block.type:
+            merged_cells[-1] = CellBlock(
+                block.type, np.concatenate([merged_cells[-1].data, block.data])
+            )
+            merged_ids[-1] = np.concatenate([merged_ids[-1], ids])
+        else:
+            merged_cells.append(CellBlock(block.type, block.data))
+            merged_ids.append(ids)
+    return merged_cells, merged_ids
+
+
 def _run_sfepy_input_file(
     input_file: str,
     mesh_results: MeshResults,
@@ -187,48 +216,28 @@ def _run_sfepy_input_file(
     else:
         os.makedirs(output_dir, exist_ok=True)
 
+    boundary_mode = "fixed_trailing"
     if mesh_type_code == "unstr":
-        # Drop non-volume blocks (dim != 3: fault surfaces, boundary/
-        # "extended" surfaces, wells, sources -- see
-        # SfepyHydrothermalProblemBuilder._map_mat_id_to_lithology's docstring)
-        # ourselves, rather than relying on Exo_format.py's own unstructured
-        # export path, which strips a hardcoded NUM_SIDE_BLOCKS=6 trailing
-        # blocks -- correct only when there are exactly 6 non-volume blocks
-        # total. A faulted model has 7+ (one extra triangle block per
-        # fault), so that slice would wrongly leave a fault-surface
-        # triangle block mixed in with real tetrahedra, which SfePy cannot
-        # handle (mixed 3-node/4-node elements in one region). Once
-        # pre-filtered to tetra-only, use Exo_format.MeshType.VOLUME_ONLY
-        # for the export call -- it behaves exactly like "imp"/"str" there
-        # (volume_blocks = all_blocks, no slicing), without mislabeling the
-        # mesh's true origin as "imp" just to get that behavior (this
-        # mesh's real provenance stays "unstructured" -- see
-        # MeshResults.mesh_type -- this only affects which code path
-        # Exo_format.py's exporter takes). Boundary conditions
-        # (Gamma_Top/Gamma_Bottom) don't depend on this: they're built from
-        # mesh_results.point_sets directly in
-        # SfepyHydrothermalProblemBuilder._region_lines(), never from Exodus
-        # side sets, so switching export type here doesn't affect them.
-        volume_elements = [
-            block for block in mesh_results.elements
-            if block.dim == 3
-        ]
+        # Keep only the volume blocks (dim == 3); fault surfaces, boundary/
+        # "extended" surfaces, wells and sources are not part of the SfePy
+        # domain (see SfepyHydrothermalProblemBuilder._map_mat_id_to_lithology).
+        # Their position in mesh_results.elements varies (a faulted model has
+        # one extra triangle block per fault), so the exporter's default
+        # "fixed_trailing" mode -- which treats exactly the last six blocks as
+        # boundaries -- must not be used here. boundary_mode="dim" writes the
+        # 3D blocks in their original order, whatever comes after them.
+        # Boundary conditions (Gamma_Top/Gamma_Bottom) are built from
+        # mesh_results.point_sets in SfepyHydrothermalProblemBuilder.
+        # _region_lines(), never from Exodus side sets, so they don't depend
+        # on this.
+        mesh_results = mesh_results.model_copy(
+            update={"elements": [block for block in mesh_results.elements if block.dim == 3]}
+        )
+        boundary_mode = "dim"
 
-        if len(volume_elements) != len(mesh_results.elements):
-            empty_boundary_blocks = [
-                CellBlock( cell_type="triangle", data=np.empty((0, 3), dtype=int), )
-                for _ in range(6)
-            ]
-
-            mesh_results = mesh_results.model_copy(
-                update={
-                    "elements": volume_elements + empty_boundary_blocks
-                }
-            )
-
-    export_type_code = mesh_type_code
-
-    exo_buffer = export_mesh_results_to_exodus(mesh_results, type=export_type_code)
+    exo_buffer = export_mesh_results_to_exodus(
+        mesh_results, type=mesh_type_code, boundary_mode=boundary_mode
+    )
 
     tmp_exo_fd, tmp_exo_path = tempfile.mkstemp(suffix=".exo")
     os.close(tmp_exo_fd)
@@ -267,6 +276,7 @@ def _run_sfepy_input_file(
                 ids[block_mask] = fault_group_id
             mat_ids.append(ids)
             offset += n
+        mesh.cells, mat_ids = _merge_consecutive_cell_blocks(mesh.cells, mat_ids)
         mesh.cell_data = {"mat_id": mat_ids}
         mesh.write(tmp_mesh_path, file_format="medit")
 
