@@ -57,6 +57,17 @@ def _variable_label(var_name: str) -> str:
     return _VARIABLE_LABELS.get(var_name, var_name)
 
 
+def _format_point(point: Sequence[float]) -> str:
+    """Compact (x, y, z) for plot titles, e.g. a mesh-centre default without all its decimals."""
+    return "(" + ", ".join(f"{float(v):.6g}" for v in point) + ")"
+
+
+def _format_bounds(bounds: Sequence[float]) -> str:
+    """Mesh bounds on one line, e.g. 'x 0..2500, y 0..1000, z 0..1000'."""
+    b = [float(v) for v in bounds]
+    return ", ".join(f"{axis} {b[2 * i]:.6g}..{b[2 * i + 1]:.6g}" for i, axis in enumerate("xyz"))
+
+
 def _time_step_index(sim: SimulationResults, time: float) -> int:
     """Zero-based saved-step index for a simulation time key."""
     return sorted(sim.nodes_by_time).index(time)
@@ -646,7 +657,7 @@ def plot_cross_section_2D(
         ax.set_aspect("equal")
 
     fig.colorbar(last_cf, ax=axes, orientation="vertical", label=_variable_label(var_name), fraction=0.046, pad=0.04)
-    fig.suptitle(f"{_variable_label(var_name)} cross-section (origin={origin}, normal={normal}): initial vs final")
+    fig.suptitle(f"{_variable_label(var_name)} cross-section (origin={_format_point(origin)}, normal={_format_point(normal)}): initial vs final")
     plt.show()
 
 
@@ -702,7 +713,7 @@ def plot_cross_section_difference_2D(
     ax.set_ylabel(v_label)
     ax.set_aspect("equal")
     fig.colorbar(cf, ax=ax, orientation="vertical", label=f"Δ {_variable_label(var_name)}", fraction=0.046, pad=0.04)
-    fig.suptitle(f"Δ {_variable_label(var_name)} cross-section (origin={origin}, normal={normal}): step {_time_step_index(sim, time_a)} -> step {_time_step_index(sim, time_b)}")
+    fig.suptitle(f"Δ {_variable_label(var_name)} cross-section (origin={_format_point(origin)}, normal={_format_point(normal)}): step {_time_step_index(sim, time_a)} -> step {_time_step_index(sim, time_b)}")
     plt.show()
 
 
@@ -743,7 +754,8 @@ def plot_variable_along_line(
     # instead of a false drop to zero at the line's ends.
     valid = np.asarray(sampled["vtkValidPointMask"]).astype(bool)
     if not valid.any():
-        raise RuntimeError(f"The line from {p0} to {p1} lies entirely outside the mesh (bounds {grid.bounds}).")
+        raise RuntimeError(f"The line from {_format_point(p0)} to {_format_point(p1)} lies entirely "
+                           f"outside the mesh ({_format_bounds(grid.bounds)}).")
     values = np.asarray(sampled[var_name], dtype=float)
     values = np.where(valid.reshape((-1,) + (1,) * (values.ndim - 1)), values, np.nan)
     distances = sampled["Distance"]
@@ -858,12 +870,14 @@ def plot_variable_time_series(
             logger.info("%s at point %s at time %s: %s", var_name, point, t, value)
         values.append(value if value is not None else np.nan)
     values = np.array(values)
+    if np.all(np.isnan(values)):
+        raise ValueError(f"Point {_format_point(point)} lies outside the mesh ({_format_bounds(mesh.bounds)}).")
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(range(start, end + 1), values, "-o", color="tab:red")
     ax.set_xlabel("Time step")
     ax.set_ylabel(_variable_label(var_name))
-    ax.set_title(f"{_variable_label(var_name)} at point {point} over time steps")
+    ax.set_title(f"{_variable_label(var_name)} at point {_format_point(point)} over time steps")
     ax.grid(True)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # steps are whole numbers
     ax.yaxis.set_major_formatter(FormatStrFormatter(f"%.{decimals}f"))

@@ -876,6 +876,24 @@ def test_inspect_plot_variable_along_line_runs_with_empty_inputs(monkeypatch):
     swc.inspect_simulation_result_plot_variable_along_line(simulation_result=_cube_simulation_result(), _inspector=None)
 
 
+def test_plot_variable_time_series_rejects_point_outside_the_mesh(monkeypatch):
+    from core.simulation_components.simulation_visualization import simulation_visualization as sv
+    monkeypatch.setattr(sv.plt, "show", lambda: None)
+    with pytest.raises(ValueError, match="lies outside the mesh"):
+        sv.plot_variable_time_series(_cube_simulation_result(), "T", point=(5000, 500, 500))
+
+
+def test_plot_variable_time_series_title_rounds_the_point(monkeypatch):
+    from core.simulation_components.simulation_visualization import simulation_visualization as sv
+    titles = []
+    monkeypatch.setattr(sv.plt, "show", lambda: titles.append(sv.plt.gca().get_title()))
+
+    sv.plot_variable_time_series(_cube_simulation_result(), "T", point=(500.123456789, 500.0, 499.987654321))
+
+    assert "(500.123, 500, 499.988)" in titles[0]
+    sv.plt.close("all")
+
+
 def test_plot_variable_time_series_uses_whole_step_ticks(monkeypatch):
     from core.simulation_components.simulation_visualization import simulation_visualization as sv
     ticks = []
