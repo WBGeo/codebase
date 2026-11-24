@@ -762,19 +762,42 @@ def test_inspect_plot_cross_section_2D_defaults_to_centroid_for_real_coordinates
     swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None)
 
     assert received["origin"] == pytest.approx(tuple(sim.nodes_by_time[0.0].mean(axis=0)))
-    assert received["normal"] == (0, 1, 0)
+    assert received["normal"] == (0.0, 1.0, 0.0)
 
 
-def test_inspect_plot_cross_section_2D_uses_explicit_origin(monkeypatch):
+@pytest.mark.parametrize("axis, normal", [("x", (1.0, 0.0, 0.0)), ("y", (0.0, 1.0, 0.0)), ("z", (0.0, 0.0, 1.0))])
+def test_inspect_plot_cross_section_2D_axis_and_position(monkeypatch, axis, normal):
     sim = _offset_simulation_result()
+    centroid = sim.nodes_by_time[0.0].mean(axis=0)
+    position = {"x": 3.25e5, "y": 5.65e6, "z": -500.0}[axis]
     received = {}
     monkeypatch.setattr(swc, "plot_cross_section_2D", lambda simulation_result, **kw: received.update(kw))
 
-    swc.inspect_simulation_result_plot_cross_section_2D(
-        simulation_result=sim, _inspector=None, origin=(3.25e5, 5.65e6, -500.0), normal=(1, 0, 0))
+    swc.inspect_simulation_result_plot_cross_section_2D(simulation_result=sim, _inspector=None,
+                                                        axis=axis, position=position)
 
-    assert received["origin"] == (3.25e5, 5.65e6, -500.0)
-    assert received["normal"] == (1, 0, 0)
+    expected_origin = list(centroid)
+    expected_origin["xyz".index(axis)] = position
+    assert received["normal"] == normal
+    assert received["origin"] == pytest.approx(tuple(expected_origin))
+
+
+def test_inspect_plot_cross_section_2D_rejects_position_outside_the_mesh(monkeypatch):
+    monkeypatch.setattr(swc, "plot_cross_section_2D", lambda simulation_result, **kw: None)
+    with pytest.raises(ValueError, match="along z it must be between -800 and -200"):
+        swc.inspect_simulation_result_plot_cross_section_2D(
+            simulation_result=_offset_simulation_result(), _inspector=None, axis="z", position=100.0)
+
+
+def test_saved_time_for_step_lists_the_saved_times():
+    with pytest.raises(ValueError, match=r"step 0: 0, step 1: 1"):
+        swc._saved_time_for_step(_offset_simulation_result(), 5)
+
+
+def test_line_and_time_series_inspectors_no_longer_expose_internal_settings():
+    import inspect as _inspect
+    assert "n_samples" not in _inspect.signature(swc.inspect_simulation_result_plot_variable_along_line).parameters
+    assert "decimals" not in _inspect.signature(swc.inspect_simulation_result_plot_variable_time_series).parameters
 
 
 def test_inspect_plot_variable_time_series_defaults_to_centroid(monkeypatch):

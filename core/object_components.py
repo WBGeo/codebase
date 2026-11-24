@@ -176,6 +176,24 @@ MeshTypeType = typing.Annotated[
     ),
 ]
 
+
+class SliceAxis(StrEnum):
+    """Axis a 2D section is taken normal to (plot inspectors). A StrEnum so the Workbench passes the value."""
+    X = "x"
+    Y = "y"
+    Z = "z"
+
+
+SliceAxisType = typing.Annotated[
+    SliceAxis,
+    AnnotatedScriptType(
+        name="SliceAxis",
+        identifier="SliceAxisType",
+        controlled="Select|" + "|".join(a.value for a in SliceAxis),
+        color=palette.PARAMETER,
+    ),
+]
+
 @wbgeo_type(name="Mesh", color=palette.MESH, identifier='MeshResults')
 
 class MeshResults(BaseModel):

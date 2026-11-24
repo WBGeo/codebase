@@ -1,14 +1,13 @@
 import json
 import typing
-from enum import StrEnum
 
 import pydantic
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, \
-  InspectorHelper, AnnotatedScriptType
+  InspectorHelper
 from pydantic import BaseModel
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements, \
-  StructuralModelResults, FaultModelResults
+  StructuralModelResults, FaultModelResults, SliceAxis, SliceAxisType
 from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.interpolator_functions import interpolator_parameters
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import \
@@ -256,20 +255,6 @@ def structural_modeling(
 def inspect_structural_model_result_detailed_report(structural_model_result: StructuralModelResults,
                                                     _inspector: InspectorHelper):
   structural_model_result.structural_frame.detailed_report()
-
-
-class SliceAxis(StrEnum):
-  """Axis a 2D section is taken normal to. A StrEnum so the Workbench passes the value, not the member name."""
-  X = "x"
-  Y = "y"
-  Z = "z"
-
-
-SliceAxisType = typing.Annotated[
-  SliceAxis,
-  AnnotatedScriptType(name='SliceAxis', identifier='SliceAxisType',
-                      controlled='Select|' + '|'.join(a.value for a in SliceAxis), color=palette.PARAMETER),
-]
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_2D',
