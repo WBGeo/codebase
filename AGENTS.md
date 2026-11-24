@@ -102,7 +102,9 @@ The essentials:
   - component name: `title=`;
   - component help text: `description=`, falling back to the docstring;
   - result object name: the `name=` of the **returned type**;
-  - small port label: `return_name=`.
+  - return port label: `return_name=`.
+  - input port labels: argument names
+  - (see the parameter table of [components.md](docs/developerts/components.md))
 
 ## Component rules
 
