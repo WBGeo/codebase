@@ -949,7 +949,8 @@ def inspect_simulation_result_plot_cross_section_2D(
     identifier='wbgeo::inspect_simulation_result_plot_variable_along_line',
     title='Plot Variable Along Line',
     description='Sample a result variable along a 3D line at a zero-based saved time step. '
-                'Line endpoints are model coordinates; defaults use the mesh bounding-box diagonal.',
+                'Line endpoints are model coordinates. Defaults: the last saved step and a '
+                'vertical line through the mesh centre, from the bottom to the top of the mesh.',
 )
 @wbgeo_inspector()
 def inspect_simulation_result_plot_variable_along_line(
@@ -961,8 +962,18 @@ def inspect_simulation_result_plot_variable_along_line(
     p1: Optional[AnnotatedPoint] = None,
     n_samples: int = 200,
 ):
-    physical_time = (None if time_step is None
+    times = sorted(simulation_result.nodes_by_time)
+    if not times:
+        raise ValueError("The simulation result has no saved time steps.")
+    physical_time = (times[-1] if time_step is None
                      else _saved_time_for_step(simulation_result, time_step))
+    # Default line: vertical through the mesh centre, like a virtual borehole.
+    nodes = simulation_result.nodes_by_time[physical_time]
+    centre = nodes.mean(axis=0)
+    if p0 is None:
+        p0 = (float(centre[0]), float(centre[1]), float(nodes[:, 2].min()))
+    if p1 is None:
+        p1 = (float(centre[0]), float(centre[1]), float(nodes[:, 2].max()))
     plot_variable_along_line(
         simulation_result,
         var_name=var_name,
@@ -989,6 +1000,13 @@ def inspect_simulation_result_plot_variable_time_series(
     time_step_end: Optional[int] = None,
     decimals: int = 3,
 ):
+    # Default to the mesh centroid (as the cross-section inspector does), so
+    # leaving the Point input empty samples inside the domain instead of
+    # failing on a missing point.
+    if point is None:
+        times = sorted(simulation_result.nodes_by_time)
+        if times:
+            point = tuple(float(v) for v in simulation_result.nodes_by_time[times[0]].mean(axis=0))
     plot_variable_time_series(
         simulation_result,
         var_name=var_name,

@@ -777,6 +777,116 @@ def test_inspect_plot_cross_section_2D_uses_explicit_origin(monkeypatch):
     assert received["normal"] == (1, 0, 0)
 
 
+def test_inspect_plot_variable_time_series_defaults_to_centroid(monkeypatch):
+    # An empty Point input arrives as None; it used to reach PyVista and fail
+    # with "cannot reshape array of size 1 into shape (3)".
+    sim = _offset_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_variable_time_series", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_variable_time_series(simulation_result=sim, _inspector=None)
+
+    assert received["point"] == pytest.approx(tuple(sim.nodes_by_time[0.0].mean(axis=0)))
+
+
+def test_inspect_plot_variable_time_series_uses_explicit_point(monkeypatch):
+    sim = _offset_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_variable_time_series", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_variable_time_series(
+        simulation_result=sim, _inspector=None, point=(3.25e5, 5.65e6, -500.0))
+
+    assert received["point"] == (3.25e5, 5.65e6, -500.0)
+
+
+def test_plot_variable_time_series_rejects_missing_point():
+    from core.simulation_components.simulation_visualization.simulation_visualization import (
+        plot_variable_time_series,
+    )
+    with pytest.raises(ValueError, match="three coordinates"):
+        plot_variable_time_series(_offset_simulation_result(), "T", point=None)
+
+
+def _cube_simulation_result():
+    """Tetrahedral cube mesh over [100, 900]^3 with three saved steps; T rises with depth."""
+    import pyvista as pv
+    grid = pv.ImageData(dimensions=(5, 5, 5), spacing=(200, 200, 200), origin=(100, 100, 100))
+    grid = grid.cast_to_unstructured_grid().triangulate()
+    nodes = np.asarray(grid.points)
+    sim = SimulationResults()
+    for t in (0.0, 10.0, 20.0):
+        sim.nodes_by_time[t] = nodes
+        sim.cells_by_time[t] = np.asarray(grid.cells)
+        sim.celltypes_by_time[t] = np.asarray(grid.celltypes)
+        sim.node_data_by_time[t] = {"T": 60.0 - nodes[:, 2] * 0.05 + t}
+    return sim
+
+
+def test_plot_variable_along_line_shows_gaps_outside_the_mesh(monkeypatch):
+    from core.simulation_components.simulation_visualization import simulation_visualization as sv
+    lines = []
+    monkeypatch.setattr(sv.plt, "show", lambda: lines.append(sv.plt.gca().lines[0].get_ydata()))
+
+    # Line runs from z=0 to z=1000, the mesh only covers z=100..900.
+    sv.plot_variable_along_line(_cube_simulation_result(), "T", 20.0, (500, 500, 0), (500, 500, 1000), n_samples=100)
+
+    values = np.asarray(lines[0], dtype=float)
+    assert np.isnan(values[0]) and np.isnan(values[-1])
+    inside = values[~np.isnan(values)]
+    assert inside.min() > 30.0  # no false zeros: T stays between 35 and 75 inside the mesh
+
+
+def test_plot_variable_along_line_rejects_line_outside_the_mesh(monkeypatch):
+    from core.simulation_components.simulation_visualization import simulation_visualization as sv
+    monkeypatch.setattr(sv.plt, "show", lambda: None)
+    with pytest.raises(RuntimeError, match="entirely outside the mesh"):
+        sv.plot_variable_along_line(_cube_simulation_result(), "T", 20.0, (5000, 0, 0), (6000, 0, 0))
+
+
+def test_inspect_plot_variable_along_line_defaults(monkeypatch):
+    # Empty inputs: last saved step and a vertical line through the mesh centre.
+    sim = _cube_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_variable_along_line", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_variable_along_line(simulation_result=sim, _inspector=None)
+
+    assert received["time"] == 20.0
+    assert received["p0"] == pytest.approx((500.0, 500.0, 100.0))
+    assert received["p1"] == pytest.approx((500.0, 500.0, 900.0))
+
+
+def test_inspect_plot_variable_along_line_keeps_explicit_inputs(monkeypatch):
+    sim = _cube_simulation_result()
+    received = {}
+    monkeypatch.setattr(swc, "plot_variable_along_line", lambda simulation_result, **kw: received.update(kw))
+
+    swc.inspect_simulation_result_plot_variable_along_line(
+        simulation_result=sim, _inspector=None, time_step=0, p0=(0, 500, 500), p1=(1000, 500, 500))
+
+    assert received["time"] == 0.0
+    assert received["p0"] == (0, 500, 500)
+    assert received["p1"] == (1000, 500, 500)
+
+
+def test_inspect_plot_variable_along_line_runs_with_empty_inputs(monkeypatch):
+    from core.simulation_components.simulation_visualization import simulation_visualization as sv
+    monkeypatch.setattr(sv.plt, "show", lambda: sv.plt.close("all"))
+    swc.inspect_simulation_result_plot_variable_along_line(simulation_result=_cube_simulation_result(), _inspector=None)
+
+
+def test_plot_variable_time_series_uses_whole_step_ticks(monkeypatch):
+    from core.simulation_components.simulation_visualization import simulation_visualization as sv
+    ticks = []
+    monkeypatch.setattr(sv.plt, "show", lambda: ticks.append(sv.plt.gca().get_xticks()))
+
+    sv.plot_variable_time_series(_cube_simulation_result(), "T", point=(500, 500, 500))
+
+    assert all(float(t).is_integer() for t in ticks[0])
+    sv.plt.close("all")
+
+
 def test_inspect_simulation_result_stdout_prints_each_stage(capsys):
     sim = SimulationResults()
     sim.solver_output = {"pressure": "pressure solver log", "heat": "heat solver log"}

@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
-from matplotlib.ticker import FormatStrFormatter
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 
 from core.object_components import SimulationResults
 from core.simulation_components.simulation_visualization.material_preview import (  # noqa: F401  (re-export)
@@ -739,7 +739,13 @@ def plot_variable_along_line(
     if sampled.n_points == 0:
         raise RuntimeError("Line sampling produced no points -- check p0/p1 against the model's extent.")
 
-    values = sampled[var_name]
+    # Samples outside the mesh come back as 0 from VTK; show them as gaps
+    # instead of a false drop to zero at the line's ends.
+    valid = np.asarray(sampled["vtkValidPointMask"]).astype(bool)
+    if not valid.any():
+        raise RuntimeError(f"The line from {p0} to {p1} lies entirely outside the mesh (bounds {grid.bounds}).")
+    values = np.asarray(sampled[var_name], dtype=float)
+    values = np.where(valid.reshape((-1,) + (1,) * (values.ndim - 1)), values, np.nan)
     distances = sampled["Distance"]
 
     plt.figure(figsize=(7, 4))
@@ -813,6 +819,8 @@ def plot_variable_time_series(
     times = sorted(sim.nodes_by_time.keys())
     if not times:
         raise ValueError("sim has no time steps.")
+    if point is None or np.asarray(point, dtype=float).shape != (3,):
+        raise ValueError(f"point must be three coordinates (x, y, z), got {point!r}.")
     start = 0 if time_step_start is None else time_step_start
     end = len(times) - 1 if time_step_end is None else time_step_end
     available_steps = ", ".join(f"step {i}: {t:g}" for i, t in enumerate(times))
@@ -857,6 +865,7 @@ def plot_variable_time_series(
     ax.set_ylabel(_variable_label(var_name))
     ax.set_title(f"{_variable_label(var_name)} at point {point} over time steps")
     ax.grid(True)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # steps are whole numbers
     ax.yaxis.set_major_formatter(FormatStrFormatter(f"%.{decimals}f"))
     plt.tight_layout()
     plt.show()
