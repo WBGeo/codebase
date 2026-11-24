@@ -927,8 +927,8 @@ during export.
 
 > **Workbench:** Where available, these are exposed as inspector
 > functions with limited functionality in the visual interface (visual
-> DSL) --- parameters are fixed; the codebase functions below expose the
-> full set of options.
+> DSL) --- only some parameters can be set there; the codebase functions
+> below expose the full set of options.
 
 > **Workbench component:** `Plot Mesh in 3D`
 
@@ -942,6 +942,9 @@ by lithology using the same element colors as the structural model.
     `"wireframe"`, or `"points"`. Default `"surface"`.
 -   **`show_plotter`** *(optional)*: If `True`, displays the interactive
     plot window. Default `True`.
+
+The Workbench version exposes `style` as a drop-down (default
+`"surface"`).
 
 Example call in the codebase:
 

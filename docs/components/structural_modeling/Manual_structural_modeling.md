@@ -172,7 +172,7 @@ structural_model_result.structural_frame.detailed_report()
 - **`off_screen`** *(optional)*: Render off-screen with no window — required before calling `.screenshot()` without `show()`. Default `False`.
 - **`show`** *(optional)*: If `True`, opens the interactive window immediately; set `False` to add further actors before displaying. Default `True`.
 
-The Workbench version calls this with `mesh_type="masked"` and `show_surface_meshes=True`.
+The Workbench version exposes `mesh_type` as a drop-down (default `"masked"`); faults use the same type where it exists, otherwise `"unmasked"`. The other options keep their defaults.
 
 ```python
 plot_structural_model_3D(structural_model_result.structural_frame, mesh_type="masked", fault_opacity=0.5)
@@ -219,6 +219,8 @@ fault_model_result.fault_frame.detailed_report()
 - **`crosscut_line_width`** *(optional)*: Line width of the highlighted crosscut lines. Default `6.0`.
 - **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
 - **`show`** *(optional)*: If `True`, opens the interactive window immediately. Default `True`.
+
+The Workbench version exposes `mesh_type` as a drop-down (default `"unmasked"`); the other options keep their defaults.
 
 ```python
 plot_fault_model_3D(fault_model_result.fault_frame, show_domain_map=True, domain_opacity=0.2)

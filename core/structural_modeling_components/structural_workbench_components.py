@@ -16,7 +16,22 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
   plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
+from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
+from py_api_wbgeo.nodesapi import AnnotatedScriptType
 from core import workbench_palette as palette
+
+
+# Dropdowns for the surface mesh type of the 3D plots (see the Output section of the structural modeling manual)
+GeoMeshTypeType = typing.Annotated[
+  GeoMeshType,
+  AnnotatedScriptType(name='GeoMeshType', identifier='GeoMeshTypeType',
+                      controlled='Select|' + '|'.join(m.value for m in GeoMeshType), color=palette.PARAMETER),
+]
+FaultMeshTypeType = typing.Annotated[
+  FaultMeshType,
+  AnnotatedScriptType(name='FaultMeshType', identifier='FaultMeshTypeType',
+                      controlled='Select|' + '|'.join(m.value for m in FaultMeshType), color=palette.PARAMETER),
+]
 
 
 class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
@@ -269,11 +284,16 @@ def inspect_structural_model_result_plot_structural_model_2D(
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D_sf',
-                 title='Plot Model Result 3D')
+                 title='Plot Model Result 3D',
+                 description='3D view of the structural model surfaces. mesh_type selects which surface meshes '
+                             'are shown (masked, unmasked, combined, extended, extended_masked); faults use the '
+                             'same type where it exists, otherwise unmasked.')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_3D(
-    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
-  plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
+    structural_model_result: StructuralModelResults, _inspector: InspectorHelper,
+    mesh_type: GeoMeshTypeType = GeoMeshType.MASKED.value):
+  plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True,
+                           mesh_type=GeoMeshType(mesh_type))
 
 
 # -----------------------------------------------------------------------------
@@ -345,8 +365,11 @@ def inspect_fault_model_result_plot_structural_model_2D(
 
 @wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_3D_sf',
                  title='Plot Fault Model Result 3D',
-                 description='...')
+                 description='3D view of the fault model: fault surfaces, input data and fault domains. '
+                             'mesh_type selects which fault surface meshes are shown '
+                             '(masked, unmasked, extended, extended_masked).')
 @wbgeo_inspector()
 def inspect_fault_model_result_plot_structural_model_3D_sf(
-    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
-  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True)
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper,
+    mesh_type: FaultMeshTypeType = FaultMeshType.UNMASKED.value):
+  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True, mesh_type=FaultMeshType(mesh_type))

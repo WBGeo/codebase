@@ -290,3 +290,71 @@ def test_fault_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
     swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None)
 
     assert received == {"axis": "y", "index": None}
+
+
+# --- 3D inspectors: mesh type dropdowns ---------------------------------------------------
+
+def test_mesh_type_selects_list_all_mesh_types():
+    import core.structural_modeling_components.structural_workbench_components as swc
+    assert swc.GeoMeshTypeType.__metadata__[0].kwargs["controlled"] == \
+        "Select|masked|unmasked|combined|extended|extended_masked"
+    assert swc.FaultMeshTypeType.__metadata__[0].kwargs["controlled"] == \
+        "Select|masked|unmasked|extended|extended_masked"
+
+
+@pytest.mark.parametrize("mesh_type", ["masked", "extended_masked"])
+def test_inspector_3D_forwards_mesh_type(monkeypatch, mesh_type):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_3D", lambda frame, **kw: received.update(kw))
+
+    swc.inspect_structural_model_result_plot_structural_model_3D(
+        SimpleNamespace(structural_frame="frame"), None, mesh_type=mesh_type)
+
+    assert received["mesh_type"] == mesh_type and received["show_surface_meshes"] is True
+
+
+def test_inspector_3D_defaults_to_masked(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_3D", lambda frame, **kw: received.update(kw))
+    swc.inspect_structural_model_result_plot_structural_model_3D(SimpleNamespace(structural_frame="frame"), None)
+    assert received["mesh_type"] == "masked"
+
+
+def test_fault_inspector_3D_forwards_mesh_type_and_defaults_to_unmasked(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = []
+    monkeypatch.setattr(swc, "plot_fault_model_3D", lambda frame, **kw: received.append(kw["mesh_type"]))
+
+    swc.inspect_fault_model_result_plot_structural_model_3D_sf(SimpleNamespace(fault_frame="ff"), None)
+    swc.inspect_fault_model_result_plot_structural_model_3D_sf(SimpleNamespace(fault_frame="ff"), None,
+                                                               mesh_type="extended")
+
+    assert received == ["unmasked", "extended"]
+
+
+# --- Plot Mesh in 3D: style dropdown --------------------------------------------------------
+
+def test_mesh_style_select_and_inspector(monkeypatch):
+    import asyncio
+    from core.meshing_components.meshing_visualization import meshing_visualization as mv
+    assert mv.MeshStyleType.__metadata__[0].kwargs["controlled"] == "Select|surface|wireframe|points"
+
+    calls = []
+    monkeypatch.setattr(mv, "plot_mesh_3d", lambda mesh, geo, style, show: calls.append((mesh, geo, style)))
+
+    class _Trace:
+        async def get_value(self):
+            return "geo"
+
+    class _Inspector:
+        async def trace(self, _type):
+            return _Trace()
+
+    inspector = mv.inspect_implicit_mesh_3d.__wrapped__ if hasattr(mv.inspect_implicit_mesh_3d, "__wrapped__") \
+        else mv.inspect_implicit_mesh_3d
+    asyncio.run(inspector("mesh", _Inspector()))
+    asyncio.run(inspector("mesh", _Inspector(), style="wireframe"))
+
+    assert calls == [("mesh", "geo", "surface"), ("mesh", "geo", "wireframe")]
