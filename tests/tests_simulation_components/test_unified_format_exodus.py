@@ -48,6 +48,38 @@ def test_nodes_shared_between_blocks_are_loaded_once(two_block_exodus):
     assert len(result.celltypes_by_time[time]) == 2
 
     # Every loaded point is a distinct file node at its original position.
-    gid = np.asarray(result.node_data_by_time[time]["GlobalNodeId"])
-    assert sorted(gid) == list(range(1, len(nodes) + 1))
-    np.testing.assert_allclose(pts, nodes[gid - 1])
+    np.testing.assert_allclose(np.unique(pts, axis=0), np.unique(nodes, axis=0))
+
+
+def test_vtk_bookkeeping_arrays_are_not_stored_but_block_ids_are(two_block_exodus):
+    path, _ = two_block_exodus
+
+    result = load_exodus_results(path)
+
+    (time,) = result.nodes_by_time
+    stored = set(result.node_data_by_time[time]) | set(result.cell_data_by_time[time])
+    assert not stored & {"GlobalNodeId", "PedigreeNodeId", "GlobalElementId", "PedigreeElementId"}
+    assert sorted(np.unique(result.cell_data_by_time[time]["ObjectId"]).tolist()) == [1, 2]
+
+
+def test_time_steps_share_one_geometry(tmp_path):
+    from core.object_components import SimulationResults
+    from core.simulation_components.output_format.exodus.exodus_results_writer import write_exodus_results
+
+    nodes = np.array([[x, y, z] for z in (0.0, 1.0) for y in (0.0, 1.0) for x in (0.0, 1.0)])
+    sim = SimulationResults(block_names={0: "rock"})
+    for t in (0.0, 1.0, 2.0):
+        sim.nodes_by_time[t] = nodes
+        sim.cells_by_time[t] = np.array([8, 0, 1, 3, 2, 4, 5, 7, 6])  # one hexahedron (VTK layout)
+        sim.celltypes_by_time[t] = np.array([12])
+        sim.node_data_by_time[t] = {"temperature": np.full(8, 10.0 + t)}
+        sim.cell_data_by_time[t] = {"mat_id": np.array([0.0])}
+    path = write_exodus_results(sim, str(tmp_path / "steps.e"))
+
+    result = load_exodus_results(path)
+
+    assert sorted(result.nodes_by_time) == [0.0, 1.0, 2.0]
+    for field in (result.nodes_by_time, result.cells_by_time, result.celltypes_by_time):
+        assert len({id(array) for array in field.values()}) == 1
+    for t in (0.0, 1.0, 2.0):  # the field values still differ per step
+        np.testing.assert_allclose(result.node_data_by_time[t]["temperature"], 10.0 + t)

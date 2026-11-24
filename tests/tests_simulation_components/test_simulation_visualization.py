@@ -106,3 +106,79 @@ def test_in_plane_axes_arbitrary_normal_is_orthonormal():
     assert np.isclose(np.dot(u, v), 0.0, atol=1e-9)
     assert np.isclose(np.dot(u, n), 0.0, atol=1e-9)
     assert np.isclose(np.dot(v, n), 0.0, atol=1e-9)
+
+
+# -----------------------------------------------------------------------------
+# _cross_sections_on_plane -- sampling the 3D mesh directly (GitHub issue #3)
+# -----------------------------------------------------------------------------
+
+def _hex_sim(times=(0.0, 1.0), drop_corner=False):
+    """Box of hexahedra on [0, 4] x [0, 3] x [0, 5]; T = (x + 2z) * (1 + t), linear in space.
+
+    drop_corner removes the cells with x > 2 and z > 3, giving an L-shaped (concave) outline in y-planes.
+    """
+    import pyvista as pv
+    grid = pv.ImageData(dimensions=(5, 4, 6)).cast_to_unstructured_grid()
+    if drop_corner:
+        centers = grid.cell_centers().points
+        keep = np.flatnonzero(~((centers[:, 0] > 2) & (centers[:, 2] > 3)))
+        grid = grid.extract_cells(keep)
+    nodes = np.asarray(grid.points, dtype=float)
+    sim = SimulationResults()
+    for t in times:
+        sim.nodes_by_time[t] = nodes
+        sim.cells_by_time[t] = np.asarray(grid.cells, dtype=np.int64)
+        sim.celltypes_by_time[t] = np.asarray(grid.celltypes, dtype=np.int64)
+        sim.node_data_by_time[t] = {"T": (nodes[:, 0] + 2 * nodes[:, 2]) * (1 + t)}
+    return sim
+
+
+@pytest.mark.parametrize("origin", [(0.0, 1.5, 0.0), (0.0, 0.0, 0.0)])  # inside and on the boundary face y = 0
+def test_cross_section_reproduces_a_linear_field_exactly(origin):
+    from core.simulation_components.simulation_visualization.simulation_visualization import _cross_sections_on_plane
+    sim = _hex_sim()
+    u_axis, v_axis, _ = _in_plane_axes((0, 1, 0))
+
+    UG, VG, (Za, Zb) = _cross_sections_on_plane(sim, "T", (0.0, 1.0), origin, (0, 1, 0), u_axis, v_axis, 21)
+
+    # the grid spans the model in x (u) and z (v); every point lies in the mesh
+    assert (UG.min(), UG.max(), VG.min(), VG.max()) == (0.0, 4.0, 0.0, 5.0)
+    np.testing.assert_allclose(Za, UG + 2 * VG, atol=1e-9)
+    np.testing.assert_allclose(Zb, 2 * (UG + 2 * VG), atol=1e-9)
+
+
+def test_cross_section_leaves_points_outside_a_concave_mesh_empty():
+    from core.simulation_components.simulation_visualization.simulation_visualization import _cross_sections_on_plane
+    sim = _hex_sim(times=(0.0,), drop_corner=True)
+    u_axis, v_axis, _ = _in_plane_axes((0, 1, 0))
+
+    UG, VG, (Z,) = _cross_sections_on_plane(sim, "T", (0.0,), (0.0, 1.5, 0.0), (0, 1, 0), u_axis, v_axis, 41)
+
+    missing = (UG > 2.05) & (VG > 3.05)  # the removed corner: no mesh, so no value
+    assert np.isnan(Z[missing]).all()
+    inside = ~((UG > 1.95) & (VG > 2.95))
+    np.testing.assert_allclose(Z[inside], (UG + 2 * VG)[inside], atol=1e-9)
+
+
+def test_cross_section_on_an_oblique_plane():
+    from core.simulation_components.simulation_visualization.simulation_visualization import _cross_sections_on_plane
+    sim = _hex_sim(times=(0.0,))
+    normal = (1.0, 1.0, 0.0)
+    u_axis, v_axis, _ = _in_plane_axes(normal)
+    origin = (2.0, 1.5, 2.5)
+
+    UG, VG, (Z,) = _cross_sections_on_plane(sim, "T", (0.0,), origin, normal, u_axis, v_axis, 31)
+
+    n = np.array(normal) / np.linalg.norm(normal)
+    points = UG[..., None] * u_axis + VG[..., None] * v_axis + np.dot(origin, n) * n
+    inside = ~np.isnan(Z)
+    assert inside.sum() > 100
+    np.testing.assert_allclose(Z[inside], (points[..., 0] + 2 * points[..., 2])[inside], atol=1e-9)
+
+
+def test_cross_section_raises_when_the_plane_misses_the_mesh():
+    from core.simulation_components.simulation_visualization.simulation_visualization import _cross_sections_on_plane
+    sim = _hex_sim(times=(0.0,))
+    u_axis, v_axis, _ = _in_plane_axes((0, 1, 0))
+    with pytest.raises(RuntimeError, match="does not cut the mesh"):
+        _cross_sections_on_plane(sim, "T", (0.0,), (0.0, 50.0, 0.0), (0, 1, 0), u_axis, v_axis, 11)

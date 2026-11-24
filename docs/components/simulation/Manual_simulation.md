@@ -1106,6 +1106,12 @@ The relevant parameters are:
 - **`n_samples`** *(default: `200`)*: Number of sampling intervals
   along the line.
 
+Parts of the line outside the mesh are shown as gaps. In the Workbench
+inspector, the inputs are optional: without a time step it uses the
+last saved step, and without `p0`/`p1` it samples a vertical line
+through the mesh centre, from the bottom to the top of the mesh (like
+a temperature log in a virtual borehole).
+
 Example call in the codebase:
 
 ```python
@@ -1133,6 +1139,12 @@ The relevant parameters are:
 - **`point`**: Spatial coordinates `(x, y, z)`.
 - **`decimals`** *(default: `3`)*: Number of decimal places used
   for formatting the vertical axis.
+- **`time_step_start`**, **`time_step_end`** *(optional)*: Zero-based,
+  inclusive range of saved steps to plot; all steps by default.
+
+Steps where the point lies outside the mesh are shown as gaps. In the
+Workbench inspector, the point is optional and defaults to the mesh
+centre.
 
 Example call in the codebase:
 
@@ -1303,3 +1315,8 @@ topology, and numerical fields. It includes:
     e.g. GOLEM's postprocessor CSVs.
 -   **`input_files`** --- the input file(s) the solver ran.
 -   **`block_names`** --- the name of each element block, by block id.
+
+Arrays that do not change between time steps, such as the geometry of an
+unchanged mesh, block ids (`mat_id`, `ObjectId`) or a steady-state field,
+are stored only once and shared by all time steps. A stored result
+therefore grows only with the fields that actually change.
