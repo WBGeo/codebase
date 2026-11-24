@@ -20,7 +20,7 @@ component wraps one method or processing step behind typed input and output port
   `StructuralModelResults` and must not access scalar fields or interpolation
   methods or re-run interpolation; anything meshing needs (e.g. surfaces extended
   past the model extent) is computed in the structural modeling step and stored on
-  the result.
+  the result. (The `_inspector` of inspection components is an exception.)
 - **Results are self-contained.** Results deliberately carry everything later
   components might need, even redundantly, so components stay independent after
   computation. Storage size is not a goal.
