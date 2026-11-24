@@ -1722,17 +1722,17 @@ def mesh_generator(ov: List[Tuple[int, int]], extent: List[float], well_tags: Op
 
 ExtentZData = typing.Annotated[List[float], AnnotatedScriptType(name='extent_z', color=palette.PARAMETER, identifier='mesh::ExtentZData', controlled='Table|2|ZMin|ZMax')]
 
-WellData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='well_list', color=palette.MESH_ENGINEERING, identifier='mesh::WellListData')]
+WellData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name="Wells", color=palette.MESH_ENGINEERING, identifier='mesh::WellListData')]
 
-SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name='sources', color=palette.MESH_ENGINEERING, identifier='mesh::SourcesData')]
+SourcesData = typing.Annotated[typing.Union[List[Tuple[float, float, float]], Dict[int, List[Tuple[float, float, float]]]], AnnotatedScriptType(name="Sources", color=palette.MESH_ENGINEERING, identifier='mesh::SourcesData')]
 
-ShaftData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='shaft_list', color=palette.MESH_ENGINEERING, identifier='mesh::ShaftListData')]
+ShaftData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name="Shafts", color=palette.MESH_ENGINEERING, identifier='mesh::ShaftListData')]
 
-PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name='plane_list', color=palette.MESH_ENGINEERING, identifier='mesh::PlaneListData')]
+PlaneData = typing.Annotated[typing.Union[List[Tuple[float, ...]], Dict[int, List[Tuple[float, ...]]]], AnnotatedScriptType(name="Planes", color=palette.MESH_ENGINEERING, identifier='mesh::PlaneListData')]
 
-EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name='ellipse_list', color=palette.MESH_ENGINEERING, identifier='mesh::EllipseListData' )]
+EllipseData = typing.Annotated[typing.Union[List[Dict[str, typing.Any]], Dict[int, List[Dict[str, typing.Any]]]], AnnotatedScriptType( name="Ellipses", color=palette.MESH_ENGINEERING, identifier='mesh::EllipseListData' )]
 
-TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name='triangulation', color=palette.MESH_ENGINEERING,
+TriangulationData = typing.Annotated[typing.Union[NpNDArrayFp64, Dict[int, NpNDArrayFp64]], AnnotatedScriptType( name="Triangulated Planes", color=palette.MESH_ENGINEERING,
         identifier='mesh::TriangulationData')]
 
 # the file must end with "wells.csv", e.g., "example_wells.csv", etc.
@@ -1860,7 +1860,7 @@ SmartRefinement = typing.Annotated[
 
 
 @wbgeo_component(description='Loads a well from a wells.CSV file',
-                 title='Load Well',  # The title shown in the GUI
+                 title='Load Wells',  # The title shown in the GUI
                  color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
                  border_color=palette.BORDER,  # and its border color
                  group='Meshing',
@@ -1981,7 +1981,7 @@ def load_wells_from_csv(well_file: WellCSVDataType, key_hierarchical: bool = Fal
 SourceCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::source_csv', controlled='RemoteFile|endswith=sources.csv')]
 
 @wbgeo_component(description='Loads a source from a sources.CSV file',
-                 title='Load Source',  # The title shown in the GUI
+                 title='Load Sources',  # The title shown in the GUI
                  color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
                  border_color=palette.BORDER,  # and its border color
                  group='Meshing',
@@ -2044,7 +2044,7 @@ EllipseCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', colo
 
 @wbgeo_component(
     description='Loads ellipses from an ellipses.CSV file',
-    title='Load Ellipse',
+    title='Load Ellipses',
     color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
     border_color=palette.BORDER,  # and its border color
     group='Meshing',
@@ -2131,7 +2131,7 @@ def load_ellipses_from_csv(ellipse_file: EllipseCSVDataType, key_hierarchical: b
 ShaftCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::shaft_csv', controlled='RemoteFile|endswith=shafts.csv')]
 
 @wbgeo_component(description='Loads a shaft from a shafts.CSV file',
-                 title='Load Shaft',  # The title shown in the GUI
+                 title='Load Shafts',  # The title shown in the GUI
                  color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
                  border_color=palette.BORDER,  # and its border color
                  group='Meshing',
@@ -2198,7 +2198,7 @@ def load_shafts_from_csv(shaft_file: ShaftCSVDataType, key_hierarchical: bool = 
 PlaneCSVDataType = typing.Annotated[str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::plane_csv', controlled='RemoteFile|endswith=planes.csv')]
 
 @wbgeo_component(description='Loads a plane from a planes.CSV file',
-                 title='Load Plane',  # The title shown in the GUI
+                 title='Load Planes',  # The title shown in the GUI
                  color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
                  border_color=palette.BORDER,  # and its border color
                  group='Meshing',
@@ -2265,7 +2265,7 @@ TriangulationsPlanesData = typing.Annotated[typing.Union[str, typing.List[str]],
 
 @wbgeo_component(
     description='Load planes coordinates from a CSV to do triangulations',
-    title='Load Triangulations Planes',
+    title='Load Triangulated Planes',
     color=palette.MESH_ENGINEERING,  # the color of the component (see core/workbench_palette.py)
     border_color=palette.BORDER,  # and its border color
     group='Meshing',

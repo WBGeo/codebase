@@ -48,13 +48,13 @@ so saved pipelines are not affected.
 
 # Structural modeling: light brown for input data, greens for computations
 STRUCTURAL_INPUT = "#d4ad6e"
-"""Input data and grid (Regular Grid, Input data for Structural Elements, Fault Input Data)."""
+"""Input data and grid (Regular Grid, Structural Input Data, Fault Input Data)."""
 FAULT_MODEL = "#9cc65a"
 """Compute Fault Model and its result."""
 STRUCTURAL_MODEL = "#5fa040"
 """Compute Structural Model and its result."""
 STRUCTURAL_EXPORT = "#a9a845"
-"""Export of structural models to external tools (Push Geosolution to LiquidEarth)."""
+"""Export of structural models to external tools (Push Structural Model to LiquidEarth)."""
 
 # Meshing: light teal for engineering objects, blue for mesh creation
 MESH_ENGINEERING = "#7fd0cb"

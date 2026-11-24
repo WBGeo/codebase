@@ -161,7 +161,7 @@ SmartStructuralInputSmartInputOptions = typing.Annotated[
 
 
 @wbgeo_component(description='Input data for a Structural Geological Model. Requires surface points, optionally orientations and a mapping file.',
-                 title='Input data for Structural Elements',
+                 title='Structural Input Data',
                  color=palette.STRUCTURAL_INPUT,
                  border_color=palette.BORDER,
                  group='Inputs',

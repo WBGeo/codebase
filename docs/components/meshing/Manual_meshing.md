@@ -195,7 +195,7 @@ output.
 **`wells`** --- well trajectories, each a straight line or a polyline (a
 sequence of points) between the top and bottom of the well.
 
-> **Workbench component:** `Load Well`
+> **Workbench component:** `Load Wells`
 
 Each row of the CSV file corresponds to a single point on a well and has
 four columns: `id`, `x`, `y`, `z`. Rows sharing an `id` belong to the
@@ -222,7 +222,7 @@ wells = load_wells_from_csv(cwd + "/examples/synthetic_examples/model2/input_dat
 
 **`sources`** --- point sources, each a single `(x, y, z)` point.
 
-> **Workbench component:** `Load Source`
+> **Workbench component:** `Load Sources`
 
 Each row has four columns: `id`, `x`, `y`, `z`. Each `id` must appear
 exactly once --- unlike wells, sources cannot span multiple rows. Lines
@@ -239,7 +239,7 @@ sources = load_sources_from_csv(cwd + "/examples/synthetic_examples/model2/input
 **`shafts`** --- mining shafts, each a cylinder with a center
 `(x, y, z)`, an axis direction `(dx, dy, dz)`, and a radius.
 
-> **Workbench component:** `Load Shaft`
+> **Workbench component:** `Load Shafts`
 
 Each row has eight columns: `id, cx, cy, cz, ax, ay, az, radius`, where
 `cx/cy/cz` is the center, `ax/ay/az` is the axis direction vector, and
@@ -264,7 +264,7 @@ geological layers or faults. Only in-plane extra planes can be generated
 in the Workbench; for out-of-plane surfaces, use `triangulations`
 instead.
 
-> **Workbench component:** `Load Plane`
+> **Workbench component:** `Load Planes`
 
 Each row defines a single point belonging to a plane: `id, x, y, z`.
 Rows sharing an `id` belong to the same plane, and each plane needs at
@@ -297,7 +297,7 @@ planes = load_planes_from_csv(cwd + "/examples/synthetic_examples/model2/input_d
 -   `xAxis` *(optional)*: x-axis vector of the ellipse plane (default
     `[1, 0, 0]`)
 
-> **Workbench component:** `Load Ellipse`
+> **Workbench component:** `Load Ellipses`
 
 Each row defines one ellipse. The first column is an ID, followed by the
 required fields `cx, cy, cz, r1, r2` and the optional fields
@@ -316,7 +316,7 @@ ellipses = load_ellipses_from_csv(cwd + "/examples/synthetic_examples/model2/inp
 **`triangulations`** --- additional 3D points `[(x, y, z), ...]` used to
 generate a Delaunay triangulation for a surface.
 
-> **Workbench component:** `Load Triangulations Planes`
+> **Workbench component:** `Load Triangulated Planes`
 
 Each row defines a single 3D point with three columns: `x, y, z`. Lines
 starting with `#`, and empty lines, are ignored.

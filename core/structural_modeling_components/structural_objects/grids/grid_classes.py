@@ -21,7 +21,7 @@ Resolution3 = Tuple[int, int, int]
 
 
 @wbgeo_type(
-    name="Grid for discretization of a structural geological model",
+    name="Regular Grid",
     color=palette.STRUCTURAL_INPUT,
     identifier="RegularGrid",
 )

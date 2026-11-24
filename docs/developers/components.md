@@ -65,7 +65,7 @@ whose result they export:
 | `STRUCTURAL_MODEL`   | `#5fa040` | Compute Structural Model                                            |
 | `STRUCTURAL_EXPORT`  | `#a9a845` | Export of structural models to external tools (LiquidEarth)         |
 | `MESH`               | `#3a9fc4` | Mesh creation                                                       |
-| `MESH_ENGINEERING`   | `#7fd0cb` | Engineering objects (Load Well, Source, Shaft, Plane, Ellipse, ...) |
+| `MESH_ENGINEERING`   | `#7fd0cb` | Engineering objects (Load Wells, Sources, Shafts, Planes, Ellipses, ...) |
 | `MESH_EXPORT`        | `#7896d0` | Export Mesh                                                         |
 | `SIMULATION_BUILDER` | `#f9a93a` | Problem builders                                                    |
 | `SIMULATION_RUN`     | `#e8663e` | Simulation runs                                                     |
@@ -84,7 +84,7 @@ against white; avoid very pale colours, white text is unreadable on them.
 ```python
 from core import workbench_palette as palette
 
-@wbgeo_component(identifier='wbgeo::meshing_load_well_from_csv', title='Load Well',
+@wbgeo_component(identifier='wbgeo::meshing_load_well_from_csv', title='Load Wells',
                  color=palette.MESH_ENGINEERING, border_color=palette.BORDER,
                  group='Meshing', positionInGroup=890)
 ```
