@@ -216,3 +216,77 @@ def test_structural_model_3D_arrow_length_follows_model_size(monkeypatch, size):
     plot_structural_model_3D(frame, show_surface_meshes=False, off_screen=True, show=False)
 
     assert scales == [pytest.approx(0.05 * size * np.sqrt(3))]
+
+
+# --- Plot Model Result 2D: axis and index -------------------------------------------------
+
+def _frame_on_grid(resolution=(5, 4, 3)) -> SimpleNamespace:
+    """Just enough of a frame for plot_structural_model_2D's index check (runs before anything else is read)."""
+    return SimpleNamespace(grid=RegularGrid(extent=(0, 1, 0, 1, 0, 1), resolution=resolution))
+
+
+@pytest.mark.parametrize("axis, index", [("x", 5), ("y", 4), ("z", -1)])
+def test_plot_structural_model_2D_rejects_index_outside_the_grid(axis, index):
+    with pytest.raises(ValueError, match=f"along {axis} it must be between 0 and"):
+        viz.plot_structural_model_2D(_frame_on_grid(), axis=axis, index=index)
+
+
+def test_inspector_2D_forwards_axis_and_index(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_2D", lambda frame, **kw: received.update(kw, frame=frame))
+    result = SimpleNamespace(structural_frame="frame")
+
+    swc.inspect_structural_model_result_plot_structural_model_2D(result, None, axis="z", index=7)
+
+    assert received == {"frame": "frame", "axis": "z", "index": 7}
+
+
+def test_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_2D", lambda frame, **kw: received.update(kw))
+
+    swc.inspect_structural_model_result_plot_structural_model_2D(SimpleNamespace(structural_frame="frame"), None)
+
+    assert received == {"axis": "y", "index": None}
+
+
+def test_slice_axis_is_a_select_of_x_y_z():
+    import core.structural_modeling_components.structural_workbench_components as swc
+    annotation = swc.SliceAxisType.__metadata__[0]
+    assert annotation.kwargs["controlled"] == "Select|x|y|z"
+
+
+# --- Plot Fault Model Result 2D: axis and index -------------------------------------------
+
+@pytest.mark.parametrize("axis, index", [("x", 4), ("z", -1)])
+def test_plot_fault_model_2D_rejects_index_outside_the_grid(axis, index):
+    ff = _fault_frame_with_scalar_fields(domain_map=np.zeros((4, 4, 4)))
+    with pytest.raises(ValueError, match=f"along {axis} it must be between 0 and 3"):
+        plot_fault_model_2D(ff, axis=axis, index=index)
+
+
+def test_plot_fault_model_2D_accepts_the_last_cell():
+    ff = _fault_frame_with_scalar_fields(domain_map=np.zeros((4, 4, 4)))
+    plot_fault_model_2D(ff, axis="x", index=3)  # must not raise
+
+
+def test_fault_inspector_2D_forwards_axis_and_index(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_fault_model_2D", lambda frame, **kw: received.update(kw, frame=frame))
+
+    swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None, axis="x", index=2)
+
+    assert received == {"frame": "ff", "axis": "x", "index": 2}
+
+
+def test_fault_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_fault_model_2D", lambda frame, **kw: received.update(kw))
+
+    swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None)
+
+    assert received == {"axis": "y", "index": None}

@@ -123,7 +123,7 @@ Default parameters are estimated automatically from the spatial distribution of 
 
 ## Visualisation and Inspection
 
-> **Workbench:** Where available, these are exposed as inspector functions with limited functionality in the visual interface (visual DSL) — parameters are fixed; the codebase functions below expose the full set of options.
+> **Workbench:** Where available, these are exposed as inspector functions with limited functionality in the visual interface (visual DSL) — only some parameters can be set there (noted per function); the codebase functions below expose the full set of options.
 
 The following components allow quick inspection of input data and model results without leaving the Workbench.
 
@@ -188,6 +188,8 @@ plot_structural_model_3D(structural_model_result.structural_frame, mesh_type="ma
 - **`show_input_data`** *(optional)*: Overlay input surface points and orientation arrows. Default `True`.
 - **`title_suffix`** *(optional)*: Text appended to the plot title. Default `""`.
 
+The Workbench version exposes `axis` (a choice of x, y or z) and `index` (empty = the mid-point); the other options keep their defaults.
+
 ```python
 plot_structural_model_2D(structural_model_result.structural_frame, axis="x", index=20)
 ```
@@ -230,6 +232,8 @@ plot_fault_model_3D(fault_model_result.fault_frame, show_domain_map=True, domain
 - **`show_results`** *(optional)*: Plot the fault domain map and isolines, if present. Default `True`.
 - **`show_input_data`** *(optional)*: Plot input surface points, if available. Default `True`.
 - **`show_fault_contours`** *(optional)*: Overlay fault isolines. Default `True`.
+
+The Workbench version exposes `axis` (a choice of x, y or z) and `index` (empty = the mid-point), as in `Plot Model Result 2D`.
 
 ```python
 plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)

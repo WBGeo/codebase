@@ -387,8 +387,11 @@ def plot_structural_model_2D(
     y = frame.grid.gridy
     z = frame.grid.gridz
 
+    n_cells = {'x': len(x), 'y': len(y), 'z': len(z)}[axis]
     if index is None:
-        index = {'x': len(x), 'y': len(y), 'z': len(z)}[axis] // 2
+        index = n_cells // 2
+    elif not 0 <= index < n_cells:
+        raise ValueError(f"index={index} is outside the grid: along {axis} it must be between 0 and {n_cells - 1}.")
 
     #  Compute spacing for imshow extent
     dx = (x[-1] - x[0]) / (len(x) - 1)
@@ -856,8 +859,11 @@ def plot_fault_model_2D(
     y = np.asarray(y)
     z = np.asarray(z)
 
+    n_cells = {'x': len(x), 'y': len(y), 'z': len(z)}[axis]
     if index is None:
-        index = {'x': len(x), 'y': len(y), 'z': len(z)}[axis] // 2
+        index = n_cells // 2
+    elif not 0 <= index < n_cells:
+        raise ValueError(f"index={index} is outside the grid: along {axis} it must be between 0 and {n_cells - 1}.")
 
     # spacing for half-cell padded extent
     dx = (x[-1] - x[0]) / (len(x) - 1) if len(x) > 1 else 1.0

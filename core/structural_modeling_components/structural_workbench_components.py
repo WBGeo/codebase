@@ -1,9 +1,10 @@
 import json
 import typing
+from enum import StrEnum
 
 import pydantic
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, \
-  InspectorHelper
+  InspectorHelper, AnnotatedScriptType
 from pydantic import BaseModel
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements, \
@@ -257,12 +258,29 @@ def inspect_structural_model_result_detailed_report(structural_model_result: Str
   structural_model_result.structural_frame.detailed_report()
 
 
+class SliceAxis(StrEnum):
+  """Axis a 2D section is taken normal to. A StrEnum so the Workbench passes the value, not the member name."""
+  X = "x"
+  Y = "y"
+  Z = "z"
+
+
+SliceAxisType = typing.Annotated[
+  SliceAxis,
+  AnnotatedScriptType(name='SliceAxis', identifier='SliceAxisType',
+                      controlled='Select|' + '|'.join(a.value for a in SliceAxis), color=palette.PARAMETER),
+]
+
+
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_2D',
-                 title='Plot Model Result 2D')
+                 title='Plot Model Result 2D',
+                 description='2D section through the structural model, normal to the chosen axis (x, y or z). '
+                             'index is the cell along that axis (0 = first cell); empty = the middle of the model.')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_2D(
-    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
-  plot_structural_model_2D(structural_model_result.structural_frame)
+    structural_model_result: StructuralModelResults, _inspector: InspectorHelper,
+    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None):
+  plot_structural_model_2D(structural_model_result.structural_frame, axis=SliceAxis(axis).value, index=index)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D_sf',
@@ -331,11 +349,13 @@ def inspect_fault_model_result_detailed_report(fault_model_result: FaultModelRes
 
 @wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_2D',
                  title='Plot Fault Model Result 2D',
-                 description='...')
+                 description='2D section through the fault model, normal to the chosen axis (x, y or z). '
+                             'index is the cell along that axis (0 = first cell); empty = the middle of the model.')
 @wbgeo_inspector()
 def inspect_fault_model_result_plot_structural_model_2D(
-    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
-  plot_fault_model_2D(fault_model_result.fault_frame)
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper,
+    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None):
+  plot_fault_model_2D(fault_model_result.fault_frame, axis=SliceAxis(axis).value, index=index)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_3D_sf',
