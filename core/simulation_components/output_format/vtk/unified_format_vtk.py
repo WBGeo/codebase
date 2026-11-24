@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type
 from core.object_components import SimulationResults
 from typing import Optional, Union
+from core import workbench_palette as palette
 
 logger = logging.getLogger(__name__)
 
 
-@wbgeo_type(name='SfepyOutputType', color='pink', identifier='SfepyOutputType')
+@wbgeo_type(name='SfepyOutputType', color=palette.SIMULATION_RUN, identifier='SfepyOutputType')
 @dataclass
 class SfepyOutputType:
     """

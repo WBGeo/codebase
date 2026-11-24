@@ -38,7 +38,7 @@ A `RegularGrid` defines the 3D computation domain as a regular axis-aligned voxe
 
 ### 2. Load input data
 
-> **Workbench component:** `Input data for Structural Elements`
+> **Workbench component:** `Structural Input Data`
 
 Surface points are required. Orientations are optional — whether they are needed depends on the interpolation method chosen later (see the interpolation methods table). The mapping described above is provided as a Python dictionary or configured directly in the visual interface (visual DSL). Together they form the `InputData_StructuralElements` object that feeds the model.
 

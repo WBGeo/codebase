@@ -16,6 +16,7 @@ from core.meshing_components.mesh_format.vtk.VTK_format import export_mesh_resul
 from core.meshing_components.mesh_format.vtm.VTM_format import export_mesh_results_to_vtm
 from core.meshing_components.mesh_format.vtu.VTU_format import export_mesh_results_to_vtu
 from core.object_components import MeshResults
+from core import workbench_palette as palette
 
 """
 Expose all export functions via one singular component
@@ -34,7 +35,7 @@ class MeshFormatType(enum.Enum):
 
 
 MeshFormatType_A = typing.Annotated[
-  MeshFormatType, AnnotatedScriptType(name='MeshFormatType', color='aqua',
+  MeshFormatType, AnnotatedScriptType(name='MeshFormatType', color=palette.PARAMETER,
                                       identifier='MeshFormatType',
                                       controlled="Select|" + "|".join(
                                         [e.name for e in MeshFormatType]))]
@@ -43,9 +44,11 @@ MeshFormatType_A = typing.Annotated[
 @wbgeo_component(
   title="Export Mesh",
   description="Export Mesh to a selection of formats",
-  group="Meshing",
-  positionInGroup=-1,
+  group='Meshing',
+  positionInGroup=0,
   identifier="wbgeo::export_mesh_results",
+  color=palette.MESH_EXPORT,
+  border_color=palette.BORDER,
 )
 def export_mesh_results(mesh: MeshResults, format: MeshFormatType_A = MeshFormatType.Exodus) -> BasicallyABufferedFile:
   if format == MeshFormatType.VTU:

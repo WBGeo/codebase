@@ -63,9 +63,9 @@ To use the LiquidEarth integration, you need an API token:
 
 ### Pushing Data to LiquidEarth
 
-> **Workbench component:** `Push Geosolution to LiquidEarth`
+> **Workbench component:** `Push Structural Model to LiquidEarth`
 
-1. Connect the `structural_model` output of a `Compute Structural Model` component to the input of the `Push Geosolution to LiquidEarth` component.
+1. Connect the `structural_model` output of a `Compute Structural Model` component to the input of the `Push Structural Model to LiquidEarth` component.
 2. Provide your **API Token**.
 3. Specify a **Space Name** (where the model will be stored) and a **Model Name**.
 4. Run the component.

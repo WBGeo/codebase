@@ -16,6 +16,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://wbgeo.github.io/"
+Reference = "https://wbgeo.github.io/reference/"
 
 
 [tool.hatch.version]

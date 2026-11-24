@@ -40,6 +40,10 @@ The `AnnotatedScriptType` accepts the following parameters:
 | color      | (optional) | The color of this type                       |
 | controlled | (optional) | If present, a value can be entered via the UI |
 
+Take the colour from `core/workbench_palette.py` (`palette.PARAMETER` for
+parameter types like the one above; see
+[Colours, groups and order](components.md#colours-groups-and-order)).
+
 
 The UI additionally supports special input controls via the `controlled` parameter.
 By default, no special input controls are added.
