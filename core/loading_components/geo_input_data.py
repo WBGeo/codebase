@@ -92,24 +92,25 @@ def _regular_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
 
 
 AGapMitigation = typing.Annotated[
-  grid_classes.GapMitigation, AnnotatedScriptType(name='grid_classes.GapMitigation', color='aqua',
+  grid_classes.GapMitigation, AnnotatedScriptType(name='grid_classes.GapMitigation', color=palette.PARAMETER,
                                                   identifier='grid_classes.GapMitigation',
                                                   controlled='Select|balance_mesh_depth_adjacency|none')]
 
 ACellBalance = typing.Annotated[
-  grid_classes.CellBalance, AnnotatedScriptType(name='grid_classes.CellBalance', color='aqua',
+  grid_classes.CellBalance, AnnotatedScriptType(name='grid_classes.CellBalance', color=palette.PARAMETER,
                                                 identifier='grid_classes.CellBalance',
                                                 controlled='Select|none|face_2to1')]
 
 
 @wbgeo_component(description='Adaptive octree grid defined by an extent, base blocks and a maximum refinement level',
                  title='Octree Grid',
-                 color='#7fc7a3',
-                 border_color='#000000',
+                 color=palette.STRUCTURAL_INPUT,
+                 border_color=palette.BORDER,
                  group='Inputs',
                  identifier='wbgeo::octree_grid',
                  return_name='grid',
                  is_object_type=True,
+                 positionInGroup=985,
                  )
 def _octree_grid_constr(extent: AExtent6 = (0, 1000, 0, 1000, 0, 1000),
                         base_resolution: AResolution3 = (4, 4, 4),

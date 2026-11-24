@@ -202,8 +202,8 @@ class CellBalance(StrEnum):
 
 
 @wbgeo_type(
-    name="Octree grid for adaptive discretization of a structural geological model",
-    color="#7fc7a3",
+    name="Octree Grid",
+    color=palette.STRUCTURAL_INPUT,
     identifier="OctreeGrid",
 )
 @dataclass
