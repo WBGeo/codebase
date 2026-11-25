@@ -101,19 +101,18 @@ All methods produce the same output format (scalar field + per-element isovalues
 | **Ordinary Kriging (OK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | `variogram_model`, `range`, `nugget`, `anisotropy_scaling_y/z`, `neighbors` (see [below](#ordinary-kriging-ok)) |
 | **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK without `neighbors` (see [below](#universal-kriging-uk)) |
 | **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None (see [below](#universal-co-kriging-uck)) |
-| **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
-| **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
+| **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `regularisation`, `orientation_weight` (see [below](#finite-differences-fdi-and-piecewise-linear-pli)) |
+| **Piecewise Linear (PLI)** | Yes (only their location is used, see [below](#finite-differences-fdi-and-piecewise-linear-pli)) | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `regularisation` (see [below](#finite-differences-fdi-and-piecewise-linear-pli)) |
 | **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
 
-For UCK and GeoINR, orientation vectors are scaled to unit length, so only their direction affects the result: UCK normalises them before passing them to GemPy, and GeoINR normalises them in its orientation loss.
+For UCK, FDI and GeoINR, orientation vectors are scaled to unit length, so only their direction affects the result: UCK normalises them before passing them to GemPy, LoopStructural normalises them for FDI, and GeoINR normalises them in its orientation loss. PLI currently ignores their direction (see [below](#finite-differences-fdi-and-piecewise-linear-pli)).
 
-Three of these parameters take one of a fixed set of options. An unknown option is rejected when it is set.
+Two of these parameters take one of a fixed set of options. An unknown option is rejected when it is set.
 
 | Parameter | Methods | Options (default first) |
 |---|---|---|
 | `kernel` | RBF | `thin_plate_spline`, `linear`, `cubic`, `quintic`, `multiquadric`, `inverse_multiquadric`, `inverse_quadratic`, `gaussian` |
 | `variogram_model` | OK, UK | `gaussian`, `spherical`, `exponential`, `hole-effect` |
-| `solver` | FDI, PLI | `cg`, `lsmr`, `admm` |
 
 Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. The estimate uses all points of a group, across all fault domains. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and anisotropy for kriging methods, `nelements` for FDI and PLI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
 
@@ -185,6 +184,28 @@ UCK has no adjustable parameters: GemPy's default settings are used, which are d
 - at least one surface point of every formation of the group. UCK takes each formation's value from that formation's own points, so a formation without points in a fault domain cannot be placed there. The other methods number the formations from the group order and do not need this.
 
 Both are checked before the computation. If a formation is missing in a fault domain, add surface points of it there, or use another method for this group.
+
+### Finite Differences (FDI) and Piecewise Linear (PLI)
+
+FDI and PLI (both implemented with LoopStructural) solve the scalar field on their own internal computation grid, which covers the model extent plus a 20 % margin. FDI uses a regular grid of cells, PLI a mesh of tetrahedra. Each formation gets a value (oldest = 1, youngest = n), as for RBF. The field is found as the best compromise between three wishes, each with a weight:
+
+- it has the formation's value at every surface point (weight 1);
+- its layers have the measured dip at every orientation (FDI only, weight `orientation_weight`);
+- it is smooth (weight `regularisation`).
+
+Only the ratios between these weights matter. For FDI, the orientations define which way is up, so a group with a single formation works without the copied formation used by RBF and Kriging.
+
+**PLI and orientations.** In the LoopStructural version used (1.8.2), the orientation constraint of the piecewise-linear interpolator is not implemented. PLI therefore ignores the direction of orientations: each orientation only acts like an additional surface point of its formation at its location. As a consequence, PLI cannot model a group with a single formation (all points have the same value, so nothing defines which way is up). PLI still requires orientations, so workflows stay valid once this is fixed. If the dip of the layers is mainly known from orientations, or a group has only one formation, use FDI, UCK or GeoINR instead.
+
+**Minimum data.** At least one orientation in each group and fault domain that contains surface points. For PLI, the surface points and orientations there must also belong to at least two formations. Both are checked before the computation (and in the Workbench when the inputs are connected).
+
+| Parameter | Methods | Meaning | Default | Effect |
+|---|---|---|---|---|
+| `nelements` | FDI, PLI | Number of elements of the internal computation grid (at least 1000) | FDI: 10 000 × √(points / 1000), limited to 5000–200 000; PLI: 2000 × √(points / 1000) × 0.8–1.4 (denser sampling of the model gives the larger factor), limited to 2000–50 000 | More elements give finer surfaces but take much longer. On synthetic model 2, ten to twenty times more elements changed the result by only about 2 % of the cells. |
+| `regularisation` | FDI, PLI | Weight of the smoothness term | 0.1 | Larger values give smoother, more planar surfaces that may not honour every data point; smaller values follow the data more closely but can become wavy. For FDI, LoopStructural's own default of 1.0 was too smooth on synthetic model 2. |
+| `orientation_weight` | FDI | Weight of the orientations relative to the surface points | 1.0 | Larger values make the layers follow the measured dips more closely; smaller values let the surfaces follow the surface points more closely. Matters most when there are few surface points. |
+
+The solver (conjugate gradients with LoopStructural's default tolerance) is fixed.
 
 ---
 
