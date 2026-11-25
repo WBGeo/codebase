@@ -47,8 +47,8 @@ def test_pydantic_param_models_have_expected_defaults():
     ok = OKParams()
     assert ok.variogram_model == "gaussian"
     assert ok.range == 500.0
-    assert ok.sill == 1.0
     assert ok.nugget == 0.0
+    assert not hasattr(ok, "sill") and not hasattr(ok, "anisotropy_scaling_x")
     assert ok.neighbors is None
 
     rbf = RBFParams()
@@ -58,10 +58,10 @@ def test_pydantic_param_models_have_expected_defaults():
     assert rbf.neighbors is None
 
     uk = UKParams()
-    # Inherits OK defaults + adds drift_terms
+    # Same variogram parameters as OK, no moving window, no drift choice
     assert uk.variogram_model == "gaussian"
     assert uk.range == 500.0
-    assert uk.drift_terms == "regional_linear"
+    assert not hasattr(uk, "neighbors") and not hasattr(uk, "drift_terms")
 
     fdi = FDIParams()
     assert fdi.nelements == 10_000
@@ -192,17 +192,6 @@ def test_rbf_kernels_using_epsilon_is_a_subset_of_the_kernels():
     assert "thin_plate_spline" not in RBF_KERNELS_USING_EPSILON
 
 
-def test_default_uk_params_neighbors_rule_matches_ok():
-    ctx1 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=19, mean_nn_distance=2.0)
-    uk1 = default_uk_params(ctx1)
-    assert uk1.neighbors is None
-
-    ctx2 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=250, mean_nn_distance=2.0)
-    uk2 = default_uk_params(ctx2)
-    # max(30,25)=30; min(200,30)=30
-    assert uk2.neighbors == 30
-
-
 def test_default_uk_params_range_is_clipped_and_typically_longer_than_ok():
     # OK uses 20*nn, UK uses 30*nn with slightly different bounds.
     ctx = InterpolationContext(data_scale=(100.0, 80.0, 60.0), n_points=100, mean_nn_distance=2.0)
@@ -229,10 +218,30 @@ def test_default_uk_params_anisotropy_uses_safe_division_when_sx_is_zeroish():
     assert 0.05 <= uk.anisotropy_scaling_z <= 20.0
 
 
-def test_default_uk_params_sets_drift_terms_regional_linear():
-    ctx = InterpolationContext(data_scale=(100.0, 80.0, 60.0), n_points=100, mean_nn_distance=2.0)
-    uk = default_uk_params(ctx)
-    assert uk.drift_terms == "regional_linear"
+def test_kriging_variogram_parameters_fix_sill_and_add_jitter():
+    from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+        KRIGING_NUGGET_JITTER, kriging_variogram_parameters)
+    assert kriging_variogram_parameters(OKParams(range=300.0, nugget=0.2)) == [1.0, 300.0, 0.2 + KRIGING_NUGGET_JITTER]
+    assert kriging_variogram_parameters(UKParams(range=300.0))[2] == KRIGING_NUGGET_JITTER
+
+
+@pytest.mark.parametrize("bad", [dict(nugget=-0.1), dict(nugget=1.0), dict(range=0.0),
+                                 dict(anisotropy_scaling_z=0.0), dict(neighbors=0)])
+def test_ok_params_reject_invalid_values(bad):
+    with pytest.raises(ValueError):
+        OKParams(**bad)
+
+
+@pytest.mark.parametrize("cls", [OKParams, UKParams])
+def test_kriging_params_json_round_trip_and_old_fields_ignored(cls):
+    params = cls(variogram_model="spherical", range=250.0, nugget=0.1,
+                 anisotropy_scaling_y=0.5, anisotropy_scaling_z=0.2)
+    assert cls.model_validate_json(params.model_dump_json()) == params
+    # options saved before sill, anisotropy_scaling_x, drift_terms (and UK neighbors) were removed still load
+    old = {**params.model_dump(), "sill": 3.0, "anisotropy_scaling_x": 1.0,
+           "drift_terms": "regional_linear", "neighbors": 30}
+    loaded = cls.model_validate(old)
+    assert loaded.range == 250.0 and not hasattr(loaded, "sill")
 
 
 # -----------------------------------------------------------------------------

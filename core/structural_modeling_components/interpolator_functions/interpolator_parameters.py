@@ -33,7 +33,7 @@ class VariogramModel(str, Enum):
     """Variogram models available for Ordinary and Universal Kriging.
 
     PyKrige's "linear" and "power" models are left out: they take a different
-    parameter list than the sill/range/nugget set exposed here.
+    parameter list than the range/nugget set exposed here.
     """
 
     GAUSSIAN = "gaussian"
@@ -96,50 +96,100 @@ class InterpolationContext(BaseModel):
     mean_nn_distance: float
 
 
-class OKParams(BaseModel):
+class _KrigingParams(BaseModel):
     """
-    Configuration parameters for Ordinary Kriging interpolation.
+    Variogram and anisotropy parameters shared by Ordinary and Universal Kriging.
 
-    Notes:
-        This model is used as a parameter container; changing defaults affects only
-        configuration values, not the interpolation algorithm implementation here.
+    The sill is fixed at 1: kriging results depend only on the shape of the
+    variogram (model, range) and on the nugget relative to the sill, not on the
+    sill itself. A tiny jitter (``KRIGING_NUGGET_JITTER``) is always added to the
+    nugget to keep the kriging matrix well conditioned (most important for the
+    Gaussian variogram); it is not visible in the result.
 
     Attributes:
         variogram_model: Variogram model type, one of :class:`VariogramModel`.
-        range: Range of the variogram model.
-        sill: Sill of the variogram model (max variance level).
-        nugget: Nugget effect.
-        anisotropy_scaling_x: Axis scaling for anisotropy handling.
-        anisotropy_scaling_y: Axis scaling for anisotropy handling.
-        anisotropy_scaling_z: Axis scaling for anisotropy handling.
-        neighbors: Optional number of nearest neighbors. If None, all points are used.
+        range: Range of the variogram model (distance, in model units).
+        nugget: Nugget as a fraction of the sill (0 = exact fit through the points).
+        anisotropy_scaling_y: Factor applied to y coordinates (relative to x).
+        anisotropy_scaling_z: Factor applied to z coordinates (relative to x).
     """
 
     model_config = _ENUM_FIELD_CONFIG
 
     variogram_model: VariogramModel = Field(
         VariogramModel.GAUSSIAN,
-        description="Type of variogram model.",
+        description="Type of variogram model. 'gaussian' gives the smoothest surfaces.",
     )
     range: float = Field(
         500.0,
-        description="Range of the variogram (distance at which correlation tapers off).",
+        gt=0.0,
+        description="Range of the variogram: distance (in model units) up to which points influence each other.",
     )
-    sill: float = Field(1.0, description="Sill of the variogram (max variance level).")
-    nugget: float = Field(0.0, description="Nugget effect (variance at zero distance).")
-    anisotropy_scaling_x: float = Field(
-        1.0, description="Scaling factor for the x-axis in 3D kriging."
+    nugget: float = Field(
+        0.0,
+        ge=0.0,
+        lt=1.0,
+        description=(
+            "Nugget as a fraction of the sill (0 to below 1). 0 = surfaces pass exactly through the "
+            "points; larger values allow deviations and give smoother surfaces, e.g. for noisy data."
+        ),
     )
     anisotropy_scaling_y: float = Field(
-        1.0, description="Scaling factor for the y-axis in 3D kriging."
+        1.0,
+        gt=0.0,
+        description=(
+            "Factor applied to y coordinates before kriging (1 = no anisotropy). Values below 1 "
+            "make distances along y count less, i.e. a longer range in y."
+        ),
     )
     anisotropy_scaling_z: float = Field(
-        1.0, description="Scaling factor for the z-axis in 3D kriging."
+        1.0,
+        gt=0.0,
+        description=(
+            "Factor applied to z coordinates before kriging (1 = no anisotropy). Values below 1 "
+            "make vertical distances count less, i.e. a longer range in z."
+        ),
     )
+
+
+# Added to every nugget (relative to the sill). Chosen on the model 2 example: without it,
+# the Gaussian variogram gives a numerically degraded field (95.2 % agreement with RBF,
+# 43.8 % without moving window); 1e-6 gives 97.6 % (95.4 % without moving window).
+KRIGING_NUGGET_JITTER: float = 1e-6
+
+
+def kriging_variogram_parameters(params: "_KrigingParams") -> List[float]:
+    """PyKrige ``variogram_parameters`` [sill, range, nugget] with sill 1 and the jitter added."""
+    return [1.0, float(params.range), float(params.nugget) + KRIGING_NUGGET_JITTER]
+
+
+class OKParams(_KrigingParams):
+    """
+    Configuration parameters for Ordinary Kriging interpolation.
+
+    Attributes (in addition to :class:`_KrigingParams`):
+        neighbors: Optional number of nearest neighbors (moving window). If None, all points are used.
+    """
+
     neighbors: Optional[int] = Field(
         None,
-        description="Number of nearest neighbors to use in kriging. If None, uses all points.",
+        ge=1,
+        description=(
+            "Number of nearest points used at each grid cell (moving window). If empty, all points "
+            "are used. If it is not smaller than the number of points, all points are used."
+        ),
     )
+
+
+def _kriging_anisotropy_defaults(ctx: InterpolationContext) -> Tuple[float, float]:
+    """
+    Anisotropy scaling from the spread of the points: each axis is scaled relative to x by
+    its spread, so the variogram range is effectively longer along axes with little spread
+    (typically z for layered data). Better than isotropic scaling on the model 2 example.
+    """
+    sx, sy, sz = ctx.data_scale
+    sx_safe = max(float(sx), 1e-12)
+    return (float(np.clip(sy / sx_safe, 0.05, 1.0)), float(np.clip(sz / sx_safe, 0.05, 1.0)))
 
 
 def default_ok_params(ctx: InterpolationContext) -> OKParams:
@@ -156,9 +206,6 @@ def default_ok_params(ctx: InterpolationContext) -> OKParams:
     npts = ctx.n_points
     nn_dist = ctx.mean_nn_distance
 
-    # Variogram: gaussian as default for smoother residuals; can be changed to exponential or others if needed
-    variogram_model = VariogramModel.GAUSSIAN
-
     # Range: use the data diagonal as the reference scale so that the range
     # covers the full data extent even when points are sparse at corners.
     # (Using only max(sx,sy,sz) would underestimate the range for data spread
@@ -170,21 +217,7 @@ def default_ok_params(ctx: InterpolationContext) -> OKParams:
         1.5 * data_diagonal,
     )
 
-    sill = 1.0
-    nugget = 0.0
-
-    # Anisotropy scaling per axis (scale relative to largest dimension)
-    max_scale = max(sx, sy, sz)
-    anisotropy_scaling_x = 1.0
-    anisotropy_scaling_y = np.clip(sy / sx, 0.05, 1.0)
-    anisotropy_scaling_z = np.clip(sz / sx, 0.05, 1.0)
-
-    # Rotation angles (degrees)
-    # Default 0 → no rotation, but could be adapted if you detect tilted layers
-    anisotropy_angle_x = 0.0
-    anisotropy_angle_y = 0.0
-    anisotropy_angle_z = 0.0
-    # (angles currently not used in this file; kept as documentation of intent)
+    anisotropy_scaling_y, anisotropy_scaling_z = _kriging_anisotropy_defaults(ctx)
 
     # Neighbors (moving window)
     if npts < 20:
@@ -193,13 +226,11 @@ def default_ok_params(ctx: InterpolationContext) -> OKParams:
         neighbors = min(200, max(30, npts // 10))
 
     return OKParams(
-        variogram_model=variogram_model,
-        range=range_,
-        sill=sill,
-        nugget=nugget,
-        anisotropy_scaling_x=float(anisotropy_scaling_x),
-        anisotropy_scaling_y=float(anisotropy_scaling_y),
-        anisotropy_scaling_z=float(anisotropy_scaling_z),
+        variogram_model=VariogramModel.GAUSSIAN,
+        range=float(range_),
+        nugget=0.0,
+        anisotropy_scaling_y=anisotropy_scaling_y,
+        anisotropy_scaling_z=anisotropy_scaling_z,
         neighbors=neighbors,
     )
 
@@ -671,37 +702,26 @@ def default_uck_params(ctx: "InterpolationContext") -> UCKParams:
     return UCKParams()
 
 
-class UKParams(OKParams):
+class UKParams(_KrigingParams):
     """
     Configuration parameters for Universal Kriging interpolation.
 
-    Adds drift (trend) configuration on top of ordinary kriging parameters.
+    Same variogram and anisotropy parameters as Ordinary Kriging. A linear trend
+    (PyKrige's "regional_linear" drift, a + b·x + c·y + d·z) is always fitted.
+    PyKrige's 3D Universal Kriging has no moving window, so all points are used.
     """
-
-    drift_terms: Union[str, List[str]] = Field(
-        "regional_linear",
-        description=(
-            "Drift terms for Universal Kriging. Common: 'regional_linear'. "
-            "Can be a string or list of strings."
-        ),
-    )
 
 
 def default_uk_params(ctx: InterpolationContext) -> UKParams:
     """
     Derive heuristic default Universal Kriging parameters from an interpolation context.
 
-    UK defaults are similar to OK, but:
-      - drift_terms defaults to "regional_linear" (good for geology),
-      - range is slightly larger (UK residual field tends to be smoother),
-      - anisotropy scaling uses ratios relative to X (PyKrige convention).
+    UK defaults are similar to OK, but the range is slightly longer (the field left
+    after removing the linear trend tends to be smoother) and the anisotropy scaling
+    is allowed above 1.
     """
     sx, sy, sz = ctx.data_scale
-    npts = ctx.n_points
     nn_dist = ctx.mean_nn_distance
-
-    # Variogram: gaussian as default for smoother residuals; can be changed to exponential or others if needed
-    variogram_model = VariogramModel.GAUSSIAN
 
     # Range: a bit longer than OK
     max_scale = max(sx, sy, sz)
@@ -711,32 +731,17 @@ def default_uk_params(ctx: InterpolationContext) -> UKParams:
         0.9 * max_scale,
     )
 
-    sill = 1.0
-    nugget = 0.0
-
     # Anisotropy scaling (PyKrige 3D: x is implicit; scale y/z relative to x)
-    # Guard against sx ~ 0
     sx_safe = max(float(sx), 1e-12)
-    anisotropy_scaling_x = 1.0
     anisotropy_scaling_y = float(np.clip(sy / sx_safe, 0.05, 20.0))
     anisotropy_scaling_z = float(np.clip(sz / sx_safe, 0.05, 20.0))
 
-    # Neighbors (moving window)
-    if npts < 20:
-        neighbors = None
-    else:
-        neighbors = min(200, max(30, npts // 10))
-
     return UKParams(
-        variogram_model=variogram_model,
+        variogram_model=VariogramModel.GAUSSIAN,
         range=float(range_),
-        sill=float(sill),
-        nugget=float(nugget),
-        anisotropy_scaling_x=float(anisotropy_scaling_x),
-        anisotropy_scaling_y=float(anisotropy_scaling_y),
-        anisotropy_scaling_z=float(anisotropy_scaling_z),
-        neighbors=neighbors,
-        drift_terms="regional_linear",
+        nugget=0.0,
+        anisotropy_scaling_y=anisotropy_scaling_y,
+        anisotropy_scaling_z=anisotropy_scaling_z,
     )
 
 

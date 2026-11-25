@@ -19,6 +19,9 @@ import numpy.typing as npt
 import pandas as pd
 from pykrige.ok3d import OrdinaryKriging3D
 
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+    kriging_variogram_parameters,
+)
 from core.structural_modeling_components.interpolator_functions.minimum_data import (
     PHANTOM_ELEMENT_NAME,
     add_phantom_element,
@@ -71,7 +74,7 @@ def interpolate_group_ordinary_kriging(
         - `name: str`
         - `structural_elements: Sequence[... with .name]`
         - `get_interpolation_params() -> OrdinaryKrigingParams-like`
-          (variogram_model, sill, range, nugget, anisotropy_scaling_y/z, neighbors)
+          (variogram_model, range, nugget, anisotropy_scaling_y/z, neighbors)
     grid
         RegularGrid-like object providing:
         - `gridx`, `gridy`, `gridz`: 1D coordinate arrays (cell centers)
@@ -178,7 +181,7 @@ def interpolate_group_ordinary_kriging(
         z,
         vals,
         variogram_model=params.variogram_model,
-        variogram_parameters=[params.sill, params.range, params.nugget],
+        variogram_parameters=kriging_variogram_parameters(params),  # sill 1, nugget + jitter
         anisotropy_scaling_y=params.anisotropy_scaling_y,
         anisotropy_scaling_z=params.anisotropy_scaling_z,
     )

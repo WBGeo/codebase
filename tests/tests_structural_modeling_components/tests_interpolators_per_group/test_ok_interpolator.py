@@ -9,6 +9,9 @@ import pytest
 from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (
     interpolate_group_ordinary_kriging,
 )
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+    KRIGING_NUGGET_JITTER,
+)
 
 
 # --- Minimal fakes ------------------------------------------------------------
@@ -273,7 +276,8 @@ def test_constructs_ordinary_kriging3d_with_expected_parameters_and_calls_execut
 
     # Constructor wiring
     assert captured["kwargs"]["variogram_model"] == "linear"
-    assert captured["kwargs"]["variogram_parameters"] == [11.0, 22.0, 0.33]
+    # sill fixed at 1, the jitter is added to the nugget
+    assert captured["kwargs"]["variogram_parameters"] == [1.0, 22.0, 0.33 + KRIGING_NUGGET_JITTER]
     assert captured["kwargs"]["anisotropy_scaling_y"] == 1.5
     assert captured["kwargs"]["anisotropy_scaling_z"] == 2.5
 

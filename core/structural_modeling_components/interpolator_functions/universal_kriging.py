@@ -10,8 +10,8 @@ Key behavior (same as the OK version):
 - evaluates the scalar field on a regular grid,
 - does NOT mutate the passed `group`.
 
-Universal Kriging additionally supports a deterministic "drift" (trend) via
-`drift_terms` (e.g., "regional_linear") and related optional parameters.
+Universal Kriging additionally fits a linear trend (PyKrige's "regional_linear"
+drift, a + b·x + c·y + d·z) and always uses all points.
 """
 
 from __future__ import annotations
@@ -24,6 +24,9 @@ import numpy.typing as npt
 import pandas as pd
 from pykrige.uk3d import UniversalKriging3D
 
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+    kriging_variogram_parameters,
+)
 from core.structural_modeling_components.interpolator_functions.minimum_data import (
     PHANTOM_ELEMENT_NAME,
     POLYNOMIAL_TERMS_3D,
@@ -77,10 +80,8 @@ def interpolate_group_universal_kriging(
         - `name: str`
         - `structural_elements: Sequence[... with .name]`
         - `get_interpolation_params() -> UKParams-like`
-          Minimum required attributes: variogram_model, sill, range, nugget,
-          anisotropy_scaling_y, anisotropy_scaling_z, neighbors.
-          Optional UK-specific: drift_terms (default "regional_linear"),
-          specified_drift_arrays, external_drift, external_drift_grid.
+          Required attributes: variogram_model, range, nugget,
+          anisotropy_scaling_y, anisotropy_scaling_z.
     grid
         RegularGrid-like object providing:
         - `gridx`, `gridy`, `gridz`: 1D coordinate arrays (cell centers)
@@ -160,52 +161,25 @@ def interpolate_group_universal_kriging(
 
     params = group.get_interpolation_params()
 
-    drift_terms = getattr(params, "drift_terms", None)
-    if drift_terms is None:
-        drift_terms = "regional_linear"
-    if isinstance(drift_terms, (tuple, set)):
-        drift_terms = list(drift_terms)
-
-    specified_drift_arrays = getattr(params, "specified_drift_arrays", None)
-    specified_drift = getattr(params, "specified_drift", None)
-    if specified_drift_arrays is None and specified_drift is not None:
-        if isinstance(specified_drift, dict):
-            specified_drift_arrays = list(specified_drift.values())
-        else:
-            specified_drift_arrays = [specified_drift]
-
-    external_drift = getattr(params, "external_drift", None)
-    external_drift_grid = getattr(params, "external_drift_grid", None)
-
-    uk3d_kwargs = dict(
+    uk3d = UniversalKriging3D(
+        x,
+        y,
+        z,
+        vals,
         variogram_model=params.variogram_model,
-        variogram_parameters=[params.sill, params.range, params.nugget],
+        variogram_parameters=kriging_variogram_parameters(params),  # sill 1, nugget + jitter
         anisotropy_scaling_y=params.anisotropy_scaling_y,
         anisotropy_scaling_z=params.anisotropy_scaling_z,
-        drift_terms=drift_terms,
-    )
-    if specified_drift_arrays is not None:
-        uk3d_kwargs["specified_drift"] = specified_drift_arrays
-    if external_drift is not None:
-        uk3d_kwargs["external_drift"] = external_drift
-
-    uk3d = UniversalKriging3D(x, y, z, vals, **uk3d_kwargs)
-
-    backend = "loop" if params.neighbors is not None else "vectorized"
-
-    execute_kwargs = dict(
-        backend=backend
+        drift_terms=["regional_linear"],
     )
 
-    if external_drift_grid is not None:
-        execute_kwargs["external_drift"] = external_drift_grid
-
+    # PyKrige's 3D Universal Kriging has no moving window: always all points.
     scalar_field, _ = uk3d.execute(
         "grid",
         grid.gridx,
         grid.gridy,
         grid.gridz,
-        **execute_kwargs,
+        backend="vectorized",
     )
 
     return scalar_field, scalar_values_by_element
