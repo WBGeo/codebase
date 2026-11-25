@@ -78,7 +78,7 @@ This step combines configuration and computation. The input data, grid, and — 
 
 The computation runs the following steps in sequence:
 
-1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it, or that there are enough surface points for RBF, Ordinary Kriging and Universal Kriging). The same check runs in the Workbench as a pre-check when the inputs are connected. All issues are reported together before any expensive computation begins.
+1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it, or that there are enough surface points for the chosen method). The same check runs in the Workbench as a pre-check when the inputs are connected. All issues are reported together before any expensive computation begins.
 2. **Interpolation** — each stratigraphic group is interpolated independently. When faults are active for a group, the interpolation is run completely separately in each fault domain using only the data points that fall within that domain. The resulting scalar fields are then stitched together.
 3. **Age masks** — a boolean mask is computed per group that represents its depositional extent: the oldest group underlies the entire domain (mask is True everywhere), while younger groups are only present where they were deposited. When assembling the lithology block, younger groups take precedence over older ones wherever their mask is True — this is what produces unconformable contacts between groups.
 4. **Lithology block** — the scalar fields and age masks are combined into a single 3D integer array where each voxel is assigned to a formation.
@@ -100,7 +100,7 @@ All methods produce the same output format (scalar field + per-element isovalues
 | **Radial Basis Function (RBF)** | No | [SciPy](https://scipy.org/)                                      | `kernel`, `smoothing`, `epsilon`, `neighbors`, `anisotropy_scaling_z` (see [below](#radial-basis-function-rbf)) |
 | **Ordinary Kriging (OK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | `variogram_model`, `range`, `nugget`, `anisotropy_scaling_y/z`, `neighbors` (see [below](#ordinary-kriging-ok)) |
 | **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK without `neighbors` (see [below](#universal-kriging-uk)) |
-| **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None currently exposed |
+| **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None (see [below](#universal-co-kriging-uck)) |
 | **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
 | **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
 | **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
@@ -172,6 +172,19 @@ The parameters are the same as for Ordinary Kriging, without `neighbors`, and th
 |---|---|
 | `range` | 30 × median nearest-neighbour distance, limited to between 0.15 × and 0.9 × the largest spread |
 | `anisotropy_scaling_y`, `anisotropy_scaling_z` | spread in y (z) / spread in x, limited to 0.05–20 |
+
+### Universal Co-Kriging (UCK)
+
+Universal Co-Kriging (implemented with GemPy) interpolates the scalar field from surface points and orientations together: the surface points of each formation define where its surface lies, the orientations define the dip direction of the layers. Only the direction of the orientation vectors matters; they are scaled to unit length before use. Because the orientations define which way is up, a group with a single formation works without the copied formation used by RBF and Kriging. After the interpolation, the scalar field is rescaled so that the formations get the values 1 … n like in the other methods.
+
+UCK has no adjustable parameters: GemPy's default settings are used, which are derived from the model extent.
+
+**Minimum data.** In each group and fault domain:
+
+- at least one orientation, and
+- at least one surface point of every formation of the group. UCK takes each formation's value from that formation's own points, so a formation without points in a fault domain cannot be placed there. The other methods number the formations from the group order and do not need this.
+
+Both are checked before the computation. If a formation is missing in a fault domain, add surface points of it there, or use another method for this group.
 
 ---
 

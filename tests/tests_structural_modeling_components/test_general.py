@@ -1195,6 +1195,36 @@ def test_validate_uk_needs_four_points_not_in_one_plane():
     mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
 
 
+def test_validate_uck_needs_every_formation_in_each_fault_domain():
+    """
+    UCK takes each formation's value from its own points: in the right fault domain only
+    'e0' has points, so 'e1' is reported there. The left domain has both and passes.
+    """
+    grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
+    dom_map = np.array([0, 0, 1, 1]).reshape(4, 1, 1)
+    frame = _make_validate_frame(grid, InterpolationMethod.UNIVERSAL_COKRIGING, has_orientations=True)
+    frame.surface_points = pd.DataFrame({
+        "X": [0.5, 1.5, 2.5, 3.5], "Y": [0.5] * 4, "Z": [0.3, 0.7, 0.4, 0.6],
+        "formation": ["e0", "e1", "e0", "e0"],
+    })
+    frame.orientations = pd.DataFrame({
+        "X": [1.0, 3.0], "Y": [0.5, 0.5], "Z": [0.5, 0.5],
+        "G_x": [0.0, 0.0], "G_y": [0.0, 0.0], "G_z": [1.0, 1.0], "formation": ["e0", "e0"],
+    })
+    fake_ff = _FakeFaultFrameWithFaults(dom_map, [_FakeFaultElem("F1", {(0, 1)})])
+    frame.fault_activity = {"F1": 0}
+
+    with pytest.raises(ValueError) as exc_info:
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)
+    msg = str(exc_info.value)
+    assert "1 issue" in msg
+    assert "domain(s) [1]" in msg and "Universal Co-Kriging" in msg and "'e1'" in msg
+
+    # without the fault both formations are present: passes
+    frame.fault_activity = None
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+
 def test_validate_fails_for_rbf_with_too_few_points_in_one_fault_domain():
     """Enough points overall, but the fault domain on the right has only 2 → reported for that domain."""
     grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))

@@ -16,7 +16,7 @@ Notes
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, TypeAlias
+from typing import Any, Dict, Optional, Sequence, Tuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -30,6 +30,29 @@ from core.structural_modeling_components.structural_modeling_utility.surface_mes
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+
+def uck_input_problem(surface_points_df: pd.DataFrame, element_names: Sequence[str]) -> Optional[str]:
+    """
+    Check whether Universal Co-Kriging can be fitted to the surface points of one group
+    (in one fault domain).
+
+    GemPy takes the value of each formation from that formation's own surface points,
+    so every formation of the group needs at least one point. (Orientations are
+    checked separately.)
+
+    Returns a description of the problem for the user, or None if the points are sufficient.
+    """
+    present = set(surface_points_df["formation"].astype(str))
+    missing = [name for name in element_names if name not in present]
+    if not missing:
+        return None
+    listed = ", ".join(f"'{name}'" for name in missing)
+    return (
+        f"needs surface points of every formation of the group, but there are none of {listed}. "
+        f"Add surface points of {'this formation' if len(missing) == 1 else 'these formations'} here, "
+        f"or use another method."
+    )
 
 
 def interpolate_group_universal_cokriging(
