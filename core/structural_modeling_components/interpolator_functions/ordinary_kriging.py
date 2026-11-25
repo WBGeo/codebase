@@ -139,7 +139,7 @@ def interpolate_group_ordinary_kriging(
         if col not in group_surface_points_df.columns:
             raise ValueError(f"Surface points for '{group.name}' missing column '{col}'")
 
-    # 1) scalar values oldest->youngest = 1..n (your groups are youngest->oldest, so reverse)
+    # 1) scalar values oldest->youngest = 1..n (groups are ordered youngest->oldest, so reverse)
     scalar_values_by_element: Dict[str, float] = {
         elem.name: float(i)
         for i, elem in enumerate(reversed(group.structural_elements), start=1)
@@ -171,7 +171,7 @@ def interpolate_group_ordinary_kriging(
     y: FloatArray = group_surface_points_df["Y"].to_numpy()
     z: FloatArray = group_surface_points_df["Z"].to_numpy()
 
-    # 4) parameters (expected: your OrdinaryKrigingParams-like object)
+    # 4) parameters (OKParams-like object)
     params = group.get_interpolation_params()
 
     # 5) fit & evaluate on grid

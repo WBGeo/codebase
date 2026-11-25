@@ -11,7 +11,7 @@ Notes
 -----
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
-- Axis order / transposes are preserved exactly as implemented.
+- The scalar field is returned in ZYX shape (reshaped to the grid resolution, then transposed).
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def interpolate_group_universal_cokriging(
     Returns
     -------
     scalar_field : np.ndarray
-        Rescaled scalar field. Reshape/transposes are preserved from the original code.
+        Rescaled scalar field in ZYX shape.
     scalar_values_by_element : dict[str, float]
         Rescaled scalar values mapping `element_name -> isovalue` (targets 1..n).
 
@@ -181,7 +181,8 @@ def interpolate_group_universal_cokriging(
     scalar_field = np.asarray(raw_scalar_field, dtype=float).reshape(tuple(grid.resolution)).T
 
     # ---- rescale scalar field so that element isosurfaces map exactly to 1..n ----
-    # Original code keeps affine_rescale_scalar_field commented out; preserved.
+    # Piecewise affine (each interval between two surfaces separately). The global affine
+    # alternative, `affine_rescale_scalar_field`, is not used.
     rescaled_scalar_field, rescaled_scalar_values_by_element = rescale_scalar_field_safe(
         scalar_field=scalar_field,
         scalar_values_by_element=scalar_values_by_element,

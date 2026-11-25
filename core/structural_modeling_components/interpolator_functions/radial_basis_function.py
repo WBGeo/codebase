@@ -126,8 +126,8 @@ def interpolate_group_radial_basis_function(
     Returns
     -------
     scalar_field : np.ndarray
-        Interpolated scalar field reshaped to `grid.resolution` and then transposed
-        exactly as in the original implementation.
+        Interpolated scalar field in ZYX shape (reshaped to `grid.resolution`, then
+        transposed).
     scalar_values_by_element : dict[str, float]
         Mapping element_name -> scalar value. Values are strictly increasing from
         oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
@@ -136,7 +136,7 @@ def interpolate_group_radial_basis_function(
     Notes
     -----
     - Assigns strictly increasing scalar values: oldest = 1, youngest = n
-    - Uses params from `group.get_interpolation_params()` (expected to be your RBFParams)
+    - Uses params from `group.get_interpolation_params()` (an RBFParams)
     - Does NOT mutate `group`
     """
     # Check if any surface points are provided
@@ -196,7 +196,7 @@ def interpolate_group_radial_basis_function(
     # 3) coordinates of control points
     coords: FloatArray = group_surface_points_df[["X", "Y", "Z"]].to_numpy(dtype=float)
 
-    # 4) parameters (expected: your RBFParams-like object)
+    # 4) parameters (RBFParams-like object)
     params = group.get_interpolation_params()
 
     # Vertical anisotropy: stretch z of points and grid alike (1.0 = isotropic)
@@ -216,7 +216,7 @@ def interpolate_group_radial_basis_function(
     )
 
     # 6) evaluate on grid
-    # Prefer a precomputed (N,3) array if your grid exposes it; otherwise build from axes.
+    # Prefer a precomputed (N,3) array if the grid provides it; otherwise build from axes.
     if hasattr(grid, "grid_coordinates") and grid.grid_coordinates is not None:
         grid_points: FloatArray = grid.grid_coordinates
     else:

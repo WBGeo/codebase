@@ -11,7 +11,7 @@ Notes
 -----
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
-- The scalar field reshape + transpose is preserved exactly as implemented.
+- The scalar field is returned in ZYX shape (reshaped to the grid resolution, then transposed).
 - Orientations only constrain the direction of the gradient at their location; they
   carry no scalar value, so they may lie anywhere, not only on an interface. With
   only one formation (all values equal), LoopStructural turns them into normal-vector
@@ -79,8 +79,8 @@ def interpolate_group_finite_differences(
     Returns
     -------
     scalar_field : np.ndarray
-        Evaluated scalar field on the grid, shaped to `tuple(grid.resolution)` and transposed
-        exactly as in the original implementation.
+        Evaluated scalar field on the grid in ZYX shape (shaped to `tuple(grid.resolution)`,
+        then transposed).
     scalar_values_by_element : dict[str, float]
         Mapping element_name -> scalar value. Values are strictly increasing from
         oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
@@ -199,7 +199,7 @@ def interpolate_group_finite_differences(
         scale=True,
     )
 
-    # Match previous implementation: reshape then transpose
+    # grid coordinates are ordered with x slowest: reshape to (nx, ny, nz), transpose to ZYX
     scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
 
     return scalar_field, scalar_values_by_element

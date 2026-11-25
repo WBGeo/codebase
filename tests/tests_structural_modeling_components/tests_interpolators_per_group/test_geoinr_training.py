@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import torch
 
 import core.structural_modeling_components.interpolator_functions.geoinr as geoinr
@@ -64,6 +65,56 @@ def test_returns_weights_of_the_lowest_loss_epoch(monkeypatch):
     calls["n"] = 0
     after_many = _train(seed=0, epochs=20)
     assert np.allclose(after_many, after_epoch_0)
+
+
+def test_formation_without_surface_points_still_gets_its_value():
+    """E.g. in a fault domain: labels are fixed per formation, not taken from the data."""
+    from types import SimpleNamespace
+
+    from core.structural_modeling_components.interpolator_functions.interpolator_parameters import GeoINRParams
+
+    interface, orientations, grid_points = _data()
+    names = ["top", "middle", "base"]  # youngest -> oldest
+    group = SimpleNamespace(
+        name="G",
+        structural_elements=[SimpleNamespace(name=n) for n in names],
+        get_interpolation_params=lambda: GeoINRParams(epochs=5, hidden_dim=8),
+    )
+    surface_points = pd.DataFrame({  # no points of "middle"
+        "X": interface[:, 1], "Y": interface[:, 2], "Z": interface[:, 3],
+        "formation": np.where(interface[:, 0] > 0, "top", "base"),
+    })
+    orientation_df = pd.DataFrame(orientations, columns=["X", "Y", "Z", "G_x", "G_y", "G_z"]).assign(formation="top")
+    grid = SimpleNamespace(extent=_EXTENT, resolution=_RESOLUTION, grid_coordinates=grid_points)
+
+    field, values = geoinr.interpolate_group_geo_inr(
+        group=group, grid=grid, group_surface_points_df=surface_points, group_orientations_points_df=orientation_df,
+    )
+    assert values == {"top": 1.0, "middle": 0.0, "base": -1.0}
+    assert field.shape == tuple(_RESOLUTION)[::-1]
+
+
+def test_single_formation_orientations_define_up():
+    """One formation: the orientation (pointing up) makes the field increase upwards."""
+    from types import SimpleNamespace
+
+    from core.structural_modeling_components.interpolator_functions.interpolator_parameters import GeoINRParams
+
+    interface, orientations, grid_points = _data()
+    top = interface[interface[:, 0] > 0]
+    group = SimpleNamespace(
+        name="G", structural_elements=[SimpleNamespace(name="only")],
+        get_interpolation_params=lambda: GeoINRParams(epochs=300),
+    )
+    surface_points = pd.DataFrame({"X": top[:, 1], "Y": top[:, 2], "Z": top[:, 3], "formation": "only"})
+    orientation_df = pd.DataFrame(orientations, columns=["X", "Y", "Z", "G_x", "G_y", "G_z"]).assign(formation="only")
+    grid = SimpleNamespace(extent=_EXTENT, resolution=_RESOLUTION, grid_coordinates=grid_points)
+
+    field, values = geoinr.interpolate_group_geo_inr(
+        group=group, grid=grid, group_surface_points_df=surface_points, group_orientations_points_df=orientation_df,
+    )
+    assert values == {"only": 1.0}
+    assert field[1].mean() > field[0].mean()  # ZYX: upper layer above lower layer
 
 
 def test_normalize_keeps_precision_of_real_world_coordinates():
