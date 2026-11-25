@@ -375,3 +375,73 @@ def test_epsilon_is_only_passed_for_kernels_that_use_it(kernel, expected_epsilon
         mod.RBFInterpolator = orig
 
     assert captured["epsilon"] == expected_epsilon
+
+
+# --- rbf_input_problem: minimum data per kernel ---------------------------------
+
+from core.structural_modeling_components.interpolator_functions.radial_basis_function import (  # noqa: E402
+    add_phantom_element, rbf_input_problem, PHANTOM_ELEMENT_NAME)
+
+
+def _random_points(n: int, seed: int = 0) -> np.ndarray:
+    return np.random.default_rng(seed).uniform(0.0, 100.0, (n, 3))
+
+
+@pytest.mark.parametrize("kernel, n_min", [("thin_plate_spline", 4), ("cubic", 4), ("quintic", 10)])
+def test_rbf_input_problem_minimum_point_count(kernel, n_min):
+    assert rbf_input_problem(_random_points(n_min), kernel) is None
+    problem = rbf_input_problem(_random_points(n_min - 1), kernel)
+    assert problem is not None
+    assert f"at least {n_min} surface points" in problem
+    assert "'linear'" in problem
+
+
+@pytest.mark.parametrize("kernel", ["linear", "multiquadric", "gaussian",
+                                    "inverse_multiquadric", "inverse_quadratic"])
+def test_rbf_input_problem_kernels_without_trend_accept_one_point(kernel):
+    assert rbf_input_problem(_random_points(1), kernel) is None
+
+
+def test_rbf_input_problem_points_in_one_plane():
+    points = _random_points(30)
+    points[:, 2] = 250.0  # one flat surface
+    problem = rbf_input_problem(points, "thin_plate_spline")
+    assert problem is not None and "in one plane" in problem
+    assert rbf_input_problem(points, "linear") is None
+
+
+def test_rbf_input_problem_quintic_points_on_a_curved_surface():
+    # 30 points on one paraboloid z = x^2 + y^2 lie on a quadric: rank-deficient for degree 2
+    xy = np.random.default_rng(1).uniform(-1.0, 1.0, (30, 2))
+    points = np.column_stack([xy, (xy ** 2).sum(axis=1)])
+    assert rbf_input_problem(points, "thin_plate_spline") is None
+    assert "curved surface" in rbf_input_problem(points, "quintic")
+
+
+def test_rbf_input_problem_neighbors_smaller_than_polynomial_terms():
+    problem = rbf_input_problem(_random_points(20), "thin_plate_spline", neighbors=3)
+    assert problem is not None and "neighbours" in problem
+    assert rbf_input_problem(_random_points(20), "thin_plate_spline", neighbors=4) is None
+
+
+@pytest.mark.parametrize("kernel, n", [("thin_plate_spline", 3), ("thin_plate_spline", 4), ("quintic", 9)])
+def test_rbf_input_problem_agrees_with_scipy(kernel, n):
+    """Whenever the check reports a problem, SciPy fails too, and vice versa."""
+    from scipy.interpolate import RBFInterpolator
+    for points in (_random_points(n), np.column_stack([_random_points(n)[:, :2], np.full(n, 5.0)])):
+        problem = rbf_input_problem(points, kernel)
+        try:
+            RBFInterpolator(points, np.arange(n, dtype=float), kernel=kernel)
+            scipy_fails = False
+        except Exception:
+            scipy_fails = True
+        assert (problem is not None) == scipy_fails
+
+
+def test_add_phantom_element_copies_points_downwards():
+    df = surface_df(["A", "A", "A"])
+    with_phantom, shift = add_phantom_element(df)
+    assert len(with_phantom) == 6
+    phantom = with_phantom[with_phantom["formation"] == PHANTOM_ELEMENT_NAME]
+    np.testing.assert_allclose(phantom["Z"].to_numpy(), df["Z"].to_numpy() - shift)
+    assert len(df) == 3  # input not modified

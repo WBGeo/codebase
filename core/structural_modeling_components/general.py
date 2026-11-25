@@ -65,6 +65,8 @@ from core.structural_modeling_components.interpolator_functions.ordinary_kriging
 )
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     interpolate_group_radial_basis_function,
+    add_phantom_element,
+    rbf_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.universal_cokriging import (
     interpolate_group_universal_cokriging,
@@ -163,6 +165,22 @@ interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
 }
 
 
+def _rbf_problem_for_component(group: StructuralGroup, surface_points: pd.DataFrame) -> Optional[str]:
+    """RBF data check for the surface points of one group in one domain component.
+
+    Uses the same points as the interpolator, including the phantom copies for a
+    group with a single element.
+    """
+    if len(group.structural_elements) == 1:
+        surface_points, _ = add_phantom_element(surface_points)
+    params = group.get_interpolation_params()
+    return rbf_input_problem(
+        surface_points[["X", "Y", "Z"]].to_numpy(dtype=float),
+        kernel=params.kernel,
+        neighbors=params.neighbors,
+    )
+
+
 def validate_interpolation_inputs(
         frame: StructuralFrame,
         fault_frame: FaultFrame | None,
@@ -249,6 +267,11 @@ def validate_interpolation_inputs(
             prefix = f"Group '{group.name}' ({comp_label})"
 
             # --- per-interpolator requirements ---
+            if method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
+                problem = _rbf_problem_for_component(group, sp_filtered)
+                if problem is not None:
+                    violations.append(f"{prefix}: Radial Basis Function: {problem}")
+
             if method in _INTERPOLATORS_REQUIRING_ORIENTATIONS:
                 if ori_filtered is None:
                     violations.append(
