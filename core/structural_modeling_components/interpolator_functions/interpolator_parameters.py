@@ -327,7 +327,7 @@ class GeoINRParams(BaseModel):
     """
 
     orientation_weight: float = Field(
-        0.1,
+        0.3,
         ge=0.0,
         validation_alias=AliasChoices("orientation_weight", "alpha"),
         description=(
@@ -349,7 +349,7 @@ class GeoINRParams(BaseModel):
     )
 
     n_hidden_layers: int = Field(
-        1,
+        2,
         ge=0,
         description=(
             "Number of hidden layers of the network. More layers can represent more complex "
@@ -359,7 +359,7 @@ class GeoINRParams(BaseModel):
 
     # --- training ---
     epochs: int = Field(
-        5000,
+        4000,
         ge=1,
         description=(
             "Number of training steps. More steps can fit the data better but take longer."
@@ -392,33 +392,25 @@ def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
 
     Heuristic intent
     ---------------
-    - Small datasets: slightly higher epochs and/or lr to converge quickly.
-    - Large datasets: reduce epochs and lr, increase hidden_dim modestly.
-    - Keep architecture conservative by default (avoids overfitting and long runtimes).
+    - Two hidden layers; more neurons per layer for large datasets.
+    - Large datasets: fewer epochs and a smaller learning rate, to keep the runtime bounded.
+
+    Calibration (synthetic model 2: all data and every third surface point; and the
+    dipping-layer scenario of the integration tests, where the dip is known only from
+    orientations; seeds 0-2 each): one hidden layer was worse than two in all three;
+    2000 epochs were worse than 4000 on the two sparse cases; an orientation weight of 0.3
+    was the best compromise (0.03 ignores the orientations in the dipping-layer scenario,
+    1.0 overweights the few orientations of the thinned model 2). Datasets with more than
+    500 points were not part of this calibration.
     """
 
     n = ctx.n_points
 
-    # Capacity scaling (conservative)
-    if n < 500:
-        hidden_dim = 32
-        n_hidden_layers = 2
-    elif n < 3000:
-        hidden_dim = 32
-        n_hidden_layers = 1
-    else:
-        hidden_dim = 64
-        n_hidden_layers = 2
+    n_hidden_layers = 2
+    hidden_dim = 32 if n < 3000 else 64
 
-    # Epoch scaling (sublinear-ish)
-    # - small: more epochs are cheap and often needed for smooth INR convergence
-    # - large: reduce epochs for runtime
-    # n<800 case: validated against a real wbgeo model (84/36-point groups, one with a sharp
-    # local fold) at 3000/4000/6000 epochs - all three were equally reliable (10/10 clean
-    # across random seeds), so lowered from 6000 to 4000 for a ~30% runtime reduction with no
-    # observed reliability cost. Only tested on that one dataset - revisit with a proper
-    # input-data-driven calibration (like the other interpolators' heuristics) rather than
-    # assuming this generalizes to every dataset in this size bucket.
+    # Epochs: 3000, 4000 and 6000 were equally reliable on model 2 (84/36-point groups,
+    # one with a sharp local fold, 10 random seeds each), so 4000 for small datasets.
     if n < 800:
         epochs = 4000
         lr = 0.01
@@ -429,9 +421,7 @@ def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
         epochs = 2500
         lr = 0.003
 
-    # Orientation weight:
-    # Without knowing orientation count/quality, keep moderate.
-    orientation_weight = 0.1
+    orientation_weight = 0.3
 
     return GeoINRParams(
         orientation_weight=orientation_weight,

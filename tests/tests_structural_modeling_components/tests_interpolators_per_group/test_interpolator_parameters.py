@@ -342,15 +342,21 @@ def test_default_geo_inr_params_capacity_breakpoints():
     assert p.hidden_dim == 32
     assert p.n_hidden_layers == 2
 
-    # 500 <= n < 3000: hidden_dim=32, n_hidden_layers=1
+    # 500 <= n < 3000: hidden_dim=32, n_hidden_layers=2 (always two layers)
     p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=600, mean_nn_distance=2.0))
     assert p.hidden_dim == 32
-    assert p.n_hidden_layers == 1
+    assert p.n_hidden_layers == 2
+    assert p.orientation_weight == 0.3
 
     # n >= 3000: hidden_dim=64, n_hidden_layers=2
     p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=5_000, mean_nn_distance=2.0))
     assert p.hidden_dim == 64
     assert p.n_hidden_layers == 2
+
+
+def test_geo_inr_class_defaults_match_small_data_heuristic():
+    small = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=100, mean_nn_distance=2.0))
+    assert GeoINRParams() == small
 
 
 def test_default_geo_inr_params_epoch_lr_breakpoints():

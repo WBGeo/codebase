@@ -85,6 +85,7 @@ _CASES = [
     (InterpolationMethod.FINITE_DIFFERENCES, {}),
     (InterpolationMethod.PIECEWISE_LINEAR, {"nelements": 10_000}),
     (InterpolationMethod.UNIVERSAL_COKRIGING, {}),
+    (InterpolationMethod.GEOINR, {}),  # default seed 0: deterministic
 ]
 
 
