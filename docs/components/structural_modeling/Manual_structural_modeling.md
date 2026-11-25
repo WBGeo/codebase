@@ -102,10 +102,10 @@ All methods produce the same output format (scalar field + per-element isovalues
 | **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK without `neighbors` (see [below](#universal-kriging-uk)) |
 | **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None (see [below](#universal-co-kriging-uck)) |
 | **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `regularisation`, `orientation_weight` (see [below](#finite-differences-fdi-and-piecewise-linear-pli)) |
-| **Piecewise Linear (PLI)** | Yes (only their location is used, see [below](#finite-differences-fdi-and-piecewise-linear-pli)) | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `regularisation` (see [below](#finite-differences-fdi-and-piecewise-linear-pli)) |
+| **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `regularisation`, `orientation_weight` (see [below](#finite-differences-fdi-and-piecewise-linear-pli)) |
 | **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
 
-For UCK, FDI and GeoINR, orientation vectors are scaled to unit length, so only their direction affects the result: UCK normalises them before passing them to GemPy, LoopStructural normalises them for FDI, and GeoINR normalises them in its orientation loss. PLI currently ignores their direction (see [below](#finite-differences-fdi-and-piecewise-linear-pli)).
+For all methods that use orientations, only the direction of the orientation vectors affects the result, not their length: UCK normalises them before passing them to GemPy, LoopStructural normalises them for FDI and PLI, and GeoINR normalises them in its orientation loss. Orientations can lie anywhere, not only on an interface; their formation only assigns them to a group.
 
 Two of these parameters take one of a fixed set of options. An unknown option is rejected when it is set.
 
@@ -190,20 +190,20 @@ Both are checked before the computation. If a formation is missing in a fault do
 FDI and PLI (both implemented with LoopStructural) solve the scalar field on their own internal computation grid, which covers the model extent plus a 20 % margin. FDI uses a regular grid of cells, PLI a mesh of tetrahedra. Each formation gets a value (oldest = 1, youngest = n), as for RBF. The field is found as the best compromise between three wishes, each with a weight:
 
 - it has the formation's value at every surface point (weight 1);
-- its layers have the measured dip at every orientation (FDI only, weight `orientation_weight`);
+- its layers have the measured dip at every orientation (weight `orientation_weight`);
 - it is smooth (weight `regularisation`).
 
-Only the ratios between these weights matter. For FDI, the orientations define which way is up, so a group with a single formation works without the copied formation used by RBF and Kriging.
+Only the ratios between these weights matter. Orientations set only the dip at their location; they do not pull an interface towards them, so they can lie anywhere, for example in the middle of a layer. If a group (or a fault domain) has surface points of only one formation, LoopStructural uses the orientations to define which way is up, so a group with a single formation works without the copied formation used by RBF and Kriging.
 
-**PLI and orientations.** In the LoopStructural version used (1.8.2), the orientation constraint of the piecewise-linear interpolator is not implemented. PLI therefore ignores the direction of orientations: each orientation only acts like an additional surface point of its formation at its location. As a consequence, PLI cannot model a group with a single formation (all points have the same value, so nothing defines which way is up). PLI still requires orientations, so workflows stay valid once this is fixed. If the dip of the layers is mainly known from orientations, or a group has only one formation, use FDI, UCK or GeoINR instead.
+For PLI, the LoopStructural version used (1.8.2) has no orientation constraint of its own. Each orientation is therefore passed as two directions that lie in the layer (along strike and down dip), which together have the same effect. LoopStructural weights these by the size of the mesh elements; WBGeo compensates for this, so `orientation_weight` means the same for any `nelements`.
 
-**Minimum data.** At least one orientation in each group and fault domain that contains surface points. For PLI, the surface points and orientations there must also belong to at least two formations. Both are checked before the computation (and in the Workbench when the inputs are connected).
+**Minimum data.** At least one orientation in each group and fault domain that contains surface points. This is checked before the computation.
 
 | Parameter | Methods | Meaning | Default | Effect |
 |---|---|---|---|---|
-| `nelements` | FDI, PLI | Number of elements of the internal computation grid (at least 1000) | FDI: 10 000 × √(points / 1000), limited to 5000–200 000; PLI: 2000 × √(points / 1000) × 0.8–1.4 (denser sampling of the model gives the larger factor), limited to 2000–50 000 | More elements give finer surfaces but take much longer. On synthetic model 2, ten to twenty times more elements changed the result by only about 2 % of the cells. |
-| `regularisation` | FDI, PLI | Weight of the smoothness term | 0.1 | Larger values give smoother, more planar surfaces that may not honour every data point; smaller values follow the data more closely but can become wavy. For FDI, LoopStructural's own default of 1.0 was too smooth on synthetic model 2. |
-| `orientation_weight` | FDI | Weight of the orientations relative to the surface points | 1.0 | Larger values make the layers follow the measured dips more closely; smaller values let the surfaces follow the surface points more closely. Matters most when there are few surface points. |
+| `nelements` | FDI, PLI | Number of elements of the internal computation grid (at least 1000) | FDI: 10 000 × √(points / 1000), limited to 5000–200 000; PLI: 2000 × √(points / 1000) × 0.8–1.4 (denser sampling of the model gives the larger factor), limited to 2000–50 000 | More elements give finer surfaces but take much longer. On synthetic model 2, ten to twenty times more elements changed the result by only about 2 % of the cells. For small or sparse data, PLI's default mesh can be too coarse to follow the orientations; increase `nelements` (e.g. to 10 000) if the layers do not follow the measured dips. |
+| `regularisation` | FDI, PLI | Weight of the smoothness term | 0.1 | Larger values give smoother, more planar surfaces that may not honour every data point; smaller values follow the data more closely but can become wavy. For FDI, LoopStructural's own default of 1.0 was too smooth on synthetic model 2 (90 % instead of 97 % of the cells agreeing with RBF). |
+| `orientation_weight` | FDI, PLI | Weight of the orientations relative to the surface points | 1.0 | Larger values make the layers follow the measured dips more closely; smaller values let the surfaces follow the surface points more closely. Matters most when there are few surface points. |
 
 The solver (conjugate gradients with LoopStructural's default tolerance) is fixed.
 
