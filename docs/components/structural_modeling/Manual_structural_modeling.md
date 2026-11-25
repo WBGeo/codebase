@@ -78,7 +78,7 @@ This step combines configuration and computation. The input data, grid, and — 
 
 The computation runs the following steps in sequence:
 
-1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it). All issues are reported together before any expensive computation begins.
+1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it, or that there are enough surface points for the chosen RBF kernel). The same check runs in the Workbench as a pre-check when the inputs are connected. All issues are reported together before any expensive computation begins.
 2. **Interpolation** — each stratigraphic group is interpolated independently. When faults are active for a group, the interpolation is run completely separately in each fault domain using only the data points that fall within that domain. The resulting scalar fields are then stitched together.
 3. **Age masks** — a boolean mask is computed per group that represents its depositional extent: the oldest group underlies the entire domain (mask is True everywhere), while younger groups are only present where they were deposited. When assembling the lithology block, younger groups take precedence over older ones wherever their mask is True — this is what produces unconformable contacts between groups.
 4. **Lithology block** — the scalar fields and age masks are combined into a single 3D integer array where each voxel is assigned to a formation.
@@ -97,7 +97,7 @@ All methods produce the same output format (scalar field + per-element isovalues
 
 | Method | Orientations required | Library                                                          | Currently adjustable parameters |
 |---|---|------------------------------------------------------------------|---|
-| **Radial Basis Function (RBF)** | No | [SciPy](https://scipy.org/)                                      | `kernel`, `smoothing`, `epsilon`, `neighbors` |
+| **Radial Basis Function (RBF)** | No | [SciPy](https://scipy.org/)                                      | `kernel`, `smoothing`, `epsilon`, `neighbors`, `anisotropy_scaling_z` (see [below](#radial-basis-function-rbf)) |
 | **Ordinary Kriging (OK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | `variogram_model`, `range`, `sill`, `nugget`, `anisotropy_scaling_x/y/z`, `neighbors` |
 | **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK plus `drift_terms` |
 | **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None currently exposed |
@@ -115,9 +115,31 @@ Three of these parameters take one of a fixed set of options. An unknown option 
 | `variogram_model` | OK, UK | `gaussian`, `spherical`, `exponential`, `hole-effect` |
 | `solver` | FDI, PLI | `cg`, `lsmr`, `admm` |
 
-The RBF shape parameter `epsilon` is only used by the kernels `multiquadric`, `inverse_multiquadric`, `inverse_quadratic` and `gaussian`; the other kernels ignore it. It is an inverse length (larger values make the kernel more local) and always has a default, so these kernels can be selected without setting it.
+Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. The estimate uses all points of a group, across all fault domains. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and sill for kriging methods, `nelements` for FDI and PLI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
 
-Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and sill for kriging methods, `nelements` for FDI and PLI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
+### Radial Basis Function (RBF)
+
+RBF fits a smooth scalar field through the surface points of a group: each formation gets a value (oldest = 1, youngest = n), and the field between the points is built from one radial function per point plus, for some kernels, a polynomial trend. Orientations are not used; if they are given, a warning says so. RBF is the default method.
+
+**A group with only one formation.** RBF needs at least two formations to tell up from down. For a group with a single formation, a copy of its surface points is placed below them (shifted down by 10 % of the point cloud's diagonal) as an artificial older formation, and a warning is shown. This assumes roughly horizontal layers; for steep or overturned layers, use a method with orientations (UCK, FDI, PLI, GeoINR).
+
+**Minimum data.** The kernels `thin_plate_spline`, `cubic` and `quintic` add a polynomial trend, which has to be fitted from the points. They need a minimum number of surface points in each group and fault domain, and the points must not all lie in one plane (for example, a single flat surface on its own). The copied points of a single-formation group count. The other kernels work with a single point.
+
+| Kernel | Trend | Minimum surface points |
+|---|---|---|
+| `thin_plate_spline` (default), `cubic` | plane | 4, not all in one plane |
+| `quintic` | curved surface | 10, not all on one plane or one simple curved surface |
+| `linear`, `multiquadric`, `gaussian`, `inverse_multiquadric`, `inverse_quadratic` | none or constant | 1 |
+
+This is checked before the computation (and in the Workbench when the inputs are connected). If a group or fault domain has too few points, add points there or choose `linear` or `multiquadric`.
+
+| Parameter | Meaning | Default | Effect |
+|---|---|---|---|
+| `kernel` | Shape of the radial function | `thin_plate_spline` | `thin_plate_spline` gives smooth, gently extrapolating surfaces and needs no length scale. Kernels using `epsilon` are more local. |
+| `smoothing` | How far the field may deviate from the points (0 = passes exactly through them) | 0.05 | Larger values give smoother surfaces that no longer honour every point; useful for noisy data. The scale is the step between two formations (1). |
+| `epsilon` | Shape parameter, an inverse length (only `multiquadric`, `inverse_multiquadric`, `inverse_quadratic`, `gaussian`; ignored by the others) | 1 / (5 × median nearest-neighbour distance) | Larger values make each point's influence more local. Refers to the stretched coordinates when `anisotropy_scaling_z` is not 1. |
+| `neighbors` | Number of nearest points used at each grid cell (empty = all points) | all points; for more than 5000 points min(500, 5 · n^(2/3)) | Fewer neighbours are faster and more local, but can produce small steps in the surfaces. Must be at least 4 (10 for `quintic`). |
+| `anisotropy_scaling_z` | Vertical stretching factor applied to points and grid before fitting | 1.0 (no anisotropy) | Values above 1 make vertical distances count more than horizontal ones, so points influence each other more along the layers than across them. Values below 1 do the opposite. |
 
 ---
 
