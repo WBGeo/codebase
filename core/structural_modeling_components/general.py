@@ -60,12 +60,13 @@ from core.structural_modeling_components.structural_objects.structural_objects i
 
 logger = logging.getLogger(__name__)
 
+from core.structural_modeling_components.interpolator_functions.minimum_data import add_phantom_element
 from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (
     interpolate_group_ordinary_kriging,
+    ok_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     interpolate_group_radial_basis_function,
-    add_phantom_element,
     rbf_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.universal_cokriging import (
@@ -81,7 +82,8 @@ from core.structural_modeling_components.interpolator_functions.piecewise_linear
     interpolate_group_piecewise_linear,
 )
 from core.structural_modeling_components.interpolator_functions.universal_kriging import (
-    interpolate_group_universal_kriging
+    interpolate_group_universal_kriging,
+    uk_input_problem,
 )
 
 # -----------------------------------------------------------------------------
@@ -165,20 +167,34 @@ interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
 }
 
 
-def _rbf_problem_for_component(group: StructuralGroup, surface_points: pd.DataFrame) -> Optional[str]:
-    """RBF data check for the surface points of one group in one domain component.
+_SURFACE_POINT_ONLY_METHOD_LABELS: dict[InterpolationMethod, str] = {
+    InterpolationMethod.RADIAL_BASIS_FUNCTION: "Radial Basis Function",
+    InterpolationMethod.ORDINARY_KRIGING: "Ordinary Kriging",
+    InterpolationMethod.UNIVERSAL_KRIGING: "Universal Kriging",
+}
+
+
+def _surface_point_problem_for_component(group: StructuralGroup, surface_points: pd.DataFrame) -> Optional[str]:
+    """Minimum-data check of RBF, OK and UK for the surface points of one group in one domain component.
 
     Uses the same points as the interpolator, including the phantom copies for a
-    group with a single element.
+    group with a single element. Returns None for the other methods.
     """
+    method = group.interpolation_method
+    if method not in _SURFACE_POINT_ONLY_METHOD_LABELS:
+        return None
     if len(group.structural_elements) == 1:
         surface_points, _ = add_phantom_element(surface_points)
-    params = group.get_interpolation_params()
-    return rbf_input_problem(
-        surface_points[["X", "Y", "Z"]].to_numpy(dtype=float),
-        kernel=params.kernel,
-        neighbors=params.neighbors,
-    )
+    points = surface_points[["X", "Y", "Z"]].to_numpy(dtype=float)
+
+    if method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
+        params = group.get_interpolation_params()
+        problem = rbf_input_problem(points, kernel=params.kernel, neighbors=params.neighbors)
+    elif method == InterpolationMethod.ORDINARY_KRIGING:
+        problem = ok_input_problem(points)
+    else:
+        problem = uk_input_problem(points)
+    return None if problem is None else f"{_SURFACE_POINT_ONLY_METHOD_LABELS[method]}: {problem}"
 
 
 def validate_interpolation_inputs(
@@ -267,10 +283,9 @@ def validate_interpolation_inputs(
             prefix = f"Group '{group.name}' ({comp_label})"
 
             # --- per-interpolator requirements ---
-            if method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
-                problem = _rbf_problem_for_component(group, sp_filtered)
-                if problem is not None:
-                    violations.append(f"{prefix}: Radial Basis Function: {problem}")
+            problem = _surface_point_problem_for_component(group, sp_filtered)
+            if problem is not None:
+                violations.append(f"{prefix}: {problem}")
 
             if method in _INTERPOLATORS_REQUIRING_ORIENTATIONS:
                 if ori_filtered is None:

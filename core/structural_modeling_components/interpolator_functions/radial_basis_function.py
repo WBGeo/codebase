@@ -22,14 +22,18 @@ from scipy.interpolate import RBFInterpolator
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
     RBF_KERNELS_USING_EPSILON,
 )
+from core.structural_modeling_components.interpolator_functions.minimum_data import (  # noqa: F401 (re-exported)
+    PHANTOM_ELEMENT_NAME,
+    POLYNOMIAL_TERMS_3D,
+    add_phantom_element,
+    points_support_polynomial,
+)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
-
-PHANTOM_ELEMENT_NAME = "__phantom__"
 
 # Polynomial degree SciPy adds to each kernel by default (`degree=None` means the
 # kernel's minimum degree, at least 0). We keep SciPy's default: lowering it below
@@ -42,40 +46,6 @@ RBF_KERNEL_POLYNOMIAL_DEGREE: Dict[str, int] = {
 
 # Kernels that need only a constant polynomial term (degree 0), i.e. one point.
 _RBF_KERNELS_FOR_FEW_POINTS = ("linear", "multiquadric")
-
-
-def add_phantom_element(surface_points_df: pd.DataFrame) -> Tuple[pd.DataFrame, float]:
-    """
-    Add a synthetic older element below a group that has only one element.
-
-    The surface points are copied and shifted down by 10 % of their bounding-box
-    diagonal (at least 1 unit), labelled ``PHANTOM_ELEMENT_NAME``. Interpolators
-    that only use surface points (RBF, Ordinary and Universal Kriging) need at
-    least two different values to fit a scalar field.
-
-    Returns
-    -------
-    surface_points_with_phantom, shift
-    """
-    coords = surface_points_df[["X", "Y", "Z"]].to_numpy()
-    bbox_diag = float(np.linalg.norm(coords.max(axis=0) - coords.min(axis=0)))
-    shift = max(0.1 * bbox_diag, 1.0)
-    phantom_df = surface_points_df.assign(Z=surface_points_df["Z"] - shift, formation=PHANTOM_ELEMENT_NAME)
-    return pd.concat([surface_points_df, phantom_df], ignore_index=True), shift
-
-
-def _polynomial_matrix(points: FloatArray, degree: int) -> FloatArray:
-    """Monomials up to `degree` evaluated at `points` (centred and scaled, as SciPy does)."""
-    centred = points - points.mean(axis=0)
-    scale = float(np.abs(centred).max())
-    scaled = centred / scale if scale > 0 else centred
-    x, y, z = scaled.T
-    columns = [np.ones(len(points))]
-    if degree >= 1:
-        columns += [x, y, z]
-    if degree >= 2:
-        columns += [x * x, y * y, z * z, x * y, x * z, y * z]
-    return np.column_stack(columns)
 
 
 def rbf_input_problem(points: FloatArray, kernel: str, neighbors: Optional[int] = None) -> Optional[str]:
@@ -102,7 +72,7 @@ def rbf_input_problem(points: FloatArray, kernel: str, neighbors: Optional[int] 
     A description of the problem for the user, or None if the points are sufficient.
     """
     degree = RBF_KERNEL_POLYNOMIAL_DEGREE.get(kernel, 0)
-    n_terms = {0: 1, 1: 4, 2: 10}[degree]
+    n_terms = POLYNOMIAL_TERMS_3D[degree]
     alternatives = " or ".join(f"'{k}'" for k in _RBF_KERNELS_FOR_FEW_POINTS)
     n_points = len(points)
 
@@ -117,7 +87,7 @@ def rbf_input_problem(points: FloatArray, kernel: str, neighbors: Optional[int] 
             f"the kernel '{kernel}' needs at least {n_terms} neighbours, "
             f"but 'neighbors' is set to {neighbors}. Increase 'neighbors' or leave it empty."
         )
-    if degree >= 1 and np.linalg.matrix_rank(_polynomial_matrix(points, degree)) < n_terms:
+    if not points_support_polynomial(points, degree):
         shape = "in one plane" if degree == 1 else "on one plane or one simple curved surface"
         return (
             f"all {n_points} surface points lie {shape}, so the kernel '{kernel}' cannot be "

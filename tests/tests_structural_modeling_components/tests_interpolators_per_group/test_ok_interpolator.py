@@ -290,7 +290,7 @@ def test_constructs_ordinary_kriging3d_with_expected_parameters_and_calls_execut
 
 
 def test_backend_is_loop_and_n_closest_points_is_set_when_neighbors_provided(monkeypatch):
-    params = FakeOKParams(neighbors=7)
+    params = FakeOKParams(neighbors=3)
     group = FakeGroup("G", ["young", "old"], params=params)
     grid = FakeGrid(resolution=(2, 2, 2))
     sdf = pd.DataFrame(
@@ -320,5 +320,46 @@ def test_backend_is_loop_and_n_closest_points_is_set_when_neighbors_provided(mon
     field, _ = interpolate_group_ordinary_kriging(group=group, grid=grid, group_surface_points_df=sdf)
 
     assert captured["backend"] == "loop"
-    assert captured["n_closest_points"] == 7
+    assert captured["n_closest_points"] == 3
     assert np.isfinite(field).all()
+
+
+# --- #16: never more neighbours than points; minimum data ------------------------
+
+from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (  # noqa: E402
+    effective_neighbors, ok_input_problem)
+
+
+@pytest.mark.parametrize("neighbors, n_points, expected", [
+    (None, 8, None), (30, 8, None), (8, 8, None), (7, 8, 7), (30, 100, 30)])
+def test_effective_neighbors(neighbors, n_points, expected):
+    assert effective_neighbors(neighbors, n_points) == expected
+
+
+def test_more_neighbors_than_points_uses_all_points():
+    """
+    https://github.com/WBGeo/codebase/issues/16: a fault domain with 8 points and
+    neighbors=30 made PyKrige build a singular matrix. Now it equals global kriging.
+    """
+    rng = np.random.default_rng(0)
+    sdf = pd.DataFrame({
+        "X": rng.uniform(0, 1000, 8), "Y": rng.uniform(0, 1000, 8), "Z": rng.uniform(0, 1000, 8),
+        "formation": ["young", "old"] * 4,
+    })
+    grid = FakeGrid(resolution=(5, 4, 3))
+    grid.gridx, grid.gridy, grid.gridz = np.linspace(0, 1000, 5), np.linspace(0, 1000, 4), np.linspace(0, 1000, 3)
+
+    def run(neighbors):
+        params = FakeOKParams(variogram_model="gaussian", range=500.0, nugget=0.0, neighbors=neighbors)
+        field, _ = interpolate_group_ordinary_kriging(
+            group=FakeGroup("G", ["young", "old"], params=params), grid=grid, group_surface_points_df=sdf)
+        return field
+
+    capped = run(30)
+    assert np.isfinite(capped).all()
+    np.testing.assert_allclose(capped, run(None))
+
+
+def test_ok_input_problem_needs_two_points():
+    assert "at least 2 surface points" in ok_input_problem(np.zeros((1, 3)))
+    assert ok_input_problem(np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])) is None

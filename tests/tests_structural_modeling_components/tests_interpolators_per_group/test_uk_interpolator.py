@@ -388,3 +388,39 @@ def test_external_drift_is_passed_to_constructor_and_external_drift_grid_to_exec
     class DummyUK3D:
         def __init__(self, x, y, z, vals, **kwargs):
             captured["constructor_external_drift"] = kwargs.get("external_drift")
+
+
+# --- minimum data: linear drift needs 4 points not all in one plane --------------
+
+from core.structural_modeling_components.interpolator_functions.universal_kriging import (  # noqa: E402
+    uk_input_problem)
+
+
+def _random_points(n: int, seed: int = 0) -> np.ndarray:
+    return np.random.default_rng(seed).uniform(0.0, 100.0, (n, 3))
+
+
+def test_uk_input_problem_point_count():
+    assert "at least 4 surface points" in uk_input_problem(_random_points(3))
+    assert uk_input_problem(_random_points(4)) is None
+
+
+def test_uk_input_problem_points_in_one_plane():
+    points = _random_points(20)
+    points[:, 2] = 50.0
+    assert "in one plane" in uk_input_problem(points)
+
+
+@pytest.mark.parametrize("n", [2, 3, 4, 6])
+def test_uk_input_problem_agrees_with_pykrige(n):
+    """Whenever the check reports a problem, PyKrige fails, and vice versa (random points)."""
+    from pykrige.uk3d import UniversalKriging3D
+    points, g = _random_points(n), np.linspace(0, 100, 3)
+    try:
+        uk = UniversalKriging3D(*points.T, np.arange(n, dtype=float), variogram_model="gaussian",
+                                variogram_parameters=[1.0, 50.0, 0.0], drift_terms=["regional_linear"])
+        uk.execute("grid", g, g, g)
+        pykrige_fails = False
+    except Exception:
+        pykrige_fails = True
+    assert (uk_input_problem(points) is not None) == pykrige_fails

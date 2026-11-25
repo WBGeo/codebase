@@ -24,8 +24,40 @@ import numpy.typing as npt
 import pandas as pd
 from pykrige.uk3d import UniversalKriging3D
 
+from core.structural_modeling_components.interpolator_functions.minimum_data import (
+    PHANTOM_ELEMENT_NAME,
+    POLYNOMIAL_TERMS_3D,
+    add_phantom_element,
+    points_support_polynomial,
+)
+
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+# The regional linear drift is a plane a + b·x + c·y + d·z fitted through the points.
+_UK_DRIFT_DEGREE = 1
+
+
+def uk_input_problem(points: FloatArray) -> Optional[str]:
+    """
+    Check whether Universal Kriging (with its linear drift) can be fitted to `points`
+    ((N, 3), including phantom points). Otherwise PyKrige fails with "singular matrix".
+
+    Returns a description of the problem for the user, or None if the points are sufficient.
+    """
+    n_min = POLYNOMIAL_TERMS_3D[_UK_DRIFT_DEGREE]
+    if len(points) < n_min:
+        return (
+            f"fits a linear trend and needs at least {n_min} surface points, but only "
+            f"{len(points)} are available. Add surface points, or use Ordinary Kriging, "
+            f"which works with fewer points."
+        )
+    if not points_support_polynomial(points, _UK_DRIFT_DEGREE):
+        return (
+            f"all {len(points)} surface points lie in one plane, so the linear trend cannot be "
+            f"fitted. Add surface points outside this plane, or use Ordinary Kriging."
+        )
+    return None
 
 
 def interpolate_group_universal_kriging(
@@ -78,15 +110,8 @@ def interpolate_group_universal_kriging(
     _phantom_name: Optional[str] = None
     if len(group.structural_elements) < 2:
         if len(group.structural_elements) == 1:
-            _coords_tmp = group_surface_points_df[["X", "Y", "Z"]].to_numpy()
-            _bbox_diag = float(np.linalg.norm(_coords_tmp.max(axis=0) - _coords_tmp.min(axis=0)))
-            _shift = max(0.1 * _bbox_diag, 1.0)
-            _phantom_name = "__phantom__"
-            _phantom_df = group_surface_points_df.copy()
-            _phantom_df = _phantom_df.assign(Z=_phantom_df["Z"] - _shift, formation=_phantom_name)
-            group_surface_points_df = pd.concat(
-                [group_surface_points_df, _phantom_df], ignore_index=True
-            )
+            _phantom_name = PHANTOM_ELEMENT_NAME
+            group_surface_points_df, _shift = add_phantom_element(group_surface_points_df)
             warnings.warn(
                 f"Group '{group.name}' has only one structural element. Universal Kriging "
                 f"requires at least two. A phantom 'older' element has been synthesized by "

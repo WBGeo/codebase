@@ -1165,6 +1165,36 @@ def test_validate_fails_for_rbf_one_flat_surface():
         mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
 
 
+def test_validate_ok_needs_two_points_and_counts_phantom():
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.ORDINARY_KRIGING, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0"])
+    with pytest.raises(ValueError, match=r"Ordinary Kriging: needs at least 2 surface points"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    # one element with one point: the phantom copy makes it two
+    frame = _make_validate_frame(grid, InterpolationMethod.ORDINARY_KRIGING, n_elements=1, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0"])
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_uk_needs_four_points_not_in_one_plane():
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.UNIVERSAL_KRIGING, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0", "e1", "e0"])
+    with pytest.raises(ValueError, match=r"Universal Kriging: fits a linear trend and needs at least 4"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    pts = _rbf_points(["e0", "e1"] * 5)
+    pts["Z"] = 1.0
+    frame.surface_points = pts
+    with pytest.raises(ValueError, match="in one plane"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    frame.surface_points = _rbf_points(["e0", "e1"] * 3)
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
 def test_validate_fails_for_rbf_with_too_few_points_in_one_fault_domain():
     """Enough points overall, but the fault domain on the right has only 2 → reported for that domain."""
     grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
