@@ -214,6 +214,8 @@ class RBFParams(BaseModel):
         epsilon: Shape parameter (inverse length). Only used by the kernels in
             ``RBF_KERNELS_USING_EPSILON``; ignored for the others.
         neighbors: Optional number of nearest neighbors. If None, all points are used.
+        anisotropy_scaling_z: Factor applied to all z coordinates (points and grid)
+            before fitting. 1.0 means no anisotropy.
     """
 
     model_config = _ENUM_FIELD_CONFIG
@@ -236,6 +238,16 @@ class RBFParams(BaseModel):
     neighbors: Optional[int] = Field(
         None,
         description="Number of nearest neighbors to use. If None, all points are used.",
+    )
+    anisotropy_scaling_z: float = Field(
+        1.0,
+        gt=0.0,
+        description=(
+            "Vertical stretching factor (1 = no anisotropy). Values above 1 make vertical "
+            "distances count more than horizontal ones, so points influence each other more "
+            "along the layers than across them. Values below 1 do the opposite. epsilon refers "
+            "to the stretched coordinates."
+        ),
     )
 
 
@@ -268,6 +280,7 @@ def default_rbf_params(ctx: InterpolationContext) -> RBFParams:
         smoothing=0.05,  # categorical scalar field → smooth by default
         epsilon=epsilon,
         neighbors=neighbors,
+        anisotropy_scaling_z=1.0,
     )
 
 

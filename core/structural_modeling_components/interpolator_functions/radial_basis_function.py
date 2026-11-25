@@ -224,10 +224,15 @@ def interpolate_group_radial_basis_function(
         scalar_values_by_element.pop(_phantom_name)
 
     # 3) coordinates of control points
-    coords: FloatArray = group_surface_points_df[["X", "Y", "Z"]].to_numpy()
+    coords: FloatArray = group_surface_points_df[["X", "Y", "Z"]].to_numpy(dtype=float)
 
     # 4) parameters (expected: your RBFParams-like object)
     params = group.get_interpolation_params()
+
+    # Vertical anisotropy: stretch z of points and grid alike (1.0 = isotropic)
+    z_scaling = float(getattr(params, "anisotropy_scaling_z", 1.0))
+    axis_scaling = np.array([1.0, 1.0, z_scaling])
+    coords = coords * axis_scaling
 
     # 5) fit RBF
     rbfi = RBFInterpolator(
@@ -248,7 +253,7 @@ def interpolate_group_radial_basis_function(
         gx, gy, gz = np.meshgrid(grid.gridx, grid.gridy, grid.gridz, indexing="ij")
         grid_points = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
 
-    scalar_flat: FloatArray = rbfi(grid_points)
+    scalar_flat: FloatArray = rbfi(grid_points * axis_scaling)
     scalar_field = scalar_flat.reshape(tuple(grid.resolution)).T  # (nx, ny, nz)
 
     return scalar_field, scalar_values_by_element
