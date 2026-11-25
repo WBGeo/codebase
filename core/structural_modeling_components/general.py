@@ -81,7 +81,6 @@ from core.structural_modeling_components.interpolator_functions.finite_differenc
 )
 from core.structural_modeling_components.interpolator_functions.piecewise_linear import (
     interpolate_group_piecewise_linear,
-    pli_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.universal_kriging import (
     interpolate_group_universal_kriging,
@@ -174,21 +173,15 @@ _MINIMUM_DATA_METHOD_LABELS: dict[InterpolationMethod, str] = {
     InterpolationMethod.ORDINARY_KRIGING: "Ordinary Kriging",
     InterpolationMethod.UNIVERSAL_KRIGING: "Universal Kriging",
     InterpolationMethod.UNIVERSAL_COKRIGING: "Universal Co-Kriging",
-    InterpolationMethod.PIECEWISE_LINEAR: "Piecewise Linear",
 }
 
 
-def _minimum_data_problem_for_component(
-        group: StructuralGroup,
-        surface_points: pd.DataFrame,
-        orientations: Optional[pd.DataFrame] = None,
-) -> Optional[str]:
-    """Minimum-data check for one group in one domain component (RBF, OK, UK, UCK, PLI).
+def _minimum_data_problem_for_component(group: StructuralGroup, surface_points: pd.DataFrame) -> Optional[str]:
+    """Minimum surface-point check for one group in one domain component (RBF, OK, UK, UCK).
 
     Uses the same points as the interpolator, including the phantom copies for a
     single-element group (RBF, OK, UK). Returns None for the other methods.
-    Whether orientations exist at all is checked separately; PLI uses them here only
-    for the formations they belong to.
+    Orientations are checked separately.
     """
     method = group.interpolation_method
     if method not in _MINIMUM_DATA_METHOD_LABELS:
@@ -196,8 +189,6 @@ def _minimum_data_problem_for_component(
 
     if method == InterpolationMethod.UNIVERSAL_COKRIGING:
         problem = uck_input_problem(surface_points, [e.name for e in group.structural_elements])
-    elif method == InterpolationMethod.PIECEWISE_LINEAR:
-        problem = pli_input_problem(surface_points, orientations)
     else:
         if len(group.structural_elements) == 1:
             surface_points, _ = add_phantom_element(surface_points)
@@ -298,7 +289,7 @@ def validate_interpolation_inputs(
             prefix = f"Group '{group.name}' ({comp_label})"
 
             # --- per-interpolator requirements ---
-            problem = _minimum_data_problem_for_component(group, sp_filtered, ori_filtered)
+            problem = _minimum_data_problem_for_component(group, sp_filtered)
             if problem is not None:
                 violations.append(f"{prefix}: {problem}")
 

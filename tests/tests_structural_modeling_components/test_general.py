@@ -1225,26 +1225,6 @@ def test_validate_uck_needs_every_formation_in_each_fault_domain():
     mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
 
 
-def test_validate_pli_needs_two_formations():
-    """
-    PLI ignores orientation directions, so a single-formation group cannot be modeled.
-    Orientations count for the formation they belong to.
-    """
-    grid = make_grid((4, 3, 2))
-    frame = _make_validate_frame(grid, InterpolationMethod.PIECEWISE_LINEAR, n_elements=1, has_orientations=True)
-    with pytest.raises(ValueError, match=r"Piecewise Linear: needs data of at least two formations.*'e0'"):
-        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
-
-    # two elements, surface points of 'e1' only, orientation of 'e0': passes
-    frame = _make_validate_frame(grid, InterpolationMethod.PIECEWISE_LINEAR, has_orientations=True)
-    frame.surface_points = _rbf_points(["e1", "e1"])
-    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
-
-    # FDI uses orientation directions and works with one formation
-    frame = _make_validate_frame(grid, InterpolationMethod.FINITE_DIFFERENCES, n_elements=1, has_orientations=True)
-    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
-
-
 def test_validate_fails_for_rbf_with_too_few_points_in_one_fault_domain():
     """Enough points overall, but the fault domain on the right has only 2 → reported for that domain."""
     grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))

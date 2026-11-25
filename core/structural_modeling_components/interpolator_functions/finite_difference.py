@@ -12,8 +12,10 @@ Notes
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
 - The scalar field reshape + transpose is preserved exactly as implemented.
-- Orientation/gradient observations are treated as point constraints by LoopStructural
-  (i.e., their XYZ location matters to the solution).
+- Orientations only constrain the direction of the gradient at their location; they
+  carry no scalar value, so they may lie anywhere, not only on an interface. With
+  only one formation (all values equal), LoopStructural turns them into normal-vector
+  constraints, which also fix the gradient's length and so define which way is up.
 
 FDI-specific parameters
 -----------------------
@@ -140,7 +142,11 @@ def interpolate_group_finite_differences(
     # Orientations table
     orientations = group_orientations_points_df.copy()
     orientations["feature_name"] = group.name
-    orientations["val"] = orientations["formation"].map(formation_to_scalar)
+    # No value: orientations may lie anywhere, not only on the interface of their formation
+    # (the formation only assigns them to the group). LoopStructural turns every row with a
+    # `val` into a value constraint, which would pull the field to that formation's value
+    # at the orientation's location.
+    orientations["val"] = np.nan
     orientations = orientations.rename(columns={"G_x": "gx", "G_y": "gy", "G_z": "gz"})
     orientations = orientations[["X", "Y", "Z", "val", "feature_name", "gx", "gy", "gz"]]
 

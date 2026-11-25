@@ -577,12 +577,13 @@ class PLIParams(BaseModel):
     Parameters for LoopStructural PLI (piecewise linear) interpolation.
 
     PLI solves the scalar field on a tetrahedral support (finer with larger ``nelements``)
-    as a weighted least-squares problem of surface points and smoothness.
+    with the same weighted least-squares terms as FDI.
 
-    There is no orientation weight: in LoopStructural 1.8.2 the gradient constraint of
-    the piecewise-linear interpolator is not implemented (``add_gradient_constraints`` of
-    ``P1Interpolator`` does nothing), so PLI ignores the direction of orientations and
-    only uses their location, with the value of their formation, like a surface point.
+    In LoopStructural 1.8.2 the gradient constraint of the piecewise-linear interpolator
+    is not implemented, so orientations are passed as tangent constraints (strike and dip
+    vectors), weighted by ``orientation_weight``. LoopStructural scales these with the
+    element volume; the interpolator divides the weight by the mean element volume, so
+    it does not depend on ``nelements``.
 
     Attributes
     ----------
@@ -591,6 +592,8 @@ class PLIParams(BaseModel):
     regularisation:
         Weight of the smoothness term (constant-gradient regularisation;
         LoopStructural default for PLI: 0.1).
+    orientation_weight:
+        Weight of the orientation (tangent) constraints relative to the surface points.
     """
 
     nelements: int = Field(
@@ -607,6 +610,15 @@ class PLIParams(BaseModel):
         description=(
             "Smoothness of the scalar field. Larger values give smoother, more planar surfaces "
             "that may not honour every data point; smaller values follow the data more closely."
+        ),
+    )
+    orientation_weight: float = Field(
+        1.0,
+        gt=0.0,
+        description=(
+            "How strongly orientations count compared with surface points (1 = equally). Larger "
+            "values make the layers follow the measured dips more closely; smaller values let the "
+            "surfaces follow the surface points more closely."
         ),
     )
 

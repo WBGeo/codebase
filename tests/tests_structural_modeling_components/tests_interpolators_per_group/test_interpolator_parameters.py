@@ -70,7 +70,7 @@ def test_pydantic_param_models_have_expected_defaults():
     pli = PLIParams()
     assert pli.nelements == 2_000
     assert pli.regularisation == 0.1  # LoopStructural's PLI default
-    assert not hasattr(pli, "orientation_weight")  # PLI ignores orientation directions
+    assert pli.orientation_weight == 1.0
     for removed in ("solver", "damp", "tol"):
         assert not hasattr(fdi, removed) and not hasattr(pli, removed)
 
