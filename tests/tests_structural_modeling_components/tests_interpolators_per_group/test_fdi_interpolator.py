@@ -18,11 +18,10 @@ class FakeElem:
 
 
 class FakeParams:
-    def __init__(self, nelements=10_000, solver="cg", damp=True, tol=None):
+    def __init__(self, nelements=10_000, regularisation=1.0, orientation_weight=1.0):
         self.nelements = nelements
-        self.solver = solver
-        self.damp = damp
-        self.tol = tol
+        self.regularisation = regularisation
+        self.orientation_weight = orientation_weight
 
 
 class FakeGroup:
@@ -199,7 +198,7 @@ def test_raises_when_interpolation_params_missing(monkeypatch):
 
 def test_scalar_values_mapping_is_oldest_1_youngest_n_and_transpose_behavior(monkeypatch):
     # structural_elements assumed youngest->oldest
-    group = FakeGroup("G", ["youngest", "middle", "oldest"], params=FakeParams(nelements=12345, solver="cg", damp=True))
+    group = FakeGroup("G", ["youngest", "middle", "oldest"], params=FakeParams(nelements=12345, regularisation=1.0))
     grid = FakeGrid(resolution=(2, 1, 3))
     sdf = surface_df(["oldest", "middle", "youngest"])
     odf = orientations_df(["oldest", "middle", "youngest"])
@@ -228,7 +227,7 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n_and_transpose_behavior(mon
 
 
 def test_passes_fdi_params_into_create_and_add_foliation(monkeypatch):
-    group = FakeGroup("G", ["young", "old"], params=FakeParams(nelements=7777, solver="cg", damp=False, tol=1e-6))
+    group = FakeGroup("G", ["young", "old"], params=FakeParams(nelements=7777, regularisation=0.5, orientation_weight=3.0))
     grid = FakeGrid(resolution=(2, 2, 1))
     sdf = surface_df(["young", "old"])
     odf = orientations_df(["young", "old"])

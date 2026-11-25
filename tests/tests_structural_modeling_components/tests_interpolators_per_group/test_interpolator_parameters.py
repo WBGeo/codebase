@@ -11,7 +11,6 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
     InterpolationMethod,
     VariogramModel,
     RBFKernel,
-    LoopSolver,
     RBF_KERNELS_USING_EPSILON,
     OKParams,
     RBFParams,
@@ -65,15 +64,15 @@ def test_pydantic_param_models_have_expected_defaults():
 
     fdi = FDIParams()
     assert fdi.nelements == 10_000
-    assert fdi.solver == "cg"
-    assert fdi.damp is True
-    assert fdi.tol is None
+    assert fdi.regularisation == 0.1  # smoother than LoopStructural's 1.0 fitted worse on model 2
+    assert fdi.orientation_weight == 1.0
 
     pli = PLIParams()
     assert pli.nelements == 2_000
-    assert pli.solver == "cg"
-    assert pli.damp is True
-    assert pli.tol is None
+    assert pli.regularisation == 0.1  # LoopStructural's PLI default
+    assert not hasattr(pli, "orientation_weight")  # PLI ignores orientation directions
+    for removed in ("solver", "damp", "tol"):
+        assert not hasattr(fdi, removed) and not hasattr(pli, removed)
 
 
 # -----------------------------------------------------------------------------
@@ -150,8 +149,6 @@ def test_default_rbf_params_always_sets_epsilon_as_inverse_length():
         (OKParams, "variogram_model", VariogramModel),
         (UKParams, "variogram_model", VariogramModel),
         (RBFParams, "kernel", RBFKernel),
-        (FDIParams, "solver", LoopSolver),
-        (PLIParams, "solver", LoopSolver),
     ],
 )
 def test_enum_fields_accept_every_option_and_store_plain_strings(params_cls, field, enum_cls):
@@ -168,8 +165,6 @@ def test_enum_fields_accept_every_option_and_store_plain_strings(params_cls, fie
         (OKParams, "variogram_model"),
         (UKParams, "variogram_model"),
         (RBFParams, "kernel"),
-        (FDIParams, "solver"),
-        (PLIParams, "solver"),
     ],
 )
 def test_enum_fields_reject_unknown_options(params_cls, field):
@@ -254,12 +249,6 @@ def test_default_fdi_params_nelements_within_bounds():
         p = default_fdi_params(ctx)
         assert 5_000 <= p.nelements <= 200_000, f"n={n}: nelements={p.nelements} out of [5k, 200k]"
 
-    # Check fixed fields
-    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=2.0)
-    p = default_fdi_params(ctx)
-    assert p.solver == "cg"
-    assert p.damp is True
-    assert p.tol is None
 
 
 def test_default_fdi_params_exact_at_1k_points():
@@ -285,12 +274,6 @@ def test_default_pli_params_nelements_within_bounds():
         p = default_pli_params(ctx)
         assert 2_000 <= p.nelements <= 50_000, f"n={n}: nelements={p.nelements} out of [2k, 50k]"
 
-    # Check fixed fields are always set correctly
-    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=2.0)
-    p = default_pli_params(ctx)
-    assert p.solver == "cg"
-    assert p.damp is True
-    assert p.tol is None
 
 
 def test_default_pli_params_floor_clamping():

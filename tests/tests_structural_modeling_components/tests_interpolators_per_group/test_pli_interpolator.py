@@ -18,11 +18,9 @@ class FakeElem:
 
 
 class FakeParams:
-    def __init__(self, nelements=20_000, solver="cg", damp=True, tol=None):
+    def __init__(self, nelements=20_000, regularisation=1.0):
         self.nelements = nelements
-        self.solver = solver
-        self.damp = damp
-        self.tol = tol
+        self.regularisation = regularisation
 
 
 class FakeGroup:
@@ -191,7 +189,7 @@ def test_raises_when_interpolation_params_missing(monkeypatch):
 # --- Core tests ---------------------------------------------------------------
 
 def test_scalar_values_mapping_is_oldest_1_youngest_n_and_transpose_behavior(monkeypatch):
-    group = FakeGroup("G", ["youngest", "middle", "oldest"], params=FakeParams(nelements=33333, solver="cg", damp=True))
+    group = FakeGroup("G", ["youngest", "middle", "oldest"], params=FakeParams(nelements=33333, regularisation=1.0))
     grid = FakeGrid(resolution=(2, 1, 3))
     sdf = surface_df(["oldest", "middle", "youngest"])
     odf = orientations_df(["oldest", "middle", "youngest"])
@@ -217,7 +215,7 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n_and_transpose_behavior(mon
 
 
 def test_passes_pli_params_into_create_and_add_foliation(monkeypatch):
-    group = FakeGroup("G", ["young", "old"], params=FakeParams(nelements=44444, solver="cg", damp=False, tol=1e-5))
+    group = FakeGroup("G", ["young", "old"], params=FakeParams(nelements=44444, regularisation=0.5))
     grid = FakeGrid(resolution=(2, 2, 1))
     sdf = surface_df(["young", "old"])
     odf = orientations_df(["young", "old"])
@@ -248,5 +246,20 @@ def test_passes_pli_params_into_create_and_add_foliation(monkeypatch):
     assert kwargs["interpolatortype"] == "PLI"
     assert kwargs["nelements"] == 44444
     assert kwargs["solver"] == "cg"
-    assert kwargs["damp"] is False
-    assert kwargs["tol"] == 1e-5
+    assert kwargs["regularisation"] == 0.5
+    assert "gpw" not in kwargs  # PLI ignores orientation directions
+    assert "damp" not in kwargs and "tol" not in kwargs
+
+
+# --- Minimum data check -------------------------------------------------------
+
+def test_pli_input_problem_needs_two_formations():
+    from core.structural_modeling_components.interpolator_functions.piecewise_linear import pli_input_problem
+
+    assert pli_input_problem(surface_df(["a", "b"]), None) is None
+    # orientations count for their formation
+    assert pli_input_problem(surface_df(["a", "a"]), orientations_df(["b"])) is None
+
+    problem = pli_input_problem(surface_df(["a", "a"]), orientations_df(["a"]))
+    assert "at least two formations" in problem and "'a'" in problem
+    assert pli_input_problem(surface_df(["a"]), None) is not None

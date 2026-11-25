@@ -12,8 +12,10 @@ Notes
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
 - The scalar field reshape + transpose is preserved exactly as implemented.
-- Orientation/gradient observations are treated as point constraints by LoopStructural
-  (i.e., their XYZ location matters to the solution).
+- PLI ignores the direction of orientations: in LoopStructural 1.8.2 the gradient
+  constraint of the piecewise-linear interpolator is not implemented
+  (`P1Interpolator.add_gradient_constraints` does nothing). Orientations still act
+  through their location, as a point with the value of their formation.
 
 PLI-specific parameters
 -----------------------
@@ -25,17 +27,13 @@ Expected attributes on params
 - nelements: int | float
     Discretisation size passed to `create_and_add_foliation`.
     (For PLI this controls the piecewise-linear support/mesh density.)
-- solver: str
-    Solver argument passed to `create_and_add_foliation` (if supported by your LS version).
-- damp: bool
-    Damp argument passed to `create_and_add_foliation` (if supported by your LS version).
-- tol: float | None
-    Tolerance passed to `create_and_add_foliation` as `tol` (if provided).
+- regularisation: float
+    Weight of the smoothness term, passed as `regularisation`.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, TypeAlias
+from typing import Any, Dict, Optional, Tuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -47,6 +45,34 @@ from LoopStructural import GeologicalModel
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+
+def pli_input_problem(
+    surface_points_df: pd.DataFrame,
+    orientations_df: Optional[pd.DataFrame],
+) -> Optional[str]:
+    """
+    Check whether PLI can be fitted to the data of one group (in one fault domain).
+
+    PLI ignores the direction of orientations (see module docstring), so only the
+    formation values at surface points and orientation locations define the field. If
+    they all belong to one formation, every constraint has the same value and the
+    solution is a constant field: nothing defines which way is up.
+
+    Returns a description of the problem for the user, or None if the data are sufficient.
+    """
+    formations = set(surface_points_df["formation"].astype(str))
+    if orientations_df is not None and not orientations_df.empty:
+        formations |= set(orientations_df["formation"].astype(str))
+    if len(formations) >= 2:
+        return None
+    only = next(iter(formations), "")
+    return (
+        f"needs data of at least two formations, but there are only surface points and "
+        f"orientations of '{only}'. PLI currently ignores the direction of orientations, so "
+        f"nothing defines which way is up. Use Finite Differences, Universal Co-Kriging or "
+        f"GeoINR, or add data of another formation of the group."
+    )
 
 
 def interpolate_group_piecewise_linear(
@@ -180,11 +206,13 @@ def interpolate_group_piecewise_linear(
         interpolatortype="PLI",
         nelements=params.nelements,
         buffer=0.2,
-        solver=params.solver,
-        damp=params.damp,
+        # Conjugate gradients with LoopStructural's default tolerance (not exposed).
+        solver="cg",
+        # Least-squares weights: surface points 1 (LoopStructural default), smoothness
+        # `regularisation`. No gradient weight: PLI does not use orientation directions
+        # (see module docstring).
+        regularisation=params.regularisation,
     )
-    if getattr(params, "tol", None) is not None:
-        create_kwargs["tol"] = params.tol
 
     _ = model.create_and_add_foliation(group.name, **create_kwargs)
 

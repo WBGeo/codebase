@@ -24,12 +24,10 @@ Expected attributes on params
 -----------------------------
 - nelements: int | float
     Discretisation size passed to `create_and_add_foliation`.
-- solver: str
-    Solver argument passed to `create_and_add_foliation` (if supported by your LS version).
-- damp: bool
-    Damp argument passed to `create_and_add_foliation` (if supported by your LS version).
-- tol: float | None
-    Tolerance passed to `create_and_add_foliation` as `tol` (if provided).
+- regularisation: float
+    Weight of the smoothness term, passed as `regularisation`.
+- orientation_weight: float
+    Weight of the orientation constraints, passed as `gpw` (surface points: `cpw` = 1).
 """
 
 from __future__ import annotations
@@ -177,11 +175,13 @@ def interpolate_group_finite_differences(
         interpolatortype="FDI",
         nelements=params.nelements,
         buffer=0.2,
-        solver=params.solver,
-        damp=params.damp,
+        # Conjugate gradients with LoopStructural's default tolerance (not exposed).
+        solver="cg",
+        # Least-squares weights: surface points 1 (LoopStructural default), orientations
+        # (direction only) `orientation_weight`, smoothness `regularisation`.
+        regularisation=params.regularisation,
+        gpw=params.orientation_weight,
     )
-    if params.tol is not None:
-        create_kwargs["tol"] = params.tol
 
     _ = model.create_and_add_foliation(group.name, **create_kwargs)
 

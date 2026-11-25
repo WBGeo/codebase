@@ -67,14 +67,6 @@ RBF_KERNELS_USING_EPSILON: FrozenSet[str] = frozenset(
 )
 
 
-class LoopSolver(str, Enum):
-    """Linear solvers available for the LoopStructural interpolators (FDI, PLI)."""
-
-    CG = "cg"
-    LSMR = "lsmr"
-    ADMM = "admm"
-
-
 # Enum-typed fields are stored as their plain string value, so interpolators and
 # comparisons keep working with strings; assignments are validated so that an
 # unknown option is rejected when it is set, not later inside the backend library.
@@ -503,45 +495,49 @@ class FDIParams(BaseModel):
     """
     Parameters for LoopStructural FDI (finite difference) interpolation.
 
-    Notes
-    -----
-    - FDI in LoopStructural solves the implicit scalar field on a regular cartesian grid
-      (discrete finite-difference support).
-    - Many additional LoopStructural knobs exist; we expose a small stable subset and allow
-      optional pass-through via dictionaries.
+    FDI solves the scalar field on its own regular cartesian support (finer with larger
+    ``nelements``) as a weighted least-squares problem: surface points (weight 1),
+    orientations (``orientation_weight``) and smoothness (``regularisation``). Only the
+    ratios between the three weights matter. The solver is fixed to conjugate gradients
+    with LoopStructural's default tolerance.
 
     Attributes
     ----------
     nelements:
-        Discretisation size passed to `create_and_add_foliation`.
-        (Controls the size of the discrete support; larger -> finer/more expensive.)
-    solver:
-        Linear solver, one of :class:`LoopSolver`.
-    damp:
-        Whether to apply damping (regularisation / stabilisation) if supported by the LS version.
-    tol:
-        Solver tolerance. If None, LoopStructural defaults are used.
+        Number of elements of LoopStructural's support (larger = finer, slower).
+    regularisation:
+        Weight of the smoothness term. Default 0.1 instead of LoopStructural's 1.0: on
+        synthetic model 2 it raised the agreement with the RBF model from 88.5 % to 95.6 %
+        of the cells, whereas a finer support (more ``nelements``) gained at most about 2 %
+        at many times the runtime.
+    orientation_weight:
+        Weight of the orientation constraints relative to the surface points.
     """
-
-    model_config = _ENUM_FIELD_CONFIG
 
     nelements: int = Field(
         10_000,
         ge=1_000,
-        description="FDI discretisation size for create_and_add_foliation (larger = finer, slower).",
+        description=(
+            "Number of elements of the computation grid LoopStructural uses internally "
+            "(larger = finer surfaces, slower)."
+        ),
     )
-    solver: LoopSolver = Field(
-        LoopSolver.CG,
-        description="Linear solver. 'cg' is the fastest in most cases.",
-    )
-    damp: bool = Field(
-        True,
-        description="Enable damping/regularisation",
-    )
-    tol: Optional[float] = Field(
-        None,
+    regularisation: float = Field(
+        0.1,
         gt=0.0,
-        description="Solver tolerance. If None, LoopStructural defaults are used.",
+        description=(
+            "Smoothness of the scalar field. Larger values give smoother, more planar surfaces "
+            "that may not honour every data point; smaller values follow the data more closely."
+        ),
+    )
+    orientation_weight: float = Field(
+        1.0,
+        gt=0.0,
+        description=(
+            "How strongly orientations count compared with surface points (1 = equally). Larger "
+            "values make the layers follow the measured dips more closely; smaller values let the "
+            "surfaces follow the surface points more closely."
+        ),
     )
 
 
@@ -553,9 +549,6 @@ def default_fdi_params(ctx: "InterpolationContext") -> FDIParams:
     ----------
     - `nelements` grows sublinearly with problem size: more data -> allow finer support,
       but keep a hard cap to avoid runaway compute/memory costs.
-    - `solver` defaults to 'cg' because it's commonly used for these sparse linear systems.
-    - `damp=True` by default for robustness (stabilises noisy/heterogeneous constraints).
-    - `tol=None` to let LoopStructural choose a version-appropriate default.
 
     Returns
     -------
@@ -576,9 +569,6 @@ def default_fdi_params(ctx: "InterpolationContext") -> FDIParams:
 
     return FDIParams(
         nelements=nelements,
-        solver=LoopSolver.CG,
-        damp=True,
-        tol=None,
     )
 
 
@@ -586,45 +576,38 @@ class PLIParams(BaseModel):
     """
     Parameters for LoopStructural PLI (piecewise linear) interpolation.
 
-    Notes
-    -----
-    - PLI in LoopStructural solves the implicit scalar field on a piecewise-linear support
-      (mesh-based / tetrahedral-style discretisation).
-    - Compared to FDI, PLI typically benefits from a somewhat higher discretisation density
-      for similar visual smoothness, but may become sensitive to clustered/uneven data.
+    PLI solves the scalar field on a tetrahedral support (finer with larger ``nelements``)
+    as a weighted least-squares problem of surface points and smoothness.
+
+    There is no orientation weight: in LoopStructural 1.8.2 the gradient constraint of
+    the piecewise-linear interpolator is not implemented (``add_gradient_constraints`` of
+    ``P1Interpolator`` does nothing), so PLI ignores the direction of orientations and
+    only uses their location, with the value of their formation, like a surface point.
 
     Attributes
     ----------
     nelements:
-        Discretisation size passed to `create_and_add_foliation`.
-        (Controls the density of the piecewise-linear support; larger -> finer/more expensive.)
-    solver:
-        Linear solver, one of :class:`LoopSolver`.
-    damp:
-        Whether to apply damping/regularisation for robustness.
-    tol:
-        Solver tolerance. If None, LoopStructural defaults are used.
+        Number of elements of LoopStructural's support (larger = finer, slower).
+    regularisation:
+        Weight of the smoothness term (constant-gradient regularisation;
+        LoopStructural default for PLI: 0.1).
     """
-
-    model_config = _ENUM_FIELD_CONFIG
 
     nelements: int = Field(
         2_000,
         ge=1_000,
-        description="PLI discretisation size for create_and_add_foliation (larger = finer, slower).",
+        description=(
+            "Number of elements of the computation mesh LoopStructural uses internally "
+            "(larger = finer surfaces, slower)."
+        ),
     )
-    solver: LoopSolver = Field(
-        LoopSolver.CG,
-        description="Linear solver. 'cg' is the fastest in most cases.",
-    )
-    damp: bool = Field(
-        True,
-        description="Enable damping/regularisation",
-    )
-    tol: Optional[float] = Field(
-        None,
+    regularisation: float = Field(
+        0.1,
         gt=0.0,
-        description="Solver tolerance. If None, LoopStructural defaults are used.",
+        description=(
+            "Smoothness of the scalar field. Larger values give smoother, more planar surfaces "
+            "that may not honour every data point; smaller values follow the data more closely."
+        ),
     )
 
 
@@ -638,9 +621,6 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
       structured grid, so we start from a lower base `nelements` than FDI.
     - `nelements` grows sublinearly with problem size (sqrt scaling with point count),
       and is softly adjusted by how well-sampled the domain is (mean NN distance vs extent).
-    - `solver` defaults to 'cg' (sparse linear systems).
-    - `damp=True` by default for robustness (mixed constraints, noisy normals).
-    - `tol=None` to let LoopStructural choose a version-appropriate default.
 
     Returns
     -------
@@ -680,9 +660,6 @@ def default_pli_params(ctx: "InterpolationContext") -> PLIParams:
 
     return PLIParams(
         nelements=nelements,
-        solver=LoopSolver.CG,
-        damp=True,
-        tol=None,
     )
 
 
