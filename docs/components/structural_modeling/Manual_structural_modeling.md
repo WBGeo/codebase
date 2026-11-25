@@ -78,7 +78,7 @@ This step combines configuration and computation. The input data, grid, and — 
 
 The computation runs the following steps in sequence:
 
-1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it, or that there are enough surface points for the chosen RBF kernel). The same check runs in the Workbench as a pre-check when the inputs are connected. All issues are reported together before any expensive computation begins.
+1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it, or that there are enough surface points for RBF, Ordinary Kriging and Universal Kriging). The same check runs in the Workbench as a pre-check when the inputs are connected. All issues are reported together before any expensive computation begins.
 2. **Interpolation** — each stratigraphic group is interpolated independently. When faults are active for a group, the interpolation is run completely separately in each fault domain using only the data points that fall within that domain. The resulting scalar fields are then stitched together.
 3. **Age masks** — a boolean mask is computed per group that represents its depositional extent: the oldest group underlies the entire domain (mask is True everywhere), while younger groups are only present where they were deposited. When assembling the lithology block, younger groups take precedence over older ones wherever their mask is True — this is what produces unconformable contacts between groups.
 4. **Lithology block** — the scalar fields and age masks are combined into a single 3D integer array where each voxel is assigned to a formation.
@@ -98,8 +98,8 @@ All methods produce the same output format (scalar field + per-element isovalues
 | Method | Orientations required | Library                                                          | Currently adjustable parameters |
 |---|---|------------------------------------------------------------------|---|
 | **Radial Basis Function (RBF)** | No | [SciPy](https://scipy.org/)                                      | `kernel`, `smoothing`, `epsilon`, `neighbors`, `anisotropy_scaling_z` (see [below](#radial-basis-function-rbf)) |
-| **Ordinary Kriging (OK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | `variogram_model`, `range`, `sill`, `nugget`, `anisotropy_scaling_x/y/z`, `neighbors` |
-| **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK plus `drift_terms` |
+| **Ordinary Kriging (OK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | `variogram_model`, `range`, `nugget`, `anisotropy_scaling_y/z`, `neighbors` (see [below](#ordinary-kriging-ok)) |
+| **Universal Kriging (UK)** | No | [PyKrige](https://geostat-framework.readthedocs.io/projects/pykrige/) | Same as OK without `neighbors` (see [below](#universal-kriging-uk)) |
 | **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None currently exposed |
 | **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
 | **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `solver`, `damp`, `tol` |
@@ -115,7 +115,7 @@ Three of these parameters take one of a fixed set of options. An unknown option 
 | `variogram_model` | OK, UK | `gaussian`, `spherical`, `exponential`, `hole-effect` |
 | `solver` | FDI, PLI | `cg`, `lsmr`, `admm` |
 
-Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. The estimate uses all points of a group, across all fault domains. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and sill for kriging methods, `nelements` for FDI and PLI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
+Default parameters are estimated automatically from the spatial distribution of the input points (data scale, point count, nearest-neighbour distance) and can be overridden via `configure_interpolation_params`. The estimate uses all points of a group, across all fault domains. Parameter choice has a large influence on the resulting model — the default values are a reasonable starting point but should be treated as a first guess rather than an optimal configuration. In particular, variogram range and anisotropy for kriging methods, `nelements` for FDI and PLI, and the number of epochs and network capacity for GeoINR can all significantly change the shape and smoothness of the interpolated surfaces.
 
 ### Radial Basis Function (RBF)
 
@@ -140,6 +140,38 @@ This is checked before the computation (and in the Workbench when the inputs are
 | `epsilon` | Shape parameter, an inverse length (only `multiquadric`, `inverse_multiquadric`, `inverse_quadratic`, `gaussian`; ignored by the others) | 1 / (5 × median nearest-neighbour distance) | Larger values make each point's influence more local. Refers to the stretched coordinates when `anisotropy_scaling_z` is not 1. |
 | `neighbors` | Number of nearest points used at each grid cell (empty = all points) | all points; for more than 5000 points min(500, 5 · n^(2/3)) | Fewer neighbours are faster and more local, but can produce small steps in the surfaces. Must be at least 4 (10 for `quintic`). |
 | `anisotropy_scaling_z` | Vertical stretching factor applied to points and grid before fitting | 1.0 (no anisotropy) | Values above 1 make vertical distances count more than horizontal ones, so points influence each other more along the layers than across them. Values below 1 do the opposite. |
+
+### Ordinary Kriging (OK)
+
+Ordinary Kriging interpolates the scalar field from the surface points with a variogram, which describes how quickly two points become independent with increasing distance. Each formation gets a value (oldest = 1, youngest = n), as for RBF. Orientations are not used; if they are given, a warning says so. A group with only one formation gets the same copied formation below it as described for [RBF](#radial-basis-function-rbf).
+
+**Minimum data.** At least 2 surface points in each group and fault domain (the copied points of a single-formation group count). This is checked before the computation.
+
+The defaults are derived from the spread of the points: per axis, the distance between the 10 % and 90 % quantiles of the point coordinates.
+
+| Parameter | Meaning | Default | Effect |
+|---|---|---|---|
+| `variogram_model` | Shape of the variogram: `gaussian`, `spherical`, `exponential`, `hole-effect` | `gaussian` | `gaussian` gives the smoothest surfaces. `spherical` and `exponential` give slight kinks at the points. `hole-effect` is meant for periodic structures. |
+| `range` | Distance (model units) up to which points influence each other | 20 × median nearest-neighbour distance, limited to between 0.1 × the largest spread and 1.5 × the diagonal of the spread | Longer ranges give smoother, more regional surfaces; shorter ranges follow the points more locally. |
+| `nugget` | Fraction of the variance that is not spatially correlated (0 to below 1) | 0 | 0 = surfaces pass exactly through the points. Larger values give smoother surfaces that no longer honour every point; useful for noisy data. |
+| `anisotropy_scaling_y` | Factor applied to y coordinates before kriging, relative to x | spread in y / spread in x, limited to 0.05–1 | Values below 1 make distances along y count less, i.e. a longer range along y. |
+| `anisotropy_scaling_z` | Factor applied to z coordinates before kriging, relative to x | spread in z / spread in x, limited to 0.05–1 | Values below 1 make vertical distances count less, i.e. a longer vertical range. For layered data the vertical spread is small, so the default reproduces the gradual vertical change between layers smoothly. |
+| `neighbors` | Number of nearest points used at each grid cell (moving window; empty = all points) | all points below 20 points; otherwise n / 10, limited to 30–200 | A moving window keeps memory low for many points but is slower. If a fault domain has no more points than `neighbors`, all its points are used. |
+
+The sill (the total variance) is fixed at 1, because it does not change the interpolated field; only the nugget relative to it does. A tiny nugget (10⁻⁶ of the sill) is always added internally to keep the computation numerically stable, which is most important for the Gaussian variogram. It does not visibly change the result.
+
+### Universal Kriging (UK)
+
+Universal Kriging works like Ordinary Kriging, but additionally fits a linear trend (a + b·x + c·y + d·z) together with the variogram. This suits dipping layers whose scalar field changes steadily across the model. Orientations are not used, and a single-formation group gets the copied formation as for RBF. Universal Kriging always uses all points (there is no moving window), so memory grows with the number of points and grid cells.
+
+**Minimum data.** At least 4 surface points in each group and fault domain, not all in one plane (for example, a single flat surface on its own). Otherwise the linear trend cannot be fitted. If a domain has too few points, add points there or use Ordinary Kriging.
+
+The parameters are the same as for Ordinary Kriging, without `neighbors`, and the internal jitter is added in the same way. Two defaults differ:
+
+| Parameter | Default |
+|---|---|
+| `range` | 30 × median nearest-neighbour distance, limited to between 0.15 × and 0.9 × the largest spread |
+| `anisotropy_scaling_y`, `anisotropy_scaling_z` | spread in y (z) / spread in x, limited to 0.05–20 |
 
 ---
 
