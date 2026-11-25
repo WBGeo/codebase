@@ -103,7 +103,7 @@ All methods produce the same output format (scalar field + per-element isovalues
 | **Universal Co-Kriging (UCK)** | Yes | [GemPy](https://www.gempy.org/)                                  | None (see [below](#universal-co-kriging-uck)) |
 | **Finite Differences (FDI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `regularisation`, `orientation_weight` (see [below](#finite-differences-fdi-and-piecewise-linear-pli)) |
 | **Piecewise Linear (PLI)** | Yes | [LoopStructural](https://loop3d.github.io/LoopStructural/)       | `nelements`, `regularisation`, `orientation_weight` (see [below](#finite-differences-fdi-and-piecewise-linear-pli)) |
-| **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `alpha`, `beta` |
+| **GeoINR** | Yes | [GeoINR](https://github.com/MichaelHillier/GeoINR) (custom)                               | `orientation_weight`, `hidden_dim`, `n_hidden_layers`, `epochs`, `lr`, `seed` |
 
 For all methods that use orientations, only the direction of the orientation vectors affects the result, not their length: UCK normalises them before passing them to GemPy, LoopStructural normalises them for FDI and PLI, and GeoINR normalises them in its orientation loss. Orientations can lie anywhere, not only on an interface; their formation only assigns them to a group.
 

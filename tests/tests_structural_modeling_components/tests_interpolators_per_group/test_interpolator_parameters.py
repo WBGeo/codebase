@@ -321,8 +321,18 @@ def test_default_geo_inr_params_returns_instance_and_has_reasonable_ranges():
     assert p.n_hidden_layers >= 0
     assert p.epochs >= 1
     assert p.lr > 0.0
-    assert p.alpha >= 0.0
-    assert p.beta >= 0.01
+    assert p.orientation_weight >= 0.0
+    assert p.seed == 0
+
+
+def test_geo_inr_params_accept_old_saved_options():
+    """`alpha` is the previous name of `orientation_weight`; `beta` is fixed now and ignored."""
+    p = GeoINRParams.model_validate({"alpha": 0.7, "beta": 3.0, "epochs": 10})
+    assert p.orientation_weight == 0.7 and p.epochs == 10
+    assert not hasattr(p, "beta") and not hasattr(p, "alpha")
+
+    p = GeoINRParams.model_validate_json(GeoINRParams(orientation_weight=0.3, seed=5).model_dump_json())
+    assert p.orientation_weight == 0.3 and p.seed == 5
 
 
 def test_default_geo_inr_params_capacity_breakpoints():

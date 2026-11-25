@@ -125,7 +125,8 @@ def interpolate_group_geo_inr(
         StructuralGroup-like object. Expected members:
         - `name: str`
         - `structural_elements: Sequence[... with .name]` in framework order (youngest -> oldest)
-        - `get_interpolation_params() -> GeoINRParams-like` (expects `.beta`)
+        - `get_interpolation_params() -> GeoINRParams-like` (orientation_weight, hidden_dim,
+          n_hidden_layers, epochs, lr, seed)
     grid
         RegularGrid-like object. Expected members:
         - `extent: tuple[float, float, float, float, float, float]`
@@ -149,7 +150,7 @@ def interpolate_group_geo_inr(
     Notes
     -----
     - Creates continuous labels in [-1, 1] mapped youngest->oldest = [+1 ... -1].
-    - Uses GeoINRParams from `group.get_interpolation_params()` (expects `.beta`).
+    - Uses GeoINRParams from `group.get_interpolation_params()`.
     - Does NOT mutate `group`.
     - Assumes `iso_values` returned by the model are ordered oldest→youngest.
     """
@@ -192,7 +193,7 @@ def interpolate_group_geo_inr(
         grid_points = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
 
     # --- params ---
-    params = group.get_interpolation_params()  # GeoINRParams-like (expects .beta)
+    params = group.get_interpolation_params()  # GeoINRParams-like
 
     # --- run GeoINR (external function you already use) ---
     # Suppress noisy PyTorch / third-party warnings only for the duration of training.
@@ -209,11 +210,12 @@ def interpolate_group_geo_inr(
             out_dim=1,
             n_hidden_layers=params.n_hidden_layers,
             activation="Softplus",
-            beta=params.beta,
+            beta=1.0,
             concat=False,
             epochs=params.epochs,
             lr=params.lr,
-            alpha=params.alpha
+            alpha=params.orientation_weight,
+            seed=params.seed,
         )
 
     # `res_inr` -> (nx, ny, nz) without transpose (preserved behavior)
@@ -383,19 +385,12 @@ def normalize(data: np.ndarray, bounds: Tuple[float, float, float, float, float,
         Normalized coordinates, dtype float32. The axis with the largest extent spans
         [-1, 1]; other axes are scaled by the same factor and so may span a narrower range.
     """
-    data = data.astype(np.float32)
-    mean_x = (bounds[0] + bounds[1]) / 2
-    mean_y = (bounds[2] + bounds[3]) / 2
-    mean_z = (bounds[4] + bounds[5]) / 2
-    delta_x = bounds[1] - bounds[0]
-    delta_y = bounds[3] - bounds[2]
-    delta_z = bounds[5] - bounds[4]
-    range_max = max(delta_x, delta_y, delta_z)
-    data[:, 0] = (data[:, 0] - mean_x) / range_max * 2
-    data[:, 1] = (data[:, 1] - mean_y) / range_max * 2
-    data[:, 2] = (data[:, 2] - mean_z) / range_max * 2
-
-    return data
+    # Centre and scale in float64 and only then convert to float32: real-world coordinates
+    # (e.g. UTM northings ~5.8e6) are resolved to only ~0.5 m in float32.
+    data = np.asarray(data, dtype=np.float64)[:, :3]
+    centre = np.array([(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2, (bounds[4] + bounds[5]) / 2])
+    range_max = max(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
+    return ((data - centre) / range_max * 2).astype(np.float32)
 
 
 # loss function for the interface points
@@ -557,6 +552,7 @@ def stratigraphic_ConcatMLP(
     alpha: float = 0.1,
     lambda_g: float = 0.05,
     n_eikonal_samples: int = 2000,
+    seed: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Train a ConcatMLP to represent stratigraphic scalar field, then infer on meshgrid points.
@@ -588,6 +584,10 @@ def stratigraphic_ConcatMLP(
     n_eikonal_samples
         Number of domain points (drawn once, from `meshgrid_data`, and reused every epoch -
         matching the reference's own static-sample approach) used for the eikonal term.
+    seed
+        Seed for the network's initial weights and the eikonal sample. With a seed, the same
+        input gives the same result (on the same hardware); the global random state of NumPy
+        and PyTorch is left untouched. None = different random start each call.
 
     Returns
     -------
@@ -596,6 +596,39 @@ def stratigraphic_ConcatMLP(
     iso_values : np.ndarray
         Unique interface labels (as used for isosurface extraction).
     """
+    arguments = dict(locals())  # all parameters of this function
+    # Seeded runs use their own random state, so the caller's global NumPy/PyTorch state is
+    # neither used nor changed.
+    if seed is None:
+        return _train_and_predict(**arguments)
+    with torch.random.fork_rng(devices=list(range(torch.cuda.device_count()))):
+        torch.manual_seed(seed)
+        return _train_and_predict(**arguments)
+
+
+def _train_and_predict(
+    interface_data: np.ndarray,
+    orientation_data: np.ndarray,
+    meshgrid_data: np.ndarray,
+    extent: Tuple[float, float, float, float, float, float],
+    resolution: Tuple[int, int, int],
+    in_dim: int,
+    hidden_dim: int,
+    out_dim: int,
+    n_hidden_layers: int,
+    activation: str,
+    beta: float,
+    concat: bool,
+    epochs: int,
+    lr: float,
+    alpha: float,
+    lambda_g: float,
+    n_eikonal_samples: int,
+    seed: Optional[int],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Training and inference of `stratigraphic_ConcatMLP` (see there)."""
+    rng = np.random.default_rng(seed)
+
     # read the input data
     train_data_x = interface_data[:, 1:].astype("float")
     train_data_y = interface_data[:, 0].astype("float")
@@ -612,7 +645,7 @@ def stratigraphic_ConcatMLP(
     # static domain sample for the eikonal term (drawn once, reused every epoch - see
     # `loss_eikonal` and module docstring)
     n_eik = min(n_eikonal_samples, normalized_meshgrid_data.shape[0])
-    eik_idx = np.random.choice(normalized_meshgrid_data.shape[0], size=n_eik, replace=False)
+    eik_idx = rng.choice(normalized_meshgrid_data.shape[0], size=n_eik, replace=False)
     normalized_domain_x = normalized_meshgrid_data[eik_idx]
 
     # concatenate interface + orientation + eikonal-domain points into one training batch,
@@ -675,7 +708,8 @@ def stratigraphic_ConcatMLP(
         loss = loss_i + alpha * loss_o + lambda_g * loss_eik
         if loss < min_loss:
             min_loss = loss
-            best_params = model.state_dict()
+            # copy: state_dict() returns the live weights, which the optimizer keeps changing
+            best_params = {k: v.detach().clone() for k, v in model.state_dict().items()}
             min_loss_i = loss_i
             min_loss_o = loss_o
             min_loss_eik = loss_eik

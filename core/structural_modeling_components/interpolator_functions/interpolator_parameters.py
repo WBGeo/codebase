@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, FrozenSet, List, Optional, Tuple, Union, Literal
+from typing import Dict, FrozenSet, List, Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, PrivateAttr
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -307,43 +307,33 @@ def default_rbf_params(ctx: InterpolationContext) -> RBFParams:
     )
 
 
-GeoINRActivation = Literal["Softplus", "ReLU", "LeakyReLU", "Tanh", "Sigmoid", "ELU", "PReLU"]
-
-
 class GeoINRParams(BaseModel):
     """
-    Parameters controlling GeoINR interpolation (implicit neural representation).
+    Parameters of GeoINR interpolation (implicit neural representation).
 
-    This parameter set maps directly to the arguments used by your GeoINR training routine
-    `stratigraphic_ConcatMLP()` and the network `ConcatMLP`.
+    A small neural network (multilayer perceptron) is trained to output the scalar field
+    at any location. Its loss combines three terms: the field value at the surface points
+    (each formation has a fixed label between 1 and -1), the field's gradient direction
+    at the orientations (weight ``orientation_weight``), and a regularisation that keeps
+    the gradient magnitude similar everywhere in the model (fixed weight).
 
-    Notes (current implementation)
-    ------------------------------
-    - Coordinates are normalized into [-1, 1] using the provided model extent.
-    - Interface constraints are trained with an L1 loss on predicted scalar vs. label.
-    - Orientation constraints are trained by matching the gradient direction of the scalar field
-      to the provided orientation vectors (cosine-based loss).
+    Training starts from random network weights; ``seed`` fixes them, so the same input
+    gives the same model.
+
+    Fixed (not exposed): Softplus activation with beta 1, no skip connections.
+
+    Older saved options may contain ``alpha`` (the previous name of
+    ``orientation_weight``, still accepted) and ``beta`` (now fixed, ignored).
     """
 
-    # --- core "geological" weights ---
-    beta: float = Field(
-        1.0,
-        ge=0.01,
-        description=(
-            "Softplus beta parameter when activation='Softplus'. Higher beta makes Softplus "
-            "closer to ReLU (sharper transitions). In your current code this is the only "
-            "group-level parameter that is used."
-        ),
-    )
-
-    alpha: float = Field(
+    orientation_weight: float = Field(
         0.1,
         ge=0.0,
+        validation_alias=AliasChoices("orientation_weight", "alpha"),
         description=(
-            "Weight of the orientation (gradient) loss relative to the interface loss. "
-            "Total loss = loss_interface + alpha * loss_orientation. Increase alpha to "
-            "enforce structural orientations more strongly; decrease if interfaces dominate "
-            "or orientations are noisy/sparse."
+            "How strongly orientations count compared with surface points. Larger values make "
+            "the layers follow the measured dips more closely; smaller values let the surfaces "
+            "follow the surface points more closely."
         ),
     )
 
@@ -352,9 +342,9 @@ class GeoINRParams(BaseModel):
         32,
         ge=4,
         description=(
-            "Width of hidden layers in the MLP. Larger values increase representational "
-            "capacity (can fit more complex folding/faulting) but increase runtime and "
-            "overfitting risk."
+            "Number of neurons per hidden layer of the network. More neurons can represent "
+            "more complex geometry (e.g. tight folds) but train more slowly and may overfit "
+            "sparse data."
         ),
     )
 
@@ -362,36 +352,17 @@ class GeoINRParams(BaseModel):
         1,
         ge=0,
         description=(
-            "Number of hidden layers (excluding input and output layers). More layers "
-            "increase model capacity; start small (1–3) and scale up for complex geometry."
+            "Number of hidden layers of the network. More layers can represent more complex "
+            "geometry; 1 to 3 is usually enough."
         ),
     )
 
-    # TODO: Special parameters excluded for now to keep the default configuration simple and stable
-    # activation: GeoINRActivation = Field(
-    #     "Softplus",
-    #     description=(
-    #         "Activation function used by the MLP. 'Softplus' is a smooth default that tends "
-    #         "to produce smooth scalar fields; ReLU/LeakyReLU can create sharper features."
-    #     ),
-    # )
-
-    # concat: bool = Field(
-    #     False,
-    #     description=(
-    #         "If True, concatenate input coordinates with hidden features at each layer "
-    #         "(a skip/concat architecture). This can improve expressivity but grows layer "
-    #         "sizes quickly and can become expensive."
-    #     ),
-    # )
-
-    # --- training / optimization ---
+    # --- training ---
     epochs: int = Field(
         5000,
         ge=1,
         description=(
-            "Number of training epochs for the INR. Higher values can improve fit but "
-            "increase runtime. Consider fewer epochs for large datasets or when iterating."
+            "Number of training steps. More steps can fit the data better but take longer."
         ),
     )
 
@@ -399,36 +370,20 @@ class GeoINRParams(BaseModel):
         0.01,
         gt=0.0,
         description=(
-            "Learning rate for AdamW optimizer. If training is unstable (loss oscillates), "
-            "reduce lr (e.g., 0.003 or 0.001)."
+            "Learning rate: step size of the training. If the result is unstable or "
+            "differs strongly between seeds, try a smaller value (e.g. 0.003 or 0.001)."
         ),
     )
 
-    # weight_decay: float = Field(
-    #     0.0,
-    #     ge=0.0,
-    #     description=(
-    #         "AdamW weight decay (L2 regularization) applied to network weights. Useful to "
-    #         "reduce overfitting, especially with very sparse constraints or high-capacity models."
-    #     ),
-    # )
-
-    # --- reproducibility / runtime knobs (optional, but handy) ---
-    # seed: Optional[int] = Field(
-    #     None,
-    #     description=(
-    #         "Random seed for reproducible training. If None, training is stochastic "
-    #         "(GPU + PyTorch nondeterminism may still apply)."
-    #     ),
-    # )
-
-    # verbose: bool = Field(
-    #     True,
-    #     description=(
-    #         "If True, print training/inference diagnostics (losses, times). "
-    #         "Set False to silence routine output."
-    #     ),
-    # )
+    seed: int = Field(
+        0,
+        ge=0,
+        description=(
+            "Start value of the random number generator. Training starts from random network "
+            "weights; the same seed gives the same model. Try a few other seeds to see how "
+            "much the result depends on chance."
+        ),
+    )
 
 
 def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
@@ -476,14 +431,10 @@ def default_geo_inr_params(ctx: InterpolationContext) -> GeoINRParams:
 
     # Orientation weight:
     # Without knowing orientation count/quality, keep moderate.
-    alpha = 0.1
-
-    # Keep at 1.0 for smoothness; bump slightly for sharper transitions if desired.
-    beta = 1.0
+    orientation_weight = 0.1
 
     return GeoINRParams(
-        beta=beta,
-        alpha=alpha,
+        orientation_weight=orientation_weight,
         hidden_dim=hidden_dim,
         n_hidden_layers=n_hidden_layers,
         epochs=epochs,
