@@ -67,7 +67,7 @@ from py_api_wbgeo.smartcontrols import CtrlLabel, CtrlSelect, CtrlInt, CtrlFloat
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options',
                  title='structural_modeling_smart_options')
 def structural_modeling_smart_options(data_elements: InputData_StructuralElements,
-                                      grid: grid_classes.RegularGrid,
+                                      grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
                                       fault_model: typing.Optional[FaultModelResults] = None
                                       ) -> CtrlGroup:
   """(Internal) component that builds the smart input form for interpolation method selection."""
@@ -167,7 +167,7 @@ def structural_modeling_smart_options_to_data(
   return smartcontrols.form_data_to_wbgeo_type_data(_input, StructuralFrameInputOptions)
 
 
-def pre_check_fault_model_grid(grid: grid_classes.RegularGrid,
+def pre_check_fault_model_grid(grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
                                fault_model: typing.Optional[FaultModelResults] = None) -> None:
   """
   Pre-check: the fault model must have been computed on the grid connected to
@@ -201,7 +201,7 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
-    grid: grid_classes.RegularGrid,
+    grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
     fault_model: typing.Optional[FaultModelResults] = None,
     options: SmartStructuralFrameInputOptions = None,
 ) -> StructuralModelResults:
@@ -304,7 +304,7 @@ def inspect_structural_model_result_plot_structural_model_3D(
                  )
 def compute_fault_frame(
     data_faults: InputData_FaultElements,
-    grid: grid_classes.RegularGrid,
+    grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
 ) -> FaultModelResults:
   """
   Computes the fault model from fault input data and a grid.

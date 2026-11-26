@@ -116,6 +116,20 @@ class TestComponentSignatures(unittest.TestCase):
             raise AssertionError("Failures occurred: \n" + '\n'.join([str(e) for e in  MockBackendInstance.errors]))
 
 
+# typing.Union[A, B] / typing.Optional[A] have the origin typing.Union, PEP 604 unions (A | B) types.UnionType
+UNION_ORIGINS = (typing.Union, types.UnionType)
+
+
+def union_members(t):
+    """The members of a union without NoneType (nested unions flattened, duplicates removed)"""
+    members = []
+    for a in typing.get_args(t):
+        for m in (union_members(a) if typing.get_origin(a) in UNION_ORIGINS else [a]):
+            if m is not types.NoneType and m not in members:
+                members.append(m)
+    return members
+
+
 def get_location(x):
     try:
       return inspect.getfile(x) + ":" + str(inspect.getsourcelines(x)[1])
@@ -196,10 +210,14 @@ class MockBackendInstance:
                 return hasattr(rt, '__metadata__') and gwt_ast(rt.__metadata__) is not None
 
             def check_return(rt, label):
-                if typing.get_origin(rt) is typing.Union:  # Optional[T], same workaround as for params
-                    u_args = typing.get_args(rt)
-                    if len(u_args) == 2 and u_args[1] == types.NoneType:
-                        return check_return(u_args[0], label)
+                if typing.get_origin(rt) in UNION_ORIGINS:
+                    members = union_members(rt)
+                    if len(members) == 1:  # Optional[T] / T | None / Union[None, T] is handled as T
+                        return check_return(members[0], label)
+                    MockBackendInstance.errors.append(ValueError(
+                        "GeoComponent `{fname}`: {label} is the union `{t}`, but unions are only supported for "
+                        "inputs {floc}".format(fname=f.__name__, label=label, t=str(rt), floc=get_location(f))))
+                    return
                 if rt in [str, bool, int, float] or is_geo_type(rt):
                   return
                 MockBackendInstance.errors.append(ValueError(
@@ -265,10 +283,18 @@ class MockBackendInstance:
                         "Parameter `{param}` of `{fname}` must be annotated, e.g. `{param}: str` or `{param}: str = 1` \n {loc}".format(
                             param=param, loc=get_location(t), fname=f.__name__)))
                 if not hasattr(t, '__metadata__') or gwt_ast(t.__metadata__) is None:
-                    if origin is typing.Union:
-                        u_args = typing.get_args(t)
-                        if len(u_args) == 2 and u_args[1] == types.NoneType:
-                            return get_type_from_param(u_args[0], param, loc, is_vis)
+                    if origin in UNION_ORIGINS:
+                        # Union[A, B] / A | B (Optional[T] = Union[T, None]): every member must be a valid input type
+                        members = union_members(t)
+                        if len(members) == 0:
+                            MockBackendInstance.errors.append(ValueError(
+                                "@GeoComponent parameter `{param}` of `{fname}` must not be only None {loc}".format(
+                                    param=param, fname=f.__name__, loc=get_location(loc))))
+                        if len(members) == 1:
+                            return get_type_from_param(members[0], param, loc, is_vis)
+                        for m in members:
+                            # an InspectorHelper or a smart input must not be part of a union (is_vis=False)
+                            get_type_from_param(m, param, loc, False)
                     elif t in [str, bool, int, float]:
                         pass
                     elif is_vis and str(t) == '<class \'py_api_wbgeo.nodesapi.InspectorHelper\'>':
