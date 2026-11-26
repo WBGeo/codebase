@@ -31,8 +31,11 @@ Sections (same order as the Workbench components)
 # Importing necessary libraries
 import pandas as pd
 import os
+import tempfile
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_model_file import save_structural_model, load_structural_model
+from core.structural_modeling_components.structural_model_export import export_structural_model
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components import general, general_faults
@@ -184,6 +187,16 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #                                                    gradients_dict,
 #                                                    gradients_faults_dict,
 #                                                    mesh_type="unmasked")
+
+#%% 1.9 Save, load and export the structural model
+
+# Save the structural model as a .wbgeo_sm file and load it again (lossless, e.g. to reuse a slow model)
+model_file = save_structural_model(structural_model_result, os.path.join(tempfile.gettempdir(), "model2"))
+structural_model_result = load_structural_model(model_file)
+
+# Optional: Export the surfaces for other software as a ZIP ("gocad_ts", "obj" or "vtk")
+# with open("model2_gocad_ts.zip", "wb") as f:
+#     f.write(export_structural_model(structural_model_result, "gocad_ts").getvalue())
 
 # ==============================================================================
 #%% 2. Meshing

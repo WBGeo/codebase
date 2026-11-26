@@ -1,7 +1,6 @@
 """Save and load structural models in the native .wbgeo_sm format (structural_model_file.py)."""
 import io
 import json
-import os
 import zipfile
 
 import numpy as np
@@ -9,50 +8,13 @@ import pandas as pd
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from core.object_components import InputData_FaultElements, InputData_StructuralElements, StructuralModelResults
+from core.object_components import StructuralModelResults
 from core.meshing_components.implicit.export_implicit import create_implicit_structured_mesh
-from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components import structural_model_file as smf
-from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
 from core.structural_modeling_components.structural_objects.structural_objects import (
     PARAMS_CLASS_BY_METHOD,
     StructuralGroup,
 )
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA = os.path.join(REPO_ROOT, "examples", "synthetic_examples", "model{0}", "input_data", "geological_data",
-                    "model{0}_{1}_df.csv")
-
-
-def _read(model, kind):
-    return pd.read_csv(DATA.format(model, kind))
-
-
-@pytest.fixture(scope="module")
-def model1():
-    grid = RegularGrid(extent=(0, 1000, 0, 1000, 0, 1000), resolution=(14, 12, 10))
-    elements = InputData_StructuralElements(name="Model_1", mapping_object={"Strat_Series1": ("rock2", "rock1")},
-                                            surface_points=_read(1, "surface_points"),
-                                            orientations=_read(1, "orientations"))
-    frame = general.build_structural_frame(input_data_elements=elements, grid=grid)
-    return general.compute_structural_model(frame, extract_meshes=True, verbose=False)
-
-
-@pytest.fixture(scope="module")
-def model2():
-    """Faulted, with the fault restricted to the older group, so fault_activity is not the default."""
-    grid = RegularGrid(extent=(0, 2500, 0, 1000, 0, 1000), resolution=(30, 15, 12))
-    faults = general_faults.compute_fault_domains(general_faults.build_fault_frame(
-        input_data_fault_elements=InputData_FaultElements(
-            name="Faults_Model_2", fault_surface_points=_read(2, "surface_points"),
-            fault_orientations=_read(2, "orientations"), fault_names=["fault"]),
-        grid=grid))
-    elements = InputData_StructuralElements(
-        name="Model_2", mapping_object={"Strat_Series2": ("rock4", "rock3"), "Strat_Series1": ("rock2", "rock1")},
-        surface_points=_read(2, "surface_points"), orientations=_read(2, "orientations"))
-    frame = general.build_structural_frame(input_data_elements=elements, grid=grid, fault_model_results=faults)
-    frame.set_fault_activity_by_group("fault", "Strat_Series1")
-    return general.compute_structural_model(frame, extract_meshes=True, verbose=False)
 
 
 def _leaves(obj, path="model", out=None):
@@ -77,7 +39,7 @@ def _leaves(obj, path="model", out=None):
     return out
 
 
-@pytest.mark.parametrize("model_fixture", ["model1", "model2"])
+@pytest.mark.parametrize("model_fixture", ["small_model1", "small_model2"])
 def test_round_trip_keeps_every_value(model_fixture, request):
     model = request.getfixturevalue(model_fixture)
     loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(model))
@@ -97,9 +59,9 @@ def test_round_trip_keeps_every_value(model_fixture, request):
             assert value == other, path
 
 
-def test_round_trip_keeps_lithology_faults_and_order(model2):
-    loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(model2))
-    frame, frame_loaded = model2.structural_frame, loaded.structural_frame
+def test_round_trip_keeps_lithology_faults_and_order(small_model2):
+    loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(small_model2))
+    frame, frame_loaded = small_model2.structural_frame, loaded.structural_frame
 
     assert frame_loaded.lith_block.dtype == np.int32
     assert frame_loaded.fault_activity == frame.fault_activity == {"fault": 1}
@@ -112,9 +74,9 @@ def test_round_trip_keeps_lithology_faults_and_order(model2):
     assert set(frame_loaded.fault_frame.domain_masks) == set(frame.fault_frame.domain_masks)
 
 
-def test_loaded_model_gives_the_same_implicit_mesh(model2):
-    loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(model2))
-    mesh, mesh_loaded = create_implicit_structured_mesh(model2), create_implicit_structured_mesh(loaded)
+def test_loaded_model_gives_the_same_implicit_mesh(small_model2):
+    loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(small_model2))
+    mesh, mesh_loaded = create_implicit_structured_mesh(small_model2), create_implicit_structured_mesh(loaded)
 
     assert np.array_equal(mesh.nodes, mesh_loaded.nodes)
     assert len(mesh.elements) == len(mesh_loaded.elements)
@@ -133,17 +95,17 @@ def test_interpolation_params_keep_their_class(method, params_class):
         assert loaded.interpolation_params == group.interpolation_params
 
 
-def test_save_and_load_files(model1, tmp_path):
-    path = smf.save_structural_model(model1, tmp_path / "model1")
-    assert path.name == "model1.wbgeo_sm"
+def test_save_and_load_files(small_model1, tmp_path):
+    path = smf.save_structural_model(small_model1, tmp_path / "small_model1")
+    assert path.name == "small_model1.wbgeo_sm"
     loaded = smf.load_structural_model(path)
-    assert np.array_equal(loaded.structural_frame.lith_block, model1.structural_frame.lith_block)
+    assert np.array_equal(loaded.structural_frame.lith_block, small_model1.structural_frame.lith_block)
     # an existing extension is not doubled
-    assert smf.save_structural_model(model1, tmp_path / "again.wbgeo_sm").name == "again.wbgeo_sm"
+    assert smf.save_structural_model(small_model1, tmp_path / "again.wbgeo_sm").name == "again.wbgeo_sm"
 
 
-def test_file_layout_and_manifest(model1):
-    with zipfile.ZipFile(io.BytesIO(smf.structural_model_to_bytes(model1))) as archive:
+def test_file_layout_and_manifest(small_model1):
+    with zipfile.ZipFile(io.BytesIO(smf.structural_model_to_bytes(small_model1))) as archive:
         assert set(archive.namelist()) == {"manifest.json", "model.json", "arrays.npz"}
         manifest = json.loads(archive.read("manifest.json"))
     assert manifest["format"] == "wbgeo_structural_model"
@@ -170,8 +132,8 @@ def _manifest_with(data, **changes):
     return _rewrite(data, "manifest.json", json.dumps({**manifest, **changes}))
 
 
-def test_load_rejects_invalid_files(model1):
-    data = smf.structural_model_to_bytes(model1)
+def test_load_rejects_invalid_files(small_model1):
+    data = smf.structural_model_to_bytes(small_model1)
     cases = [
         (b"not a zip", "not a ZIP archive"),
         (_rewrite(data, "arrays.npz", None), "missing arrays.npz"),
@@ -192,11 +154,11 @@ def test_save_rejects_other_types():
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_loaded_model_gives_the_same_unstructured_mesh(model2):
+def test_loaded_model_gives_the_same_unstructured_mesh(small_model2):
     from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data
-    loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(model2))
+    loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(small_model2))
     kwargs = dict(tolerance=50, mesh_size=150, curve_mesh_size=20)
-    mesh = create_unstructured_mesh_data(geomodel_result=model2, **kwargs)
+    mesh = create_unstructured_mesh_data(geomodel_result=small_model2, **kwargs)
     mesh_loaded = create_unstructured_mesh_data(geomodel_result=loaded, **kwargs)
 
     assert np.allclose(mesh.nodes, mesh_loaded.nodes)
