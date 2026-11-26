@@ -328,25 +328,6 @@ with open("filename_Gross_Schoenebeck_SM_n.exo", "wb") as f:
 
 
 
-# create small model with rotation using csv files (instead of structual modeling results)
-#mesh_unstructured_with_objects2 = create_unstructured_mesh_data(
-#    geomodel_result= load_csv_surface_coordinates(cwd+"/examples/case_studies/Groß_Schoenebeck/input_data/surfaces"),
-#    extent=extent,
-#    wells=wells,
-#    triangulations=triangulations,
-#    mesh_size=65,
-#    curve_mesh_size=5,
-#    gmsh_flag=True,
-#    rotation_angle=18,
-#    refinement=refinement,
-#)
-#buf = export_mesh_results_to_exodus(mesh_unstructured_with_objects2 , type='unstr')
-#with open("filename_Gross_Schoenebeck_CSV.exo", "wb") as f:
-#    f.write(buf.getvalue())
-
-#plot_mesh_3d(mesh_unstructured_with_objects2, structural_model_result, show_plotter=True)
-
-
 #%%
 
 # ------------------------------------------------------------------------------

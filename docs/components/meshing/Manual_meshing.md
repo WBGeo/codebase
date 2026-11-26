@@ -144,48 +144,6 @@ requirements than structured meshing.
 This is the only meshing method that supports embedding engineering
 objects and faults.
 
-#### Geological surfaces from CSV files
-
-In addition to using geological surfaces obtained directly from the
-structural-model result, the explicit unstructured mesh can be generated
-from geological surfaces stored in CSV files. This provides a manual
-surface-input workflow for cases where the surface geometry has already
-been generated, interpolated, edited, or exported separately.
-
-Each CSV file represents one geological surface and contains its 3D
-point coordinates as `x, y, z`. Surface CSV files may contain an `x,y,z`
-header or may be headerless. Normal vectors do not need to be supplied
-in the CSV files.
-
-Fault surfaces are identified by their filenames and must be named using
-the following convention:
-
-    fault1.csv
-    fault2.csv
-    fault3.csv
-    ...
-
-Files whose names start with `fault` are therefore interpreted as fault
-surfaces rather than ordinary stratigraphic surfaces.
-
-Every CSV surface is interpolated onto a regular grid (radial basis
-functions, controlled by `smooth`) before the unstructured mesh geometry
-is constructed. Complete gridded surfaces as well as downsampled,
-incomplete, or scattered point sets can therefore be supplied.
-
-For models containing faults, a single geological horizon may be split
-into several disconnected surface patches. Such a horizon can be supplied
-as several CSV files that share a surface identifier and carry an
-additional patch index, for example:
-
-    surface_0_1.csv
-    surface_0_2.csv
-    surface_0_3.csv
-
-These files belong to the same geological surface but represent separate
-parts of it, split by the fault geometry.
-
-
 #### Engineering objects
 
 All engineering objects below are optional, loaded from CSV files, and
@@ -333,13 +291,9 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
 #### Mesh generation parameters
 
 
--   **`tolerance`** *(CSV surface input only)*: The maximum allowable deviation (in model
-    coordinate units) when adjusting surface boundaries to match the
-    model extent. During interpolation, surface coordinates can shift
-    slightly due to numerical precision or grid discretisation, so the
-    outermost points may no longer perfectly coincide with the model
-    boundary; `tolerance` allows small deviations up to this limit to be
-    corrected so the surfaces align with the extent.
+-   **`tolerance`**, **`smooth`**: No longer used. They belonged to the
+    removed CSV surface input and are kept so that saved workflows keep
+    their port numbers.
 
 -   **`mesh_size`**: The target element size assigned to all geometry
     points (the background mesh), giving a uniform meshing resolution
@@ -368,10 +322,8 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
         itself to be defined by a box whose boundaries are not
         necessarily parallel to the global coordinate axes.
 
-    If `extent` is not supplied, the domain is inferred from the geological
-    input. With a structural model, the structural-model extent is used.
-    With CSV surfaces, the combined minimum and maximum X, Y, and Z
-    coordinates from all geological surface CSV files are used.
+    If `extent` is not supplied, the extent of the structural model is
+    used.
 
 -   **`extent_z`** *(optional)*: Defines absolute Z limits
     `[z_min, z_max]` for an automatically inferred extent. It does not
@@ -385,11 +337,6 @@ triangulations = load_triangulations_planes_from_csv(cwd + "/examples/synthetic_
     `extent_z` is used only when `extent` is omitted. If a complete
     explicit `extent` is supplied, that extent takes precedence and is
     used unchanged.
-
--   **`smooth`** *(CSV surface input only)*: The smoothing parameter for the Radial Basis Function
-    (RBF) interpolation used to rebuild surfaces. Larger values produce
-    smoother surfaces by reducing small-scale noise; smaller values
-    preserve more detail from the original surface geometry.
 
 -   **`gmsh_flag`** (optional): If `True`, saves the original
     Gmsh-generated mesh as `mesh.msh`. Default is `False`.
@@ -530,10 +477,7 @@ In the codebase, an additional argument is required as the first input:
 -   **`geomodel_result`**: The output of the structural model, including
     geological surfaces and their vertices, faults, normal vectors, model
     extent, and grid points with material identifiers for each geological
-    layer. Alternatively, geological surfaces stored as CSV files can be
-    passed as `load_csv_surface_coordinates("<directory>")`, which reads
-    all CSV files of the directory. The required CSV structure is
-    described above.
+    layer.
 
 Example of creating an unstructured mesh from structural-model results:
 
@@ -634,35 +578,6 @@ translated so that the centre of the resulting mesh is
 
 The three target coordinates `xt`, `yt`, and `zt` must be provided
 together.
-
-Example of creating an unstructured mesh from CSV files containing
-geological surfaces:
-
-``` python
-mesh_explicit_unst_from_file = create_unstructured_mesh_data(
-    geomodel_result=load_csv_surface_coordinates(cwd + "/examples/synthetic_examples/model2/input_data/surfaces"),
-
-    # X/Y are inferred from all CSV surfaces; use these absolute Z limits.
-    extent_z=[-1000, 500],
-
-    mesh_size=50,
-    curve_mesh_size=5,
-    tolerance=50,
-
-    mapping_litho="none",
-)
-```
-
-This generates an unstructured tetrahedral mesh from the CSV files
-in the directory passed to `load_csv_surface_coordinates()`. Because no full
-`extent` is supplied, X and Y limits are inferred from the combined CSV
-surface coordinates. `extent_z=[-1000, 500]` replaces only the inferred Z
-limits with the absolute values `zmin=-1000` and `zmax=500`. When using CSV files, `mapping_litho` should be set to `"none"` to skip lithological mapping.
-
-If neither `extent` nor `extent_z` is supplied, X, Y, and Z are all
-inferred from the combined CSV surface coordinates. If a complete
-`extent=(xmin, xmax, ymin, ymax, zmin, zmax)` is supplied, it takes
-precedence and `extent_z` is not applied.
 
 #### Mesh refinement
 
