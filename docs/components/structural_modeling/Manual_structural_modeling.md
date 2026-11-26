@@ -23,22 +23,51 @@ The structural modeling component reconstructs 3D geological structure from spar
 
 The key is the group name; the list contains the formations in that group, youngest first.
 
+**The grid** is where the scalar fields are evaluated and the lithology is assigned. Two grids are available and can be used interchangeably for the fault and the structural model:
+
+- A **Regular Grid** divides the domain into voxels of equal size. Surfaces are extracted with marching cubes.
+- An **Octree Grid** starts from coarse blocks and refines them only where a surface or fault passes through, so the cells are fine near contacts and faults and coarse elsewhere. Surfaces are extracted with dual contouring. At its finest level, an Octree Grid gives the same model as a Regular Grid of the same resolution, with fewer cells.
+
+All interpolation methods, fault modeling, unconformities and surface mesh types work on both grids.
+
 ---
 
 ## Workflow
 
 ### 1. Define the grid
 
-> **Workbench component:** `Regular Grid`
+> **Workbench components:** `Regular Grid` or `Octree Grid`
+
+Either grid can be connected to `Compute Fault Model` and `Compute Structural Model`. When a fault model is used, the fault model and the structural model must be computed on the same grid.
+
+#### Regular Grid
 
 A `RegularGrid` defines the 3D computation domain as a regular axis-aligned voxel grid:
 
 - **Extent** — bounding box `(xmin, xmax, ymin, ymax, zmin, zmax)` in world coordinates. Should cover all input data with a small margin.
 - **Resolution** — number of voxels `(nx, ny, nz)`. Higher resolution gives more geometric detail but increases computation time significantly.
 
+#### Octree Grid
+
+An `OctreeGrid` defines the same kind of domain, but with cells of different sizes. The extent is first divided into base blocks, the coarsest cells of the grid. During modeling, a block is halved along every axis wherever a surface or fault passes through it, and again inside the halves, up to the maximum level. Cells that lie entirely within one formation stay coarse.
+
+- **Extent** — bounding box `(xmin, xmax, ymin, ymax, zmin, zmax)`, as for the Regular Grid.
+- **Base resolution** — number of base blocks `(bx, by, bz)`. Choose them so that the blocks are close to cubic, e.g. `(10, 4, 4)` for an extent of 2500 × 1000 × 1000.
+- **Max level** — how many times a base block can be halved. The finest cells have the size of a base block divided by `2**max_level`, so the finest resolution is `base_resolution * 2**max_level` (e.g. `(10, 4, 4)` at level 4 gives `160 × 64 × 64`). Level `0` gives a plain regular grid of base blocks.
+- **Gap mitigation** *(optional)* — where a surface crosses cells of different sizes, dual contouring can leave small gaps. `balance_mesh_depth_adjacency` (default) refines the cells next to the finest ones as well, which closes these gaps at the cost of extra cells. `none` skips this step.
+- **Cell balance** *(optional)* — `none` (default) lets a finest cell sit next to a much coarser one. `face_2to1` adds cells so that cells sharing a face differ by at most one level, for a more gradual transition between fine and coarse cells.
+
+```python
+from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeGrid
+
+grid = OctreeGrid(extent=(0, 2500, 0, 1000, 0, 1000), base_resolution=(10, 4, 4), max_level=4)
+```
+
+The rest of the workflow is the same as with a Regular Grid.
+
 ### 2. Load input data
 
-> **Workbench component:** `Input data for Structural Elements`
+> **Workbench component:** `Structural Input Data`
 
 Surface points are required. Orientations are optional — whether they are needed depends on the interpolation method chosen later (see the interpolation methods table). The mapping described above is provided as a Python dictionary or configured directly in the visual interface (visual DSL). Together they form the `InputData_StructuralElements` object that feeds the model.
 
@@ -59,7 +88,7 @@ If the geological model includes faults, they must be modelled before the strati
 Fault interpolation currently uses Universal Co-Kriging exclusively, so **both surface points and orientations are required for every fault**. Orientation vectors are scaled to unit length first, so only their direction matters. The result is a `FaultModelResults` object containing:
 
 - A **surface mesh** for each fault (the boundary between hanging wall and footwall).
-- A **domain map** that partitions every voxel in the grid into strictly separate, non-overlapping fault blocks. Stratigraphic groups that are active for a given fault will be interpolated independently in each of its domains; groups that post-date the fault are not affected by the domain split. The domain map is only computed if no faults cross-cut (see limitations below).
+- A **domain map** that partitions every cell of the grid (voxel or octree cell) into strictly separate, non-overlapping fault blocks. Stratigraphic groups that are active for a given fault will be interpolated independently in each of its domains; groups that post-date the fault are not affected by the domain split. The domain map is only computed if no faults cross-cut (see limitations below).
 
 **Limitations of the fault model:**
 
@@ -81,8 +110,8 @@ The computation runs the following steps in sequence:
 1. **Validation** — checks that every active fault domain contains sufficient input data for the chosen interpolation method in each group (for example, that orientation data is present in each domain for methods that require it). All issues are reported together before any expensive computation begins.
 2. **Interpolation** — each stratigraphic group is interpolated independently. When faults are active for a group, the interpolation is run completely separately in each fault domain using only the data points that fall within that domain. The resulting scalar fields are then stitched together.
 3. **Age masks** — a boolean mask is computed per group that represents its depositional extent: the oldest group underlies the entire domain (mask is True everywhere), while younger groups are only present where they were deposited. When assembling the lithology block, younger groups take precedence over older ones wherever their mask is True — this is what produces unconformable contacts between groups.
-4. **Lithology block** — the scalar fields and age masks are combined into a single 3D integer array where each voxel is assigned to a formation.
-5. **Surface meshes** — isosurfaces are extracted from the scalar fields using marching cubes. Five mesh types are stored per element: `masked` (respects unconformities and fault domains), `unmasked` (full isosurface through the entire grid), `combined` (derived from the lithology block), `extended` (extrapolated beyond the grid boundary, used as input for 3D mesh generation), and `extended_masked` (extrapolated beyond the grid boundary like `extended`, but one separate piece per fault domain, cut at the faults and at the base of younger groups; see [Output](#output)).
+4. **Lithology block** — the scalar fields and age masks are combined into a single integer array where each cell is assigned to a formation.
+5. **Surface meshes** — isosurfaces are extracted from the scalar fields using marching cubes on a Regular Grid, or dual contouring on an Octree Grid. Five mesh types are stored per element: `masked` (respects unconformities and fault domains), `unmasked` (full isosurface through the entire grid), `combined` (derived from the lithology block), `extended` (extrapolated beyond the grid boundary, used as input for 3D mesh generation), and `extended_masked` (extrapolated beyond the grid boundary like `extended`, but one separate piece per fault domain, cut at the faults and at the base of younger groups; see [Output](#output)).
 
 **Limitations of the structural model:**
 
@@ -153,7 +182,7 @@ plot_fault_input_data_3D(data_faults)
 
 These act on a `StructuralModelResults` object (see [Output](#output) below).
 
-`Detailed Report` prints a text summary of the structural frame — group count, surface point and orientation counts, and per-group interpolation method and parameters:
+`Detailed Report` prints a text summary of the structural frame — grid, group count, surface point and orientation counts, and per-group interpolation method and parameters. On an Octree Grid, it also lists the grid settings and, once the model is computed, the number of cells per level and their share of the finest cells:
 
 ```python
 structural_model_result.structural_frame.detailed_report()
@@ -168,6 +197,7 @@ structural_model_result.structural_frame.detailed_report()
 - **`show_points`** *(optional)*: Render input surface points. Default `True`.
 - **`show_orientations`** *(optional)*: Render orientation arrows. Default `True`.
 - **`fault_opacity`** *(optional)*: Opacity of fault surface meshes. Default `0.35`.
+- **`show_lith_block`** *(optional)*: Show the lithology block as the outside of the model — the cells on the six walls of the extent, colored by formation and with their edges drawn, so the grid's cells (uniform voxels, or octree cells of different sizes) are visible. The block hides what lies inside it. Default `False`.
 - **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
 - **`off_screen`** *(optional)*: Render off-screen with no window — required before calling `.screenshot()` without `show()`. Default `False`.
 - **`show`** *(optional)*: If `True`, opens the interactive window immediately; set `False` to add further actors before displaying. Default `True`.
@@ -182,10 +212,11 @@ plot_structural_model_3D(structural_model_result.structural_frame, mesh_type="ma
 
 - **`frame`**: The `StructuralFrame` to visualise.
 - **`axis`** *(optional)*: Axis to slice along — `"x"`, `"y"`, or `"z"`. Default `"y"`.
-- **`index`** *(optional)*: Slice index along the chosen axis. Defaults to the mid-point.
+- **`index`** *(optional)*: Slice index along the chosen axis, counted in the finest cells on an Octree Grid. Defaults to the mid-point.
 - **`show_result`** *(optional)*: Overlay the lithology block as a colored background. Default `True`.
 - **`show_fault_contours`** *(optional)*: Overlay fault isolines. Default `True`.
 - **`show_input_data`** *(optional)*: Overlay input surface points and orientation arrows. Default `True`.
+- **`show_grid`** *(optional)*: Outline the grid cells the slice cuts — uniform voxels on a Regular Grid, cells of different sizes on an Octree Grid. Default `False`.
 - **`title_suffix`** *(optional)*: Text appended to the plot title. Default `""`.
 
 ```python
@@ -226,10 +257,11 @@ plot_fault_model_3D(fault_model_result.fault_frame, show_domain_map=True, domain
 
 - **`fault_frame`**: The `FaultFrame` to visualise.
 - **`axis`** *(optional)*: Axis to slice along — `"x"`, `"y"`, or `"z"`. Default `"y"`.
-- **`index`** *(optional)*: Slice index along the chosen axis. Defaults to the mid-point.
+- **`index`** *(optional)*: Slice index along the chosen axis, counted in the finest cells on an Octree Grid. Defaults to the mid-point.
 - **`show_results`** *(optional)*: Plot the fault domain map and isolines, if present. Default `True`.
 - **`show_input_data`** *(optional)*: Plot input surface points, if available. Default `True`.
 - **`show_fault_contours`** *(optional)*: Overlay fault isolines. Default `True`.
+- **`show_grid`** *(optional)*: Outline the grid cells the slice cuts, as in `plot_structural_model_2D`. Default `False`.
 
 ```python
 plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)
@@ -243,11 +275,12 @@ plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)
 
 `compute_structural_model` returns a `StructuralModelResults` object containing a deep copy of the structural frame with all computed results attached:
 
-- **Scalar fields** — one 3D float array per stratigraphic group, shaped `(nx, ny, nz)`.
-- **Lithology block** — a 3D integer array shaped `(nx, ny, nz)`, where each voxel holds the formation ID of the youngest formation present at that location (0 = basement / no formation).
+- **Scalar fields** — one float array per stratigraphic group, shaped `(nx, ny, nz)` on a Regular Grid.
+- **Lithology block** — an integer array shaped `(nx, ny, nz)` on a Regular Grid, where each voxel holds the formation ID of the youngest formation present at that location (0 = basement / no formation).
+- **Octree cells** *(Octree Grid only)* — the cells the grid ended up with, stored on the frame as `cells` (level and integer index of each cell). On an Octree Grid, the scalar fields, age masks, lithology block and fault domain map hold one value per cell, shaped `(n_cells,)` and in the order of `cells`.
 - **Surface meshes** — vertices and triangle faces per formation, stored under the mesh type keys `masked`, `unmasked`, `combined`, `extended`, `extended_masked`.
   - `extended_masked` is meant as input for 3D mesh generation of faulted models. Each fault domain contributes its own piece, extracted from the scalar field interpolated in that domain alone, so the pieces on both sides of a fault never have to be separated afterwards. The pieces are stored together in one mesh but share no vertices, so they can be split into connected components. Each piece is cut at the faults and at the base of all younger groups, and reaches about one grid cell beyond both, so it reliably intersects the fault and unconformity surfaces. Like `extended`, the pieces reach beyond the model boundary.
 - **Fault surface meshes** — `masked`, `unmasked`, `extended` and `extended_masked` meshes for each fault element. The fault's `extended_masked` mesh is cut at the base of all groups younger than the youngest group the fault offsets, and reaches about one grid cell beyond it.
 - **All intermediate results** — scalar values per element, age masks per group, and the fault domain map are stored on the structural frame within the result object and can be accessed programmatically for further analysis or visualisation.
 
-The `StructuralModelResults` object is the direct input to the meshing components.
+The `StructuralModelResults` object is the direct input to the meshing components. The meshing components currently need a structural model computed on a Regular Grid and refuse a model computed on an Octree Grid (see the [meshing manual](../meshing/Manual_meshing.md)).

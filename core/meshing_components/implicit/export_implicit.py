@@ -8,15 +8,16 @@ from core.meshing_components.explicit.unstructured.mesh_data import classify_bou
   build_point_sets
 from core.object_components import MeshResults, StructuralModelResults, ExtentData, MeshType
 from core.meshing_components.pre_checks import pre_check_regular_grid
+from core import workbench_palette as palette
 
 
 @wbgeo_component(
     description='Provides structured implicit mesh as unstructured',
     title='Create Structured Implicit Mesh',
-    color='#cc9999',
-    border_color='#000000',
+    color=palette.MESH,
+    border_color=palette.BORDER,
     group='Meshing',
-    positionInGroup=20,
+    positionInGroup=970,
     identifier='wbgeo::create_structured_implicit_mesh_meshio',
     return_name='Mesh',
     input_checks=[pre_check_regular_grid],

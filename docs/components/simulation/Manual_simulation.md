@@ -375,7 +375,7 @@ problem_golem = GolemHydrothermalProblemBuilder(
 
 ### GOLEM: Simple Reservoir
 
-> **Workbench component:** `Build GOLEM Simple Reservoir`
+> **Workbench component:** `Build GOLEM Simple Reservoir Problem`
 
 The simple-reservoir builder supports two synthetic fractures, a well, an injection source,
 geological faults already present in the structural model, local mesh
@@ -430,7 +430,7 @@ The component accepts the following parameters in the Workbench:
 -   **`fracture_spacing`** *(optional)*: Distance between the two fracture planes along x (m). Default `200.0`.
 -   **`layout_center`** *(optional)*: `(x, y, z)` centre of the fracture pair. Default: the model centre.
 -   **`injection_point`**, **`extraction_point`** *(optional)*: `(x, y, z)` source locations. Default: the centres of the first and second fracture.
--   **`wells`** *(optional)*: Well path(s), e.g. from `Load Well` (a plain list, not hierarchical well data). Default: the model 1 well shape at the second fracture.
+-   **`wells`** *(optional)*: Well path(s), e.g. from `Load Wells` (a plain list, not hierarchical well data). Default: the model 1 well shape at the second fracture.
 -   **`rock_porosity`** *(optional)*: Rock porosity. Default `0.1`.
 -   **`rock_permeability`** *(optional)*: Rock permeability. Default
     `1.0e-15`.
@@ -1279,14 +1279,14 @@ Both solver pipelines converge to the same WBGeo result type:
 
 ``` text
 SfePy:
-Build SfePy Hydrothermal Problem ─┐
-                                  ├─> Run SfePy Simulation ─┐
-Build SfePy Custom Problem ───────┘                         │
-                                                            ├─> SimulationResults
-GOLEM:                                                      │        │
-Build GOLEM Hydrothermal Problem ─┐                         │        ├─> Visualisation / Inspection
-Build GOLEM Simple Reservoir ─────┼─> Run GOLEM Simulation ─┘        └─> Export Simulation Results
-Build GOLEM Custom Problem ───────┘
+Build SfePy Hydrothermal Problem ─────┐
+                                      ├─> Run SfePy Simulation ─┐
+Build SfePy Custom Problem ───────────┘                         │
+                                                                ├─> SimulationResults
+GOLEM:                                                          │        │
+Build GOLEM Hydrothermal Problem ─────┐                         │        ├─> Visualisation / Inspection
+Build GOLEM Simple Reservoir Problem ─┼─> Run GOLEM Simulation ─┘        └─> Export Simulation Results
+Build GOLEM Custom Problem ───────────┘
 ```
 
 `SimulationResults` is a time-dependent container for geometry,

@@ -25,6 +25,7 @@ from pydantic import BaseModel, model_validator
 from pydantic.dataclasses import dataclass
 from pydantic_numpy import NpNDArrayInt32, NpNDArrayUint8
 from py_api_wbgeo.nodesapi import wbgeo_type
+from core import workbench_palette as palette
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,8 @@ Resolution3 = Tuple[int, int, int]
 
 
 @wbgeo_type(
-    name="Grid for discretization of a structural geological model",
-    color="#b0dfa9",
+    name="Regular Grid",
+    color=palette.STRUCTURAL_INPUT,
     identifier="RegularGrid",
 )
 @dataclass
@@ -201,8 +202,8 @@ class CellBalance(StrEnum):
 
 
 @wbgeo_type(
-    name="Octree grid for adaptive discretization of a structural geological model",
-    color="#7fc7a3",
+    name="Octree Grid",
+    color=palette.STRUCTURAL_INPUT,
     identifier="OctreeGrid",
 )
 @dataclass

@@ -17,6 +17,31 @@ from core.simulation_components.simulation_packages.sfepy.sfepy_run import (
 
 
 # -----------------------------------------------------------------------------
+# _merge_consecutive_cell_blocks -- one SfePy element group per cell type run
+# -----------------------------------------------------------------------------
+
+def test_merge_consecutive_cell_blocks_keeps_order_and_mat_ids():
+    from meshio import CellBlock
+    hexa = lambda first, n: CellBlock("hexahedron", np.arange(first, first + 8 * n).reshape(n, 8))
+    wedge = CellBlock("wedge", np.arange(6).reshape(1, 6))
+    cells = [hexa(0, 2), hexa(100, 1), wedge, hexa(200, 3)]
+    # block 1 carries a fault-zone relabel (mat_id 9), which must survive
+    mat_ids = [np.array([0, 0]), np.array([9]), np.array([2]), np.array([3, 3, 3])]
+
+    merged, merged_ids = sfepy_run._merge_consecutive_cell_blocks(cells, mat_ids)
+
+    # consecutive hexahedra merge; the wedge in between keeps the hexahedra after it separate
+    assert [b.type for b in merged] == ["hexahedron", "wedge", "hexahedron"]
+    assert [len(b.data) for b in merged] == [3, 1, 3]
+    # global cell order and per-cell mat_id are unchanged
+    np.testing.assert_array_equal(
+        np.concatenate([b.data for b in merged if b.type == "hexahedron"]),
+        np.concatenate([cells[0].data, cells[1].data, cells[3].data]),
+    )
+    np.testing.assert_array_equal(np.concatenate(merged_ids), [0, 0, 9, 2, 3, 3, 3])
+
+
+# -----------------------------------------------------------------------------
 # _check_convergence -- pure stdout-parsing, no subprocess/I/O involved
 # -----------------------------------------------------------------------------
 
@@ -305,6 +330,36 @@ def test_run_simulation_sfepy_end_to_end_implicit_mesh(model1_implicit_mesh, mod
     assert set(result.input_files) == {"pressure.py", "heat.py"}
     assert all(result.input_files.values())
     assert set(result.block_names.values()) == {"basement", "rock1", "rock2"}
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_run_simulation_sfepy_result_has_each_cell_once(model1_implicit_mesh, model1_structural_result):
+    """
+    The result holds every mesh cell exactly once (GitHub issue #4): SfePy's
+    VTK writer repeated all cells once per mesh block when each lithology was
+    passed as its own cell block. Per-cell mat_id must still give each
+    lithology as many cells as its mesh block.
+    """
+    mesh_blocks = [len(block.data) for block in model1_implicit_mesh.elements]
+    assert len(mesh_blocks) > 1  # several blocks, otherwise the check is moot
+
+    builder = SfepyHydrothermalProblemBuilder(
+        mesh_results=model1_implicit_mesh,
+        geomodel_result=model1_structural_result,
+        include_flow=False,
+        linear_solver="iterative",
+        num_steps=1,
+    )
+    result = run_simulation_sfepy(builder)
+
+    for time in result.nodes_by_time:
+        assert len(result.celltypes_by_time[time]) == sum(mesh_blocks)
+        assert len(result.nodes_by_time[time]) == len(model1_implicit_mesh.nodes)
+        mat_id = np.asarray(result.cell_data_by_time[time]["mat_id"]).reshape(-1)
+        assert len(mat_id) == sum(mesh_blocks)
+        counts = np.bincount(mat_id.astype(int), minlength=len(mesh_blocks))
+        assert counts[:len(mesh_blocks)].tolist() == mesh_blocks
 
 
 @pytest.mark.integration

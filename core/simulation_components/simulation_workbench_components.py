@@ -45,8 +45,9 @@ from core.simulation_components.simulation_visualization.simulation_visualizatio
     plot_variable_at_a_time, plot_cross_section_2D, plot_builder_materials,
     plot_variable_along_line, plot_variable_time_series,
 )
+from core import workbench_palette as palette
 
-AnnotatedPoint = typing.Annotated[Tuple[float, float, float], AnnotatedScriptType(identifier='wbgeo::mesh:point', name='Point', controlled='Tuple|X|Y|Z')]
+AnnotatedPoint = typing.Annotated[Tuple[float, float, float], AnnotatedScriptType(identifier='wbgeo::mesh:point', name='Point', controlled='Tuple|X|Y|Z', color=palette.PARAMETER)]
 
 # RemoteFile-controlled path (frontend handles it specially via the
 # identifier; in the backend it's a plain string) -- same pattern as
@@ -61,22 +62,22 @@ AnnotatedPoint = typing.Annotated[Tuple[float, float, float], AnnotatedScriptTyp
 # an export/download, where it does work), unlike RemoteFile, which
 # every existing file-input component in this codebase already relies on.
 CustomSfepyFileDataType = typing.Annotated[
-    str, AnnotatedScriptType(name='path', color='aqua', identifier='CustomSfepyFileDataType',
+    str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='CustomSfepyFileDataType',
                              controlled='RemoteFile|endswith=.py')]
 
 SimulationExportFormatType = typing.Annotated[
     SimulationExportFormat,
     AnnotatedScriptType(name='SimulationExportFormat', identifier='SimulationExportFormatType',
-                        controlled='Select|' + '|'.join(f.value for f in SimulationExportFormat)),
+                        controlled='Select|' + '|'.join(f.value for f in SimulationExportFormat), color=palette.PARAMETER),
 ]
 
 # GOLEM custom inputs use the same RemoteFile pattern, but select MOOSE .i files.
 CustomGolemFileDataType = typing.Annotated[
-    str, AnnotatedScriptType(name='path', color='aqua', identifier='CustomGolemFileDataType',
+    str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='CustomGolemFileDataType',
                              controlled='RemoteFile|endswith=.i')]
 
 
-@wbgeo_type(name='GOLEM Problem', color='#e07a5f', identifier='wbgeo::GolemProblem')
+@wbgeo_type(name='GOLEM Problem', color=palette.SIMULATION_BUILDER, identifier='wbgeo::GolemProblem')
 class GolemProblem(pydantic.BaseModel):
     """Workbench-visible envelope around one GOLEM problem definition.
 
@@ -137,7 +138,7 @@ class HydrothermalOptions_Root(pydantic.BaseModel):
     fault_zone_properties: RockUnitProperties = _DEFAULT_FAULT_ZONE_PROPERTIES
 
 
-@wbgeo_type(name='HydrothermalOptions', color='#e07a5f',
+@wbgeo_type(name='HydrothermalOptions', color=palette.PARAMETER,
             identifier='wbgeo::HydrothermalOptions')
 class HydrothermalOptions(pydantic.BaseModel):
     root: HydrothermalOptions_Root
@@ -197,7 +198,7 @@ class GolemHydrothermalOptions_Root(pydantic.BaseModel):
     fault_properties: GolemFaultProperties = _DEFAULT_GOLEM_FAULT_PROPERTIES
 
 
-@wbgeo_type(name='GolemHydrothermalOptions', color='#e07a5f',
+@wbgeo_type(name='GolemHydrothermalOptions', color=palette.PARAMETER,
             identifier='wbgeo::GolemHydrothermalOptions')
 class GolemHydrothermalOptions(pydantic.BaseModel):
     root: GolemHydrothermalOptions_Root
@@ -253,10 +254,10 @@ SmartGolemHydrothermalOptions = typing.Annotated[
                 "(from the options' Fault Zone Properties group) instead of "
                 "treating them as ordinary lithology.",
     title='Build SfePy Hydrothermal Problem',
-    color='#e07a5f',
-    border_color='#000000',
+    color=palette.SIMULATION_BUILDER,
+    border_color=palette.BORDER,
     group='Simulation',
-    positionInGroup=89,
+    positionInGroup=990,
     identifier='wbgeo::simulation_build_hydrothermal_problem',
     return_name='hydrothermal_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping],
@@ -363,10 +364,10 @@ def build_hydrothermal_problem(
                 "equations -- sfepy-run's own region resolution remains the "
                 "final authority at run time.",
     title='Build SfePy Custom Problem',
-    color='#e07a5f',
-    border_color='#000000',
+    color=palette.SIMULATION_BUILDER,
+    border_color=palette.BORDER,
     group='Simulation',
-    positionInGroup=88,
+    positionInGroup=980,
     identifier='wbgeo::simulation_build_custom_sfepy_problem',
     return_name='sfepy_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping, check_mesh_has_no_engineering_objects],
@@ -450,10 +451,10 @@ def build_custom_sfepy_problem(
                 'Hydrothermal problem, or a single sfepy-run invocation for a '
                 'Custom SfePy problem.',
     title='Run SfePy Simulation',
-    color='pink',
-    border_color='#000000',
+    color=palette.SIMULATION_RUN,
+    border_color=palette.BORDER,
     group='Simulation',
-    positionInGroup=80,
+    positionInGroup=890,
     identifier='wbgeo::simulation_run',
     return_name='simulation_result',
 )
@@ -476,10 +477,10 @@ def run_simulation(problem: SfepyProblem) -> SimulationResults:
                 "template for exported 2D fault blocks. This only prepares "
                 "the problem; Docker/GOLEM is started by Run GOLEM Simulation.",
     title='Build GOLEM Hydrothermal Problem',
-    color='#e07a5f',
-    border_color='#000000',
+    color=palette.SIMULATION_BUILDER,
+    border_color=palette.BORDER,
     group='Simulation',
-    positionInGroup=100,
+    positionInGroup=970,
     identifier='wbgeo::simulation_build_golem_hydrothermal_problem',
     return_name='golem_problem',
     input_checks=[check_mesh_has_known_type, check_mesh_has_lithology_mapping],
@@ -555,11 +556,11 @@ def build_golem_hydrothermal_problem(
                 "(or at layout_center), with refinement in metres around them and a "
                 "background mesh size that follows the model size. This only prepares the "
                 "problem; Docker/GOLEM is started by Run GOLEM Simulation.",
-    title='Build GOLEM Simple Reservoir',
-    color='#e07a5f',
-    border_color='#000000',
+    title='Build GOLEM Simple Reservoir Problem',
+    color=palette.SIMULATION_BUILDER,
+    border_color=palette.BORDER,
     group='Simulation',
-    positionInGroup=99,
+    positionInGroup=950,
     identifier='wbgeo::simulation_build_golem_simple_reservoir_problem',
     return_name='golem_problem',
 )
@@ -664,13 +665,13 @@ def build_golem_simple_reservoir_problem(
     :param layout_center: Centre of the fracture pair. Leave empty for the model centre.
     :param injection_point: Injection point. Leave empty for the centre of the first fracture.
     :param extraction_point: Extraction point. Leave empty for the centre of the second fracture.
-    :param wells: Well path(s), e.g. from Load Well. Leave empty for the default well at the
+    :param wells: Well path(s), e.g. from Load Wells. Leave empty for the default well at the
         second fracture.
     :return: GOLEM problem envelope for Run GOLEM Simulation.
     """
     if isinstance(wells, dict):
         raise ValueError("The simple reservoir takes a plain list of wells; hierarchical (keyed) "
-                         "well data from Load Well is not supported here.")
+                         "well data from Load Wells is not supported here.")
     return GolemProblem(simple_reservoir=GolemSimpleReservoirBuilder(
         geomodel_result=geomodel_result,
         mesh_size=mesh_size,
@@ -723,10 +724,10 @@ def build_golem_simple_reservoir_problem(
                 "instead of auto-generating one. The input must use "
                 "${GOLEM_MESH_FILE} in its FileMeshGenerator block.",
     title='Build GOLEM Custom Problem',
-    color='#e07a5f',
-    border_color='#000000',
+    color=palette.SIMULATION_BUILDER,
+    border_color=palette.BORDER,
     group='Simulation',
-    positionInGroup=98,
+    positionInGroup=960,
     identifier='wbgeo::simulation_build_custom_golem_problem',
     return_name='golem_problem',
     input_checks=[check_mesh_has_known_type],
@@ -772,10 +773,10 @@ def build_custom_golem_problem(
                 'The image/project paths and MPI process count are explicit because GOLEM '
                 'is external to the WBGeo Python environment.',
     title='Run GOLEM Simulation',
-    color='pink',
-    border_color='#000000',
+    color=palette.SIMULATION_RUN,
+    border_color=palette.BORDER,
     group='Simulation',
-    positionInGroup=90,
+    positionInGroup=880,
     identifier='wbgeo::simulation_run_golem',
     return_name='simulation_result',
 )
@@ -820,6 +821,8 @@ def run_golem_simulation(
     positionInGroup=0,
     identifier='wbgeo::export_simulation_results',
     return_name='file',
+    color=palette.SIMULATION_EXPORT,
+    border_color=palette.BORDER,
 )
 def export_simulation_results(
     simulation_result: SimulationResults,

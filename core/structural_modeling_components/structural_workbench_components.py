@@ -16,6 +16,7 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
   plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
+from core import workbench_palette as palette
 
 
 class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
@@ -52,7 +53,7 @@ class StructuralFrameInputOptions_Root(pydantic.BaseModel):
   faults: typing.Dict[str, str] = {} # fault -> group name
 
 
-@wbgeo_type(name='StructuralFrameInputOptions', color='orange',
+@wbgeo_type(name='StructuralFrameInputOptions', color=palette.PARAMETER,
             identifier='wbgeo::StructuralFrameInputOptions')
 class StructuralFrameInputOptions(pydantic.BaseModel):
   root: StructuralFrameInputOptions_Root
@@ -192,12 +193,13 @@ SmartStructuralFrameInputOptions = typing.Annotated[
 # Register this function as a component
 @wbgeo_component(description='Computes a Structural Geological model from input data, grid, and (optionally) fault model. With smart options for interpolation methods and parameters.',
                  title='Compute Structural Model',  # The title shown in the GUI
-                 color='#8cb369',  # the color of the components
-                 border_color='#000000',  # and its border color
+                 color=palette.STRUCTURAL_MODEL,  # the color of the components
+                 border_color=palette.BORDER,  # and its border color
                  group='Inputs',
                  identifier='wbgeo::structural_modeling',  # a unique identifier
                  return_name='structural_model',  # the name for the returned-port
                  input_checks=[general_faults.check_fault_model_not_crosscutting, pre_check_fault_model_grid],
+                 positionInGroup=880,
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
@@ -296,11 +298,12 @@ def inspect_structural_model_result_plot_structural_model_3D(
 
 @wbgeo_component(description='Computes fault surfaces and fault domains from input data and grid.',
                  title='Compute Fault Model',
-                 color='#8cb369',
-                 border_color='#000000',
+                 color=palette.FAULT_MODEL,
+                 border_color=palette.BORDER,
                  group='Inputs',
                  identifier='wbgeo::fault_modeling',
                  return_name='fault_model',
+                 positionInGroup=890,
                  )
 def compute_fault_frame(
     data_faults: InputData_FaultElements,

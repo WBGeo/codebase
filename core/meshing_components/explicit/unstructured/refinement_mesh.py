@@ -2,11 +2,12 @@ from typing import List, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field
 from py_api_wbgeo.nodesapi import wbgeo_type
+from core import workbench_palette as palette
 
 # ------------------------
 # Wells
 # ------------------------
-@wbgeo_type(name="Linear Well Refinement", identifier="LinearWellRefinement")
+@wbgeo_type(name="Linear Well Refinement", identifier="LinearWellRefinement", color=palette.PARAMETER)
 class LinearWellRefinement(BaseModel):
     """
     Refines the mesh around wells using a distance-based linear
@@ -18,7 +19,7 @@ class LinearWellRefinement(BaseModel):
     DistMax: float
 
 
-@wbgeo_type(name="Function Well Refinement", identifier="FunctionWellRefinement")
+@wbgeo_type(name="Function Well Refinement", identifier="FunctionWellRefinement", color=palette.PARAMETER)
 class FunctionWellRefinement(BaseModel):
     """
     Refines the mesh around wells using a user-defined Gmsh
@@ -30,7 +31,7 @@ class FunctionWellRefinement(BaseModel):
 # ------------------------
 # Sources
 # ------------------------
-@wbgeo_type(name="Linear Source Refinement", identifier="LinearSourceRefinement")
+@wbgeo_type(name="Linear Source Refinement", identifier="LinearSourceRefinement", color=palette.PARAMETER)
 class LinearSourceRefinement(BaseModel):
     """
     Refines the mesh around source locations using distance-based linear scaling.
@@ -41,7 +42,7 @@ class LinearSourceRefinement(BaseModel):
     DistMax: float
 
 
-@wbgeo_type(name="Function Source Refinement", identifier="FunctionSourceRefinement")
+@wbgeo_type(name="Function Source Refinement", identifier="FunctionSourceRefinement", color=palette.PARAMETER)
 class FunctionSourceRefinement(BaseModel):
     """
     Refines mesh around sources using a Gmsh mathematical expression.
@@ -55,6 +56,7 @@ class FunctionSourceRefinement(BaseModel):
 @wbgeo_type(
     name="Linear Shaft Refinement",
     identifier="LinearShaftRefinement",
+    color=palette.PARAMETER,
 )
 class LinearShaftRefinement(BaseModel):
     """
@@ -70,6 +72,7 @@ class LinearShaftRefinement(BaseModel):
 @wbgeo_type(
     name="Function Shaft Refinement",
     identifier="FunctionShaftRefinement",
+    color=palette.PARAMETER,
 )
 class FunctionShaftRefinement(BaseModel):
     """
@@ -84,7 +87,7 @@ class FunctionShaftRefinement(BaseModel):
 # ------------------------
 # Triangulation
 # ------------------------
-@wbgeo_type(name="Triangulation Refinement", identifier="TriangulationRefinement")
+@wbgeo_type(name="Triangulation Refinement", identifier="TriangulationRefinement", color=palette.PARAMETER)
 class TriangulationRefinement(BaseModel):
     """
     Mesh refinement around triangulated surfaces.
@@ -98,7 +101,7 @@ class TriangulationRefinement(BaseModel):
 # ------------------------
 # Ellipses
 # ------------------------
-@wbgeo_type(name="Ellipse Refinement", identifier="EllipseRefinement")
+@wbgeo_type(name="Ellipse Refinement", identifier="EllipseRefinement", color=palette.PARAMETER)
 class EllipseRefinement(BaseModel):
     """
     Mesh refinement around elliptical regions.
@@ -112,7 +115,7 @@ class EllipseRefinement(BaseModel):
 # ------------------------
 # Faults
 # ------------------------
-@wbgeo_type(name="Fault Refinement", identifier="FaultRefinement")
+@wbgeo_type(name="Fault Refinement", identifier="FaultRefinement", color=palette.PARAMETER)
 class FaultRefinement(BaseModel):
     """
     Mesh refinement around fault surfaces.
@@ -125,6 +128,7 @@ class FaultRefinement(BaseModel):
 
 @wbgeo_type(name="Extra Plane Refinement",
     identifier="ExtraPlaneRefinement",
+    color=palette.PARAMETER,
 )
 class ExtraPlaneRefinement(BaseModel):
     """
@@ -142,6 +146,7 @@ Coordinate3D = Tuple[float, float, float]
 @wbgeo_type(
     name="General Refinement",
     identifier="GeneralRefinement",
+    color=palette.PARAMETER,
 )
 class GeneralRefinement(BaseModel):
     """
@@ -176,7 +181,7 @@ class GeneralRefinement(BaseModel):
 # ------------------------
 # MAIN CONTAINER
 # ------------------------
-@wbgeo_type(name="Mesh Refinement", identifier="Refinement")
+@wbgeo_type(name="Mesh Refinement", identifier="Refinement", color=palette.PARAMETER)
 class Refinement(BaseModel):
     """Configuration of optional mesh-refinement regions and strategies.
 
