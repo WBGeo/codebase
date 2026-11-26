@@ -392,7 +392,7 @@ def export_structural_model(
   title='Load Structural Model',
   description='Loads a structural model saved with Export Structural Model (format "wbgeo_sm"). The loaded '
               'model can be used like a computed one: meshing, simulation and inspection.',
-  color=palette.STRUCTURAL_MODEL,
+  color=palette.STRUCTURAL_EXPORT,
   border_color=palette.BORDER,
   group='Inputs',
   positionInGroup=870,
