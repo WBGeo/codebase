@@ -709,14 +709,14 @@ Regardless of the selected mesh source, use `${GOLEM_MESH_FILE}` in the
 ```
 
 
-Example of a custom builder that requires the auxiliary files `injection_flowrate.csv` and `frac_aperture.csv` to run the custom-defined simulation successfully.
+Example of a custom builder that requires the auxiliary files `injection_flowrate.csv` and `frac_aperture.csv` to run the custom-defined simulation successfully. It is taken from the Groß Schönebeck case study in the [WBGeo case studies repository](https://github.com/WBGeo/case-studies); the paths are relative to a checkout of that repository (`cwd`).
 
 
 ``` python
 # input file
 reservoir_input_trans_path = (
     cwd
-    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/transient_state.i"
+    + "/Groß_Schoenebeck/input_data/simulation_files/transient_state.i"
 )
 
 with open(reservoir_input_trans_path, "r") as f:
@@ -725,7 +725,7 @@ with open(reservoir_input_trans_path, "r") as f:
 # Auxiliary CSV files 
 reservoir_auxiliary_files_dir = (
     cwd
-    + "/examples/case_studies/Groß_Schoenebeck/input_data/simulation_files/files"
+    + "/Groß_Schoenebeck/input_data/simulation_files/files"
 )
 
 model_transient = GolemCustomBuilder(
@@ -733,7 +733,7 @@ model_transient = GolemCustomBuilder(
     input_file_path=reservoir_input_trans_path,
     auxiliary_files_dir=reservoir_auxiliary_files_dir,
     mesh_file=cwd
-    + "/examples/case_studies/Groß_Schoenebeck/"
+    + "/Groß_Schoenebeck/"
       "GS_steady_state/wbgeo_out.e",
     geomodel_result=structural_model_result,
     print_linear_residuals=True,
