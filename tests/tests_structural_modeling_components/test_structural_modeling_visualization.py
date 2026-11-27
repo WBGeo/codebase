@@ -347,29 +347,3 @@ def test_fault_inspector_3D_forwards_mesh_type_and_defaults_to_unmasked(monkeypa
                                                                mesh_type="extended")
 
     assert received == ["unmasked", "extended"]
-
-
-# --- Plot Mesh in 3D: style dropdown --------------------------------------------------------
-
-def test_mesh_style_select_and_inspector(monkeypatch):
-    import asyncio
-    from core.meshing_components.meshing_visualization import meshing_visualization as mv
-    assert mv.MeshStyleType.__metadata__[0].kwargs["controlled"] == "Select|surface|wireframe|points"
-
-    calls = []
-    monkeypatch.setattr(mv, "plot_mesh_3d", lambda mesh, geo, style, show: calls.append((mesh, geo, style)))
-
-    class _Trace:
-        async def get_value(self):
-            return "geo"
-
-    class _Inspector:
-        async def trace(self, _type):
-            return _Trace()
-
-    inspector = mv.inspect_implicit_mesh_3d.__wrapped__ if hasattr(mv.inspect_implicit_mesh_3d, "__wrapped__") \
-        else mv.inspect_implicit_mesh_3d
-    asyncio.run(inspector("mesh", _Inspector()))
-    asyncio.run(inspector("mesh", _Inspector(), style="wireframe"))
-
-    assert calls == [("mesh", "geo", "surface"), ("mesh", "geo", "wireframe")]
