@@ -321,3 +321,24 @@ def test_gradient_length_does_not_weight_orientations(monkeypatch):
     np.testing.assert_allclose(captured["G_x"], [0.6, 0.0])
     np.testing.assert_allclose(captured["G_y"], [0.8, 0.0])
     np.testing.assert_allclose(captured["G_z"], [0.0, 1.0])
+
+
+# --- minimum data: every formation of the group needs surface points -----------
+
+from core.structural_modeling_components.interpolator_functions.universal_cokriging import (  # noqa: E402
+    uck_input_problem)
+
+
+def _formations(names: list[str]) -> pd.DataFrame:
+    return pd.DataFrame({"X": 0.0, "Y": 0.0, "Z": 0.0, "formation": names})
+
+
+def test_uck_input_problem_one_point_per_formation_is_enough():
+    assert uck_input_problem(_formations(["top", "base"]), ["top", "base"]) is None
+    assert uck_input_problem(_formations(["top"]), ["top"]) is None
+
+
+def test_uck_input_problem_names_missing_formations():
+    problem = uck_input_problem(_formations(["top", "top"]), ["top", "middle", "base"])
+    assert "'middle', 'base'" in problem and "these formations" in problem
+    assert "this formation" in uck_input_problem(_formations(["top"]), ["top", "base"])

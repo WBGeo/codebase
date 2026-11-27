@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from core.structural_modeling_components.interpolator_functions.piecewise_linear import (
+    _strike_and_dip_vectors,
     interpolate_group_piecewise_linear,
 )
 
@@ -18,11 +21,10 @@ class FakeElem:
 
 
 class FakeParams:
-    def __init__(self, nelements=20_000, solver="cg", damp=True, tol=None):
+    def __init__(self, nelements=20_000, regularisation=1.0, orientation_weight=1.0):
         self.nelements = nelements
-        self.solver = solver
-        self.damp = damp
-        self.tol = tol
+        self.regularisation = regularisation
+        self.orientation_weight = orientation_weight
 
 
 class FakeGroup:
@@ -77,6 +79,17 @@ def orientations_df(formations: list[str]) -> pd.DataFrame:
     )
 
 
+class DummyBuilder:
+    """Stand-in for the LoopStructural feature builder (mean element volume 0.5)."""
+
+    def __init__(self):
+        self.interpolator = SimpleNamespace(support=SimpleNamespace(element_size=np.array([0.25, 0.75])))
+        self.build_arguments = {}
+
+    def update_build_arguments(self, arguments):
+        self.build_arguments.update(arguments)
+
+
 class DummyGeologicalModel:
     def __init__(self, min_bounds, max_bounds):
         self.min_bounds = np.asarray(min_bounds)
@@ -93,7 +106,8 @@ class DummyGeologicalModel:
 
     def create_and_add_foliation(self, name, **kwargs):
         self.created.append((name, kwargs))
-        return object()
+        self.feature = SimpleNamespace(builder=DummyBuilder())
+        return self.feature
 
     def evaluate_feature_value(self, feature_name, points, scale=True, **kwargs):
         return np.arange(points.shape[0], dtype=float)
@@ -191,7 +205,7 @@ def test_raises_when_interpolation_params_missing(monkeypatch):
 # --- Core tests ---------------------------------------------------------------
 
 def test_scalar_values_mapping_is_oldest_1_youngest_n_and_transpose_behavior(monkeypatch):
-    group = FakeGroup("G", ["youngest", "middle", "oldest"], params=FakeParams(nelements=33333, solver="cg", damp=True))
+    group = FakeGroup("G", ["youngest", "middle", "oldest"], params=FakeParams(nelements=33333, regularisation=1.0))
     grid = FakeGrid(resolution=(2, 1, 3))
     sdf = surface_df(["oldest", "middle", "youngest"])
     odf = orientations_df(["oldest", "middle", "youngest"])
@@ -217,7 +231,7 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n_and_transpose_behavior(mon
 
 
 def test_passes_pli_params_into_create_and_add_foliation(monkeypatch):
-    group = FakeGroup("G", ["young", "old"], params=FakeParams(nelements=44444, solver="cg", damp=False, tol=1e-5))
+    group = FakeGroup("G", ["young", "old"], params=FakeParams(nelements=44444, regularisation=0.5, orientation_weight=3.0))
     grid = FakeGrid(resolution=(2, 2, 1))
     sdf = surface_df(["young", "old"])
     odf = orientations_df(["young", "old"])
@@ -248,5 +262,48 @@ def test_passes_pli_params_into_create_and_add_foliation(monkeypatch):
     assert kwargs["interpolatortype"] == "PLI"
     assert kwargs["nelements"] == 44444
     assert kwargs["solver"] == "cg"
-    assert kwargs["damp"] is False
-    assert kwargs["tol"] == 1e-5
+    assert kwargs["regularisation"] == 0.5
+    assert "gpw" not in kwargs  # PLI has no gradient constraint: orientations go in as tangents
+    assert "damp" not in kwargs and "tol" not in kwargs
+    # orientation weight divided by the mean element volume (0.5)
+    assert model.feature.builder.build_arguments["tpw"] == pytest.approx(6.0)
+
+
+def test_orientations_become_tangents_without_value(monkeypatch):
+    """Each orientation: one gradient row and two tangent rows (strike, dip), none with a value."""
+    group = FakeGroup("G", ["young", "old"])
+    sdf = surface_df(["young", "old"])
+    odf = orientations_df(["young", "old"])
+
+    import core.structural_modeling_components.interpolator_functions.piecewise_linear as mod
+
+    captured = {}
+
+    def factory(minb, maxb):
+        m = DummyGeologicalModel(minb, maxb)
+        captured["model"] = m
+        return m
+
+    monkeypatch.setattr(mod, "GeologicalModel", factory)
+    interpolate_group_piecewise_linear(
+        group=group, grid=FakeGrid(), group_surface_points_df=sdf, group_orientations_points_df=odf,
+    )
+
+    data = captured["model"].data
+    is_gradient = data["gx"].notna()
+    is_tangent = data["tx"].notna()
+    assert is_gradient.sum() == 2 and is_tangent.sum() == 4
+    assert data.loc[is_gradient | is_tangent, "val"].isna().all()
+    assert data.loc[~(is_gradient | is_tangent), "val"].tolist() == [2.0, 1.0]  # young=2, old=1
+    # orientations in the test data have normal (1, 0, 0): tangents must be perpendicular
+    assert np.allclose(data.loc[is_tangent, "tx"], 0.0)
+
+
+def test_strike_and_dip_vectors_are_perpendicular_unit_vectors():
+    normals = np.array([[0.0, 0.0, 1.0], [-0.25, 0.0, 1.0], [1.0, 2.0, 0.5], [0.0, 0.0, -3.0]])
+    strike, dip = _strike_and_dip_vectors(normals)
+    unit = normals / np.linalg.norm(normals, axis=1, keepdims=True)
+    for v in (strike, dip):
+        assert np.allclose(np.linalg.norm(v, axis=1), 1.0)
+        assert np.allclose(np.sum(v * unit, axis=1), 0.0)
+    assert np.allclose(np.sum(strike * dip, axis=1), 0.0)

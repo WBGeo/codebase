@@ -5,34 +5,26 @@ This module contains:
 - `interpolate_group_geo_inr`: framework-facing interpolator (pure function)
 - `ConcatMLP`: small PyTorch MLP used for implicit neural representation
 - `stratigraphic_ConcatMLP`: training loop producing scalar field predictions and iso-values
-- Helper functions: `normalize`, `loss_intf`, `compute_gradients`, `loss_grad`, `loss_eikonal`,
-  `predict_to_mesh_stratigraphic`
+- Helper functions: `normalize`, `loss_intf`, `compute_gradients`, `loss_grad`, `loss_eikonal`
 
-Known differences from the reference implementation (https://github.com/MichaelHillier/GeoINR)
-------------------------------------------------------------------------------------------------
-This was adapted from a colleague's port of the reference code. Remaining differences:
-
-- Interface points are regressed to a fixed per-horizon label (`linspace(1, -1)`, see
-  `interpolate_group_geo_inr`) rather than letting the network find its own per-horizon value via
-  the reference's self-consistency + above/below ordering scheme. Tried the reference's approach
-  and reverted it: validated against real wbgeo models, it was measurably worse than the fixed
-  labels and got worse with more training, because nothing in that scheme anchors the scalar
-  field's absolute scale. Revisiting it would need a proper scale anchor (e.g. the reference's
-  eikonal/polarity terms), not just the self-consistency/ordering pieces alone.
-- No anisotropic z-scaling option. The reference's `custom2`/`custom3` scalers scale z
-  independently from x/y (with a compensating rescale of the orientation vectors), which can help
-  when horizontal and vertical extents are extremely different and z becomes near-constant under
-  the isometric scaling `normalize()` uses here. Not implemented - would need a new user-facing
-  parameter on `GeoINRParams` (`interpolator_parameters.py`), out of scope for this module.
-- [FIXED, default now nonzero] Reference's eikonal/gradient-norm regularization term
-  (`loss_eikonal` here, `norm_loss` there) defaults its weight (`lambda_g`) to 0.0 in the
-  reference. This module enables it with a nonzero default weight instead: on real wbgeo data
-  (model2's `Strat_Series1` group, which has a sharp local fold), the unregularized field would
-  occasionally (~1 in 5 random seeds tested) fold back on itself far below the data and overwrite
-  basement with younger units - in the worst observed case, 90% of grid columns were affected and
-  87% of the deepest 10% of the model (which should be pure basement) was overwritten. RBF on the
-  identical data showed none of this. See `loss_eikonal` and `stratigraphic_ConcatMLP` for the
-  mechanism and how the default weight/sample count were chosen.
+Differences from the reference implementation (https://github.com/MichaelHillier/GeoINR)
+-----------------------------------------------------------------------------------------
+- Interface points are regressed to a fixed label per formation (`linspace(1, -1)`, see
+  `interpolate_group_geo_inr`). The reference instead lets the network find a value per
+  horizon through a self-consistency and above/below ordering scheme; on WBGeo models that
+  scheme fitted worse and degraded with longer training, because nothing in it anchors the
+  absolute scale of the scalar field. Adopting it would need a scale anchor as well (e.g. the
+  reference's eikonal/polarity terms).
+- No anisotropic z-scaling. The reference's `custom2`/`custom3` scalers scale z independently
+  of x/y (with a compensating rescale of the orientation vectors), which helps when horizontal
+  and vertical extents differ extremely and z becomes nearly constant under the isometric
+  scaling of `normalize()`. It would need an additional parameter on `GeoINRParams`.
+- The eikonal (gradient-norm) regularisation (`loss_eikonal`, `norm_loss` in the reference) is
+  enabled with a nonzero weight (`lambda_g`); the reference defaults it to 0. Without it, on
+  model 2's `Strat_Series1` group (a sharp local fold), about one in five random seeds gave a
+  field that folded back far below the data and replaced basement with younger units (worst
+  case: 90 % of the grid columns, 87 % of the deepest tenth of the model). See `loss_eikonal`
+  and `stratigraphic_ConcatMLP` for the mechanism and the choice of weight and sample count.
 """
 
 from __future__ import annotations
@@ -48,7 +40,6 @@ from typing import Any, Dict, Iterator, Optional, Tuple, TypeAlias
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import pyvista as pv
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
@@ -125,7 +116,8 @@ def interpolate_group_geo_inr(
         StructuralGroup-like object. Expected members:
         - `name: str`
         - `structural_elements: Sequence[... with .name]` in framework order (youngest -> oldest)
-        - `get_interpolation_params() -> GeoINRParams-like` (expects `.beta`)
+        - `get_interpolation_params() -> GeoINRParams-like` (orientation_weight, hidden_dim,
+          n_hidden_layers, epochs, lr, seed)
     grid
         RegularGrid-like object. Expected members:
         - `extent: tuple[float, float, float, float, float, float]`
@@ -140,18 +132,17 @@ def interpolate_group_geo_inr(
     Returns
     -------
     scalar_field : np.ndarray
-        Scalar field on the grid, reshaped to `tuple(grid.resolution)` then transposed,
-        preserved exactly as in the original implementation.
+        Scalar field on the grid in ZYX shape (reshaped to `tuple(grid.resolution)`, then
+        transposed).
     scalar_values_by_element : dict[str, float]
-        Mapping element_name -> scalar value (iso-values). Your original code assumes the
-        returned `iso_values` are ordered oldest → youngest.
+        Mapping element_name -> scalar value (the label of the formation, see Notes).
 
     Notes
     -----
-    - Creates continuous labels in [-1, 1] mapped youngest->oldest = [+1 ... -1].
-    - Uses GeoINRParams from `group.get_interpolation_params()` (expects `.beta`).
+    - Each formation gets a fixed label, evenly spaced from +1 (youngest) to -1 (oldest).
+      The labels do not depend on which formations have surface points, so a formation
+      without points (e.g. in one fault domain) still gets its value.
     - Does NOT mutate `group`.
-    - Assumes `iso_values` returned by the model are ordered oldest→youngest.
     """
     # --- validation ---
     if group_surface_points_df is None or group_surface_points_df.empty:
@@ -174,7 +165,7 @@ def interpolate_group_geo_inr(
         elem.name: float(lab) for elem, lab in zip(group.structural_elements, labels)
     }
 
-    # attach labels to surface points (as expected by your GeoINR code)
+    # attach labels to surface points
     sp = group_surface_points_df.copy()
     sp["label"] = sp["formation"].map(formation_to_label)
 
@@ -192,13 +183,13 @@ def interpolate_group_geo_inr(
         grid_points = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
 
     # --- params ---
-    params = group.get_interpolation_params()  # GeoINRParams-like (expects .beta)
+    params = group.get_interpolation_params()  # GeoINRParams-like
 
-    # --- run GeoINR (external function you already use) ---
+    # --- train the network and evaluate it on the grid ---
     # Suppress noisy PyTorch / third-party warnings only for the duration of training.
     with warnings.catch_warnings(), _limit_torch_threads():
         warnings.simplefilter("ignore")
-        res_inr, iso_values = stratigraphic_ConcatMLP(
+        res_inr, _ = stratigraphic_ConcatMLP(
             interface_data=interface_data,
             orientation_data=orientation_data,
             meshgrid_data=grid_points,
@@ -209,29 +200,20 @@ def interpolate_group_geo_inr(
             out_dim=1,
             n_hidden_layers=params.n_hidden_layers,
             activation="Softplus",
-            beta=params.beta,
+            beta=1.0,
             concat=False,
             epochs=params.epochs,
             lr=params.lr,
-            alpha=params.alpha
+            alpha=params.orientation_weight,
+            seed=params.seed,
         )
 
-    # `res_inr` -> (nx, ny, nz) without transpose (preserved behavior)
+    # grid points are ordered with x slowest (ij indexing): reshape to (nx, ny, nz), transpose to ZYX
     scalar_field = np.asarray(res_inr).reshape(tuple(grid.resolution)).T
 
-    # Map per-element scalar values:
-    # Your previous code effectively used iso_values[0] for oldest, ... iso_values[-1] for youngest.
-    # So we build the dict accordingly (oldest→youngest indexing) while your group list is youngest→oldest.
-    names_old_to_young = [e.name for e in reversed(group.structural_elements)]
-    if len(iso_values) != len(names_old_to_young):
-        raise ValueError(
-            f"GeoINR returned {len(iso_values)} iso_values, but group '{group.name}' has "
-            f"{len(names_old_to_young)} elements."
-        )
-
-    scalar_values_by_element: Dict[str, float] = {
-        name: float(val) for name, val in zip(names_old_to_young, iso_values)
-    }
+    # The isovalue of each formation is its label, also for formations without surface points
+    # here (the labels returned by the training only cover formations present in the data).
+    scalar_values_by_element: Dict[str, float] = dict(formation_to_label)
 
     return scalar_field, scalar_values_by_element
 
@@ -383,19 +365,12 @@ def normalize(data: np.ndarray, bounds: Tuple[float, float, float, float, float,
         Normalized coordinates, dtype float32. The axis with the largest extent spans
         [-1, 1]; other axes are scaled by the same factor and so may span a narrower range.
     """
-    data = data.astype(np.float32)
-    mean_x = (bounds[0] + bounds[1]) / 2
-    mean_y = (bounds[2] + bounds[3]) / 2
-    mean_z = (bounds[4] + bounds[5]) / 2
-    delta_x = bounds[1] - bounds[0]
-    delta_y = bounds[3] - bounds[2]
-    delta_z = bounds[5] - bounds[4]
-    range_max = max(delta_x, delta_y, delta_z)
-    data[:, 0] = (data[:, 0] - mean_x) / range_max * 2
-    data[:, 1] = (data[:, 1] - mean_y) / range_max * 2
-    data[:, 2] = (data[:, 2] - mean_z) / range_max * 2
-
-    return data
+    # Centre and scale in float64 and only then convert to float32: real-world coordinates
+    # (e.g. UTM northings ~5.8e6) are resolved to only ~0.5 m in float32.
+    data = np.asarray(data, dtype=np.float64)[:, :3]
+    centre = np.array([(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2, (bounds[4] + bounds[5]) / 2])
+    range_max = max(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
+    return ((data - centre) / range_max * 2).astype(np.float32)
 
 
 # loss function for the interface points
@@ -461,24 +436,19 @@ def loss_eikonal(gradients_domain: torch.Tensor, target_norm: torch.Tensor) -> t
     Eikonal regularization: encourages the scalar field's gradient norm to stay close to
     `target_norm` everywhere in the domain, not just near interface/orientation points.
 
-    Without this, nothing constrains the field's behavior far from any data point. In testing
-    on real wbgeo data (a group with a sharp local fold), the unregularized field occasionally
-    folded back on itself deep below the data and overwrote basement with younger units - see
-    module docstring for measured severity. This is present in the reference GeoINR
-    implementation as `norm_loss`, but defaulted off there (`lambda_g=0.0`) and, when enabled
-    there, compared against a fixed `target_norm=1.0`.
+    Without this, nothing constrains the field far from the data; on a group with a sharp
+    local fold the unregularised field can fold back deep below the data and replace basement
+    with younger units (see module docstring). The reference GeoINR implementation has the same
+    term as `norm_loss`, switched off by default (`lambda_g=0.0`) and with a fixed
+    `target_norm=1.0`.
 
-    That fixed value of 1.0 does NOT transfer to this module: the reference's own label
-    convention keeps gradient magnitudes near 1 by construction, but this module regresses to
-    fixed labels spanning exactly [-1, 1] across the *entire* normalized domain regardless of
-    how much physical space the data actually occupies, so the gradient magnitude the network
-    actually needs varies per group/model (empirically ~13-15 on one real wbgeo model, not ~1).
-    Using a fixed target_norm=1.0 was tried and made the eikonal term dominate and actively fight
-    the data fit, producing a far worse failure than having no regularization at all. Instead,
-    `target_norm` is computed each epoch from the gradient norm the network is *actually*
-    achieving at the real interface data (see `stratigraphic_ConcatMLP`) - keeping the domain
-    sample's gradient consistent with what the data itself already implies, rather than an
-    arbitrary constant.
+    A fixed target of 1.0 does not fit this module: the labels span [-1, 1] regardless of how
+    much of the normalised domain the data occupy, so the gradient magnitude the field needs
+    varies per group and model (about 13-15 on model 2, not about 1). A fixed target of 1.0
+    makes the eikonal term dominate and work against the data fit. `target_norm` is therefore
+    taken each epoch from the gradient norm the network reaches at the interface points (see
+    `stratigraphic_ConcatMLP`), which keeps the gradient in the rest of the domain consistent
+    with the data.
 
     Parameters
     ----------
@@ -495,48 +465,6 @@ def loss_eikonal(gradients_domain: torch.Tensor, target_norm: torch.Tensor) -> t
     """
     grad_norm = torch.norm(gradients_domain, p=2, dim=1)
     return torch.mean(torch.abs(grad_norm - target_norm))
-
-
-def predict_to_mesh_stratigraphic(
-    extents: Tuple[float, float, float, float, float, float],
-    resolution: Tuple[int, int, int],
-    predictions: np.ndarray,
-    iso_values: np.ndarray,
-) -> Tuple[pv.PolyData, pv.ImageData]:
-    """
-    Convert grid predictions back to a PyVista ImageData and extract isosurfaces.
-
-    Parameters
-    ----------
-    extents : tuple[float, float, float, float, float, float]
-        Domain extent as (xmin, xmax, ymin, ymax, zmin, zmax).
-    resolution : tuple[int, int, int]
-        Grid resolution as (nx, ny, nz).
-    predictions : np.ndarray
-        Flat predictions for all grid points.
-    iso_values : np.ndarray
-        Isovalues to contour.
-
-    Returns
-    -------
-    contours_mean : pv.PolyData
-        Contour surface(s).
-    grid_mesh_final : pv.ImageData
-        PyVista image grid holding the scalar field.
-    """
-    grid_mesh_final = pv.ImageData()
-    grid_mesh_final.dimensions = resolution
-    grid_mesh_final.origin = [extents[0], extents[2], extents[4]]
-    grid_mesh_final.spacing = [
-        (extents[1] - extents[0]) / (resolution[0] - 1),
-        (extents[3] - extents[2]) / (resolution[1] - 1),
-        (extents[5] - extents[4]) / (resolution[2] - 1),
-    ]
-
-    grid_mesh_final.point_data["scalar"] = predictions.ravel()
-    contours_mean = grid_mesh_final.contour(isosurfaces=iso_values)
-
-    return contours_mean, grid_mesh_final
 
 
 def stratigraphic_ConcatMLP(
@@ -557,6 +485,7 @@ def stratigraphic_ConcatMLP(
     alpha: float = 0.1,
     lambda_g: float = 0.05,
     n_eikonal_samples: int = 2000,
+    seed: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Train a ConcatMLP to represent stratigraphic scalar field, then infer on meshgrid points.
@@ -588,6 +517,10 @@ def stratigraphic_ConcatMLP(
     n_eikonal_samples
         Number of domain points (drawn once, from `meshgrid_data`, and reused every epoch -
         matching the reference's own static-sample approach) used for the eikonal term.
+    seed
+        Seed for the network's initial weights and the eikonal sample. With a seed, the same
+        input gives the same result (on the same hardware); the global random state of NumPy
+        and PyTorch is left untouched. None = different random start each call.
 
     Returns
     -------
@@ -596,6 +529,39 @@ def stratigraphic_ConcatMLP(
     iso_values : np.ndarray
         Unique interface labels (as used for isosurface extraction).
     """
+    arguments = dict(locals())  # all parameters of this function
+    # Seeded runs use their own random state, so the caller's global NumPy/PyTorch state is
+    # neither used nor changed.
+    if seed is None:
+        return _train_and_predict(**arguments)
+    with torch.random.fork_rng(devices=list(range(torch.cuda.device_count()))):
+        torch.manual_seed(seed)
+        return _train_and_predict(**arguments)
+
+
+def _train_and_predict(
+    interface_data: np.ndarray,
+    orientation_data: np.ndarray,
+    meshgrid_data: np.ndarray,
+    extent: Tuple[float, float, float, float, float, float],
+    resolution: Tuple[int, int, int],
+    in_dim: int,
+    hidden_dim: int,
+    out_dim: int,
+    n_hidden_layers: int,
+    activation: str,
+    beta: float,
+    concat: bool,
+    epochs: int,
+    lr: float,
+    alpha: float,
+    lambda_g: float,
+    n_eikonal_samples: int,
+    seed: Optional[int],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Training and inference of `stratigraphic_ConcatMLP` (see there)."""
+    rng = np.random.default_rng(seed)
+
     # read the input data
     train_data_x = interface_data[:, 1:].astype("float")
     train_data_y = interface_data[:, 0].astype("float")
@@ -612,7 +578,7 @@ def stratigraphic_ConcatMLP(
     # static domain sample for the eikonal term (drawn once, reused every epoch - see
     # `loss_eikonal` and module docstring)
     n_eik = min(n_eikonal_samples, normalized_meshgrid_data.shape[0])
-    eik_idx = np.random.choice(normalized_meshgrid_data.shape[0], size=n_eik, replace=False)
+    eik_idx = rng.choice(normalized_meshgrid_data.shape[0], size=n_eik, replace=False)
     normalized_domain_x = normalized_meshgrid_data[eik_idx]
 
     # concatenate interface + orientation + eikonal-domain points into one training batch,
@@ -675,7 +641,8 @@ def stratigraphic_ConcatMLP(
         loss = loss_i + alpha * loss_o + lambda_g * loss_eik
         if loss < min_loss:
             min_loss = loss
-            best_params = model.state_dict()
+            # copy: state_dict() returns the live weights, which the optimizer keeps changing
+            best_params = {k: v.detach().clone() for k, v in model.state_dict().items()}
             min_loss_i = loss_i
             min_loss_o = loss_o
             min_loss_eik = loss_eik

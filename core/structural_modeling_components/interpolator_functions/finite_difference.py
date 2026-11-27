@@ -11,9 +11,11 @@ Notes
 -----
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
-- The scalar field reshape + transpose is preserved exactly as implemented.
-- Orientation/gradient observations are treated as point constraints by LoopStructural
-  (i.e., their XYZ location matters to the solution).
+- The scalar field is returned in ZYX shape (reshaped to the grid resolution, then transposed).
+- Orientations only constrain the direction of the gradient at their location; they
+  carry no scalar value, so they may lie anywhere, not only on an interface. With
+  only one formation (all values equal), LoopStructural turns them into normal-vector
+  constraints, which also fix the gradient's length and so define which way is up.
 
 FDI-specific parameters
 -----------------------
@@ -24,12 +26,10 @@ Expected attributes on params
 -----------------------------
 - nelements: int | float
     Discretisation size passed to `create_and_add_foliation`.
-- solver: str
-    Solver argument passed to `create_and_add_foliation` (if supported by your LS version).
-- damp: bool
-    Damp argument passed to `create_and_add_foliation` (if supported by your LS version).
-- tol: float | None
-    Tolerance passed to `create_and_add_foliation` as `tol` (if provided).
+- regularisation: float
+    Weight of the smoothness term, passed as `regularisation`.
+- orientation_weight: float
+    Weight of the orientation constraints, passed as `gpw` (surface points: `cpw` = 1).
 """
 
 from __future__ import annotations
@@ -79,8 +79,8 @@ def interpolate_group_finite_differences(
     Returns
     -------
     scalar_field : np.ndarray
-        Evaluated scalar field on the grid, shaped to `tuple(grid.resolution)` and transposed
-        exactly as in the original implementation.
+        Evaluated scalar field on the grid in ZYX shape (shaped to `tuple(grid.resolution)`,
+        then transposed).
     scalar_values_by_element : dict[str, float]
         Mapping element_name -> scalar value. Values are strictly increasing from
         oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
@@ -142,7 +142,11 @@ def interpolate_group_finite_differences(
     # Orientations table
     orientations = group_orientations_points_df.copy()
     orientations["feature_name"] = group.name
-    orientations["val"] = orientations["formation"].map(formation_to_scalar)
+    # No value: orientations may lie anywhere, not only on the interface of their formation
+    # (the formation only assigns them to the group). LoopStructural turns every row with a
+    # `val` into a value constraint, which would pull the field to that formation's value
+    # at the orientation's location.
+    orientations["val"] = np.nan
     orientations = orientations.rename(columns={"G_x": "gx", "G_y": "gy", "G_z": "gz"})
     orientations = orientations[["X", "Y", "Z", "val", "feature_name", "gx", "gy", "gz"]]
 
@@ -177,11 +181,13 @@ def interpolate_group_finite_differences(
         interpolatortype="FDI",
         nelements=params.nelements,
         buffer=0.2,
-        solver=params.solver,
-        damp=params.damp,
+        # Conjugate gradients with LoopStructural's default tolerance (not exposed).
+        solver="cg",
+        # Least-squares weights: surface points 1 (LoopStructural default), orientations
+        # (direction only) `orientation_weight`, smoothness `regularisation`.
+        regularisation=params.regularisation,
+        gpw=params.orientation_weight,
     )
-    if params.tol is not None:
-        create_kwargs["tol"] = params.tol
 
     _ = model.create_and_add_foliation(group.name, **create_kwargs)
 
@@ -193,7 +199,7 @@ def interpolate_group_finite_differences(
         scale=True,
     )
 
-    # Match previous implementation: reshape then transpose
+    # grid coordinates are ordered with x slowest: reshape to (nx, ny, nz), transpose to ZYX
     scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
 
     return scalar_field, scalar_values_by_element

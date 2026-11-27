@@ -375,3 +375,141 @@ def test_epsilon_is_only_passed_for_kernels_that_use_it(kernel, expected_epsilon
         mod.RBFInterpolator = orig
 
     assert captured["epsilon"] == expected_epsilon
+
+
+# --- rbf_input_problem: minimum data per kernel ---------------------------------
+
+from core.structural_modeling_components.interpolator_functions.radial_basis_function import (  # noqa: E402
+    add_phantom_element, rbf_input_problem, PHANTOM_ELEMENT_NAME)
+
+
+def _random_points(n: int, seed: int = 0) -> np.ndarray:
+    return np.random.default_rng(seed).uniform(0.0, 100.0, (n, 3))
+
+
+@pytest.mark.parametrize("kernel, n_min", [("thin_plate_spline", 4), ("cubic", 4), ("quintic", 10)])
+def test_rbf_input_problem_minimum_point_count(kernel, n_min):
+    assert rbf_input_problem(_random_points(n_min), kernel) is None
+    problem = rbf_input_problem(_random_points(n_min - 1), kernel)
+    assert problem is not None
+    assert f"at least {n_min} surface points" in problem
+    assert "'linear'" in problem
+
+
+@pytest.mark.parametrize("kernel", ["linear", "multiquadric", "gaussian",
+                                    "inverse_multiquadric", "inverse_quadratic"])
+def test_rbf_input_problem_kernels_without_trend_accept_one_point(kernel):
+    assert rbf_input_problem(_random_points(1), kernel) is None
+
+
+def test_rbf_input_problem_points_in_one_plane():
+    points = _random_points(30)
+    points[:, 2] = 250.0  # one flat surface
+    problem = rbf_input_problem(points, "thin_plate_spline")
+    assert problem is not None and "in one plane" in problem
+    assert rbf_input_problem(points, "linear") is None
+
+
+def test_rbf_input_problem_quintic_points_on_a_curved_surface():
+    # 30 points on one paraboloid z = x^2 + y^2 lie on a quadric: rank-deficient for degree 2
+    xy = np.random.default_rng(1).uniform(-1.0, 1.0, (30, 2))
+    points = np.column_stack([xy, (xy ** 2).sum(axis=1)])
+    assert rbf_input_problem(points, "thin_plate_spline") is None
+    assert "curved surface" in rbf_input_problem(points, "quintic")
+
+
+def test_rbf_input_problem_neighbors_smaller_than_polynomial_terms():
+    problem = rbf_input_problem(_random_points(20), "thin_plate_spline", neighbors=3)
+    assert problem is not None and "neighbours" in problem
+    assert rbf_input_problem(_random_points(20), "thin_plate_spline", neighbors=4) is None
+
+
+@pytest.mark.parametrize("kernel, n", [("thin_plate_spline", 3), ("thin_plate_spline", 4), ("quintic", 9)])
+def test_rbf_input_problem_agrees_with_scipy(kernel, n):
+    """Whenever the check reports a problem, SciPy fails too, and vice versa."""
+    from scipy.interpolate import RBFInterpolator
+    for points in (_random_points(n), np.column_stack([_random_points(n)[:, :2], np.full(n, 5.0)])):
+        problem = rbf_input_problem(points, kernel)
+        try:
+            RBFInterpolator(points, np.arange(n, dtype=float), kernel=kernel)
+            scipy_fails = False
+        except Exception:
+            scipy_fails = True
+        assert (problem is not None) == scipy_fails
+
+
+def test_add_phantom_element_copies_points_downwards():
+    df = surface_df(["A", "A", "A"])
+    with_phantom, shift = add_phantom_element(df)
+    assert len(with_phantom) == 6
+    phantom = with_phantom[with_phantom["formation"] == PHANTOM_ELEMENT_NAME]
+    np.testing.assert_allclose(phantom["Z"].to_numpy(), df["Z"].to_numpy() - shift)
+    assert len(df) == 3  # input not modified
+
+
+# --- anisotropy_scaling_z ----------------------------------------------------------
+
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (  # noqa: E402
+    InterpolationContext, RBFParams, default_rbf_params)
+
+
+class _AxesGrid:
+    """Grid from 1D axes, asymmetric resolution to catch axis-order bugs."""
+
+    def __init__(self, gridx, gridy, gridz):
+        self.gridx, self.gridy, self.gridz = (np.asarray(a, dtype=float) for a in (gridx, gridy, gridz))
+        self.resolution = (len(self.gridx), len(self.gridy), len(self.gridz))
+        self.grid_coordinates = None
+
+
+def _layered_points(seed: int = 4) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    n = 12
+    x, y = rng.uniform(0, 1000, n), rng.uniform(0, 800, n)
+    upper = n // 2
+    z = np.where(np.arange(n) < upper, 400.0, 200.0) + 0.05 * x + rng.normal(0, 5, n)
+    return pd.DataFrame({"X": x, "Y": y, "Z": z, "formation": ["top"] * upper + ["base"] * (n - upper)})
+
+
+def _run_rbf(df: pd.DataFrame, grid, z_scaling: float) -> np.ndarray:
+    params = RBFParams(kernel="thin_plate_spline", smoothing=0.0, anisotropy_scaling_z=z_scaling)
+    group = FakeGroup("G", ["top", "base"], params)
+    field, _ = interpolate_group_radial_basis_function(group=group, grid=grid, group_surface_points_df=df)
+    return field
+
+
+def test_anisotropy_scaling_z_equals_stretching_the_data():
+    """Scaling z by s gives the same field as interpolating data and grid with z multiplied by s."""
+    s = 4.0
+    df = _layered_points()
+    gx, gy, gz = np.linspace(0, 1000, 5), np.linspace(0, 800, 4), np.linspace(100, 500, 3)
+
+    scaled = _run_rbf(df, _AxesGrid(gx, gy, gz), z_scaling=s)
+    stretched = _run_rbf(df.assign(Z=df["Z"] * s), _AxesGrid(gx, gy, gz * s), z_scaling=1.0)
+
+    np.testing.assert_allclose(scaled, stretched, rtol=1e-8, atol=1e-8)
+    assert not np.allclose(scaled, _run_rbf(df, _AxesGrid(gx, gy, gz), z_scaling=1.0))
+
+
+def test_anisotropy_scaling_z_does_not_modify_inputs():
+    df = _layered_points()
+    df_before = df.copy()
+    grid = _AxesGrid(np.linspace(0, 1000, 5), np.linspace(0, 800, 4), np.linspace(100, 500, 3))
+    gz_before = grid.gridz.copy()
+    _run_rbf(df, grid, z_scaling=3.0)
+    pd.testing.assert_frame_equal(df, df_before)
+    np.testing.assert_array_equal(grid.gridz, gz_before)
+
+
+def test_anisotropy_scaling_z_default_and_validation():
+    assert RBFParams().anisotropy_scaling_z == 1.0
+    ctx = InterpolationContext(data_scale=(1000.0, 800.0, 200.0), n_points=50, mean_nn_distance=50.0)
+    assert default_rbf_params(ctx).anisotropy_scaling_z == 1.0
+    for bad in (0.0, -2.0):
+        with pytest.raises(ValueError):
+            RBFParams(anisotropy_scaling_z=bad)
+
+
+def test_rbf_params_json_round_trip():
+    params = RBFParams(kernel="gaussian", smoothing=0.1, epsilon=0.01, neighbors=40, anisotropy_scaling_z=2.5)
+    assert RBFParams.model_validate_json(params.model_dump_json()) == params
