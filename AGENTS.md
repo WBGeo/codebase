@@ -33,7 +33,7 @@ component wraps one method or processing step behind typed input and output port
 | Path | Contents |
 |---|---|
 | `core/` | The component library |
-| `core/structural_modeling_components/` | Structural modeling (`general.py`, `general_faults.py`, `interpolator_functions/`, `structural_objects/`) |
+| `core/structural_modeling_components/` | Structural modeling (`general.py`, `general_faults.py`, `general_octree.py` / `general_faults_octree.py` for the Octree Grid, `interpolator_functions/`, `structural_objects/`) |
 | `core/meshing_components/` | Meshing: implicit, structured/unstructured explicit, export formats |
 | `core/simulation_components/` | Process simulation (SfePy, GOLEM), result loading, plots, export |
 | `core/loading_components/` | Input data components (grid, structural input data, fault input data) |
@@ -176,6 +176,11 @@ The essentials:
 - Interpolators return scalar fields in **ZYX** shape `(nz, ny, nx)`; they are
   stored on the groups in **XYZ** `(nx, ny, nz)`. Use asymmetric grid resolutions
   (e.g. 5x4x3) in tests to catch axis-order bugs.
+- Two grids: `RegularGrid` and `OctreeGrid` (adaptive, dual contouring). On an
+  `OctreeGrid`, per-cell results (scalar fields, masks, `lith_block`,
+  `domain_map`) are 1D, shaped `(n_cells,)` and aligned with `frame.cells`, not
+  `(nx, ny, nz)`. Code that reads these arrays must handle both grids or block
+  octree models with a pre-check (as the meshers do with `pre_check_regular_grid`).
 - `fault_activity[fault]` is the index of the youngest affected group; a fault is
   active for a group if `group_index >= that index`.
 - Structural integration tests generate their input analytically inline and

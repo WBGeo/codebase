@@ -11,7 +11,6 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
     InterpolationMethod,
     VariogramModel,
     RBFKernel,
-    LoopSolver,
     RBF_KERNELS_USING_EPSILON,
     OKParams,
     RBFParams,
@@ -47,8 +46,8 @@ def test_pydantic_param_models_have_expected_defaults():
     ok = OKParams()
     assert ok.variogram_model == "gaussian"
     assert ok.range == 500.0
-    assert ok.sill == 1.0
     assert ok.nugget == 0.0
+    assert not hasattr(ok, "sill") and not hasattr(ok, "anisotropy_scaling_x")
     assert ok.neighbors is None
 
     rbf = RBFParams()
@@ -58,22 +57,22 @@ def test_pydantic_param_models_have_expected_defaults():
     assert rbf.neighbors is None
 
     uk = UKParams()
-    # Inherits OK defaults + adds drift_terms
+    # Same variogram parameters as OK, no moving window, no drift choice
     assert uk.variogram_model == "gaussian"
     assert uk.range == 500.0
-    assert uk.drift_terms == "regional_linear"
+    assert not hasattr(uk, "neighbors") and not hasattr(uk, "drift_terms")
 
     fdi = FDIParams()
     assert fdi.nelements == 10_000
-    assert fdi.solver == "cg"
-    assert fdi.damp is True
-    assert fdi.tol is None
+    assert fdi.regularisation == 0.1  # smoother than LoopStructural's 1.0 fitted worse on model 2
+    assert fdi.orientation_weight == 1.0
 
     pli = PLIParams()
     assert pli.nelements == 2_000
-    assert pli.solver == "cg"
-    assert pli.damp is True
-    assert pli.tol is None
+    assert pli.regularisation == 0.1  # LoopStructural's PLI default
+    assert pli.orientation_weight == 1.0
+    for removed in ("solver", "damp", "tol"):
+        assert not hasattr(fdi, removed) and not hasattr(pli, removed)
 
 
 # -----------------------------------------------------------------------------
@@ -150,8 +149,6 @@ def test_default_rbf_params_always_sets_epsilon_as_inverse_length():
         (OKParams, "variogram_model", VariogramModel),
         (UKParams, "variogram_model", VariogramModel),
         (RBFParams, "kernel", RBFKernel),
-        (FDIParams, "solver", LoopSolver),
-        (PLIParams, "solver", LoopSolver),
     ],
 )
 def test_enum_fields_accept_every_option_and_store_plain_strings(params_cls, field, enum_cls):
@@ -168,8 +165,6 @@ def test_enum_fields_accept_every_option_and_store_plain_strings(params_cls, fie
         (OKParams, "variogram_model"),
         (UKParams, "variogram_model"),
         (RBFParams, "kernel"),
-        (FDIParams, "solver"),
-        (PLIParams, "solver"),
     ],
 )
 def test_enum_fields_reject_unknown_options(params_cls, field):
@@ -190,17 +185,6 @@ def test_variogram_models_exclude_those_with_a_different_parameter_list():
 def test_rbf_kernels_using_epsilon_is_a_subset_of_the_kernels():
     assert RBF_KERNELS_USING_EPSILON < {k.value for k in RBFKernel}
     assert "thin_plate_spline" not in RBF_KERNELS_USING_EPSILON
-
-
-def test_default_uk_params_neighbors_rule_matches_ok():
-    ctx1 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=19, mean_nn_distance=2.0)
-    uk1 = default_uk_params(ctx1)
-    assert uk1.neighbors is None
-
-    ctx2 = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=250, mean_nn_distance=2.0)
-    uk2 = default_uk_params(ctx2)
-    # max(30,25)=30; min(200,30)=30
-    assert uk2.neighbors == 30
 
 
 def test_default_uk_params_range_is_clipped_and_typically_longer_than_ok():
@@ -229,10 +213,30 @@ def test_default_uk_params_anisotropy_uses_safe_division_when_sx_is_zeroish():
     assert 0.05 <= uk.anisotropy_scaling_z <= 20.0
 
 
-def test_default_uk_params_sets_drift_terms_regional_linear():
-    ctx = InterpolationContext(data_scale=(100.0, 80.0, 60.0), n_points=100, mean_nn_distance=2.0)
-    uk = default_uk_params(ctx)
-    assert uk.drift_terms == "regional_linear"
+def test_kriging_variogram_parameters_fix_sill_and_add_jitter():
+    from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+        KRIGING_NUGGET_JITTER, kriging_variogram_parameters)
+    assert kriging_variogram_parameters(OKParams(range=300.0, nugget=0.2)) == [1.0, 300.0, 0.2 + KRIGING_NUGGET_JITTER]
+    assert kriging_variogram_parameters(UKParams(range=300.0))[2] == KRIGING_NUGGET_JITTER
+
+
+@pytest.mark.parametrize("bad", [dict(nugget=-0.1), dict(nugget=1.0), dict(range=0.0),
+                                 dict(anisotropy_scaling_z=0.0), dict(neighbors=0)])
+def test_ok_params_reject_invalid_values(bad):
+    with pytest.raises(ValueError):
+        OKParams(**bad)
+
+
+@pytest.mark.parametrize("cls", [OKParams, UKParams])
+def test_kriging_params_json_round_trip_and_old_fields_ignored(cls):
+    params = cls(variogram_model="spherical", range=250.0, nugget=0.1,
+                 anisotropy_scaling_y=0.5, anisotropy_scaling_z=0.2)
+    assert cls.model_validate_json(params.model_dump_json()) == params
+    # options saved before sill, anisotropy_scaling_x, drift_terms (and UK neighbors) were removed still load
+    old = {**params.model_dump(), "sill": 3.0, "anisotropy_scaling_x": 1.0,
+           "drift_terms": "regional_linear", "neighbors": 30}
+    loaded = cls.model_validate(old)
+    assert loaded.range == 250.0 and not hasattr(loaded, "sill")
 
 
 # -----------------------------------------------------------------------------
@@ -245,12 +249,6 @@ def test_default_fdi_params_nelements_within_bounds():
         p = default_fdi_params(ctx)
         assert 5_000 <= p.nelements <= 200_000, f"n={n}: nelements={p.nelements} out of [5k, 200k]"
 
-    # Check fixed fields
-    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=2.0)
-    p = default_fdi_params(ctx)
-    assert p.solver == "cg"
-    assert p.damp is True
-    assert p.tol is None
 
 
 def test_default_fdi_params_exact_at_1k_points():
@@ -276,12 +274,6 @@ def test_default_pli_params_nelements_within_bounds():
         p = default_pli_params(ctx)
         assert 2_000 <= p.nelements <= 50_000, f"n={n}: nelements={p.nelements} out of [2k, 50k]"
 
-    # Check fixed fields are always set correctly
-    ctx = InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=1_000, mean_nn_distance=2.0)
-    p = default_pli_params(ctx)
-    assert p.solver == "cg"
-    assert p.damp is True
-    assert p.tol is None
 
 
 def test_default_pli_params_floor_clamping():
@@ -329,8 +321,18 @@ def test_default_geo_inr_params_returns_instance_and_has_reasonable_ranges():
     assert p.n_hidden_layers >= 0
     assert p.epochs >= 1
     assert p.lr > 0.0
-    assert p.alpha >= 0.0
-    assert p.beta >= 0.01
+    assert p.orientation_weight >= 0.0
+    assert p.seed == 0
+
+
+def test_geo_inr_params_accept_old_saved_options():
+    """`alpha` is the previous name of `orientation_weight`; `beta` is fixed now and ignored."""
+    p = GeoINRParams.model_validate({"alpha": 0.7, "beta": 3.0, "epochs": 10})
+    assert p.orientation_weight == 0.7 and p.epochs == 10
+    assert not hasattr(p, "beta") and not hasattr(p, "alpha")
+
+    p = GeoINRParams.model_validate_json(GeoINRParams(orientation_weight=0.3, seed=5).model_dump_json())
+    assert p.orientation_weight == 0.3 and p.seed == 5
 
 
 def test_default_geo_inr_params_capacity_breakpoints():
@@ -340,15 +342,21 @@ def test_default_geo_inr_params_capacity_breakpoints():
     assert p.hidden_dim == 32
     assert p.n_hidden_layers == 2
 
-    # 500 <= n < 3000: hidden_dim=32, n_hidden_layers=1
+    # 500 <= n < 3000: hidden_dim=32, n_hidden_layers=2 (always two layers)
     p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=600, mean_nn_distance=2.0))
     assert p.hidden_dim == 32
-    assert p.n_hidden_layers == 1
+    assert p.n_hidden_layers == 2
+    assert p.orientation_weight == 0.3
 
     # n >= 3000: hidden_dim=64, n_hidden_layers=2
     p = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=5_000, mean_nn_distance=2.0))
     assert p.hidden_dim == 64
     assert p.n_hidden_layers == 2
+
+
+def test_geo_inr_class_defaults_match_small_data_heuristic():
+    small = default_geo_inr_params(InterpolationContext(data_scale=(100.0, 100.0, 100.0), n_points=100, mean_nn_distance=2.0))
+    assert GeoINRParams() == small
 
 
 def test_default_geo_inr_params_epoch_lr_breakpoints():

@@ -126,6 +126,19 @@ def test_plot_fault_model_3D_no_crosscut_line_for_parallel_faults():
     assert crosscut_actors == []
 
 
+def test_plot_fault_model_3D_after_a_json_round_trip():
+    """In the Workbench the fault frame arrives from JSON, with plain string mesh keys."""
+    from pydantic import TypeAdapter
+    v1, e1 = _rect_plane((0.5, 0, 0), (0.5, 1, 0), (0.5, 1, 1), (0.5, 0, 1))
+    adapter = TypeAdapter(FaultFrame)
+    ff = adapter.validate_json(adapter.dump_json(_meshed_fault_frame(("F", v1, e1))))
+
+    plot_fault_model_3D(ff, show=False, notebook=True)  # must not raise
+    # a mesh type that no fault has: warns and lists the available ones
+    with pytest.warns(UserWarning, match="available: unmasked"):
+        plot_fault_model_3D(ff, show=False, notebook=True, mesh_type=FaultMeshType.MASKED)
+
+
 def test_plot_fault_model_3D_highlight_crosscuts_can_be_disabled():
     v1, e1 = _rect_plane((0.5, 0, 0), (0.5, 1, 0), (0.5, 1, 1), (0.5, 0, 1))
     v2, e2 = _rect_plane((0, 0, 0.5), (1, 0, 0.5), (1, 1, 0.5), (0, 1, 0.5))
@@ -210,6 +223,7 @@ def test_structural_model_3D_arrow_length_follows_model_size(monkeypatch, size):
         get_surface_points_for_element=lambda name: None,
         get_orientations_for_element=lambda name: ori,
         fault_frame=None,
+        lith_block=None,  # not computed
         grid=RegularGrid(extent=(0, size, 0, size, 0, size), resolution=(4, 4, 4)),
     )
 

@@ -23,6 +23,12 @@ so all meshing methods produce 3D meshes.
 > These features are not yet implemented for structured or implicit
 > meshing.
 
+> **Note:** All meshing methods need a structural model computed on a
+> **Regular Grid**. A structural model computed on an **Octree Grid**
+> (see the [structural modeling manual](../structural_modeling/Manual_structural_modeling.md))
+> is refused with an error when it is connected to a meshing component.
+> Meshing from octree models is planned.
+
 ------------------------------------------------------------------------
 
 ## Concepts

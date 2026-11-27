@@ -5,15 +5,19 @@ This module provides a pure interpolator function that:
 - assigns strictly increasing scalar values per element (oldest=1 .. youngest=n),
 - builds a LoopStructural GeologicalModel from surface points + orientations,
 - creates an FDI foliation (finite-difference interpolator),
-- evaluates the feature value on a RegularGrid.
+- evaluates the feature value on a RegularGrid,
+and a fit-only variant (``fit_group_finite_differences``) that returns the fitted
+feature for evaluation at arbitrary points (octree grids).
 
 Notes
 -----
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
-- The scalar field reshape + transpose is preserved exactly as implemented.
-- Orientation/gradient observations are treated as point constraints by LoopStructural
-  (i.e., their XYZ location matters to the solution).
+- The scalar field is returned in ZYX shape (reshaped to the grid resolution, then transposed).
+- Orientations only constrain the direction of the gradient at their location; they
+  carry no scalar value, so they may lie anywhere, not only on an interface. With
+  only one formation (all values equal), LoopStructural turns them into normal-vector
+  constraints, which also fix the gradient's length and so define which way is up.
 
 FDI-specific parameters
 -----------------------
@@ -24,12 +28,10 @@ Expected attributes on params
 -----------------------------
 - nelements: int | float
     Discretisation size passed to `create_and_add_foliation`.
-- solver: str
-    Solver argument passed to `create_and_add_foliation` (if supported by your LS version).
-- damp: bool
-    Damp argument passed to `create_and_add_foliation` (if supported by your LS version).
-- tol: float | None
-    Tolerance passed to `create_and_add_foliation` as `tol` (if provided).
+- regularisation: float
+    Weight of the smoothness term, passed as `regularisation`.
+- orientation_weight: float
+    Weight of the orientation constraints, passed as `gpw` (surface points: `cpw` = 1).
 """
 
 from __future__ import annotations
@@ -40,6 +42,12 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from LoopStructural import GeologicalModel
+
+from core.structural_modeling_components.interpolator_functions.fitted_field import (
+    Extent6,
+    LoopStructuralFittedField,
+    evaluate_loopstructural_feature,
+)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -79,8 +87,8 @@ def interpolate_group_finite_differences(
     Returns
     -------
     scalar_field : np.ndarray
-        Evaluated scalar field on the grid, shaped to `tuple(grid.resolution)` and transposed
-        exactly as in the original implementation.
+        Evaluated scalar field on the grid in ZYX shape (shaped to `tuple(grid.resolution)`,
+        then transposed).
     scalar_values_by_element : dict[str, float]
         Mapping element_name -> scalar value. Values are strictly increasing from
         oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
@@ -92,6 +100,63 @@ def interpolate_group_finite_differences(
         If surface/orientation inputs are missing/empty or required columns are absent,
         or if the DataFrames include formations not present in the group.
     """
+    model, scalar_values_by_element = _fit_fdi_model(
+        group, grid.extent, group_surface_points_df, group_orientations_points_df)
+
+    # Evaluate on grid
+    # Same NaN guard as PLI, so both LoopStructural interpolators evaluate alike.
+    regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
+    sf_flat = evaluate_loopstructural_feature(model, group.name, regular_grid, scale=True)
+
+    # grid coordinates are ordered with x slowest: reshape to (nx, ny, nz), transpose to ZYX
+    scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
+
+    return scalar_field, scalar_values_by_element
+
+
+def fit_group_finite_differences(
+    *,
+    group: Any,  # StructuralGroup-like (name, structural_elements with .name, get_interpolation_params())
+    extent: Extent6,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> LoopStructuralFittedField:
+    """
+    Fit the FDI scalar field of a single structural group without evaluating it.
+
+    Same inputs, checks and scalar values as :func:`interpolate_group_finite_differences`.
+    LoopStructural builds its support mesh over ``extent``, so the field depends on it:
+    with the extent of a regular grid, evaluating the result at its ``grid_coordinates``
+    gives that function's scalar field.
+
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object, as for :func:`interpolate_group_finite_differences`.
+    extent
+        Model extent ``(xmin, xmax, ymin, ymax, zmin, zmax)`` the support mesh covers.
+    group_surface_points_df
+        DataFrame with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        DataFrame with columns ["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"].
+
+    Returns
+    -------
+    LoopStructuralFittedField
+        The fitted feature and the element scalar values.
+    """
+    model, scalar_values_by_element = _fit_fdi_model(
+        group, extent, group_surface_points_df, group_orientations_points_df)
+    return LoopStructuralFittedField(model, group.name, True, scalar_values_by_element)
+
+
+def _fit_fdi_model(
+    group: Any,
+    extent: Extent6,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> Tuple[GeologicalModel, Dict[str, float]]:
+    """Check the inputs and fit the FDI foliation of the group over ``extent`` (shared by both entry points)."""
     # --- validation ---
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
@@ -142,7 +207,11 @@ def interpolate_group_finite_differences(
     # Orientations table
     orientations = group_orientations_points_df.copy()
     orientations["feature_name"] = group.name
-    orientations["val"] = orientations["formation"].map(formation_to_scalar)
+    # No value: orientations may lie anywhere, not only on the interface of their formation
+    # (the formation only assigns them to the group). LoopStructural turns every row with a
+    # `val` into a value constraint, which would pull the field to that formation's value
+    # at the orientation's location.
+    orientations["val"] = np.nan
     orientations = orientations.rename(columns={"G_x": "gx", "G_y": "gy", "G_z": "gz"})
     orientations = orientations[["X", "Y", "Z", "val", "feature_name", "gx", "gy", "gz"]]
 
@@ -151,7 +220,7 @@ def interpolate_group_finite_differences(
 
     # --- build LoopStructural model ---
     # GeologicalModel(min_bounds, max_bounds) expects 3-vectors
-    model = GeologicalModel(np.array(grid.extent[::2]), np.array(grid.extent[1::2]))
+    model = GeologicalModel(np.array(extent[::2]), np.array(extent[1::2]))
     if hasattr(model, "data"):
         model.data = data_combined
     else:
@@ -177,23 +246,14 @@ def interpolate_group_finite_differences(
         interpolatortype="FDI",
         nelements=params.nelements,
         buffer=0.2,
-        solver=params.solver,
-        damp=params.damp,
+        # Conjugate gradients with LoopStructural's default tolerance (not exposed).
+        solver="cg",
+        # Least-squares weights: surface points 1 (LoopStructural default), orientations
+        # (direction only) `orientation_weight`, smoothness `regularisation`.
+        regularisation=params.regularisation,
+        gpw=params.orientation_weight,
     )
-    if params.tol is not None:
-        create_kwargs["tol"] = params.tol
 
     _ = model.create_and_add_foliation(group.name, **create_kwargs)
 
-    # Evaluate on grid
-    regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
-    sf_flat = model.evaluate_feature_value(
-        group.name,
-        regular_grid,
-        scale=True,
-    )
-
-    # Match previous implementation: reshape then transpose
-    scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
-
-    return scalar_field, scalar_values_by_element
+    return model, scalar_values_by_element
