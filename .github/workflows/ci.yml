@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["*"]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs of the same branch / pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # prevent thread oversubscription
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMBA_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-dev libc6-dev libgl1 ffmpeg libglx-mesa0 xvfb \
+            libglu1-mesa libxi-dev libxmu-dev libglu1-mesa-dev libxinerama-dev
+
+      - name: Install Python dependencies
+        # The index URLs (PyTorch CPU, the public py_api_wbgeo registry) come from requirements.txt
+        run: |
+          python -V
+          pip install -r requirements.txt
+          pip install pytest coverage
+
+      - name: Run tests
+        run: python -m coverage run -m pytest --junitxml=report.xml -v --durations=0
+
+      - name: Coverage report
+        if: always()
+        run: |
+          coverage xml
+          coverage html
+          echo '### Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          coverage report >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            report.xml
+            coverage.xml
+          retention-days: 14
+
+      - name: Upload coverage HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: htmlcov
+          path: htmlcov/
+          retention-days: 14
+
+  # Builds the docs (with the coverage report under /coverage) on every run;
+  # deploys them to https://wbgeo.github.io/ only from main, and only once the repository
+  # variable DEPLOY_DOCS is "true" (GitLab CI still deploys the docs while both pipelines run).
+  docs:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build docs
+        run: |
+          # add __init__.py files, required for docs
+          find core -type d -exec touch {}/__init__.py \;
+          pip install mkdocs-material "mkdocstrings[python]" mkdocs-gen-files mkdocs-literate-nav
+          mkdocs build --site-dir public
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: htmlcov
+          path: public/coverage
+
+      - name: Upload site
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: public/
+          retention-days: 14
+
+      - name: Deploy to wbgeo.github.io
+        if: vars.DEPLOY_DOCS == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.DOCS_DEPLOY_KEY }}
+          external_repository: WBGeo/wbgeo.github.io
+          publish_branch: gh-pages
+          publish_dir: public
+          force_orphan: true
+          user_name: CI
+          user_email: ci@wbgeo.github.io
+          full_commit_message: Deploy ${{ github.sha }}

@@ -1,0 +1,19 @@
+# flags vulnerable dependencies added in a pull request.
+# Dependabot (.github/dependabot.yml) covers the dependencies already on main.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/dependency-review-action@v4
+        with:
+          comment-summary-in-pr: on-failure
