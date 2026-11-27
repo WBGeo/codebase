@@ -41,7 +41,7 @@ component wraps one method or processing step behind typed input and output port
 | `core/object_components.py` | Shared result and data types |
 | `core/workbench_palette.py` | Colours of all components and types (see "Component rules") |
 | `core/utility/pydantic_bridge.py` | Pydantic aliases for third-party types |
-| `examples/` | Synthetic example workflows (`synthetic_examples/model1` ... `model9`) and case studies |
+| `examples/` | Synthetic example workflows (`synthetic_examples/model1` ... `model9`); case studies live in https://github.com/WBGeo/case-studies |
 | `tests/` | Test suite, one subpackage per `core/` area |
 | `docs/` | MkDocs source of the documentation at https://wbgeo.github.io/ |
 | `docker-compose.yml`, `docker/` | Local Workbench (visual editor) stack |
@@ -222,7 +222,7 @@ The essentials:
   tracker; the URL form works everywhere and closes the GitHub issue once the
   commit reaches `main`.
 - Don't commit local files: the Docker dev mounts, `own_data/`, caches such as
-  `examples/case_studies/*/input_data/topography_cache/`, or credentials (a local
+  `*/input_data/topography_cache/`, or credentials (a local
   `.env` holds tokens, e.g. for LiquidEarth).
 - Docs and docstrings link to https://wbgeo.github.io/ and to github.com URLs,
   never to the internal GitLab instance (it is not publicly accessible).

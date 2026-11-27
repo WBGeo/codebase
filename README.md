@@ -27,7 +27,7 @@ workbench can be used directly through this Python backend, or through its visua
 | Path | Contents |
 |---|---|
 | [`core/`](core) | The component library (structural modeling, meshing, simulation, visualization, and shared infrastructure) |
-| [`examples/`](examples) | Synthetic example workflows (`synthetic_examples/model1` … `model9`) and real-world case studies (`case_studies/`) |
+| [`examples/`](examples) | Synthetic example workflows (`synthetic_examples/model1` … `model9`); the real-world case studies are in [WBGeo/case-studies](https://github.com/WBGeo/case-studies) |
 | [`tests/`](tests) | Test suite, one subpackage per `core/` component |
 | [`docs/`](docs) | Documentation source, built with MkDocs and published at [wbgeo.github.io](https://wbgeo.github.io/) |
 
