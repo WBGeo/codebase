@@ -26,4 +26,9 @@ source = "vcs"
 files = ["requirements.txt"]
 
 [tool.hatch.build.targets.wheel]
+# Package/build only the core directory.
 packages = ["core"]
+
+[tool.coverage.run]
+# Measure only the coverage of the core directory.
+source = ["core"]

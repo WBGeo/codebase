@@ -1,7 +1,7 @@
 # This file is used to define the website
 site_name: WBGeo
-site_url: https://wbgeo.pages.rwth-aachen.de/codebase
-repo_url: https://git.rwth-aachen.de/wbgeo
+site_url: https://wbgeo.github.io/
+repo_url: https://github.com/WBGeo/codebase
 theme:
   name: material
   logo: 'img/logo.png'
@@ -50,4 +50,4 @@ nav:
       - Types: developers/types.md
       - Local execution: developers/local.md
 
-copyright: '(c) https://git.rwth-aachen.de/wbgeo/'
+copyright: "(c) https://github.com/WBGeo"
