@@ -54,7 +54,7 @@ FAULT_MODEL = "#9cc65a"
 STRUCTURAL_MODEL = "#5fa040"
 """Compute Structural Model and its result."""
 STRUCTURAL_EXPORT = "#a9a845"
-"""Export of structural models to external tools (Push Structural Model to LiquidEarth)."""
+"""Export and load of structural models (Export Structural Model, Load Structural Model, Push Structural Model to LiquidEarth)."""
 
 # Meshing: light teal for engineering objects, blue for mesh creation
 MESH_ENGINEERING = "#7fd0cb"

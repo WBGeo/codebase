@@ -8,11 +8,11 @@ Sections (same order as the Workbench components)
   1. Structural modeling
      1.1-1.3 Fault modeling: fault input data, fault frame, fault model
      1.4-1.8 Structural input data, structural frame with the fault, structural model
+     1.9 Save, load and export the structural model
   2. Meshing
      2.1 Plot the meshes (implicit structured and explicit unstructured mesh)
-     2.2 Mesh from CSV surfaces (optional)
-     2.3 Export a mesh (optional)
-     2.4 Engineering objects and mesh refinement (optional)
+     2.2 Export a mesh (optional)
+     2.3 Engineering objects and mesh refinement (optional)
   3. Simulation with GOLEM (requires Docker with the GOLEM image)
      3.1 Rock, fault and fluid properties
      3.2 Generated hydrothermal problem
@@ -31,8 +31,11 @@ Sections (same order as the Workbench components)
 # Importing necessary libraries
 import pandas as pd
 import os
+import tempfile
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_model_file import save_structural_model, load_structural_model
+from core.structural_modeling_components.structural_model_export import export_structural_model
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements
 from core.structural_modeling_components import general, general_faults
@@ -41,7 +44,7 @@ from core.structural_modeling_components.structural_modeling_visualization.struc
     plot_fault_input_data_3D, plot_input_data_3D)
 
 from core.meshing_components.explicit.unstructured.mesh_data import create_unstructured_mesh_data, \
-    load_csv_surface_coordinates, load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, \
+    load_wells_from_csv, load_shafts_from_csv, load_sources_from_csv, \
     load_planes_from_csv, load_ellipses_from_csv, load_triangulations_planes_from_csv
 from core.meshing_components.explicit.unstructured.refinement_mesh import (
     Refinement, LinearWellRefinement, FunctionWellRefinement, LinearSourceRefinement, FunctionSourceRefinement,
@@ -185,6 +188,16 @@ plot_structural_model_3D(structural_model_result.structural_frame, show_surface_
 #                                                    gradients_faults_dict,
 #                                                    mesh_type="unmasked")
 
+#%% 1.9 Save, load and export the structural model
+
+# Save the structural model as a .wbgeo_sm file and load it again (lossless, e.g. to reuse a slow model)
+model_file = save_structural_model(structural_model_result, os.path.join(tempfile.gettempdir(), "model2"))
+structural_model_result = load_structural_model(model_file)
+
+# Optional: Export the surfaces for other software as a ZIP ("gocad_ts", "obj" or "vtk")
+# with open("model2_gocad_ts.zip", "wb") as f:
+#     f.write(export_structural_model(structural_model_result, "gocad_ts").getvalue())
+
 # ==============================================================================
 #%% 2. Meshing
 # ==============================================================================
@@ -210,21 +223,7 @@ mesh_explicit_unstructured = create_unstructured_mesh_data(
 plot_mesh_3d(mesh_implicit_structured, structural_model_result, show_plotter=True)
 plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=True)
 
-#%% 2.2 Mesh from CSV surfaces (optional)
-
-# Optional: Mesh surfaces given as CSV files instead of a structural model (one file per surface).
-# Without a structural model there are no lithology names, so mapping_litho is "none".
-# mesh_from_csv_surfaces = create_unstructured_mesh_data(
-#     geomodel_result=load_csv_surface_coordinates(cwd + "/examples/synthetic_examples/model2/input_data/surfaces"),
-#     extent=(0, 2500, 0, 1000, 0, 1000),
-#     tolerance=50,
-#     mesh_size=50,
-#     curve_mesh_size=5,
-#     mapping_litho="none",
-# )
-# plot_mesh_3d(mesh_from_csv_surfaces, structural_model_result, show_plotter=True)
-
-#%% 2.3 Export a mesh (optional)
+#%% 2.2 Export a mesh (optional)
 
 # Optional: Export a mesh, here the unstructured mesh to Exodus.
 # The other exporters work the same way (VTU, VTK, FEFLOW, GMSH, STL, VTM, Ansys, Abaqus).
@@ -234,7 +233,7 @@ plot_mesh_3d(mesh_explicit_unstructured, structural_model_result, show_plotter=T
 # with open("model2_unstructured_mesh.exo", "wb") as f:
 #     f.write(buf.getvalue())
 
-#%% 2.4 Engineering objects and mesh refinement (optional)
+#%% 2.3 Engineering objects and mesh refinement (optional)
 
 # Optional: Add engineering objects to the unstructured mesh (only works for unstructured meshes).
 # With all objects and the refinement below, the mesh has about 350k nodes instead of 20k and took

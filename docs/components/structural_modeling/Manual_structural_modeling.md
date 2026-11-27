@@ -407,3 +407,36 @@ plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)
 - **All intermediate results** — scalar values per element, age masks per group, and the fault domain map are stored on the structural frame within the result object and can be accessed programmatically for further analysis or visualisation.
 
 The `StructuralModelResults` object is the direct input to the meshing components. The meshing components currently need a structural model computed on a Regular Grid and refuse a model computed on an Octree Grid (see the [meshing manual](../meshing/Manual_meshing.md)).
+
+### Save, load and export
+
+> **Workbench components:** `Export Structural Model`, `Load Structural Model`
+
+A computed structural model can be saved as a file and loaded again, for example to compute a slow model once and reuse it in later workflows, or to pass it on to colleagues. `Export Structural Model` offers four formats:
+
+| Format | Content | Use |
+|---|---|---|
+| `wbgeo_sm` | The complete `StructuralModelResults` (one `.wbgeo_sm` file) | Load it again with `Load Structural Model` |
+| `gocad_ts` | One GOCAD TSurf file (`.ts`) per surface, in a ZIP | Surfaces for modeling software that reads GOCAD (e.g. Leapfrog Geo, Petrel, SKUA-GOCAD) |
+| `obj` | All surfaces in one Wavefront OBJ file with an MTL file for the colours, in a ZIP | Surfaces for 3D viewers and modeling software (e.g. Leapfrog) |
+| `vtk` | Each surface as VTK PolyData (`.vtp`), plus the lithology block, the scalar fields, the age masks and the fault domains as a VTK grid (`lithology_block.vti` on a Regular Grid, `lithology_block.vtu` on an Octree Grid), in a ZIP | ParaView and other VTK tools |
+
+`wbgeo_sm` is lossless: the loaded model is the same `StructuralModelResults` that was saved, including the fault model, the input data and the interpolation methods and parameters, and can be connected to meshing, simulation and inspection like a computed one. The file is a ZIP archive with a `manifest.json` (format name and version, result type), a `model.json` (the result without its arrays) and an `arrays.npz` (all arrays, compressed). Files of older format versions stay readable.
+
+The GOCAD TSurf, OBJ and VTK exports contain the `masked` surface of every formation (where the formation exists in the model) and the `unmasked` surface of every fault. These formats do not store the stratigraphic order, so each export also contains `surfaces.csv`, which lists the surfaces youngest to oldest with their group, kind (`horizon` or `fault`), colour and file. GOCAD TSurf files of faults are marked with `GEOLOGICAL_TYPE fault`. In the lithology block, the arrays are cell data on the model grid (on an Octree Grid, `lithology_block.vtu` has one hexahedron per octree cell): `lithology`, `scalar_field_<group>`, `mask_<group>`, `fault_domain` and `scalar_field_<fault>`.
+
+In the Workbench, `Load Structural Model` takes a `.wbgeo_sm` file picked in the file browser.
+
+In Python:
+
+```python
+from core.structural_modeling_components.structural_model_file import save_structural_model, load_structural_model
+from core.structural_modeling_components.structural_model_export import export_structural_model
+
+save_structural_model(structural_model_result, "model2.wbgeo_sm")
+structural_model_result = load_structural_model("model2.wbgeo_sm")
+
+# surfaces for other software, as a ZIP
+with open("model2_gocad_ts.zip", "wb") as f:
+    f.write(export_structural_model(structural_model_result, "gocad_ts").getvalue())
+```

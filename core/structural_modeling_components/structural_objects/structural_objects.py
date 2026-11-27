@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from matplotlib.colors import BoundaryNorm, ListedColormap
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_numpy import NpNDArrayFp64, NpNDArrayBool, NpNDArrayInt32
 
 from core.utility.pydantic_bridge import PandasDataFrame
@@ -34,7 +34,25 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
     default_geo_inr_params,
     UCKParams,
     InterpolationParameterSet, default_uck_params,
+    FDIParams,
+    GeoINRParams,
+    OKParams,
+    PLIParams,
+    RBFParams,
+    UKParams,
 )
+
+#: Parameter class of each interpolation method. Several classes share the same fields, so a parameter
+#: set read back from JSON is only unambiguous together with its group's method.
+PARAMS_CLASS_BY_METHOD = {
+    InterpolationMethod.RADIAL_BASIS_FUNCTION: RBFParams,
+    InterpolationMethod.ORDINARY_KRIGING: OKParams,
+    InterpolationMethod.UNIVERSAL_KRIGING: UKParams,
+    InterpolationMethod.UNIVERSAL_COKRIGING: UCKParams,
+    InterpolationMethod.FINITE_DIFFERENCES: FDIParams,
+    InterpolationMethod.PIECEWISE_LINEAR: PLIParams,
+    InterpolationMethod.GEOINR: GeoINRParams,
+}
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -252,6 +270,26 @@ class StructuralGroup(BaseModel):
     mask: Optional[NpNDArrayBool] = Field(default=None)
     context: Optional[InterpolationContext] = Field(default=None)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _params_class_from_method(cls, data):
+        """Build serialized interpolation parameters with the class of the group's method.
+
+        ``interpolation_params`` is a plain Union, and e.g. PLIParams/FDIParams or UCKParams/OKParams
+        have the same fields, so validation alone would pick the first matching class.
+        """
+        if not isinstance(data, dict):
+            return data
+        method, params = data.get("interpolation_method"), data.get("interpolation_params")
+        if method is None or not isinstance(params, dict):
+            return data
+        try:
+            params_class = PARAMS_CLASS_BY_METHOD.get(InterpolationMethod(method))
+        except ValueError:
+            return data
+        if params_class is None:
+            return data
+        return {**data, "interpolation_params": params_class.model_validate(params)}
 
     def __getitem__(self, element_name: str) -> "StructuralElement":
         for elem in self.structural_elements:
@@ -821,7 +859,7 @@ class FaultElement(BaseModel):
     )
     domain_pairs: Optional[FrozenSet[Tuple[int, int]]] = Field(default=None)
     vertices: Dict[str, NpNDArrayFp64] = Field(default_factory=dict)
-    edges: Dict[str, NpNDArrayFp64] = Field(default_factory=dict)
+    edges: Dict[str, NpNDArrayInt32] = Field(default_factory=dict)
     mask: Optional[NpNDArrayBool] = Field(default=None)
 
     def __init__(self, *args, **kwargs):

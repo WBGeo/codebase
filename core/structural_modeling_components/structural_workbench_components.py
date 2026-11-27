@@ -1,9 +1,10 @@
 import json
+import pathlib
 import typing
 
 import pydantic
 from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, \
-  InspectorHelper
+  InspectorHelper, AnnotatedScriptType, BasicallyABufferedFile
 from pydantic import BaseModel
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements, \
@@ -16,8 +17,10 @@ from core.structural_modeling_components.interpolator_functions.interpolator_par
 from core.structural_modeling_components.structural_modeling_visualization.structural_modeling_visualization import \
   plot_structural_model_2D, plot_structural_model_3D, plot_fault_model_2D, plot_fault_model_3D
 from core.structural_modeling_components.structural_objects.grids import grid_classes
+from core.structural_modeling_components.structural_model_export import (StructuralModelExportFormat,
+                                                                         export_structural_model as _export)
+from core.structural_modeling_components.structural_model_file import FILE_EXTENSION, load_structural_model
 from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
-from py_api_wbgeo.nodesapi import AnnotatedScriptType
 from core import workbench_palette as palette
 
 
@@ -419,3 +422,63 @@ def inspect_fault_model_result_plot_structural_model_3D_sf(
     fault_model_result: FaultModelResults, _inspector: InspectorHelper,
     mesh_type: FaultMeshTypeType = FaultMeshType.UNMASKED.value):
   plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True, mesh_type=FaultMeshType(mesh_type))
+
+
+StructuralModelExportFormatType = typing.Annotated[
+  StructuralModelExportFormat,
+  AnnotatedScriptType(name='StructuralModelExportFormat', identifier='StructuralModelExportFormatType',
+                      controlled='Select|' + '|'.join(f.value for f in StructuralModelExportFormat),
+                      color=palette.PARAMETER),
+]
+
+StructuralModelFileType = typing.Annotated[
+  str, AnnotatedScriptType(name='path', color=palette.PARAMETER, identifier='wbgeo::structural_model_file',
+                           controlled='RemoteFile|endswith=' + FILE_EXTENSION)]
+
+
+@wbgeo_component(
+  title='Export Structural Model',
+  description='Exports a structural model as a file. "wbgeo_sm" is the WBGeo file format: it keeps everything and '
+              'can be loaded again with Load Structural Model. "gocad_ts", "obj" and "vtk" export the surfaces '
+              'for other software as a ZIP (GOCAD TSurf, Wavefront OBJ, VTK; VTK also contains the lithology '
+              'block and scalar fields as a grid), with surfaces.csv listing the surfaces in stratigraphic order.',
+  group='Inputs',
+  positionInGroup=0,
+  identifier='wbgeo::export_structural_model',
+  return_name='file',
+  color=palette.STRUCTURAL_EXPORT,
+  border_color=palette.BORDER,
+)
+def export_structural_model(
+    structural_model: StructuralModelResults,
+    format: StructuralModelExportFormatType = StructuralModelExportFormat.WBGEO.value,
+) -> BasicallyABufferedFile:
+  """
+  :param structural_model: The structural model to export.
+  :param format: "wbgeo_sm" (WBGeo's own file), "gocad_ts", "obj" or "vtk".
+  :return: The file to download: structural_model.wbgeo_sm, or a ZIP for the other formats.
+  """
+  return _export(structural_model, format)
+
+
+@wbgeo_component(
+  title='Load Structural Model',
+  description='Loads a structural model saved with Export Structural Model (format "wbgeo_sm"). The loaded '
+              'model can be used like a computed one: meshing, simulation and inspection.',
+  color=palette.STRUCTURAL_EXPORT,
+  border_color=palette.BORDER,
+  group='Inputs',
+  positionInGroup=870,
+  identifier='wbgeo::load_structural_model',
+  return_name='structural_model',
+)
+def load_structural_model_from_file(model_file: StructuralModelFileType) -> StructuralModelResults:
+  """
+  :param model_file: Path (relative to the codebase root) of a '.wbgeo_sm' file, picked via the file browser.
+  :return: The structural model stored in the file.
+  """
+  root = pathlib.Path(__file__).parent.parent.parent.resolve()
+  path = root / model_file
+  if not path.is_file():
+    raise ValueError(f"Structural model file not found: {path}")
+  return load_structural_model(path)
