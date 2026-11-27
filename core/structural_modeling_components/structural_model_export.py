@@ -6,7 +6,8 @@ The external formats contain the surfaces of all structural elements (``masked``
 element exists in the model) and of all faults (``unmasked`` meshes). Each export also contains
 ``surfaces.csv``, which lists the surfaces youngest to oldest with their group, kind (horizon or fault),
 colour and file, because these formats do not store the stratigraphic order. The VTK export also contains
-the lithology block, the scalar fields and the fault domains as a grid.
+the lithology block, the scalar fields and the fault domains as a grid: VTK ImageData (``.vti``) for a
+model on a regular grid, an unstructured grid of hexahedra (``.vtu``) for a model on an octree grid.
 """
 import csv
 import io
@@ -20,6 +21,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from core.object_components import StructuralModelResults
+from core.structural_modeling_components.structural_objects.grids.grid_classes import OctreeGrid
 from core.structural_modeling_components.structural_model_file import FILE_EXTENSION, structural_model_to_bytes
 from core.structural_modeling_components.structural_objects.structural_objects import FaultMeshType, GeoMeshType
 
@@ -29,7 +31,7 @@ class StructuralModelExportFormat(StrEnum):
     WBGEO = "wbgeo_sm"      # WBGeo's own file, lossless, can be loaded again
     GOCAD_TS = "gocad_ts"   # one GOCAD TSurf (.ts) file per surface
     OBJ = "obj"             # one Wavefront OBJ file with all surfaces, colours in an MTL file
-    VTK = "vtk"             # surfaces as VTK PolyData (.vtp) + lithology block and fields as VTK ImageData (.vti)
+    VTK = "vtk"             # surfaces as VTK PolyData (.vtp) + lithology block and fields as a VTK grid (.vti/.vtu)
 
 
 EXPORT_FILE_NAME = "structural_model"
@@ -144,39 +146,80 @@ def _obj_and_mtl(surfaces: List[_Surface]) -> tuple:
     return "\n".join(obj) + "\n", "\n".join(mtl)
 
 
-def _vtk_grid(model: StructuralModelResults):
-    """Lithology block, scalar fields, masks and fault domains on the model grid as VTK ImageData (cell data)."""
-    import pyvista as pv
-    frame = model.structural_frame
-    grid = frame.grid
-    if grid is None:
-        return None
-    extent = np.asarray(grid.extent, dtype=float)
-    resolution = np.asarray(grid.resolution, dtype=int)
-    spacing = (extent[1::2] - extent[0::2]) / resolution
-    image = pv.ImageData(dimensions=tuple(resolution + 1), spacing=tuple(spacing), origin=tuple(extent[0::2]))
-    shape = tuple(resolution)
+def _cell_arrays(model: StructuralModelResults) -> Dict[str, np.ndarray]:
+    """The per-cell arrays of the model, flat in the frame's cell order (``array.ravel()``).
 
-    def add(name: str, values) -> None:
+    Lithology, scalar field and age mask of each group, and the fault domain and scalar field of each
+    fault. On an octree the fault results belong to the fault model's own cells; they are taken at the
+    centers of the structural model's cells.
+    """
+    frame = model.structural_frame
+    shape = tuple(frame.cell_array_shape())
+    arrays: Dict[str, np.ndarray] = {}
+
+    def add(name: str, values, on_fault_cells: bool = False) -> None:
         if values is None:
             return
         values = np.asarray(values)
+        if on_fault_cells and isinstance(frame.grid, OctreeGrid):
+            ff = frame.fault_frame
+            if ff.cells is None or values.shape != (len(ff.cells),):
+                return
+            values = values[ff.cells.locate(ff.grid, frame.cell_centers())]
         if values.shape != shape:
             return
         if values.dtype == bool:
             values = values.astype(np.uint8)
-        # arrays are stored (nx, ny, nz); VTK cell data runs x fastest
-        image.cell_data[name] = values.ravel(order="F")
+        arrays[name] = values.ravel()
 
     add("lithology", frame.lith_block)
     for group in frame.structural_groups:
         add(f"scalar_field_{group.name}", group.scalar_field)
         add(f"mask_{group.name}", group.mask)
     if frame.fault_frame is not None:
-        add("fault_domain", frame.fault_frame.domain_map)
+        add("fault_domain", frame.fault_frame.domain_map, on_fault_cells=True)
         for fault in frame.fault_frame.fault_elements:
-            add(f"scalar_field_{fault.name}", fault.scalar_field)
-    return image if image.cell_data.keys() else None
+            add(f"scalar_field_{fault.name}", fault.scalar_field, on_fault_cells=True)
+    return arrays
+
+
+def _vtk_grid(model: StructuralModelResults):
+    """Lithology block, scalar fields, masks and fault domains as a VTK grid with cell data, or None.
+
+    Regular grid: VTK ImageData. Octree grid: an unstructured grid with one hexahedron per octree cell.
+    """
+    import pyvista as pv
+    frame = model.structural_frame
+    grid = frame.grid
+    if grid is None or (isinstance(grid, OctreeGrid) and frame.cells is None):
+        return None
+    arrays = _cell_arrays(model)
+    if not arrays:
+        return None
+
+    if isinstance(grid, OctreeGrid):
+        mins, maxs = grid.cell_bounds(frame.cells.level, frame.cells.ijk)
+        # VTK hexahedron corner order: bottom face counter-clockwise, then top face
+        pick = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+                         [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], dtype=bool)
+        corners = np.where(pick[None, :, :], maxs[:, None, :], mins[:, None, :])  # (n, 8, 3)
+        n = len(corners)
+        cells = np.hstack([np.full((n, 1), 8), np.arange(8 * n).reshape(n, 8)]).ravel()
+        vtk_grid = pv.UnstructuredGrid(cells, np.full(n, pv.CellType.HEXAHEDRON, dtype=np.uint8),
+                                       corners.reshape(-1, 3))
+        for name, values in arrays.items():
+            vtk_grid.cell_data[name] = values
+        # merge the corner points that neighbouring cells share (cell data stays as it is)
+        return vtk_grid.clean()
+
+    extent = np.asarray(grid.extent, dtype=float)
+    resolution = np.asarray(grid.resolution, dtype=int)
+    spacing = (extent[1::2] - extent[0::2]) / resolution
+    image = pv.ImageData(dimensions=tuple(resolution + 1), spacing=tuple(spacing), origin=tuple(extent[0::2]))
+    for name, values in arrays.items():
+        # arrays are stored (nx, ny, nz); VTK cell data runs x fastest
+        image.cell_data[name] = values.reshape(tuple(resolution)).ravel(order="F")
+    return image
 
 
 def _vtk_files(model: StructuralModelResults, surfaces: List[_Surface], files: List[str]) -> Dict[str, bytes]:
@@ -192,12 +235,13 @@ def _vtk_files(model: StructuralModelResults, surfaces: List[_Surface], files: L
             poly.save(path)
             with open(path, "rb") as f:
                 out[f"surfaces/{file}"] = f.read()
-        image = _vtk_grid(model)
-        if image is not None:
-            path = os.path.join(tmp, "lithology_block.vti")
-            image.save(path)
+        vtk_grid = _vtk_grid(model)
+        if vtk_grid is not None:
+            name = "lithology_block.vtu" if isinstance(model.structural_frame.grid, OctreeGrid) else "lithology_block.vti"
+            path = os.path.join(tmp, name)
+            vtk_grid.save(path)
             with open(path, "rb") as f:
-                out["lithology_block.vti"] = f.read()
+                out[name] = f.read()
     return out
 
 

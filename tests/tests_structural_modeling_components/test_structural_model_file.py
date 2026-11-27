@@ -39,7 +39,7 @@ def _leaves(obj, path="model", out=None):
     return out
 
 
-@pytest.mark.parametrize("model_fixture", ["small_model1", "small_model2"])
+@pytest.mark.parametrize("model_fixture", ["small_model1", "small_model2", "small_model2_octree"])
 def test_round_trip_keeps_every_value(model_fixture, request):
     model = request.getfixturevalue(model_fixture)
     loaded = smf.structural_model_from_bytes(smf.structural_model_to_bytes(model))

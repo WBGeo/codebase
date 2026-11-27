@@ -128,6 +128,37 @@ def test_vtk_export(small_model2, tmp_path):
             "scalar_field_fault"} <= set(image.cell_data.keys())
 
 
+def test_vtk_export_of_an_octree_model(small_model2_octree, tmp_path):
+    """On an octree grid the lithology block is an unstructured grid with one hexahedron per octree cell."""
+    import pyvista as pv
+    model = small_model2_octree
+    members = _members(export_structural_model(model, "vtk"))
+    assert "lithology_block.vtu" in members and "lithology_block.vti" not in members
+    expected = _expected_surfaces(model)
+    assert {f"surfaces/{e[0]}.vtp" for e in expected} <= set(members)
+
+    path = tmp_path / "lithology_block.vtu"
+    path.write_bytes(members["lithology_block.vtu"])
+    block = pv.read(path)
+    frame = model.structural_frame
+    assert block.n_cells == len(frame.cells)
+    assert set(block.celltypes) == {pv.CellType.HEXAHEDRON}
+    assert np.allclose(block.bounds, frame.grid.extent)
+    assert np.array_equal(block.cell_data["lithology"], frame.lith_block)
+    # cell order is the frame's: cell centers coincide
+    assert np.allclose(block.cell_centers().points, frame.cell_centers())
+    # cells of different sizes, and no gaps: their volumes add up to the model volume
+    sizes = block.compute_cell_sizes()["Volume"]
+    assert len(np.unique(np.round(sizes, 6))) > 1
+    assert np.isclose(sizes.sum(), np.prod(np.diff(np.reshape(frame.grid.extent, (3, 2)), axis=1)))
+    # fault results come from the fault model's own cells, taken at the structural cells' centers
+    ff = frame.fault_frame
+    domains = np.asarray(ff.domain_map)[ff.cells.locate(ff.grid, frame.cell_centers())]
+    assert np.array_equal(block.cell_data["fault_domain"], domains)
+    assert len(np.unique(domains)) > 1
+    assert {"scalar_field_Strat_Series1", "mask_Strat_Series1", "scalar_field_fault"} <= set(block.cell_data.keys())
+
+
 def test_file_names_stay_unique_and_safe():
     from core.structural_modeling_components.structural_model_export import _Surface, _file_names
     surfaces = [_Surface(n, "horizon", "g", None, np.zeros((3, 3)), np.zeros((1, 3), int))
