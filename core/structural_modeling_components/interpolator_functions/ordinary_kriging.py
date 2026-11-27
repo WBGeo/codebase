@@ -20,12 +20,42 @@ import pandas as pd
 from pykrige.ok3d import OrdinaryKriging3D
 
 from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6, KrigingFittedField
+from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+    kriging_variogram_parameters,
+)
+from core.structural_modeling_components.interpolator_functions.minimum_data import (
+    PHANTOM_ELEMENT_NAME,
+    add_phantom_element,
+)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+OK_MIN_POINTS = 2
+
+
+def effective_neighbors(neighbors: Optional[int], n_points: int) -> Optional[int]:
+    """Moving-window size for PyKrige: None (all points) if `neighbors` would cover all points anyway."""
+    if neighbors is None or neighbors >= n_points:
+        return None
+    return int(neighbors)
+
+
+def ok_input_problem(points: FloatArray) -> Optional[str]:
+    """
+    Check whether Ordinary Kriging can be fitted to `points` ((N, 3), including phantom points).
+
+    Returns a description of the problem for the user, or None if the points are sufficient.
+    """
+    if len(points) < OK_MIN_POINTS:
+        return (
+            f"needs at least {OK_MIN_POINTS} surface points, but only {len(points)} "
+            f"{'is' if len(points) == 1 else 'are'} available. Add surface points."
+        )
+    return None
 
 
 def interpolate_group_ordinary_kriging(
@@ -45,7 +75,7 @@ def interpolate_group_ordinary_kriging(
         - `name: str`
         - `structural_elements: Sequence[... with .name]`
         - `get_interpolation_params() -> OrdinaryKrigingParams-like`
-          (variogram_model, sill, range, nugget, anisotropy_scaling_y/z, neighbors)
+          (variogram_model, range, nugget, anisotropy_scaling_y/z, neighbors)
     grid
         RegularGrid-like object providing:
         - `gridx`, `gridy`, `gridz`: 1D coordinate arrays (cell centers)
@@ -71,11 +101,16 @@ def interpolate_group_ordinary_kriging(
     - Uses params from `group.get_interpolation_params()` (expected: OrdinaryKrigingParams).
     - Does NOT mutate `group`.
     """
-    ok3d, scalar_values_by_element = _fit_ok(group, group_surface_points_df, group_orientations_points_df)
+    ok3d, scalar_values_by_element, n_points = _fit_ok(group, group_surface_points_df, group_orientations_points_df)
     params = group.get_interpolation_params()
 
+    # Never ask for more neighbours than there are points in this fit (e.g. a fault
+    # domain with few points): PyKrige then fills the neighbourhood with a dummy index,
+    # and the kriging matrix becomes singular. Use all points instead.
+    n_closest_points = effective_neighbors(params.neighbors, n_points)
+
     # PyKrige uses a slower looping backend when requesting a moving neighborhood.
-    backend = "loop" if params.neighbors is not None else "vectorized"
+    backend = "loop" if n_closest_points is not None else "vectorized"
 
     scalar_field, _ = ok3d.execute(
         "grid",
@@ -83,7 +118,7 @@ def interpolate_group_ordinary_kriging(
         grid.gridy,
         grid.gridz,
         backend=backend,
-        n_closest_points=params.neighbors,
+        n_closest_points=n_closest_points,
     )
 
     return scalar_field, scalar_values_by_element
@@ -120,17 +155,21 @@ def fit_group_ordinary_kriging(
         The fitted field and the element scalar values. Without ``neighbors`` it is
         evaluated by dual kriging; with ``neighbors`` by pykrige's moving window.
     """
-    ok3d, scalar_values_by_element = _fit_ok(group, group_surface_points_df, group_orientations_points_df)
+    ok3d, scalar_values_by_element, n_points = _fit_ok(group, group_surface_points_df, group_orientations_points_df)
     params = group.get_interpolation_params()
-    return KrigingFittedField(ok3d, scalar_values_by_element, n_closest_points=params.neighbors)
+    n_closest_points = effective_neighbors(params.neighbors, n_points)
+    return KrigingFittedField(ok3d, scalar_values_by_element, n_closest_points=n_closest_points)
 
 
 def _fit_ok(
     group: Any,
     group_surface_points_df: pd.DataFrame,
     group_orientations_points_df: Optional[pd.DataFrame],
-) -> Tuple[OrdinaryKriging3D, Dict[str, float]]:
-    """Check the inputs, derive the element scalar values and fit the kriging model (shared by both entry points)."""
+) -> Tuple[OrdinaryKriging3D, Dict[str, float], int]:
+    """Check the inputs, derive the element scalar values and fit the kriging model (shared by both entry points).
+
+    Returns the kriging model, the element scalar values and the number of points it was fitted to.
+    """
     # Check if any surface points are provided
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
@@ -149,15 +188,8 @@ def _fit_ok(
     _phantom_name: Optional[str] = None
     if len(group.structural_elements) < 2:
         if len(group.structural_elements) == 1:
-            _coords_tmp = group_surface_points_df[["X", "Y", "Z"]].to_numpy()
-            _bbox_diag = float(np.linalg.norm(_coords_tmp.max(axis=0) - _coords_tmp.min(axis=0)))
-            _shift = max(0.1 * _bbox_diag, 1.0)
-            _phantom_name = "__phantom__"
-            _phantom_df = group_surface_points_df.copy()
-            _phantom_df = _phantom_df.assign(Z=_phantom_df["Z"] - _shift, formation=_phantom_name)
-            group_surface_points_df = pd.concat(
-                [group_surface_points_df, _phantom_df], ignore_index=True
-            )
+            _phantom_name = PHANTOM_ELEMENT_NAME
+            group_surface_points_df, _shift = add_phantom_element(group_surface_points_df)
             warnings.warn(
                 f"Group '{group.name}' has only one structural element. Ordinary Kriging "
                 f"requires at least two. A phantom 'older' element has been synthesized by "
@@ -177,7 +209,7 @@ def _fit_ok(
         if col not in group_surface_points_df.columns:
             raise ValueError(f"Surface points for '{group.name}' missing column '{col}'")
 
-    # 1) scalar values oldest->youngest = 1..n (your groups are youngest->oldest, so reverse)
+    # 1) scalar values oldest->youngest = 1..n (groups are ordered youngest->oldest, so reverse)
     scalar_values_by_element: Dict[str, float] = {
         elem.name: float(i)
         for i, elem in enumerate(reversed(group.structural_elements), start=1)
@@ -209,7 +241,7 @@ def _fit_ok(
     y: FloatArray = group_surface_points_df["Y"].to_numpy()
     z: FloatArray = group_surface_points_df["Z"].to_numpy()
 
-    # 4) parameters (expected: your OrdinaryKrigingParams-like object)
+    # 4) parameters (OKParams-like object)
     params = group.get_interpolation_params()
 
     # 5) fit
@@ -219,8 +251,8 @@ def _fit_ok(
         z,
         vals,
         variogram_model=params.variogram_model,
-        variogram_parameters=[params.sill, params.range, params.nugget],
+        variogram_parameters=kriging_variogram_parameters(params),  # sill 1, nugget + jitter
         anisotropy_scaling_y=params.anisotropy_scaling_y,
         anisotropy_scaling_z=params.anisotropy_scaling_z,
     )
-    return ok3d, scalar_values_by_element
+    return ok3d, scalar_values_by_element, len(x)

@@ -6,11 +6,15 @@ import pyvista as pv
 
 from typing import Generator, Union
 from core.object_components import SimulationResults
+from core.simulation_components.output_format.vtk.unified_format_vtk import _geometry_matches
 from py_api_wbgeo.nodesapi import wbgeo_component
 from vtkmodules.vtkIOExodus import vtkExodusIIReader
 from vtkmodules.vtkCommonExecutionModel import vtkStreamingDemandDrivenPipeline
 
 logger = logging.getLogger(__name__)
+
+# VTK bookkeeping arrays the Exodus reader can add; not stored in results (GitHub issue #3).
+_VTK_BOOKKEEPING_ARRAYS = frozenset({"GlobalNodeId", "PedigreeNodeId", "GlobalElementId", "PedigreeElementId"})
 
 
 ##################
@@ -132,9 +136,13 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
   ):
     reader.SetElementResultArrayStatus( reader.GetElementResultArrayName(i), 1 )
 
-  reader.SetGenerateGlobalNodeIdArray(True)
+  # ObjectId (the element block id per cell) is kept: block_names and the
+  # Exodus export use it. The global/pedigree node and element ids are VTK
+  # bookkeeping that nothing downstream needs; they are not generated, and
+  # any the reader adds anyway are dropped below (_VTK_BOOKKEEPING_ARRAYS).
+  reader.SetGenerateGlobalNodeIdArray(False)
 
-  reader.SetGenerateGlobalElementIdArray(True)
+  reader.SetGenerateGlobalElementIdArray(False)
 
   reader.SetGenerateObjectIdCellArray(True)
 
@@ -160,6 +168,7 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
   logger.info( "Found %d time steps", len(time_steps) )
 
   results = SimulationResults(block_names=block_names)
+  last_geometry = None
 
   # =====================================================
   # LOOP OVER TIME STEPS
@@ -210,27 +219,29 @@ def load_exodus_results(sim_input: Union[str, dict]) -> SimulationResults:
     time = float(t)
 
     # STORE RESULTS
+    # Reuse the previous step's geometry arrays when the mesh is unchanged
+    # (as load_vtk_results does), so all time steps share one copy.
+    points, cells, celltypes = combined_mesh.points, combined_mesh.cells, combined_mesh.celltypes
+    if last_geometry is not None and _geometry_matches(last_geometry, points, cells, celltypes):
+      points, cells, celltypes = last_geometry
+    else:
+      points, cells, celltypes = points.copy(), cells.copy(), celltypes.copy()
+      last_geometry = (points, cells, celltypes)
 
-    results.nodes_by_time[time] = (
-      combined_mesh.points.copy()
-    )
-
-    results.cells_by_time[time] = (
-      combined_mesh.cells.copy()
-    )
-
-    results.celltypes_by_time[time] = (
-      combined_mesh.celltypes.copy()
-    )
+    results.nodes_by_time[time] = points
+    results.cells_by_time[time] = cells
+    results.celltypes_by_time[time] = celltypes
 
     results.node_data_by_time[time] = {
       k: np.array(v)
       for k, v in combined_mesh.point_data.items()
+      if k not in _VTK_BOOKKEEPING_ARRAYS
     }
 
     results.cell_data_by_time[time] = {
       k: np.array(v)
       for k, v in combined_mesh.cell_data.items()
+      if k not in _VTK_BOOKKEEPING_ARRAYS
     }
 
     logger.debug(

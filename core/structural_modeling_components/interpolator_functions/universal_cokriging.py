@@ -11,13 +11,13 @@ Notes
 -----
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
-- Axis order / transposes are preserved exactly as implemented.
+- The scalar field is returned in ZYX shape (reshaped to the grid resolution, then transposed).
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Sequence, Tuple, TypeAlias
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -32,6 +32,29 @@ from core.structural_modeling_components.structural_modeling_utility.surface_mes
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+
+def uck_input_problem(surface_points_df: pd.DataFrame, element_names: Sequence[str]) -> Optional[str]:
+    """
+    Check whether Universal Co-Kriging can be fitted to the surface points of one group
+    (in one fault domain).
+
+    GemPy takes the value of each formation from that formation's own surface points,
+    so every formation of the group needs at least one point. (Orientations are
+    checked separately.)
+
+    Returns a description of the problem for the user, or None if the points are sufficient.
+    """
+    present = set(surface_points_df["formation"].astype(str))
+    missing = [name for name in element_names if name not in present]
+    if not missing:
+        return None
+    listed = ", ".join(f"'{name}'" for name in missing)
+    return (
+        f"needs surface points of every formation of the group, but there are none of {listed}. "
+        f"Add surface points of {'this formation' if len(missing) == 1 else 'these formations'} here, "
+        f"or use another method."
+    )
 
 
 def interpolate_group_universal_cokriging(
@@ -62,7 +85,7 @@ def interpolate_group_universal_cokriging(
     Returns
     -------
     scalar_field : np.ndarray
-        Rescaled scalar field. Reshape/transposes are preserved from the original code.
+        Rescaled scalar field in ZYX shape.
     scalar_values_by_element : dict[str, float]
         Rescaled scalar values mapping `element_name -> isovalue` (targets 1..n).
 
@@ -92,7 +115,8 @@ def interpolate_group_universal_cokriging(
     scalar_field = np.asarray(raw_scalar_field, dtype=float).reshape(tuple(grid.resolution)).T
 
     # ---- rescale scalar field so that element isosurfaces map exactly to 1..n ----
-    # Original code keeps affine_rescale_scalar_field commented out; preserved.
+    # Piecewise affine (each interval between two surfaces separately). The global affine
+    # alternative, `affine_rescale_scalar_field`, is not used.
     rescaled_scalar_field, rescaled_scalar_values_by_element = rescale_scalar_field_safe(
         scalar_field=scalar_field,
         scalar_values_by_element=scalar_values_by_element,
@@ -334,6 +358,7 @@ def _scalar_values_by_element(series_name: str, group_elem_names: List[str], raw
             f"{len(group_elem_names)} elements."
         )
     return {name: float(val) for name, val in zip(group_elem_names, raw_scalar_vals)}
+
 
 def affine_rescale_scalar_field(
     scalar_field: np.ndarray,

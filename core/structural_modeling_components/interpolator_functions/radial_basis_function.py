@@ -25,12 +25,78 @@ from core.structural_modeling_components.interpolator_functions.fitted_field imp
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
     RBF_KERNELS_USING_EPSILON,
 )
+from core.structural_modeling_components.interpolator_functions.minimum_data import (  # noqa: F401 (re-exported)
+    PHANTOM_ELEMENT_NAME,
+    POLYNOMIAL_TERMS_3D,
+    add_phantom_element,
+    points_support_polynomial,
+)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+# Polynomial degree SciPy adds to each kernel by default (`degree=None` means the
+# kernel's minimum degree, at least 0). We keep SciPy's default: lowering it below
+# the minimum makes the system not uniquely solvable for these kernels.
+RBF_KERNEL_POLYNOMIAL_DEGREE: Dict[str, int] = {
+    "thin_plate_spline": 1,
+    "cubic": 1,
+    "quintic": 2,
+}
+
+# Kernels that need only a constant polynomial term (degree 0), i.e. one point.
+_RBF_KERNELS_FOR_FEW_POINTS = ("linear", "multiquadric")
+
+
+def rbf_input_problem(points: FloatArray, kernel: str, neighbors: Optional[int] = None) -> Optional[str]:
+    """
+    Check whether RBF interpolation with `kernel` can be fitted to `points`.
+
+    Kernels with a polynomial term (``thin_plate_spline`` and ``cubic``: a plane,
+    ``quintic``: a curved surface) need at least as many points as the polynomial
+    has terms (4 or 10), and the points must not all lie in one plane (or, for
+    ``quintic``, on one simple curved surface). Otherwise SciPy fails with
+    "At least N data points are required" or "Singular matrix".
+
+    Parameters
+    ----------
+    points
+        (N, 3) coordinates that go into the fit, including phantom points.
+    kernel
+        RBF kernel name.
+    neighbors
+        Number of nearest neighbours used per evaluation point, or None for all.
+
+    Returns
+    -------
+    A description of the problem for the user, or None if the points are sufficient.
+    """
+    degree = RBF_KERNEL_POLYNOMIAL_DEGREE.get(kernel, 0)
+    n_terms = POLYNOMIAL_TERMS_3D[degree]
+    alternatives = " or ".join(f"'{k}'" for k in _RBF_KERNELS_FOR_FEW_POINTS)
+    n_points = len(points)
+
+    if n_points < n_terms:
+        return (
+            f"the kernel '{kernel}' needs at least {n_terms} surface points, "
+            f"but only {n_points} are available. Add surface points, or choose the kernel "
+            f"{alternatives}, which also work with fewer points."
+        )
+    if neighbors is not None and min(neighbors, n_points) < n_terms:
+        return (
+            f"the kernel '{kernel}' needs at least {n_terms} neighbours, "
+            f"but 'neighbors' is set to {neighbors}. Increase 'neighbors' or leave it empty."
+        )
+    if not points_support_polynomial(points, degree):
+        shape = "in one plane" if degree == 1 else "on one plane or one simple curved surface"
+        return (
+            f"all {n_points} surface points lie {shape}, so the kernel '{kernel}' cannot be "
+            f"fitted. Add surface points outside this plane, or choose the kernel {alternatives}."
+        )
+    return None
 
 
 def interpolate_group_radial_basis_function(
@@ -63,8 +129,8 @@ def interpolate_group_radial_basis_function(
     Returns
     -------
     scalar_field : np.ndarray
-        Interpolated scalar field reshaped to `grid.resolution` and then transposed
-        exactly as in the original implementation.
+        Interpolated scalar field in ZYX shape (reshaped to `grid.resolution`, then
+        transposed).
     scalar_values_by_element : dict[str, float]
         Mapping element_name -> scalar value. Values are strictly increasing from
         oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
@@ -73,20 +139,20 @@ def interpolate_group_radial_basis_function(
     Notes
     -----
     - Assigns strictly increasing scalar values: oldest = 1, youngest = n
-    - Uses params from `group.get_interpolation_params()` (expected to be your RBFParams)
+    - Uses params from `group.get_interpolation_params()` (an RBFParams)
     - Does NOT mutate `group`
     """
-    rbfi, scalar_values_by_element = _fit_rbf(group, group_surface_points_df, group_orientations_points_df)
+    rbfi, scalar_values_by_element, axis_scaling = _fit_rbf(group, group_surface_points_df, group_orientations_points_df)
 
     # 6) evaluate on grid
-    # Prefer a precomputed (N,3) array if your grid exposes it; otherwise build from axes.
+    # Prefer a precomputed (N,3) array if the grid provides it; otherwise build from axes.
     if hasattr(grid, "grid_coordinates") and grid.grid_coordinates is not None:
         grid_points: FloatArray = grid.grid_coordinates
     else:
         gx, gy, gz = np.meshgrid(grid.gridx, grid.gridy, grid.gridz, indexing="ij")
         grid_points = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
 
-    scalar_flat: FloatArray = rbfi(grid_points)
+    scalar_flat: FloatArray = rbfi(grid_points * axis_scaling)
     scalar_field = scalar_flat.reshape(tuple(grid.resolution)).T  # (nx, ny, nz)
 
     return scalar_field, scalar_values_by_element
@@ -100,13 +166,16 @@ class RBFFittedField:
         scalar_values: Element name -> isovalue, oldest = 1 .. youngest = n.
     """
 
-    def __init__(self, interpolator: RBFInterpolator, scalar_values: Dict[str, float]) -> None:
+    def __init__(self, interpolator: RBFInterpolator, scalar_values: Dict[str, float],
+                 axis_scaling: Optional[FloatArray] = None) -> None:
         self._interpolator = interpolator
         self.scalar_values = scalar_values
+        # vertical anisotropy: query points are stretched like the fitted points
+        self._axis_scaling = np.ones(3) if axis_scaling is None else np.asarray(axis_scaling, dtype=np.float64)
 
     def evaluate(self, xyz: FloatArray) -> FloatArray:
         """Field values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
-        return self._interpolator(np.asarray(xyz, dtype=np.float64).reshape(-1, 3))
+        return self._interpolator(np.asarray(xyz, dtype=np.float64).reshape(-1, 3) * self._axis_scaling)
 
 
 def fit_group_radial_basis_function(
@@ -139,16 +208,20 @@ def fit_group_radial_basis_function(
     RBFFittedField
         The fitted field and the element scalar values.
     """
-    rbfi, scalar_values_by_element = _fit_rbf(group, group_surface_points_df, group_orientations_points_df)
-    return RBFFittedField(rbfi, scalar_values_by_element)
+    rbfi, scalar_values_by_element, axis_scaling = _fit_rbf(group, group_surface_points_df, group_orientations_points_df)
+    return RBFFittedField(rbfi, scalar_values_by_element, axis_scaling)
 
 
 def _fit_rbf(
     group: Any,
     group_surface_points_df: pd.DataFrame,
     group_orientations_points_df: Optional[pd.DataFrame],
-) -> Tuple[RBFInterpolator, Dict[str, float]]:
-    """Check the inputs, derive the element scalar values and fit the RBF (shared by both entry points)."""
+) -> Tuple[RBFInterpolator, Dict[str, float], FloatArray]:
+    """Check the inputs, derive the element scalar values and fit the RBF (shared by both entry points).
+
+    Returns the interpolator, the element scalar values and the axis scaling (vertical anisotropy) that
+    query points must be multiplied with before evaluating the interpolator.
+    """
     # Check if any surface points are provided
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
@@ -164,15 +237,8 @@ def _fit_rbf(
     _phantom_name: Optional[str] = None
     if len(group.structural_elements) < 2:
         if len(group.structural_elements) == 1:
-            _coords_tmp = group_surface_points_df[["X", "Y", "Z"]].to_numpy()
-            _bbox_diag = float(np.linalg.norm(_coords_tmp.max(axis=0) - _coords_tmp.min(axis=0)))
-            _shift = max(0.1 * _bbox_diag, 1.0)
-            _phantom_name = "__phantom__"
-            _phantom_df = group_surface_points_df.copy()
-            _phantom_df = _phantom_df.assign(Z=_phantom_df["Z"] - _shift, formation=_phantom_name)
-            group_surface_points_df = pd.concat(
-                [group_surface_points_df, _phantom_df], ignore_index=True
-            )
+            _phantom_name = PHANTOM_ELEMENT_NAME
+            group_surface_points_df, _shift = add_phantom_element(group_surface_points_df)
             warnings.warn(
                 f"Group '{group.name}' has only one structural element. RBF interpolation "
                 f"requires at least two. A phantom 'older' element has been synthesized by "
@@ -211,10 +277,15 @@ def _fit_rbf(
         scalar_values_by_element.pop(_phantom_name)
 
     # 3) coordinates of control points
-    coords: FloatArray = group_surface_points_df[["X", "Y", "Z"]].to_numpy()
+    coords: FloatArray = group_surface_points_df[["X", "Y", "Z"]].to_numpy(dtype=float)
 
-    # 4) parameters (expected: your RBFParams-like object)
+    # 4) parameters (RBFParams-like object)
     params = group.get_interpolation_params()
+
+    # Vertical anisotropy: stretch z of points and grid alike (1.0 = isotropic)
+    z_scaling = float(getattr(params, "anisotropy_scaling_z", 1.0))
+    axis_scaling = np.array([1.0, 1.0, z_scaling])
+    coords = coords * axis_scaling
 
     # 5) fit RBF
     rbfi = RBFInterpolator(
@@ -226,4 +297,4 @@ def _fit_rbf(
         epsilon=params.epsilon if params.kernel in RBF_KERNELS_USING_EPSILON else None,
         neighbors=params.neighbors,  # None => all points
     )
-    return rbfi, scalar_values_by_element
+    return rbfi, scalar_values_by_element, axis_scaling

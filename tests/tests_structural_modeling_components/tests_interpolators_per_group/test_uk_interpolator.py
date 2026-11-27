@@ -230,8 +230,11 @@ def test_scalar_values_mapping_is_oldest_1_youngest_n(monkeypatch):
 
 # --- UK-specific parameter behavior tests ------------------------------------
 
-def test_default_drift_terms_is_regional_linear(monkeypatch):
-    params = FakeUKParams(drift_terms=None)
+def test_linear_drift_variogram_and_backend_are_fixed(monkeypatch):
+    """Always the regional linear drift, sill 1 with jitter on the nugget, all points (vectorized)."""
+    from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
+        KRIGING_NUGGET_JITTER)
+    params = FakeUKParams(range=22.0, nugget=0.3, anisotropy_scaling_y=0.5, anisotropy_scaling_z=0.25)
     group = FakeGroup("G", ["young", "old"], params=params)
     grid = FakeGrid()
     sdf = pd.DataFrame(
@@ -252,139 +255,52 @@ def test_default_drift_terms_is_regional_linear(monkeypatch):
             captured["kwargs"] = kwargs
 
         def execute(self, *args, **kwargs):
+            captured["execute"] = kwargs
             return np.zeros((len(grid.gridy), len(grid.gridx), len(grid.gridz))), None
 
     monkeypatch.setattr(mod, "UniversalKriging3D", DummyUK3D)
 
     interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
 
-    assert captured["kwargs"]["drift_terms"] == "regional_linear"
+    assert captured["kwargs"]["drift_terms"] == ["regional_linear"]
+    assert captured["kwargs"]["variogram_parameters"] == [1.0, 22.0, 0.3 + KRIGING_NUGGET_JITTER]
+    assert captured["kwargs"]["anisotropy_scaling_y"] == 0.5
+    assert captured["kwargs"]["anisotropy_scaling_z"] == 0.25
+    assert "specified_drift" not in captured["kwargs"] and "external_drift" not in captured["kwargs"]
+    assert captured["execute"] == {"backend": "vectorized"}
 
 
-def test_drift_terms_tuple_or_set_is_converted_to_list(monkeypatch):
-    params = FakeUKParams(drift_terms=("regional_linear", "point_log"))
-    group = FakeGroup("G", ["young", "old"], params=params)
-    grid = FakeGrid()
-    sdf = pd.DataFrame(
-        {
-            "X": [0.0, 1.0, 0.2, 0.8],
-            "Y": [0.0, 1.0, 0.1, 0.9],
-            "Z": [0.0, 1.0, 0.0, 1.0],
-            "formation": ["old", "old", "young", "young"],
-        }
-    )
+# --- minimum data: linear drift needs 4 points not all in one plane --------------
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
-
-    captured = {}
-
-    class DummyUK3D:
-        def __init__(self, x, y, z, vals, **kwargs):
-            captured["drift_terms"] = kwargs["drift_terms"]
-
-        def execute(self, *args, **kwargs):
-            return np.zeros((len(grid.gridy), len(grid.gridx), len(grid.gridz))), None
-
-    monkeypatch.setattr(mod, "UniversalKriging3D", DummyUK3D)
-
-    interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
-
-    assert isinstance(captured["drift_terms"], list)
-    assert captured["drift_terms"] == ["regional_linear", "point_log"]
+from core.structural_modeling_components.interpolator_functions.universal_kriging import (  # noqa: E402
+    uk_input_problem)
 
 
-def test_specified_drift_dict_is_converted_to_specified_drift_arrays(monkeypatch):
-    # If specified_drift_arrays is None and specified_drift is a dict, values() become list
-    specified = {"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}
-    params = FakeUKParams(specified_drift_arrays=None, specified_drift=specified)
-    group = FakeGroup("G", ["young", "old"], params=params)
-    grid = FakeGrid()
-    sdf = pd.DataFrame(
-        {
-            "X": [0.0, 1.0, 0.2, 0.8],
-            "Y": [0.0, 1.0, 0.1, 0.9],
-            "Z": [0.0, 1.0, 0.0, 1.0],
-            "formation": ["old", "old", "young", "young"],
-        }
-    )
-
-    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
-
-    captured = {}
-
-    class DummyUK3D:
-        def __init__(self, x, y, z, vals, **kwargs):
-            captured["specified_drift"] = kwargs.get("specified_drift")
-
-        def execute(self, *args, **kwargs):
-            return np.zeros((len(grid.gridy), len(grid.gridx), len(grid.gridz))), None
-
-    monkeypatch.setattr(mod, "UniversalKriging3D", DummyUK3D)
-
-    interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
-
-    sd = captured["specified_drift"]
-    assert isinstance(sd, list)
-    assert len(sd) == 2
-    assert np.array_equal(sd[0], specified["a"])
-    assert np.array_equal(sd[1], specified["b"])
+def _random_points(n: int, seed: int = 0) -> np.ndarray:
+    return np.random.default_rng(seed).uniform(0.0, 100.0, (n, 3))
 
 
-def test_specified_drift_single_array_becomes_list(monkeypatch):
-    specified = np.array([1, 2, 3])
-    params = FakeUKParams(specified_drift_arrays=None, specified_drift=specified)
-    group = FakeGroup("G", ["young", "old"], params=params)
-    grid = FakeGrid()
-    sdf = pd.DataFrame(
-        {
-            "X": [0.0, 1.0, 0.2, 0.8],
-            "Y": [0.0, 1.0, 0.1, 0.9],
-            "Z": [0.0, 1.0, 0.0, 1.0],
-            "formation": ["old", "old", "young", "young"],
-        }
-    )
-
-    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
-
-    captured = {}
-
-    class DummyUK3D:
-        def __init__(self, x, y, z, vals, **kwargs):
-            captured["specified_drift"] = kwargs.get("specified_drift")
-
-        def execute(self, *args, **kwargs):
-            return np.zeros((len(grid.gridy), len(grid.gridx), len(grid.gridz))), None
-
-    monkeypatch.setattr(mod, "UniversalKriging3D", DummyUK3D)
-
-    interpolate_group_universal_kriging(group=group, grid=grid, group_surface_points_df=sdf)
-
-    sd = captured["specified_drift"]
-    assert isinstance(sd, list)
-    assert len(sd) == 1
-    assert np.array_equal(sd[0], specified)
+def test_uk_input_problem_point_count():
+    assert "at least 4 surface points" in uk_input_problem(_random_points(3))
+    assert uk_input_problem(_random_points(4)) is None
 
 
-def test_external_drift_is_passed_to_constructor_and_external_drift_grid_to_execute(monkeypatch):
-    params = FakeUKParams(
-        external_drift=np.array([10.0, 11.0, 12.0, 13.0]),
-        external_drift_grid=np.ones((2, 2, 2)),
-    )
-    group = FakeGroup("G", ["young", "old"], params=params)
-    grid = FakeGrid(resolution=(2, 2, 2))
-    sdf = pd.DataFrame(
-        {
-            "X": [0.0, 1.0, 0.2, 0.8],
-            "Y": [0.0, 1.0, 0.1, 0.9],
-            "Z": [0.0, 1.0, 0.0, 1.0],
-            "formation": ["old", "old", "young", "young"],
-        }
-    )
+def test_uk_input_problem_points_in_one_plane():
+    points = _random_points(20)
+    points[:, 2] = 50.0
+    assert "in one plane" in uk_input_problem(points)
 
-    import core.structural_modeling_components.interpolator_functions.universal_kriging as mod
 
-    captured = {}
-
-    class DummyUK3D:
-        def __init__(self, x, y, z, vals, **kwargs):
-            captured["constructor_external_drift"] = kwargs.get("external_drift")
+@pytest.mark.parametrize("n", [2, 3, 4, 6])
+def test_uk_input_problem_agrees_with_pykrige(n):
+    """Whenever the check reports a problem, PyKrige fails, and vice versa (random points)."""
+    from pykrige.uk3d import UniversalKriging3D
+    points, g = _random_points(n), np.linspace(0, 100, 3)
+    try:
+        uk = UniversalKriging3D(*points.T, np.arange(n, dtype=float), variogram_model="gaussian",
+                                variogram_parameters=[1.0, 50.0, 0.0], drift_terms=["regional_linear"])
+        uk.execute("grid", g, g, g)
+        pykrige_fails = False
+    except Exception:
+        pykrige_fails = True
+    assert (uk_input_problem(points) is not None) == pykrige_fails

@@ -190,6 +190,45 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                                           to_form=structural_modeling_smart_options,
                                           to_data=structural_modeling_smart_options_to_data)]
 
+
+def _build_frame_with_options(elements: InputData_StructuralElements,
+                              grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
+                              fault_model: typing.Optional[FaultModelResults],
+                              options: typing.Optional[StructuralFrameInputOptions]):
+  """Build the structural frame and apply the interpolation methods, parameters and fault activity."""
+  frame = general.build_structural_frame(input_data_elements=elements,
+                                         grid=grid,
+                                         fault_model_results=fault_model
+                                         )
+
+  if options and options.root and options.root.frame:
+    for frame_name, frame_options in options.root.frame.items():
+      frame[frame_name].set_interpolation_method(frame_options.method)
+      params = frame_options.get_params()
+      if params is not None:
+        # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
+        frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
+
+  if options and options.root and options.root.faults:
+    for fault_name, group_name in options.root.faults.items():
+      if group_name != '<All>':
+        frame.set_fault_activity_by_group(fault_name=fault_name, group_name=group_name)
+
+  return frame
+
+
+def check_interpolation_inputs(elements: InputData_StructuralElements,
+                               grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
+                               fault_model: typing.Optional[FaultModelResults] = None,
+                               options: SmartStructuralFrameInputOptions = None) -> None:
+  """
+  Pre-check: every group has enough input data for its interpolation method in
+  every fault domain (e.g. at least 4 surface points for RBF with the kernel
+  thin_plate_spline). Lists all problems at once, naming group and domain.
+  """
+  frame = _build_frame_with_options(elements, grid, fault_model, options)
+  general.validate_interpolation_inputs(frame=frame, fault_frame=frame.fault_frame)
+
 # Register this function as a component
 @wbgeo_component(description='Computes a Structural Geological model from input data, grid, and (optionally) fault model. With smart options for interpolation methods and parameters.',
                  title='Compute Structural Model',  # The title shown in the GUI
@@ -198,7 +237,9 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                  group='Inputs',
                  identifier='wbgeo::structural_modeling',  # a unique identifier
                  return_name='structural_model',  # the name for the returned-port
-                 input_checks=[general_faults.check_fault_model_not_crosscutting, pre_check_fault_model_grid],
+                 input_checks=[general_faults.check_fault_model_not_crosscutting,
+                               check_interpolation_inputs,
+                               pre_check_fault_model_grid],
                  positionInGroup=880,
                  )  # inputs are handled via the method signature
 def structural_modeling(
@@ -238,26 +279,9 @@ def structural_modeling(
   general_faults.check_fault_model_not_crosscutting(fault_model)
   pre_check_fault_model_grid(grid, fault_model)
 
-  frame = general.build_structural_frame(input_data_elements=elements,
-                                         grid=grid,
-                                         fault_model_results=fault_model
-                                         )
-
-  # Apply Options (if present)
-  if options and options.root and options.root.frame:
-    for frame_name, frame_options in options.root.frame.items():
-      frame[frame_name].set_interpolation_method(frame_options.method)
-      params = frame_options.get_params()
-      if params is not None:
-        # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
-        frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
-
-  # Apply fault set_fault_activity_by_group
-  if options and options.root and options.root.faults:
-    for fault_name, group_name in options.root.faults.items():
-      if group_name != '<All>':
-        frame.set_fault_activity_by_group(fault_name=fault_name, group_name=group_name)
-
+  # The interpolation input check (check_interpolation_inputs) runs again inside
+  # compute_structural_model, before any interpolation.
+  frame = _build_frame_with_options(elements, grid, fault_model, options)
 
   structural_model_result = general.compute_structural_model(
     frame,

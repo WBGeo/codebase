@@ -13,9 +13,16 @@ Notes
 -----
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
-- The scalar field reshape + transpose is preserved exactly as implemented.
-- Orientation/gradient observations are treated as point constraints by LoopStructural
-  (i.e., their XYZ location matters to the solution).
+- The scalar field is returned in ZYX shape (reshaped to the grid resolution, then transposed).
+- Orientations only constrain the direction of the layers at their location; they
+  carry no scalar value, so they may lie anywhere, not only on an interface.
+  In LoopStructural 1.8.2 the gradient constraint of the piecewise-linear interpolator
+  is not implemented (`P1Interpolator.add_gradient_constraints` does nothing), so each
+  orientation is passed as two tangent constraints instead (gradient perpendicular to
+  its strike and dip vectors, weight `tpw`). This is what FDI's gradient constraint
+  does internally. Tangents do not tell up from down; that comes from the formation
+  values. With only one formation (all values equal), LoopStructural additionally
+  turns the gradient rows into normal-vector constraints, which define which way is up.
 
 PLI-specific parameters
 -----------------------
@@ -27,12 +34,10 @@ Expected attributes on params
 - nelements: int | float
     Discretisation size passed to `create_and_add_foliation`.
     (For PLI this controls the piecewise-linear support/mesh density.)
-- solver: str
-    Solver argument passed to `create_and_add_foliation` (if supported by your LS version).
-- damp: bool
-    Damp argument passed to `create_and_add_foliation` (if supported by your LS version).
-- tol: float | None
-    Tolerance passed to `create_and_add_foliation` as `tol` (if provided).
+- regularisation: float
+    Weight of the smoothness term, passed as `regularisation`.
+- orientation_weight: float
+    Weight of the orientation (tangent) constraints, passed as `tpw`.
 """
 
 from __future__ import annotations
@@ -55,6 +60,31 @@ from core.structural_modeling_components.interpolator_functions.fitted_field imp
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+
+def _strike_and_dip_vectors(normals: FloatArray) -> Tuple[FloatArray, FloatArray]:
+    """Two unit vectors lying in the plane of each normal (strike and dip direction)."""
+    n = normals / np.linalg.norm(normals, axis=1, keepdims=True)
+    strike = np.cross(n, [0.0, 0.0, 1.0])
+    horizontal = np.linalg.norm(strike, axis=1) < 1e-8  # horizontal layer: any strike
+    strike[horizontal] = [1.0, 0.0, 0.0]
+    strike /= np.linalg.norm(strike, axis=1, keepdims=True)
+    dip = np.cross(n, strike)
+    return strike, dip
+
+
+def _scale_tangent_weight_to_mesh(feature: Any, orientation_weight: float) -> None:
+    """
+    Make `orientation_weight` independent of the mesh size.
+
+    LoopStructural multiplies each tangent constraint by the volume of its tetrahedron,
+    so with a fixed `tpw` the orientations count less the finer the mesh (with 10 000
+    instead of 2000 elements, about five times less). Dividing by the mean element
+    volume removes this. The feature is built lazily (when it is first evaluated), so the
+    weight can still be changed through the builder's build arguments.
+    """
+    mean_volume = float(np.mean(feature.builder.interpolator.support.element_size))
+    feature.builder.update_build_arguments({"tpw": orientation_weight / mean_volume})
 
 
 def interpolate_group_piecewise_linear(
@@ -88,8 +118,8 @@ def interpolate_group_piecewise_linear(
     Returns
     -------
     scalar_field : np.ndarray
-        Evaluated scalar field on the grid, shaped to `tuple(grid.resolution)` and transposed
-        exactly as in the original implementation.
+        Evaluated scalar field on the grid in ZYX shape (shaped to `tuple(grid.resolution)`,
+        then transposed).
     scalar_values_by_element : dict[str, float]
         Mapping element_name -> scalar value. Values are strictly increasing from
         oldest=1 to youngest=n (group.structural_elements is assumed youngest->oldest,
@@ -119,7 +149,7 @@ def interpolate_group_piecewise_linear(
     regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
     sf_flat = evaluate_loopstructural_feature(model, group.name, regular_grid, scale=True)
 
-    # Match previous implementation: reshape then transpose
+    # grid coordinates are ordered with x slowest: reshape to (nx, ny, nz), transpose to ZYX
     scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
 
     return scalar_field, scalar_values_by_element
@@ -215,15 +245,26 @@ def _fit_pli_model(
     surface_points["gy"] = np.nan
     surface_points["gz"] = np.nan
 
-    # Orientations table
+    # Orientations table. No value: orientations may lie anywhere, not only on the
+    # interface of their formation (see module docstring). The gradient rows only take
+    # effect when all values are equal (LoopStructural then turns them into normals).
     orientations = group_orientations_points_df.copy()
     orientations["feature_name"] = group.name
-    orientations["val"] = orientations["formation"].map(formation_to_scalar)
+    orientations["val"] = np.nan
     orientations = orientations.rename(columns={"G_x": "gx", "G_y": "gy", "G_z": "gz"})
     orientations = orientations[["X", "Y", "Z", "val", "feature_name", "gx", "gy", "gz"]]
 
+    # The direction of each orientation as two tangent rows: the gradient must be
+    # perpendicular to the strike and to the dip vector.
+    strike, dip = _strike_and_dip_vectors(orientations[["gx", "gy", "gz"]].to_numpy(dtype=float))
+    tangent_rows = []
+    for vectors in (strike, dip):
+        rows = orientations[["X", "Y", "Z", "feature_name"]].copy()
+        rows[["tx", "ty", "tz"]] = vectors
+        tangent_rows.append(rows)
+
     # Combined table
-    data_combined = pd.concat([surface_points, orientations], ignore_index=True)
+    data_combined = pd.concat([surface_points, orientations, *tangent_rows], ignore_index=True)
 
     # --- build LoopStructural model ---
     # GeologicalModel(min_bounds, max_bounds) expects 3-vectors
@@ -255,12 +296,16 @@ def _fit_pli_model(
         interpolatortype="PLI",
         nelements=params.nelements,
         buffer=0.2,
-        solver=params.solver,
-        damp=params.damp,
+        # Conjugate gradients with LoopStructural's default tolerance (not exposed).
+        solver="cg",
+        # Least-squares weights: surface points 1 (LoopStructural default), smoothness
+        # `regularisation`, orientations (as tangent constraints, see module docstring)
+        # `orientation_weight`.
+        regularisation=params.regularisation,
+        tpw=params.orientation_weight,
     )
-    if getattr(params, "tol", None) is not None:
-        create_kwargs["tol"] = params.tol
 
-    _ = model.create_and_add_foliation(group.name, **create_kwargs)
+    feature = model.create_and_add_foliation(group.name, **create_kwargs)
+    _scale_tangent_weight_to_mesh(feature, params.orientation_weight)
 
     return model, scalar_values_by_element

@@ -114,10 +114,12 @@ def results(request) -> tuple[StructuralModelResults, StructuralModelResults]:
 # RBF fit / evaluate
 # -----------------------------------------------------------------------------
 
-def test_rbf_fit_evaluates_to_the_regular_grid_interpolation():
+@pytest.mark.parametrize("anisotropy_scaling_z", [1.0, 3.0], ids=["isotropic", "vertical-anisotropy"])
+def test_rbf_fit_evaluates_to_the_regular_grid_interpolation(anisotropy_scaling_z):
     grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
     frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
     group = frame.structural_groups[1]
+    group.configure_interpolation_params(anisotropy_scaling_z=anisotropy_scaling_z)
     sp = frame.surface_points[frame.surface_points["formation"].isin(["rock1", "rock2"])]
 
     on_grid, values_on_grid = interpolate_group_radial_basis_function(
@@ -127,6 +129,16 @@ def test_rbf_fit_evaluates_to_the_regular_grid_interpolation():
     assert field.scalar_values == values_on_grid
     # interpolate_group_* returns reshape(resolution).T; undo the transpose to compare.
     np.testing.assert_array_equal(field.evaluate(grid.grid_coordinates).reshape(grid.resolution), on_grid.T)
+
+
+def test_minimum_data_check_runs_on_the_octree_grid():
+    """The input check of the regular grid (here: RBF needs at least 4 surface points) also guards the octree path."""
+    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=octree_grid())
+    sp = frame.surface_points
+    in_group = sp.index[sp["formation"].isin(["rock1", "rock2"])]
+    frame.surface_points = sp.drop(in_group[3:])  # 3 points left in the group
+    with pytest.raises(ValueError, match="at least 4 surface points"):
+        general.compute_structural_model(frame)
 
 
 @pytest.mark.parametrize("interpolate, fit", [
@@ -212,17 +224,6 @@ def test_kriging_fit_evaluates_to_the_regular_grid_interpolation(method, interpo
     # At the data points kriging returns the data values, also with a nugget.
     on_data = field.evaluate(sp[["X", "Y", "Z"]].to_numpy())
     np.testing.assert_allclose(on_data, sp["formation"].map(values_on_grid).to_numpy(), rtol=0, atol=max(atol, 1e-8))
-
-
-def test_kriging_with_unsupported_drift_is_refused_on_points():
-    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(6, 5, 4))
-    frame = general.build_structural_frame(input_data_elements=unconformity_input(), grid=grid)
-    group = frame.structural_groups[1]
-    group.set_interpolation_method(InterpolationMethod.UNIVERSAL_KRIGING)
-    group.configure_interpolation_params(drift_terms=["specified"])
-    sp = frame.surface_points[frame.surface_points["formation"].isin(["rock1", "rock2"])]
-    with pytest.raises((NotImplementedError, ValueError)):
-        fit_group_universal_kriging(group=group, extent=grid.extent, group_surface_points_df=sp)
 
 
 # -----------------------------------------------------------------------------

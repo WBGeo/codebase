@@ -51,7 +51,11 @@ from core.structural_modeling_components.structural_objects.grids.grid_classes i
 )
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import (
     marching_cubes_per_element, marching_cubes)
-from core.structural_modeling_components.general_octree import compute_structural_model_octree
+from core.structural_modeling_components.general_octree import (
+    _domain_ids as _octree_domain_ids,
+    _point_domains as _octree_point_domains,
+    compute_structural_model_octree,
+)
 
 from core.structural_modeling_components.structural_objects.structural_objects import (
     StructuralFrame,
@@ -65,14 +69,18 @@ from core.structural_modeling_components.structural_objects.structural_objects i
 
 logger = logging.getLogger(__name__)
 
+from core.structural_modeling_components.interpolator_functions.minimum_data import add_phantom_element
 from core.structural_modeling_components.interpolator_functions.ordinary_kriging import (
     interpolate_group_ordinary_kriging,
+    ok_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.radial_basis_function import (
     interpolate_group_radial_basis_function,
+    rbf_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.universal_cokriging import (
     interpolate_group_universal_cokriging,
+    uck_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.geoinr import (
     interpolate_group_geo_inr,
@@ -84,7 +92,8 @@ from core.structural_modeling_components.interpolator_functions.piecewise_linear
     interpolate_group_piecewise_linear,
 )
 from core.structural_modeling_components.interpolator_functions.universal_kriging import (
-    interpolate_group_universal_kriging
+    interpolate_group_universal_kriging,
+    uk_input_problem,
 )
 from core.structural_modeling_components.interpolator_functions.fitted_field import snap_to_isovalues
 
@@ -169,6 +178,41 @@ interpolate_dispatch: dict[InterpolationMethod, Callable[..., Any]] = {
 }
 
 
+_MINIMUM_DATA_METHOD_LABELS: dict[InterpolationMethod, str] = {
+    InterpolationMethod.RADIAL_BASIS_FUNCTION: "Radial Basis Function",
+    InterpolationMethod.ORDINARY_KRIGING: "Ordinary Kriging",
+    InterpolationMethod.UNIVERSAL_KRIGING: "Universal Kriging",
+    InterpolationMethod.UNIVERSAL_COKRIGING: "Universal Co-Kriging",
+}
+
+
+def _minimum_data_problem_for_component(group: StructuralGroup, surface_points: pd.DataFrame) -> Optional[str]:
+    """Minimum surface-point check for one group in one domain component (RBF, OK, UK, UCK).
+
+    Uses the same points as the interpolator, including the phantom copies for a
+    single-element group (RBF, OK, UK). Returns None for the other methods.
+    Orientations are checked separately.
+    """
+    method = group.interpolation_method
+    if method not in _MINIMUM_DATA_METHOD_LABELS:
+        return None
+
+    if method == InterpolationMethod.UNIVERSAL_COKRIGING:
+        problem = uck_input_problem(surface_points, [e.name for e in group.structural_elements])
+    else:
+        if len(group.structural_elements) == 1:
+            surface_points, _ = add_phantom_element(surface_points)
+        points = surface_points[["X", "Y", "Z"]].to_numpy(dtype=float)
+        if method == InterpolationMethod.RADIAL_BASIS_FUNCTION:
+            params = group.get_interpolation_params()
+            problem = rbf_input_problem(points, kernel=params.kernel, neighbors=params.neighbors)
+        elif method == InterpolationMethod.ORDINARY_KRIGING:
+            problem = ok_input_problem(points)
+        else:
+            problem = uk_input_problem(points)
+    return None if problem is None else f"{_MINIMUM_DATA_METHOD_LABELS[method]}: {problem}"
+
+
 def validate_interpolation_inputs(
         frame: StructuralFrame,
         fault_frame: FaultFrame | None,
@@ -187,20 +231,32 @@ def validate_interpolation_inputs(
         A single error listing ALL detected issues so the user can fix them
         together rather than discovering them one by one.
     """
-    domain_map: IntArray = (
-        fault_frame.domain_map
-        if fault_frame is not None
-        else np.zeros(frame.grid.resolution, dtype=np.int32)
-    )
-    domain_ids: IntArray = np.unique(domain_map)
-    multi_domain = len(domain_ids) > 1
+    if isinstance(frame.grid, OctreeGrid):
+        # Fault domains of an octree are stored per fault-model cell: same assignment as
+        # the octree pipeline (the cell containing a point; nearest boundary cell outside).
+        domain_ids: IntArray = _octree_domain_ids(frame)
 
-    sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
-    ori_in_domain = (
-        assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
-        if frame.orientations is not None
-        else None
-    )
+        def _with_domains(points: pd.DataFrame) -> pd.DataFrame:
+            xyz = points[["X", "Y", "Z"]].to_numpy(dtype=np.float64)
+            return points.assign(domain_id=_octree_point_domains(frame, xyz))
+
+        sp_in_domain = _with_domains(frame.surface_points)
+        ori_in_domain = _with_domains(frame.orientations) if frame.orientations is not None else None
+    else:
+        domain_map: IntArray = (
+            fault_frame.domain_map
+            if fault_frame is not None
+            else np.zeros(frame.grid.resolution, dtype=np.int32)
+        )
+        domain_ids = np.unique(domain_map)
+
+        sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
+        ori_in_domain = (
+            assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
+            if frame.orientations is not None
+            else None
+        )
+    multi_domain = len(domain_ids) > 1
 
     violations: list[str] = []
 
@@ -255,6 +311,10 @@ def validate_interpolation_inputs(
             prefix = f"Group '{group.name}' ({comp_label})"
 
             # --- per-interpolator requirements ---
+            problem = _minimum_data_problem_for_component(group, sp_filtered)
+            if problem is not None:
+                violations.append(f"{prefix}: {problem}")
+
             if method in _INTERPOLATORS_REQUIRING_ORIENTATIONS:
                 if ori_filtered is None:
                     violations.append(
@@ -948,6 +1008,8 @@ def compute_structural_model(
     """
     if isinstance(frame.grid, OctreeGrid):
         # Separate octree path; the regular-grid pipeline below stays as it is.
+        logger.info("Validating interpolation inputs ...")
+        validate_interpolation_inputs(frame=frame, fault_frame=frame.fault_frame)
         return compute_structural_model_octree(frame, extract_meshes=extract_meshes)
 
     # Prepare domain map (supports "no faults" case).
