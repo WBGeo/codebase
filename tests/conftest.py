@@ -43,3 +43,29 @@ def plot_mode(request):
         "on_fail": request.config.getoption("--show-plots"),
         "always": request.config.getoption("--show-plots-always"),
     }
+
+
+@pytest.fixture
+def fake_inspector():
+    """Stand-in for the Workbench's InspectorHelper (the ``_inspector`` argument of inspectors).
+
+    ``fake_inspector(value)`` returns an object whose ``await (await trace(SomeType)).get_value()``
+    gives ``value``; pass a dict ``{SomeType: value, ...}`` to answer per traced type.
+    """
+    class _Trace:
+        def __init__(self, value):
+            self._value = value
+
+        async def get_value(self):
+            return self._value
+
+    class _Inspector:
+        def __init__(self, traced):
+            self._traced = traced
+
+        async def trace(self, traced_type):
+            if isinstance(self._traced, dict):
+                return _Trace(self._traced[traced_type])
+            return _Trace(self._traced)
+
+    return _Inspector

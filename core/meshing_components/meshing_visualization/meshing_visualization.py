@@ -1,6 +1,8 @@
 
 import logging
+import typing
 import warnings
+from enum import StrEnum
 from typing import List
 
 import numpy as np
@@ -8,7 +10,22 @@ import numpy as np
 logger = logging.getLogger(__name__)
 import pyvista as pv
 from core.object_components import MeshResults, StructuralModelResults
-from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector, InspectorHelper
+from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_inspector, InspectorHelper, AnnotatedScriptType
+from core import workbench_palette as palette
+
+
+class MeshStyle(StrEnum):
+    """How the mesh is drawn (PyVista style). A StrEnum so the Workbench passes the value."""
+    SURFACE = "surface"
+    WIREFRAME = "wireframe"
+    POINTS = "points"
+
+
+MeshStyleType = typing.Annotated[
+    MeshStyle,
+    AnnotatedScriptType(name="MeshStyle", identifier="MeshStyleType",
+                        controlled="Select|" + "|".join(s.value for s in MeshStyle), color=palette.PARAMETER),
+]
 
 
 _FALLBACK_COLORS = [
@@ -183,11 +200,12 @@ def plot_mesh_3d(
 
 @wbgeo_component(identifier='wbgeo::inspect_mesh_3d',
                  title='Plot Mesh in 3D',
-                 description='...')
+                 description='3D view of the mesh, coloured by geological unit. style: surface, wireframe '
+                             '(element edges only) or points (nodes only).')
 @wbgeo_inspector()
 async def inspect_implicit_mesh_3d(
-    mesh_results: MeshResults, _inspector: InspectorHelper):
+    mesh_results: MeshResults, _inspector: InspectorHelper, style: MeshStyleType = MeshStyle.SURFACE.value):
   # load structural_model_result from the execution trace
   structural_model_result = await (await _inspector.trace(StructuralModelResults)).get_value()
   # and call the render function with both the mesh_results and the object from our trace
-  plot_mesh_3d(mesh_results, structural_model_result, "surface", True)
+  plot_mesh_3d(mesh_results, structural_model_result, MeshStyle(style).value, True)

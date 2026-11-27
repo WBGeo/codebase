@@ -269,7 +269,7 @@ Fixed (not adjustable): Softplus activation, the weight of the gradient-magnitud
 
 ## Visualisation and Inspection
 
-> **Workbench:** Where available, these are exposed as inspector functions with limited functionality in the visual interface (visual DSL) — parameters are fixed; the codebase functions below expose the full set of options.
+> **Workbench:** Where available, these are exposed as inspector functions with limited functionality in the visual interface (visual DSL) — only some parameters can be set there (noted per function); the codebase functions below expose the full set of options.
 
 The following components allow quick inspection of input data and model results without leaving the Workbench.
 
@@ -319,7 +319,7 @@ structural_model_result.structural_frame.detailed_report()
 - **`off_screen`** *(optional)*: Render off-screen with no window — required before calling `.screenshot()` without `show()`. Default `False`.
 - **`show`** *(optional)*: If `True`, opens the interactive window immediately; set `False` to add further actors before displaying. Default `True`.
 
-The Workbench version calls this with `mesh_type="masked"` and `show_surface_meshes=True`.
+The Workbench version exposes `mesh_type` as a drop-down (default `"masked"`); faults use the same type where it exists, otherwise `"unmasked"`. The other options keep their defaults.
 
 ```python
 plot_structural_model_3D(structural_model_result.structural_frame, mesh_type="masked", fault_opacity=0.5)
@@ -335,6 +335,8 @@ plot_structural_model_3D(structural_model_result.structural_frame, mesh_type="ma
 - **`show_input_data`** *(optional)*: Overlay input surface points and orientation arrows. Default `True`.
 - **`show_grid`** *(optional)*: Outline the grid cells the slice cuts — uniform voxels on a Regular Grid, cells of different sizes on an Octree Grid. Default `False`.
 - **`title_suffix`** *(optional)*: Text appended to the plot title. Default `""`.
+
+The Workbench version exposes `axis` (a choice of x, y or z), `index` (empty = the mid-point) and `show_grid`; the other options keep their defaults.
 
 ```python
 plot_structural_model_2D(structural_model_result.structural_frame, axis="x", index=20)
@@ -366,6 +368,8 @@ fault_model_result.fault_frame.detailed_report()
 - **`notebook`** *(optional)*: Use PyVista's notebook rendering mode. Default `False`.
 - **`show`** *(optional)*: If `True`, opens the interactive window immediately. Default `True`.
 
+The Workbench version exposes `mesh_type` as a drop-down (default `"unmasked"`); the other options keep their defaults.
+
 ```python
 plot_fault_model_3D(fault_model_result.fault_frame, show_domain_map=True, domain_opacity=0.2)
 ```
@@ -379,6 +383,8 @@ plot_fault_model_3D(fault_model_result.fault_frame, show_domain_map=True, domain
 - **`show_input_data`** *(optional)*: Plot input surface points, if available. Default `True`.
 - **`show_fault_contours`** *(optional)*: Overlay fault isolines. Default `True`.
 - **`show_grid`** *(optional)*: Outline the grid cells the slice cuts, as in `plot_structural_model_2D`. Default `False`.
+
+The Workbench version exposes `axis` (a choice of x, y or z), `index` (empty = the mid-point) and `show_grid`, as in `Plot Model Result 2D`.
 
 ```python
 plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)
