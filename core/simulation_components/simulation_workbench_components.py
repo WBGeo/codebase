@@ -20,7 +20,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, 
     AnnotatedScriptType, BasicallyABufferedFile
 from py_api_wbgeo.smartcontrols import CtrlGroup, CtrlLabel, SmartInput, SmartInputFormData
 
-from core.object_components import MeshResults, StructuralModelResults, SimulationResults
+from core.object_components import MeshResults, StructuralModelResults, SimulationResults, SliceAxis, SliceAxisType
 from core.meshing_components.explicit.unstructured.mesh_data import LithoMappingMode, LithoMappingModeType, WellData
 from core.simulation_components.simulation_packages.sfepy.sfepy_model_builder import (
     SfepyHydrothermalProblemBuilder, SfepyCustomBuilder, SfepyProblem, RockUnitProperties, FluidProperties,
@@ -881,9 +881,11 @@ def _saved_time_for_step(simulation_result: SimulationResults, time_step: int) -
     if not times:
         raise ValueError("Simulation has no saved time steps.")
     if not isinstance(time_step, int) or isinstance(time_step, bool) or not 0 <= time_step < len(times):
+        available = ", ".join(f"step {i}: {t:g}" for i, t in enumerate(times))
         raise ValueError(
             f"time_step must be an integer from 0 to {len(times) - 1} "
-            f"({len(times)} saved results); got {time_step!r}."
+            f"({len(times)} saved results); got {time_step!r}. "
+            f"Saved time steps (index: simulation time): {available}."
         )
     return times[time_step]
 
@@ -914,8 +916,10 @@ def inspect_simulation_result_plot_variable_at_a_time(
 
 @wbgeo_component(identifier='wbgeo::inspect_simulation_result_plot_cross_section_2D',
                  title='Plot Cross Section 2D',
-                 description='Compare a variable between two zero-based saved time-step indices. '
-                             'Defaults to the first and last saved steps.')
+                 description='Compare a variable between two zero-based saved time-step indices '
+                             '(defaults: the first and last saved steps) on a section normal to the chosen '
+                             'axis (x, y or z). position is the coordinate along that axis in model units; '
+                             'empty = the middle of the mesh.')
 @wbgeo_inspector()
 def inspect_simulation_result_plot_cross_section_2D(
     simulation_result: SimulationResults,
@@ -923,16 +927,26 @@ def inspect_simulation_result_plot_cross_section_2D(
     var_name: Optional[str] = None,
     time_step1: Optional[int] = None,
     time_step2: Optional[int] = None,
-    origin: Optional[AnnotatedPoint] = None,
-    normal: AnnotatedPoint = (0, 1, 0),
+    axis: SliceAxisType = SliceAxis.Y.value,
+    position: Optional[float] = None,
 ):
     times = sorted(simulation_result.nodes_by_time)
     if not times:
         raise ValueError("Simulation has no saved time steps.")
-    # Default to the mesh centroid so the slicing plane intersects the domain
-    # for any model extent; a fixed default point misses models in real coordinates.
-    if origin is None:
-        origin = tuple(simulation_result.nodes_by_time[times[0]].mean(axis=0))
+    # Axis-aligned section like the structural 2D plots; plot_cross_section_2D itself also
+    # takes tilted planes (any origin/normal) for use in Python.
+    dim = "xyz".index(SliceAxis(axis).value)
+    normal = tuple(1.0 if i == dim else 0.0 for i in range(3))
+    nodes = simulation_result.nodes_by_time[times[0]]
+    # The mesh centroid keeps the plane inside the domain for any model extent.
+    origin = [float(v) for v in nodes.mean(axis=0)]
+    if position is not None:
+        low, high = float(nodes[:, dim].min()), float(nodes[:, dim].max())
+        if not low <= position <= high:
+            raise ValueError(f"position={position:g} is outside the mesh: along {SliceAxis(axis).value} "
+                             f"it must be between {low:g} and {high:g}.")
+        origin[dim] = float(position)
+    origin = tuple(origin)
     physical_time_a = times[0] if time_step1 is None else _saved_time_for_step(simulation_result, time_step1)
     physical_time_b = times[-1] if time_step2 is None else _saved_time_for_step(simulation_result, time_step2)
     plot_cross_section_2D(
@@ -960,7 +974,6 @@ def inspect_simulation_result_plot_variable_along_line(
     time_step: Optional[int] = None,
     p0: Optional[AnnotatedPoint] = None,
     p1: Optional[AnnotatedPoint] = None,
-    n_samples: int = 200,
 ):
     times = sorted(simulation_result.nodes_by_time)
     if not times:
@@ -980,7 +993,6 @@ def inspect_simulation_result_plot_variable_along_line(
         time=physical_time,
         p0=p0,
         p1=p1,
-        n_samples=n_samples,
     )
 
 
@@ -998,7 +1010,6 @@ def inspect_simulation_result_plot_variable_time_series(
     point: Optional[AnnotatedPoint] = None,
     time_step_start: Optional[int] = None,
     time_step_end: Optional[int] = None,
-    decimals: int = 3,
 ):
     # Default to the mesh centroid (as the cross-section inspector does), so
     # leaving the Point input empty samples inside the domain instead of
@@ -1011,7 +1022,6 @@ def inspect_simulation_result_plot_variable_time_series(
         simulation_result,
         var_name=var_name,
         point=point,
-        decimals=decimals,
         time_step_start=time_step_start,
         time_step_end=time_step_end,
     )

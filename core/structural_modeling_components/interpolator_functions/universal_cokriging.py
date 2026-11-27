@@ -11,18 +11,20 @@ Notes
 -----
 - The function does NOT mutate the passed `group`.
 - `group.structural_elements` are assumed ordered youngest -> oldest (framework convention).
-- Axis order / transposes are preserved exactly as implemented.
+- The scalar field is returned in ZYX shape (reshaped to the grid resolution, then transposed).
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, TypeAlias
+import uuid
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import gempy as gp
 
+from core.structural_modeling_components.interpolator_functions.fitted_field import Extent6
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_gradients import normalize_vectors
 
 # -----------------------------------------------------------------------------
@@ -30,6 +32,29 @@ from core.structural_modeling_components.structural_modeling_utility.surface_mes
 # -----------------------------------------------------------------------------
 FloatArray: TypeAlias = npt.NDArray[np.floating]
 ScalarFieldAndValues: TypeAlias = Tuple[np.ndarray, Dict[str, float]]
+
+
+def uck_input_problem(surface_points_df: pd.DataFrame, element_names: Sequence[str]) -> Optional[str]:
+    """
+    Check whether Universal Co-Kriging can be fitted to the surface points of one group
+    (in one fault domain).
+
+    GemPy takes the value of each formation from that formation's own surface points,
+    so every formation of the group needs at least one point. (Orientations are
+    checked separately.)
+
+    Returns a description of the problem for the user, or None if the points are sufficient.
+    """
+    present = set(surface_points_df["formation"].astype(str))
+    missing = [name for name in element_names if name not in present]
+    if not missing:
+        return None
+    listed = ", ".join(f"'{name}'" for name in missing)
+    return (
+        f"needs surface points of every formation of the group, but there are none of {listed}. "
+        f"Add surface points of {'this formation' if len(missing) == 1 else 'these formations'} here, "
+        f"or use another method."
+    )
 
 
 def interpolate_group_universal_cokriging(
@@ -60,7 +85,7 @@ def interpolate_group_universal_cokriging(
     Returns
     -------
     scalar_field : np.ndarray
-        Rescaled scalar field. Reshape/transposes are preserved from the original code.
+        Rescaled scalar field in ZYX shape.
     scalar_values_by_element : dict[str, float]
         Rescaled scalar values mapping `element_name -> isovalue` (targets 1..n).
 
@@ -72,30 +97,210 @@ def interpolate_group_universal_cokriging(
     RuntimeError
         If GemPy returns an unexpected number of scalar values at surface points.
     """
+    group_elem_names = [e.name for e in group.structural_elements]
+    geo_model = _build_gempy_model(
+        group.name, group_elem_names, grid.extent, grid.resolution,
+        group_surface_points_df, group_orientations_points_df,
+    )
+
+    # ---- compute ----
+    gp.compute_model(geo_model)
+
+    # ---- fetch results ----
+    scalar_values_by_element = _scalar_values_by_element(
+        group.name, group_elem_names, geo_model.solutions.raw_arrays.scalar_field_at_surface_points[0]
+    )
+
+    raw_scalar_field = geo_model.solutions.raw_arrays.scalar_field_matrix[0]
+    scalar_field = np.asarray(raw_scalar_field, dtype=float).reshape(tuple(grid.resolution)).T
+
+    # ---- rescale scalar field so that element isosurfaces map exactly to 1..n ----
+    # Piecewise affine (each interval between two surfaces separately). The global affine
+    # alternative, `affine_rescale_scalar_field`, is not used.
+    rescaled_scalar_field, rescaled_scalar_values_by_element = rescale_scalar_field_safe(
+        scalar_field=scalar_field,
+        scalar_values_by_element=scalar_values_by_element,
+    )
+
+    return rescaled_scalar_field, rescaled_scalar_values_by_element
+
+
+class GemPyFittedField:
+    """
+    A fitted single-series GemPy model, evaluable anywhere through GemPy's custom grid.
+
+    GemPy keeps the solved kriging weights in its in-memory cache, so each
+    evaluation only computes the kernel at the new points (about 50 µs per point
+    on the CPU; GemPy's dense grid and its own meshes are switched off). Group
+    fields are rescaled like :func:`interpolate_group_universal_cokriging`'s, so
+    the element surfaces sit at 1..n; fault fields stay raw, like the regular
+    fault interpolation.
+
+    Attributes:
+        scalar_values: Element name -> isovalue (1..n when rescaled, else GemPy's own).
+    """
+
+    def __init__(self, geo_model: Any, raw_scalar_values: Dict[str, float], rescale: bool = True) -> None:
+        self._geo_model = geo_model
+        self._raw_scalar_values = raw_scalar_values
+        self._rescale = rescale
+        if rescale:
+            _, self.scalar_values = rescale_scalar_field_safe(np.zeros(0), raw_scalar_values)
+        else:
+            self.scalar_values = dict(raw_scalar_values)
+
+    def evaluate(self, xyz: FloatArray) -> FloatArray:
+        """Field values at points of shape ``(M, 3)``; returns shape ``(M,)``."""
+        points = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
+        raw = _gempy_scalar_field_at(self._geo_model, points)
+        if not self._rescale:
+            return raw
+        rescaled, _ = rescale_scalar_field_safe(raw, self._raw_scalar_values)
+        return rescaled
+
+
+def fit_group_universal_cokriging(
+    *,
+    group: Any,  # expected: StructuralGroup-like (group.name, group.structural_elements with .name)
+    extent: Extent6,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> GemPyFittedField:
+    """
+    Fit the GemPy (Universal Co-Kriging) scalar field of a single structural group without evaluating it.
+
+    Same inputs, checks and scalar values as :func:`interpolate_group_universal_cokriging`;
+    with the same extent, evaluating the result at a regular grid's cell centers
+    gives that function's scalar field up to float32 rounding.
+
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object, as for :func:`interpolate_group_universal_cokriging`.
+    extent
+        Model extent ``(xmin, xmax, ymin, ymax, zmin, zmax)``. GemPy normalizes
+        coordinates by it, so the field depends on it.
+    group_surface_points_df
+        DataFrame with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        DataFrame with columns ["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"].
+
+    Returns
+    -------
+    GemPyFittedField
+        The fitted field and the rescaled element scalar values (1..n).
+    """
+    return _fit_gempy_series(
+        group.name, [e.name for e in group.structural_elements], extent,
+        group_surface_points_df, group_orientations_points_df, rescale=True,
+    )
+
+
+def fit_fault_universal_cokriging(
+    *,
+    fault_name: str,
+    extent: Extent6,
+    fault_surface_points_df: pd.DataFrame,
+    fault_orientations_points_df: pd.DataFrame,
+) -> GemPyFittedField:
+    """
+    Fit the GemPy scalar field of a single fault without evaluating it.
+
+    The fault counterpart of :func:`fit_group_universal_cokriging`, matching
+    ``general_faults.interpolate_group_universal_cokriging_for_faults``: one series
+    with the fault as its only surface, and the field is NOT rescaled, so
+    ``scalar_values[fault_name]`` is GemPy's own isovalue of the fault surface.
+
+    Parameters
+    ----------
+    fault_name
+        Name of the fault; the ``formation`` of its surface points and orientations.
+    extent
+        Model extent ``(xmin, xmax, ymin, ymax, zmin, zmax)``. GemPy normalizes
+        coordinates by it, so the field depends on it.
+    fault_surface_points_df
+        DataFrame with columns ["X", "Y", "Z", "formation"].
+    fault_orientations_points_df
+        DataFrame with columns ["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"].
+
+    Returns
+    -------
+    GemPyFittedField
+        The raw fault field and ``{fault_name: isovalue}``.
+    """
+    return _fit_gempy_series(
+        fault_name, [fault_name], extent,
+        fault_surface_points_df, fault_orientations_points_df, rescale=False,
+    )
+
+
+def _fit_gempy_series(
+    series_name: str,
+    element_names: List[str],
+    extent: Extent6,
+    surface_points_df: pd.DataFrame,
+    orientations_df: pd.DataFrame,
+    *,
+    rescale: bool,
+) -> GemPyFittedField:
+    """Build a single-series GemPy model over ``extent``, solve it once and wrap it for evaluation."""
+    geo_model = _build_gempy_model(
+        series_name, element_names, extent, (2, 2, 2), surface_points_df, orientations_df
+    )
+    # GemPy caches solved weights under "<cache_model_name>.<stack>" and checks a hash of
+    # the input's repr (which numpy truncates for large arrays). A name of its own keeps
+    # this field's weights from being replaced, or mistaken, by another series'.
+    geo_model.interpolation_options.cache_model_name = f"wbgeo_fit_{uuid.uuid4().hex}"
+    # The first evaluation solves (and caches) the weights and gives the values at the surface points.
+    _gempy_scalar_field_at(geo_model, surface_points_df[["X", "Y", "Z"]].to_numpy(dtype=np.float64))
+    raw_at_sp = geo_model.solutions.octrees_output[0].outputs_centers[0].scalar_field_at_sp
+    raw_scalar_values = _scalar_values_by_element(series_name, element_names, raw_at_sp)
+    return GemPyFittedField(geo_model, raw_scalar_values, rescale=rescale)
+
+
+def _gempy_scalar_field_at(geo_model: Any, points: FloatArray) -> FloatArray:
+    """Raw GemPy scalar field at points, computed on the custom grid alone."""
+    gp.set_custom_grid(geo_model.grid, points)
+    geo_model.grid.active_grids = gp.data.Grid.GridTypes.CUSTOM
+    gp.compute_model(geo_model)
+    output = geo_model.solutions.octrees_output[0].outputs_centers[0]
+    # GemPy puts its own root octree cells in front of the custom grid; slice ours out.
+    return np.asarray(output.exported_fields.scalar_field[output.grid.custom_grid_slice], dtype=np.float64)
+
+
+def _build_gempy_model(
+    series_name: str,
+    element_names: List[str],
+    extent: Sequence[float],
+    resolution: Sequence[int],
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> Any:
+    """Check the inputs and build the single-series GemPy model (shared by all entry points)."""
     # ---- validation ----
     if group_surface_points_df is None or group_surface_points_df.empty:
-        raise ValueError(f"No surface points provided for group '{group.name}'")
+        raise ValueError(f"No surface points provided for group '{series_name}'")
     if group_orientations_points_df is None or group_orientations_points_df.empty:
-        raise ValueError(f"No orientations provided for group '{group.name}'")
+        raise ValueError(f"No orientations provided for group '{series_name}'")
 
     for col in ("X", "Y", "Z", "formation"):
         if col not in group_surface_points_df.columns:
-            raise ValueError(f"Surface points for '{group.name}' missing column '{col}'")
+            raise ValueError(f"Surface points for '{series_name}' missing column '{col}'")
     for col in ("X", "Y", "Z", "G_x", "G_y", "G_z", "formation"):
         if col not in group_orientations_points_df.columns:
-            raise ValueError(f"Orientations for '{group.name}' missing column '{col}'")
+            raise ValueError(f"Orientations for '{series_name}' missing column '{col}'")
 
     # Ensure the formations in the DFs belong to this group
-    group_elem_names = [e.name for e in group.structural_elements]
+    group_elem_names = list(element_names)
     unknown_sp = set(group_surface_points_df["formation"].unique()) - set(group_elem_names)
     if unknown_sp:
         raise ValueError(
-            f"Surface points for group '{group.name}' contain formations not in the group: {sorted(unknown_sp)}"
+            f"Surface points for group '{series_name}' contain formations not in the group: {sorted(unknown_sp)}"
         )
     unknown_ori = set(group_orientations_points_df["formation"].unique()) - set(group_elem_names)
     if unknown_ori:
         raise ValueError(
-            f"Orientations for group '{group.name}' contain formations not in the group: {sorted(unknown_ori)}"
+            f"Orientations for group '{series_name}' contain formations not in the group: {sorted(unknown_ori)}"
         )
 
     # ---- build GemPy data tables ----
@@ -131,40 +336,28 @@ def interpolate_group_universal_cokriging(
     # NOTE: GemPy typing expects list/ndarray; convert tuples at call site only.
     geo_model = gp.create_geomodel(
         project_name="uk_group",
-        extent=list(grid.extent),
-        resolution=list(grid.resolution),
+        extent=list(extent),
+        resolution=list(resolution),
         structural_frame=gp_structural_frame,
     )
+    # GemPy's own surface meshes are never used here and dominate the compute time.
+    geo_model.interpolation_options.evaluation_options.mesh_extraction = False
 
     # Map one series (group) to its surfaces (elements)
-    series_to_surfaces: Dict[str, list[str]] = {group.name: group_elem_names}
+    series_to_surfaces: Dict[str, list[str]] = {series_name: group_elem_names}
     gp.map_stack_to_surfaces(gempy_model=geo_model, mapping_object=series_to_surfaces)
 
-    # ---- compute ----
-    gp.compute_model(geo_model)
+    return geo_model
 
-    # ---- fetch results ----
-    raw_scalar_vals = geo_model.solutions.raw_arrays.scalar_field_at_surface_points[0]
+
+def _scalar_values_by_element(series_name: str, group_elem_names: List[str], raw_scalar_vals: Any) -> Dict[str, float]:
+    """Element name -> GemPy's scalar value at its surface points (before rescaling)."""
     if len(raw_scalar_vals) != len(group_elem_names):
         raise RuntimeError(
-            f"GemPy returned {len(raw_scalar_vals)} scalar values but group '{group.name}' has "
+            f"GemPy returned {len(raw_scalar_vals)} scalar values but group '{series_name}' has "
             f"{len(group_elem_names)} elements."
         )
-    scalar_values_by_element: Dict[str, float] = {
-        name: float(val) for name, val in zip(group_elem_names, raw_scalar_vals)
-    }
-
-    raw_scalar_field = geo_model.solutions.raw_arrays.scalar_field_matrix[0]
-    scalar_field = np.asarray(raw_scalar_field, dtype=float).reshape(tuple(grid.resolution)).T
-
-    # ---- rescale scalar field so that element isosurfaces map exactly to 1..n ----
-    # Original code keeps affine_rescale_scalar_field commented out; preserved.
-    rescaled_scalar_field, rescaled_scalar_values_by_element = rescale_scalar_field_safe(
-        scalar_field=scalar_field,
-        scalar_values_by_element=scalar_values_by_element,
-    )
-
-    return rescaled_scalar_field, rescaled_scalar_values_by_element
+    return {name: float(val) for name, val in zip(group_elem_names, raw_scalar_vals)}
 
 
 def affine_rescale_scalar_field(

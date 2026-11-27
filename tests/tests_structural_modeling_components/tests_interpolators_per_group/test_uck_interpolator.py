@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,6 +26,10 @@ class FakeGroup:
     def __init__(self, name: str, element_names: list[str]):
         self.name = name
         self.structural_elements = [FakeElem(n) for n in element_names]
+
+
+def _fake_interpolation_options() -> SimpleNamespace:
+    return SimpleNamespace(evaluation_options=SimpleNamespace(mesh_extraction=True))
 
 
 class FakeGrid:
@@ -174,6 +180,7 @@ def test_happy_path_calls_gempy_and_rescales(monkeypatch):
     class FakeGeoModel:
         def __init__(self):
             self.solutions = FakeSolutions()
+            self.interpolation_options = _fake_interpolation_options()
 
     def fake_create_geomodel(project_name, extent, resolution, structural_frame):
         captured["create_geomodel"] = {
@@ -214,6 +221,10 @@ def test_happy_path_calls_gempy_and_rescales(monkeypatch):
         group_surface_points_df=sp,
         group_orientations_points_df=od,
     )
+
+    # GemPy's own surface meshes are switched off
+    model = captured["map_stack_to_surfaces"]["model"]
+    assert model.interpolation_options.evaluation_options.mesh_extraction is False
 
     # GemPy create_geomodel should be called with list(...) conversions
     assert captured["create_geomodel"]["extent"] == list(grid.extent)
@@ -265,6 +276,7 @@ def test_raises_if_gempy_returns_wrong_number_of_scalar_values(monkeypatch):
     class FakeGeoModel:
         def __init__(self):
             self.solutions = type("S", (), {"raw_arrays": FakeRawArrays()})()
+            self.interpolation_options = _fake_interpolation_options()
 
     monkeypatch.setattr(mod.gp, "create_geomodel", lambda **kw: FakeGeoModel())
     monkeypatch.setattr(mod.gp, "map_stack_to_surfaces", lambda **kw: None)
@@ -321,3 +333,24 @@ def test_gradient_length_does_not_weight_orientations(monkeypatch):
     np.testing.assert_allclose(captured["G_x"], [0.6, 0.0])
     np.testing.assert_allclose(captured["G_y"], [0.8, 0.0])
     np.testing.assert_allclose(captured["G_z"], [0.0, 1.0])
+
+
+# --- minimum data: every formation of the group needs surface points -----------
+
+from core.structural_modeling_components.interpolator_functions.universal_cokriging import (  # noqa: E402
+    uck_input_problem)
+
+
+def _formations(names: list[str]) -> pd.DataFrame:
+    return pd.DataFrame({"X": 0.0, "Y": 0.0, "Z": 0.0, "formation": names})
+
+
+def test_uck_input_problem_one_point_per_formation_is_enough():
+    assert uck_input_problem(_formations(["top", "base"]), ["top", "base"]) is None
+    assert uck_input_problem(_formations(["top"]), ["top"]) is None
+
+
+def test_uck_input_problem_names_missing_formations():
+    problem = uck_input_problem(_formations(["top", "top"]), ["top", "middle", "base"])
+    assert "'middle', 'base'" in problem and "these formations" in problem
+    assert "this formation" in uck_input_problem(_formations(["top"]), ["top", "base"])

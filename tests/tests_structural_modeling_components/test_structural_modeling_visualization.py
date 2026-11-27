@@ -126,6 +126,19 @@ def test_plot_fault_model_3D_no_crosscut_line_for_parallel_faults():
     assert crosscut_actors == []
 
 
+def test_plot_fault_model_3D_after_a_json_round_trip():
+    """In the Workbench the fault frame arrives from JSON, with plain string mesh keys."""
+    from pydantic import TypeAdapter
+    v1, e1 = _rect_plane((0.5, 0, 0), (0.5, 1, 0), (0.5, 1, 1), (0.5, 0, 1))
+    adapter = TypeAdapter(FaultFrame)
+    ff = adapter.validate_json(adapter.dump_json(_meshed_fault_frame(("F", v1, e1))))
+
+    plot_fault_model_3D(ff, show=False, notebook=True)  # must not raise
+    # a mesh type that no fault has: warns and lists the available ones
+    with pytest.warns(UserWarning, match="available: unmasked"):
+        plot_fault_model_3D(ff, show=False, notebook=True, mesh_type=FaultMeshType.MASKED)
+
+
 def test_plot_fault_model_3D_highlight_crosscuts_can_be_disabled():
     v1, e1 = _rect_plane((0.5, 0, 0), (0.5, 1, 0), (0.5, 1, 1), (0.5, 0, 1))
     v2, e2 = _rect_plane((0, 0, 0.5), (1, 0, 0.5), (1, 1, 0.5), (0, 1, 0.5))
@@ -210,9 +223,127 @@ def test_structural_model_3D_arrow_length_follows_model_size(monkeypatch, size):
         get_surface_points_for_element=lambda name: None,
         get_orientations_for_element=lambda name: ori,
         fault_frame=None,
+        lith_block=None,  # not computed
         grid=RegularGrid(extent=(0, size, 0, size, 0, size), resolution=(4, 4, 4)),
     )
 
     plot_structural_model_3D(frame, show_surface_meshes=False, off_screen=True, show=False)
 
     assert scales == [pytest.approx(0.05 * size * np.sqrt(3))]
+
+
+# --- Plot Model Result 2D: axis and index -------------------------------------------------
+
+def _frame_on_grid(resolution=(5, 4, 3)) -> SimpleNamespace:
+    """Just enough of a frame for plot_structural_model_2D's index check (runs before anything else is read)."""
+    return SimpleNamespace(grid=RegularGrid(extent=(0, 1, 0, 1, 0, 1), resolution=resolution))
+
+
+@pytest.mark.parametrize("axis, index", [("x", 5), ("y", 4), ("z", -1)])
+def test_plot_structural_model_2D_rejects_index_outside_the_grid(axis, index):
+    with pytest.raises(ValueError, match=f"along {axis} it must be between 0 and"):
+        viz.plot_structural_model_2D(_frame_on_grid(), axis=axis, index=index)
+
+
+def test_inspector_2D_forwards_axis_and_index(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_2D", lambda frame, **kw: received.update(kw, frame=frame))
+    result = SimpleNamespace(structural_frame="frame")
+
+    swc.inspect_structural_model_result_plot_structural_model_2D(result, None, axis="z", index=7, show_grid=True)
+
+    assert received == {"frame": "frame", "axis": "z", "index": 7, "show_grid": True}
+
+
+def test_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_2D", lambda frame, **kw: received.update(kw))
+
+    swc.inspect_structural_model_result_plot_structural_model_2D(SimpleNamespace(structural_frame="frame"), None)
+
+    assert received == {"axis": "y", "index": None, "show_grid": False}
+
+
+def test_slice_axis_is_a_select_of_x_y_z():
+    import core.structural_modeling_components.structural_workbench_components as swc
+    annotation = swc.SliceAxisType.__metadata__[0]
+    assert annotation.kwargs["controlled"] == "Select|x|y|z"
+
+
+# --- Plot Fault Model Result 2D: axis and index -------------------------------------------
+
+@pytest.mark.parametrize("axis, index", [("x", 4), ("z", -1)])
+def test_plot_fault_model_2D_rejects_index_outside_the_grid(axis, index):
+    ff = _fault_frame_with_scalar_fields(domain_map=np.zeros((4, 4, 4)))
+    with pytest.raises(ValueError, match=f"along {axis} it must be between 0 and 3"):
+        plot_fault_model_2D(ff, axis=axis, index=index)
+
+
+def test_plot_fault_model_2D_accepts_the_last_cell():
+    ff = _fault_frame_with_scalar_fields(domain_map=np.zeros((4, 4, 4)))
+    plot_fault_model_2D(ff, axis="x", index=3)  # must not raise
+
+
+def test_fault_inspector_2D_forwards_axis_and_index(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_fault_model_2D", lambda frame, **kw: received.update(kw, frame=frame))
+
+    swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None, axis="x", index=2,
+                                                            show_grid=True)
+
+    assert received == {"frame": "ff", "axis": "x", "index": 2, "show_grid": True}
+
+
+def test_fault_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_fault_model_2D", lambda frame, **kw: received.update(kw))
+
+    swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None)
+
+    assert received == {"axis": "y", "index": None, "show_grid": False}
+
+
+# --- 3D inspectors: mesh type dropdowns ---------------------------------------------------
+
+def test_mesh_type_selects_list_all_mesh_types():
+    import core.structural_modeling_components.structural_workbench_components as swc
+    assert swc.GeoMeshTypeType.__metadata__[0].kwargs["controlled"] == \
+        "Select|masked|unmasked|combined|extended|extended_masked"
+    assert swc.FaultMeshTypeType.__metadata__[0].kwargs["controlled"] == \
+        "Select|masked|unmasked|extended|extended_masked"
+
+
+@pytest.mark.parametrize("mesh_type", ["masked", "extended_masked"])
+def test_inspector_3D_forwards_mesh_type(monkeypatch, mesh_type):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_3D", lambda frame, **kw: received.update(kw))
+
+    swc.inspect_structural_model_result_plot_structural_model_3D(
+        SimpleNamespace(structural_frame="frame"), None, mesh_type=mesh_type)
+
+    assert received["mesh_type"] == mesh_type and received["show_surface_meshes"] is True
+
+
+def test_inspector_3D_defaults_to_masked(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = {}
+    monkeypatch.setattr(swc, "plot_structural_model_3D", lambda frame, **kw: received.update(kw))
+    swc.inspect_structural_model_result_plot_structural_model_3D(SimpleNamespace(structural_frame="frame"), None)
+    assert received["mesh_type"] == "masked"
+
+
+def test_fault_inspector_3D_forwards_mesh_type_and_defaults_to_unmasked(monkeypatch):
+    import core.structural_modeling_components.structural_workbench_components as swc
+    received = []
+    monkeypatch.setattr(swc, "plot_fault_model_3D", lambda frame, **kw: received.append(kw["mesh_type"]))
+
+    swc.inspect_fault_model_result_plot_structural_model_3D_sf(SimpleNamespace(fault_frame="ff"), None)
+    swc.inspect_fault_model_result_plot_structural_model_3D_sf(SimpleNamespace(fault_frame="ff"), None,
+                                                               mesh_type="extended")
+
+    assert received == ["unmasked", "extended"]

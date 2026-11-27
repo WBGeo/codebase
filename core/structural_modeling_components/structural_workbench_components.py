@@ -8,7 +8,7 @@ from py_api_wbgeo.nodesapi import wbgeo_component, wbgeo_type, wbgeo_inspector, 
 from pydantic import BaseModel
 
 from core.object_components import InputData_StructuralElements, InputData_FaultElements, \
-  StructuralModelResults, FaultModelResults
+  StructuralModelResults, FaultModelResults, SliceAxis, SliceAxisType
 from core.structural_modeling_components import general, general_faults
 from core.structural_modeling_components.interpolator_functions import interpolator_parameters
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import \
@@ -20,7 +20,21 @@ from core.structural_modeling_components.structural_objects.grids import grid_cl
 from core.structural_modeling_components.structural_model_export import (StructuralModelExportFormat,
                                                                          export_structural_model as _export)
 from core.structural_modeling_components.structural_model_file import FILE_EXTENSION, load_structural_model
+from core.structural_modeling_components.structural_objects.structural_objects import GeoMeshType, FaultMeshType
 from core import workbench_palette as palette
+
+
+# Dropdowns for the surface mesh type of the 3D plots (see the Output section of the structural modeling manual)
+GeoMeshTypeType = typing.Annotated[
+  GeoMeshType,
+  AnnotatedScriptType(name='GeoMeshType', identifier='GeoMeshTypeType',
+                      controlled='Select|' + '|'.join(m.value for m in GeoMeshType), color=palette.PARAMETER),
+]
+FaultMeshTypeType = typing.Annotated[
+  FaultMeshType,
+  AnnotatedScriptType(name='FaultMeshType', identifier='FaultMeshTypeType',
+                      controlled='Select|' + '|'.join(m.value for m in FaultMeshType), color=palette.PARAMETER),
+]
 
 
 class StructuralFrameInputOptions_Frame(pydantic.BaseModel):
@@ -72,7 +86,7 @@ from py_api_wbgeo.smartcontrols import CtrlLabel, CtrlSelect, CtrlInt, CtrlFloat
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options',
                  title='structural_modeling_smart_options')
 def structural_modeling_smart_options(data_elements: InputData_StructuralElements,
-                                      grid: grid_classes.RegularGrid,
+                                      grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
                                       fault_model: typing.Optional[FaultModelResults] = None
                                       ) -> CtrlGroup:
   """(Internal) component that builds the smart input form for interpolation method selection."""
@@ -172,10 +186,66 @@ def structural_modeling_smart_options_to_data(
   return smartcontrols.form_data_to_wbgeo_type_data(_input, StructuralFrameInputOptions)
 
 
+def pre_check_fault_model_grid(grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
+                               fault_model: typing.Optional[FaultModelResults] = None) -> None:
+  """
+  Pre-check: the fault model must have been computed on the grid connected to
+  the structural model. Fault domains are defined per cell of that grid, so a
+  fault model from another grid can't be combined with this one.
+  """
+  if fault_model is None:
+    return
+  fault_grid = fault_model.fault_frame.grid
+  if fault_grid != grid:
+    raise ValueError(
+      "The fault model was computed on a different grid than the one connected to this component "
+      f"(fault model: {fault_grid}, connected: {grid}). Connect the same grid to both components."
+    )
+
+
 SmartStructuralFrameInputOptions = typing.Annotated[
   StructuralFrameInputOptions, SmartInput(inputs=['data_elements'],
                                           to_form=structural_modeling_smart_options,
                                           to_data=structural_modeling_smart_options_to_data)]
+
+
+def _build_frame_with_options(elements: InputData_StructuralElements,
+                              grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
+                              fault_model: typing.Optional[FaultModelResults],
+                              options: typing.Optional[StructuralFrameInputOptions]):
+  """Build the structural frame and apply the interpolation methods, parameters and fault activity."""
+  frame = general.build_structural_frame(input_data_elements=elements,
+                                         grid=grid,
+                                         fault_model_results=fault_model
+                                         )
+
+  if options and options.root and options.root.frame:
+    for frame_name, frame_options in options.root.frame.items():
+      frame[frame_name].set_interpolation_method(frame_options.method)
+      params = frame_options.get_params()
+      if params is not None:
+        # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
+        frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
+
+  if options and options.root and options.root.faults:
+    for fault_name, group_name in options.root.faults.items():
+      if group_name != '<All>':
+        frame.set_fault_activity_by_group(fault_name=fault_name, group_name=group_name)
+
+  return frame
+
+
+def check_interpolation_inputs(elements: InputData_StructuralElements,
+                               grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
+                               fault_model: typing.Optional[FaultModelResults] = None,
+                               options: SmartStructuralFrameInputOptions = None) -> None:
+  """
+  Pre-check: every group has enough input data for its interpolation method in
+  every fault domain (e.g. at least 4 surface points for RBF with the kernel
+  thin_plate_spline). Lists all problems at once, naming group and domain.
+  """
+  frame = _build_frame_with_options(elements, grid, fault_model, options)
+  general.validate_interpolation_inputs(frame=frame, fault_frame=frame.fault_frame)
 
 # Register this function as a component
 @wbgeo_component(description='Computes a Structural Geological model from input data, grid, and (optionally) fault model. With smart options for interpolation methods and parameters.',
@@ -185,12 +255,14 @@ SmartStructuralFrameInputOptions = typing.Annotated[
                  group='Inputs',
                  identifier='wbgeo::structural_modeling',  # a unique identifier
                  return_name='structural_model',  # the name for the returned-port
-                 input_checks=[general_faults.check_fault_model_not_crosscutting],
+                 input_checks=[general_faults.check_fault_model_not_crosscutting,
+                               check_interpolation_inputs,
+                               pre_check_fault_model_grid],
                  positionInGroup=880,
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
-    grid: grid_classes.RegularGrid,
+    grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
     fault_model: typing.Optional[FaultModelResults] = None,
     options: SmartStructuralFrameInputOptions = None,
 ) -> StructuralModelResults:
@@ -216,33 +288,18 @@ def structural_modeling(
   :return: StructuralModelResults containing scalar fields, lithology block, and surface meshes.
 
   Raises:
-      ValueError: fault_model is connected and has cross_cutting=True.
+      ValueError: fault_model is connected and has cross_cutting=True, or was
+          computed on a different grid than the one connected here.
   """
   # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
   # so also enforced here rather than relying solely on the Workbench's
   # input_checks catching the connection.
   general_faults.check_fault_model_not_crosscutting(fault_model)
+  pre_check_fault_model_grid(grid, fault_model)
 
-  frame = general.build_structural_frame(input_data_elements=elements,
-                                         grid=grid,
-                                         fault_model_results=fault_model
-                                         )
-
-  # Apply Options (if present)
-  if options and options.root and options.root.frame:
-    for frame_name, frame_options in options.root.frame.items():
-      frame[frame_name].set_interpolation_method(frame_options.method)
-      params = frame_options.get_params()
-      if params is not None:
-        # frame[frame_name].set_interpolation_params(params) # todo: Does not work due to very weird defaults
-        frame[frame_name].configure_interpolation_params(**params.model_dump(exclude_none=True))
-
-  # Apply fault set_fault_activity_by_group
-  if options and options.root and options.root.faults:
-    for fault_name, group_name in options.root.faults.items():
-      if group_name != '<All>':
-        frame.set_fault_activity_by_group(fault_name=fault_name, group_name=group_name)
-
+  # The interpolation input check (check_interpolation_inputs) runs again inside
+  # compute_structural_model, before any interpolation.
+  frame = _build_frame_with_options(elements, grid, fault_model, options)
 
   structural_model_result = general.compute_structural_model(
     frame,
@@ -262,19 +319,29 @@ def inspect_structural_model_result_detailed_report(structural_model_result: Str
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_2D',
-                 title='Plot Model Result 2D')
+                 title='Plot Model Result 2D',
+                 description='2D section through the structural model, normal to the chosen axis (x, y or z). '
+                             'index is the cell along that axis (0 = first cell; on an octree grid counted in its finest cells); '
+                             'empty = the middle of the model. show_grid outlines the grid cells the section cuts.')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_2D(
-    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
-  plot_structural_model_2D(structural_model_result.structural_frame)
+    structural_model_result: StructuralModelResults, _inspector: InspectorHelper,
+    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None, show_grid: bool = False):
+  plot_structural_model_2D(structural_model_result.structural_frame, axis=SliceAxis(axis).value, index=index,
+                           show_grid=show_grid)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D_sf',
-                 title='Plot Model Result 3D')
+                 title='Plot Model Result 3D',
+                 description='3D view of the structural model surfaces. mesh_type selects which surface meshes '
+                             'are shown (masked, unmasked, combined, extended, extended_masked); faults use the '
+                             'same type where it exists, otherwise unmasked.')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_3D(
-    structural_model_result: StructuralModelResults, _inspector: InspectorHelper):
-  plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True)
+    structural_model_result: StructuralModelResults, _inspector: InspectorHelper,
+    mesh_type: GeoMeshTypeType = GeoMeshType.MASKED.value):
+  plot_structural_model_3D(structural_model_result.structural_frame, show_surface_meshes=True,
+                           mesh_type=GeoMeshType(mesh_type))
 
 
 # -----------------------------------------------------------------------------
@@ -292,7 +359,7 @@ def inspect_structural_model_result_plot_structural_model_3D(
                  )
 def compute_fault_frame(
     data_faults: InputData_FaultElements,
-    grid: grid_classes.RegularGrid,
+    grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
 ) -> FaultModelResults:
   """
   Computes the fault model from fault input data and a grid.
@@ -335,20 +402,26 @@ def inspect_fault_model_result_detailed_report(fault_model_result: FaultModelRes
 
 @wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_2D',
                  title='Plot Fault Model Result 2D',
-                 description='...')
+                 description='2D section through the fault model, normal to the chosen axis (x, y or z). '
+                             'index is the cell along that axis (0 = first cell; on an octree grid counted in its finest cells); '
+                             'empty = the middle of the model. show_grid outlines the grid cells the section cuts.')
 @wbgeo_inspector()
 def inspect_fault_model_result_plot_structural_model_2D(
-    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
-  plot_fault_model_2D(fault_model_result.fault_frame)
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper,
+    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None, show_grid: bool = False):
+  plot_fault_model_2D(fault_model_result.fault_frame, axis=SliceAxis(axis).value, index=index, show_grid=show_grid)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_3D_sf',
                  title='Plot Fault Model Result 3D',
-                 description='...')
+                 description='3D view of the fault model: fault surfaces, input data and fault domains. '
+                             'mesh_type selects which fault surface meshes are shown '
+                             '(masked, unmasked, extended, extended_masked).')
 @wbgeo_inspector()
 def inspect_fault_model_result_plot_structural_model_3D_sf(
-    fault_model_result: FaultModelResults, _inspector: InspectorHelper):
-  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True)
+    fault_model_result: FaultModelResults, _inspector: InspectorHelper,
+    mesh_type: FaultMeshTypeType = FaultMeshType.UNMASKED.value):
+  plot_fault_model_3D(fault_model_result.fault_frame, show_surface_meshes=True, mesh_type=FaultMeshType(mesh_type))
 
 
 StructuralModelExportFormatType = typing.Annotated[

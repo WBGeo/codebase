@@ -1095,11 +1095,156 @@ def _make_validate_frame(
     return frame
 
 
+def _rbf_points(formations: list[str], seed: int = 0) -> pd.DataFrame:
+    """Surface points at random positions inside a (0..4, 0..3, 0..2) grid."""
+    rng = np.random.default_rng(seed)
+    n = len(formations)
+    return pd.DataFrame({
+        "X": rng.uniform(0.1, 3.9, n), "Y": rng.uniform(0.1, 2.9, n), "Z": rng.uniform(0.1, 1.9, n),
+        "formation": formations,
+    })
+
+
 def test_validate_passes_for_valid_rbf_group():
-    """RBF with 2 elements and surface points — no fault frame — should not raise."""
+    """RBF with 2 elements and enough scattered surface points — no fault frame — should not raise."""
     grid = make_grid((4, 3, 2))
     frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0", "e1"] * 3)
     mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_fails_for_rbf_with_too_few_points():
+    """thin_plate_spline (the default kernel) needs at least 4 surface points."""
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0", "e1", "e1"])
+    with pytest.raises(ValueError, match=r"Group 'G1' \(single domain\).*at least 4 surface points"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+
+def test_validate_rbf_kernel_linear_accepts_few_points():
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, has_orientations=False)
+    frame.structural_groups[0].configure_interpolation_params(kernel="linear")
+    frame.surface_points = _rbf_points(["e0", "e1"])
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_fails_for_rbf_quintic_with_fewer_than_ten_points():
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, has_orientations=False)
+    frame.structural_groups[0].configure_interpolation_params(kernel="quintic")
+    frame.surface_points = _rbf_points(["e0", "e1"] * 4)
+    with pytest.raises(ValueError, match="at least 10 surface points"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+
+def test_validate_rbf_counts_phantom_points_of_single_element_group():
+    """
+    One element with 2 points: the phantom copies make 4 points, but all 4 lie in one
+    vertical plane, which thin_plate_spline cannot fit. With 3 points it works.
+    """
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION,
+                                 n_elements=1, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0", "e0"])
+    with pytest.raises(ValueError, match="all 4 surface points lie in one plane"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    frame.surface_points = _rbf_points(["e0", "e0", "e0"])
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_fails_for_rbf_one_flat_surface():
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, has_orientations=False)
+    pts = _rbf_points(["e0"] * 10)
+    pts["Z"] = 1.0
+    frame.surface_points = pts
+    with pytest.raises(ValueError, match="in one plane"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+
+def test_validate_ok_needs_two_points_and_counts_phantom():
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.ORDINARY_KRIGING, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0"])
+    with pytest.raises(ValueError, match=r"Ordinary Kriging: needs at least 2 surface points"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    # one element with one point: the phantom copy makes it two
+    frame = _make_validate_frame(grid, InterpolationMethod.ORDINARY_KRIGING, n_elements=1, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0"])
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_uk_needs_four_points_not_in_one_plane():
+    grid = make_grid((4, 3, 2))
+    frame = _make_validate_frame(grid, InterpolationMethod.UNIVERSAL_KRIGING, has_orientations=False)
+    frame.surface_points = _rbf_points(["e0", "e1", "e0"])
+    with pytest.raises(ValueError, match=r"Universal Kriging: fits a linear trend and needs at least 4"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    pts = _rbf_points(["e0", "e1"] * 5)
+    pts["Z"] = 1.0
+    frame.surface_points = pts
+    with pytest.raises(ValueError, match="in one plane"):
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+    frame.surface_points = _rbf_points(["e0", "e1"] * 3)
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)  # must not raise
+
+
+def test_validate_uck_needs_every_formation_in_each_fault_domain():
+    """
+    UCK takes each formation's value from its own points: in the right fault domain only
+    'e0' has points, so 'e1' is reported there. The left domain has both and passes.
+    """
+    grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
+    dom_map = np.array([0, 0, 1, 1]).reshape(4, 1, 1)
+    frame = _make_validate_frame(grid, InterpolationMethod.UNIVERSAL_COKRIGING, has_orientations=True)
+    frame.surface_points = pd.DataFrame({
+        "X": [0.5, 1.5, 2.5, 3.5], "Y": [0.5] * 4, "Z": [0.3, 0.7, 0.4, 0.6],
+        "formation": ["e0", "e1", "e0", "e0"],
+    })
+    frame.orientations = pd.DataFrame({
+        "X": [1.0, 3.0], "Y": [0.5, 0.5], "Z": [0.5, 0.5],
+        "G_x": [0.0, 0.0], "G_y": [0.0, 0.0], "G_z": [1.0, 1.0], "formation": ["e0", "e0"],
+    })
+    fake_ff = _FakeFaultFrameWithFaults(dom_map, [_FakeFaultElem("F1", {(0, 1)})])
+    frame.fault_activity = {"F1": 0}
+
+    with pytest.raises(ValueError) as exc_info:
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)
+    msg = str(exc_info.value)
+    assert "1 issue" in msg
+    assert "domain(s) [1]" in msg and "Universal Co-Kriging" in msg and "'e1'" in msg
+
+    # without the fault both formations are present: passes
+    frame.fault_activity = None
+    mod.validate_interpolation_inputs(frame=frame, fault_frame=None)
+
+
+def test_validate_fails_for_rbf_with_too_few_points_in_one_fault_domain():
+    """Enough points overall, but the fault domain on the right has only 2 → reported for that domain."""
+    grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
+    dom_map = np.array([0, 0, 1, 1]).reshape(4, 1, 1)
+    frame = _make_validate_frame(grid, InterpolationMethod.RADIAL_BASIS_FUNCTION, has_orientations=False)
+    rng = np.random.default_rng(3)
+    left_x, right_x = rng.uniform(0.1, 1.9, 8), np.array([2.5, 3.5])
+    frame.surface_points = pd.DataFrame({
+        "X": np.concatenate([left_x, right_x]),
+        "Y": rng.uniform(0.1, 0.9, 10), "Z": rng.uniform(0.1, 0.9, 10),
+        "formation": ["e0", "e1"] * 5,
+    })
+    fake_ff = _FakeFaultFrameWithFaults(dom_map, [_FakeFaultElem("F1", {(0, 1)})])
+    frame.fault_activity = {"F1": 0}
+
+    with pytest.raises(ValueError) as exc_info:
+        mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)
+    msg = str(exc_info.value)
+    assert "1 issue" in msg
+    assert "domain(s) [1]" in msg and "only 2 are available" in msg
 
 
 def test_validate_passes_for_valid_fdi_group():
@@ -1239,6 +1384,39 @@ def test_validate_passes_when_orientations_present_in_correct_domain():
     mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)  # must not raise
 
 
+def test_build_structural_frame_does_not_share_the_fault_frame():
+    """
+    The structural step writes MASKED fault meshes into the attached fault frame;
+    that must not change the FaultModelResults passed in by the caller.
+    """
+    from core.object_components import FaultModelResults, InputData_StructuralElements
+    from core.structural_modeling_components.structural_objects.structural_objects import FaultMeshType
+
+    grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
+    fault_frame = FaultFrame(fault_elements=[FaultElement(name="F1")])
+    fault_frame.set_grid(grid)
+    fault_frame.set_domain_map(np.array([0, 0, 1, 1]).reshape(4, 1, 1))
+    fault_result = FaultModelResults(fault_frame=fault_frame)
+
+    data = InputData_StructuralElements(
+        name="t",
+        mapping_object={"G": ("a", "b")},
+        surface_points=pd.DataFrame({
+            "X": [0.5, 1.5, 2.5, 3.5], "Y": [0.5] * 4, "Z": [0.3, 0.3, 0.7, 0.7],
+            "formation": ["a", "a", "b", "b"],
+        }),
+        orientations=pd.DataFrame({
+            "X": [0.5], "Y": [0.5], "Z": [0.3], "G_x": [0.0], "G_y": [0.0], "G_z": [1.0], "formation": ["a"],
+        }),
+    )
+
+    frame = mod.build_structural_frame(input_data_elements=data, grid=grid, fault_model_results=fault_result)
+    frame.fault_frame.fault_elements[0].set_mesh(FaultMeshType.MASKED, np.zeros((3, 3)), np.zeros((1, 3)))
+
+    assert frame.fault_frame is not fault_result.fault_frame
+    assert FaultMeshType.MASKED not in fault_result.fault_frame.fault_elements[0].vertices
+
+
 # -----------------------------------------------------------------------------
 # build_structural_frame -- rejects a cross-cutting FaultModelResults
 # -----------------------------------------------------------------------------
@@ -1282,4 +1460,6 @@ def test_build_structural_frame_accepts_non_crosscutting_fault_model():
         fault_model_results=fault_model,
     )
 
-    assert frame.fault_frame is fault_frame
+    # Attached as a copy (see test_build_structural_frame_does_not_share_the_fault_frame).
+    assert frame.fault_frame is not fault_frame
+    np.testing.assert_array_equal(frame.fault_frame.domain_map, fault_frame.domain_map)

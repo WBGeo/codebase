@@ -60,7 +60,7 @@ whose result they export:
 
 | Constant             | Colour    | Used for                                                            |
 |----------------------|-----------|---------------------------------------------------------------------|
-| `STRUCTURAL_INPUT`   | `#d4ad6e` | Input data and grid (Regular Grid, Input data, Fault Input Data)    |
+| `STRUCTURAL_INPUT`   | `#d4ad6e` | Input data and grid (Regular Grid, Octree Grid, Input data, Fault Input Data) |
 | `FAULT_MODEL`        | `#9cc65a` | Compute Fault Model                                                 |
 | `STRUCTURAL_MODEL`   | `#5fa040` | Compute Structural Model                                            |
 | `STRUCTURAL_EXPORT`  | `#a9a845` | Export Structural Model, Load Structural Model, Push Structural Model to LiquidEarth |

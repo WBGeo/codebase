@@ -17,6 +17,7 @@ from typing import Sequence, Tuple, List, Mapping, Optional, Dict, Set, Any
 from numpy.typing import NDArray
 from core.object_components import StructuralModelResults, ExtentData
 from core.object_components import MeshResults, MeshType
+from core.meshing_components.pre_checks import pre_check_regular_grid
 from core.meshing_components.explicit.unstructured.create_grid_fragment_surface import create_surface_grid, import_surfaces, fragment_surfaces
 from core.meshing_components.explicit.unstructured.structural_surfaces import build_grid_litho, import_structural_surfaces
 from core.meshing_components.explicit.unstructured.domain_geometry import (
@@ -2591,6 +2592,7 @@ class CSVSurfaceModelResults:
                  positionInGroup=990,
                  identifier='create_unstructured_mesh_data',  # a unique identifier
                  return_name='Mesh',  # the name for the returned-port
+                 input_checks=[pre_check_regular_grid],
                  )  # inputs are handled via the method signature
 def create_unstructured_mesh_data(
     geomodel_result: typing.Union[StructuralModelResults, CSVSurfaceModelResults],
@@ -2666,7 +2668,13 @@ def create_unstructured_mesh_data(
 
     Returns:
         MeshResults: An instance of the MeshResults class.
+
+    Raises:
+        ValueError: geomodel_result's structural model is on an OctreeGrid.
     """
+    # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
+    # so also enforced here.
+    pre_check_regular_grid(geomodel_result)
 
 
     # normalize

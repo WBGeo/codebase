@@ -1076,6 +1076,11 @@ The relevant parameters in the codebase are:
 - **`resolution`** *(default: `200`)*: Resolution of the interpolated
   2D grid used for plotting.
 
+The Workbench inspector shows axis-aligned sections, like the structural
+2D plots: choose the **`axis`** (x, y or z) and a **`position`** along it
+in model coordinates (empty = the middle of the mesh). Tilted planes
+(any `origin`/`normal`) are only available in Python.
+
 Example call in the codebase:
 
 ```python
@@ -1104,7 +1109,7 @@ The relevant parameters are:
 - **`p0`**: Starting point of the line `(x, y, z)`.
 - **`p1`**: Ending point of the line `(x, y, z)`.
 - **`n_samples`** *(default: `200`)*: Number of sampling intervals
-  along the line.
+  along the line (Python only; the Workbench uses the default).
 
 Parts of the line outside the mesh are shown as gaps. In the Workbench
 inspector, the inputs are optional: without a time step it uses the
@@ -1138,7 +1143,8 @@ The relevant parameters are:
 - **`var_name`**: Variable to sample.
 - **`point`**: Spatial coordinates `(x, y, z)`.
 - **`decimals`** *(default: `3`)*: Number of decimal places used
-  for formatting the vertical axis.
+  for formatting the vertical axis (Python only; the Workbench uses the
+  default).
 - **`time_step_start`**, **`time_step_end`** *(optional)*: Zero-based,
   inclusive range of saved steps to plot; all steps by default.
 

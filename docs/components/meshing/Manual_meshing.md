@@ -23,6 +23,12 @@ so all meshing methods produce 3D meshes.
 > These features are not yet implemented for structured or implicit
 > meshing.
 
+> **Note:** All meshing methods need a structural model computed on a
+> **Regular Grid**. A structural model computed on an **Octree Grid**
+> (see the [structural modeling manual](../structural_modeling/Manual_structural_modeling.md))
+> is refused with an error when it is connected to a meshing component.
+> Meshing from octree models is planned.
+
 ------------------------------------------------------------------------
 
 ## Concepts
@@ -927,8 +933,8 @@ during export.
 
 > **Workbench:** Where available, these are exposed as inspector
 > functions with limited functionality in the visual interface (visual
-> DSL) --- parameters are fixed; the codebase functions below expose the
-> full set of options.
+> DSL) --- only some parameters can be set there; the codebase functions
+> below expose the full set of options.
 
 > **Workbench component:** `Plot Mesh in 3D`
 
@@ -942,6 +948,9 @@ by lithology using the same element colors as the structural model.
     `"wireframe"`, or `"points"`. Default `"surface"`.
 -   **`show_plotter`** *(optional)*: If `True`, displays the interactive
     plot window. Default `True`.
+
+The Workbench version exposes `style` as a drop-down (default
+`"surface"`).
 
 Example call in the codebase:
 
