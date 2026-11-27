@@ -251,9 +251,9 @@ def test_inspector_2D_forwards_axis_and_index(monkeypatch):
     monkeypatch.setattr(swc, "plot_structural_model_2D", lambda frame, **kw: received.update(kw, frame=frame))
     result = SimpleNamespace(structural_frame="frame")
 
-    swc.inspect_structural_model_result_plot_structural_model_2D(result, None, axis="z", index=7)
+    swc.inspect_structural_model_result_plot_structural_model_2D(result, None, axis="z", index=7, show_grid=True)
 
-    assert received == {"frame": "frame", "axis": "z", "index": 7}
+    assert received == {"frame": "frame", "axis": "z", "index": 7, "show_grid": True}
 
 
 def test_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
@@ -263,7 +263,7 @@ def test_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
 
     swc.inspect_structural_model_result_plot_structural_model_2D(SimpleNamespace(structural_frame="frame"), None)
 
-    assert received == {"axis": "y", "index": None}
+    assert received == {"axis": "y", "index": None, "show_grid": False}
 
 
 def test_slice_axis_is_a_select_of_x_y_z():
@@ -291,9 +291,10 @@ def test_fault_inspector_2D_forwards_axis_and_index(monkeypatch):
     received = {}
     monkeypatch.setattr(swc, "plot_fault_model_2D", lambda frame, **kw: received.update(kw, frame=frame))
 
-    swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None, axis="x", index=2)
+    swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None, axis="x", index=2,
+                                                            show_grid=True)
 
-    assert received == {"frame": "ff", "axis": "x", "index": 2}
+    assert received == {"frame": "ff", "axis": "x", "index": 2, "show_grid": True}
 
 
 def test_fault_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
@@ -303,7 +304,7 @@ def test_fault_inspector_2D_defaults_to_the_middle_of_y(monkeypatch):
 
     swc.inspect_fault_model_result_plot_structural_model_2D(SimpleNamespace(fault_frame="ff"), None)
 
-    assert received == {"axis": "y", "index": None}
+    assert received == {"axis": "y", "index": None, "show_grid": False}
 
 
 # --- 3D inspectors: mesh type dropdowns ---------------------------------------------------

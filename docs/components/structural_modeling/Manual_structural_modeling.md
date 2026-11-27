@@ -336,7 +336,7 @@ plot_structural_model_3D(structural_model_result.structural_frame, mesh_type="ma
 - **`show_grid`** *(optional)*: Outline the grid cells the slice cuts — uniform voxels on a Regular Grid, cells of different sizes on an Octree Grid. Default `False`.
 - **`title_suffix`** *(optional)*: Text appended to the plot title. Default `""`.
 
-The Workbench version exposes `axis` (a choice of x, y or z) and `index` (empty = the mid-point); the other options keep their defaults.
+The Workbench version exposes `axis` (a choice of x, y or z), `index` (empty = the mid-point) and `show_grid`; the other options keep their defaults.
 
 ```python
 plot_structural_model_2D(structural_model_result.structural_frame, axis="x", index=20)
@@ -384,7 +384,7 @@ plot_fault_model_3D(fault_model_result.fault_frame, show_domain_map=True, domain
 - **`show_fault_contours`** *(optional)*: Overlay fault isolines. Default `True`.
 - **`show_grid`** *(optional)*: Outline the grid cells the slice cuts, as in `plot_structural_model_2D`. Default `False`.
 
-The Workbench version exposes `axis` (a choice of x, y or z) and `index` (empty = the mid-point), as in `Plot Model Result 2D`.
+The Workbench version exposes `axis` (a choice of x, y or z), `index` (empty = the mid-point) and `show_grid`, as in `Plot Model Result 2D`.
 
 ```python
 plot_fault_model_2D(fault_model_result.fault_frame, axis="y", index=15)

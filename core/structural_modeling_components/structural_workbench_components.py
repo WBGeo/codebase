@@ -318,12 +318,14 @@ def inspect_structural_model_result_detailed_report(structural_model_result: Str
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_2D',
                  title='Plot Model Result 2D',
                  description='2D section through the structural model, normal to the chosen axis (x, y or z). '
-                             'index is the cell along that axis (0 = first cell); empty = the middle of the model.')
+                             'index is the cell along that axis (0 = first cell; on an octree grid counted in its finest cells); '
+                             'empty = the middle of the model. show_grid outlines the grid cells the section cuts.')
 @wbgeo_inspector()
 def inspect_structural_model_result_plot_structural_model_2D(
     structural_model_result: StructuralModelResults, _inspector: InspectorHelper,
-    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None):
-  plot_structural_model_2D(structural_model_result.structural_frame, axis=SliceAxis(axis).value, index=index)
+    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None, show_grid: bool = False):
+  plot_structural_model_2D(structural_model_result.structural_frame, axis=SliceAxis(axis).value, index=index,
+                           show_grid=show_grid)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_structural_model_result_plot_structural_model_3D_sf',
@@ -398,12 +400,13 @@ def inspect_fault_model_result_detailed_report(fault_model_result: FaultModelRes
 @wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_2D',
                  title='Plot Fault Model Result 2D',
                  description='2D section through the fault model, normal to the chosen axis (x, y or z). '
-                             'index is the cell along that axis (0 = first cell); empty = the middle of the model.')
+                             'index is the cell along that axis (0 = first cell; on an octree grid counted in its finest cells); '
+                             'empty = the middle of the model. show_grid outlines the grid cells the section cuts.')
 @wbgeo_inspector()
 def inspect_fault_model_result_plot_structural_model_2D(
     fault_model_result: FaultModelResults, _inspector: InspectorHelper,
-    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None):
-  plot_fault_model_2D(fault_model_result.fault_frame, axis=SliceAxis(axis).value, index=index)
+    axis: SliceAxisType = SliceAxis.Y.value, index: typing.Optional[int] = None, show_grid: bool = False):
+  plot_fault_model_2D(fault_model_result.fault_frame, axis=SliceAxis(axis).value, index=index, show_grid=show_grid)
 
 
 @wbgeo_component(identifier='wbgeo::inspect_fault_model_result_plot_structural_model_3D_sf',
