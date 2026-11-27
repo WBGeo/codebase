@@ -68,7 +68,7 @@ from py_api_wbgeo.smartcontrols import CtrlLabel, CtrlSelect, CtrlInt, CtrlFloat
 @wbgeo_component(identifier='wbgeo:__internal__structural_modeling_smart_options',
                  title='structural_modeling_smart_options')
 def structural_modeling_smart_options(data_elements: InputData_StructuralElements,
-                                      grid: grid_classes.RegularGrid,
+                                      grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
                                       fault_model: typing.Optional[FaultModelResults] = None
                                       ) -> CtrlGroup:
   """(Internal) component that builds the smart input form for interpolation method selection."""
@@ -168,6 +168,23 @@ def structural_modeling_smart_options_to_data(
   return smartcontrols.form_data_to_wbgeo_type_data(_input, StructuralFrameInputOptions)
 
 
+def pre_check_fault_model_grid(grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
+                               fault_model: typing.Optional[FaultModelResults] = None) -> None:
+  """
+  Pre-check: the fault model must have been computed on the grid connected to
+  the structural model. Fault domains are defined per cell of that grid, so a
+  fault model from another grid can't be combined with this one.
+  """
+  if fault_model is None:
+    return
+  fault_grid = fault_model.fault_frame.grid
+  if fault_grid != grid:
+    raise ValueError(
+      "The fault model was computed on a different grid than the one connected to this component "
+      f"(fault model: {fault_grid}, connected: {grid}). Connect the same grid to both components."
+    )
+
+
 SmartStructuralFrameInputOptions = typing.Annotated[
   StructuralFrameInputOptions, SmartInput(inputs=['data_elements'],
                                           to_form=structural_modeling_smart_options,
@@ -175,7 +192,7 @@ SmartStructuralFrameInputOptions = typing.Annotated[
 
 
 def _build_frame_with_options(elements: InputData_StructuralElements,
-                              grid: grid_classes.RegularGrid,
+                              grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
                               fault_model: typing.Optional[FaultModelResults],
                               options: typing.Optional[StructuralFrameInputOptions]):
   """Build the structural frame and apply the interpolation methods, parameters and fault activity."""
@@ -201,7 +218,7 @@ def _build_frame_with_options(elements: InputData_StructuralElements,
 
 
 def check_interpolation_inputs(elements: InputData_StructuralElements,
-                               grid: grid_classes.RegularGrid,
+                               grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
                                fault_model: typing.Optional[FaultModelResults] = None,
                                options: SmartStructuralFrameInputOptions = None) -> None:
   """
@@ -221,12 +238,13 @@ def check_interpolation_inputs(elements: InputData_StructuralElements,
                  identifier='wbgeo::structural_modeling',  # a unique identifier
                  return_name='structural_model',  # the name for the returned-port
                  input_checks=[general_faults.check_fault_model_not_crosscutting,
-                               check_interpolation_inputs],
+                               check_interpolation_inputs,
+                               pre_check_fault_model_grid],
                  positionInGroup=880,
                  )  # inputs are handled via the method signature
 def structural_modeling(
     elements: InputData_StructuralElements,
-    grid: grid_classes.RegularGrid,
+    grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
     fault_model: typing.Optional[FaultModelResults] = None,
     options: SmartStructuralFrameInputOptions = None,
 ) -> StructuralModelResults:
@@ -252,12 +270,14 @@ def structural_modeling(
   :return: StructuralModelResults containing scalar fields, lithology block, and surface meshes.
 
   Raises:
-      ValueError: fault_model is connected and has cross_cutting=True.
+      ValueError: fault_model is connected and has cross_cutting=True, or was
+          computed on a different grid than the one connected here.
   """
   # Pre-checks can be ignored/skipped by a caller (see docs/developers/components.md),
   # so also enforced here rather than relying solely on the Workbench's
   # input_checks catching the connection.
   general_faults.check_fault_model_not_crosscutting(fault_model)
+  pre_check_fault_model_grid(grid, fault_model)
 
   # The interpolation input check (check_interpolation_inputs) runs again inside
   # compute_structural_model, before any interpolation.
@@ -311,7 +331,7 @@ def inspect_structural_model_result_plot_structural_model_3D(
                  )
 def compute_fault_frame(
     data_faults: InputData_FaultElements,
-    grid: grid_classes.RegularGrid,
+    grid: typing.Union[grid_classes.RegularGrid, grid_classes.OctreeGrid],
 ) -> FaultModelResults:
   """
   Computes the fault model from fault input data and a grid.

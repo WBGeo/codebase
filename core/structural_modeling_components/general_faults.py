@@ -26,6 +26,8 @@ import copy
 
 from core.object_components import InputData_FaultElements, FaultModelResults
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
+    ModelGrid,
+    OctreeGrid,
     RegularGrid,
 )
 from core.structural_modeling_components.structural_objects.structural_objects import (
@@ -138,6 +140,25 @@ def check_fault_crosscuts_via_isovalue_bands(
             # assume φ is approx. signed distance
             tol_scalar.append(thickness_world)
 
+    raise_on_band_overlap(faults, tol_scalar)
+
+
+def raise_on_band_overlap(faults: list[tuple[str, np.ndarray, float]], tol_scalar: list[float]) -> None:
+    """
+    Raise if the isovalue bands of two faults share a cell.
+
+    Parameters
+    ----------
+    faults : list of (name, scalar_field, isovalue)
+        Per-cell fault fields of any (common) shape.
+    tol_scalar : list of float
+        Band half-width in scalar units, one per fault.
+
+    Raises
+    ------
+    ValueError
+        If ``|φ_i - L_i| <= tol_i`` and ``|φ_j - L_j| <= tol_j`` hold in the same cell.
+    """
     # Build boolean bands once
     bands: list[tuple[str, npt.NDArray[np.bool_]]] = []
     for (nm, fld, level), ts in zip(faults, tol_scalar):
@@ -236,6 +257,8 @@ def interpolate_group_universal_cokriging_for_faults(
         resolution=list(grid.resolution),
         structural_frame=gempy_structural_frame,
     )
+    # GemPy's own surface meshes are never used here and dominate the compute time.
+    geo_model.interpolation_options.evaluation_options.mesh_extraction = False
 
     mapping = {"fault_group": [element.name]}
     gp.map_stack_to_surfaces(gempy_model=geo_model, mapping_object=mapping)
@@ -255,6 +278,59 @@ def interpolate_group_universal_cokriging_for_faults(
 
     # Domain mask convention (positive side = True)
     element.set_domain_mask(element.scalar_field > element.scalar_value)
+
+
+def split_into_domains(fault_masks: list[np.ndarray]) -> np.ndarray:
+    """
+    Domain ids from fault masks, by iteratively splitting the existing domains.
+
+    Each fault (youngest first) splits every existing domain into its part on the
+    positive side of the fault (a new id) and the rest; the ids are then remapped to
+    0..n-1 in order of creation. Works on per-cell arrays of any (common) shape.
+
+    Parameters
+    ----------
+    fault_masks : list of np.ndarray
+        Boolean "positive side" mask of each fault, youngest fault first.
+
+    Returns
+    -------
+    np.ndarray
+        Integer domain ids, same shape as the masks.
+    """
+    domain_map = np.zeros(fault_masks[0].shape, dtype=np.int32)
+    domain_id_counter = 1
+    for fault_mask in fault_masks:
+        new_domain_map = domain_map.copy()
+        for existing_id in np.unique(domain_map):
+            overlap = (domain_map == existing_id) & fault_mask
+            if np.any(overlap):
+                new_domain_map[overlap] = 9999 + domain_id_counter
+                domain_id_counter += 1
+        domain_map = new_domain_map
+
+    # Remap IDs to consecutive (FINAL ID SPACE)
+    unique_ids = np.unique(domain_map)
+    remap = {int(old): int(new) for new, old in enumerate(unique_ids)}
+    return np.vectorize(remap.get)(domain_map)
+
+
+def separated_domains(
+    domain_map: np.ndarray, mask: np.ndarray, fault_name: str
+) -> tuple[frozenset[int], frozenset[int]]:
+    """
+    Domain ids on the positive and on the negative side of a fault.
+
+    Raises
+    ------
+    RuntimeError
+        If either side is empty.
+    """
+    left_ids = set(map(int, np.unique(domain_map[mask])))
+    right_ids = set(map(int, np.unique(domain_map[~mask])))
+    if not left_ids or not right_ids:
+        raise RuntimeError(f"Fault '{fault_name}' does not create a valid split (empty side).")
+    return frozenset(left_ids), frozenset(right_ids)
 
 
 def compute_fault_domains(
@@ -290,17 +366,18 @@ def compute_fault_domains(
     """
     if not fault_frame.grid:
         raise ValueError("Grid must be set before domain generation.")
+    if isinstance(fault_frame.grid, OctreeGrid):
+        # Imported here: the octree module builds on this module's helpers.
+        from core.structural_modeling_components.general_faults_octree import compute_fault_domains_octree
+        return compute_fault_domains_octree(fault_frame)
     if fault_frame.fault_surface_points_df is None:
         raise ValueError("Fault surface points must be set.")
 
     res_xyz = tuple(fault_frame.grid.resolution)  # (X,Y,Z)
     res_zyx = (res_xyz[2], res_xyz[1], res_xyz[0])  # (Z,Y,X)
 
-    # XYZ domain map internally
-    domain_map_xyz = np.zeros(res_xyz, dtype=int)
-
-    domain_id_counter = 1
-    temp_ids: list[int] = []
+    # Fault masks in XYZ, youngest fault first
+    fault_masks_xyz: list[np.ndarray] = []
 
     padded_grid = _build_padded_grid(fault_frame.grid, _SURFACE_PADDING_CELLS)
     p = _SURFACE_PADDING_CELLS
@@ -337,25 +414,13 @@ def compute_fault_domains(
         else:
             raise ValueError(f"Fault mask has unexpected shape {mask.shape}, expected {res_xyz} or {res_zyx}")
 
-        new_domain_map = domain_map_xyz.copy()
+        fault_masks_xyz.append(fault_mask_xyz)
 
-        for existing_id in np.unique(domain_map_xyz):
-            current_mask = domain_map_xyz == existing_id
-            overlap = current_mask & fault_mask_xyz
-            if np.any(overlap):
-                new_id = 9999 + domain_id_counter
-                new_domain_map[overlap] = new_id
-                temp_ids.append(new_id)
-                domain_id_counter += 1
-
-        domain_map_xyz = new_domain_map
-
-    # Crosscut check moved ahead of domaining (which it used to only run
-    # after): every fault's scalar_field is already available at this point,
-    # and detecting a crosscut first means domaining's own internal
-    # RuntimeErrors (produced no valid domain_pairs / empty-side split) can
-    # no longer fire ahead of it for a crosscutting geometry and mask the
-    # real cause -- the reported error is now always "crosscuts", never a
+    # Crosscut check ahead of domaining: every fault's scalar_field is already
+    # available at this point, and detecting a crosscut first means domaining's
+    # own internal RuntimeErrors (produced no valid domain_pairs / empty-side
+    # split) can no longer fire ahead of it for a crosscutting geometry and mask
+    # the real cause -- the reported error is now always "crosscuts", never a
     # confusing downstream symptom of it.
     try:
         check_fault_crosscuts_via_isovalue_bands(fault_frame)
@@ -373,10 +438,7 @@ def compute_fault_domains(
     # to consume a FaultModelResults with cross_cutting=True (see
     # build_structural_frame).
     if not cross_cutting:
-        # Remap IDs to consecutive (FINAL ID SPACE)
-        unique_ids = np.unique(domain_map_xyz)
-        remap = {int(old): int(new) for new, old in enumerate(unique_ids)}
-        remapped_xyz = np.vectorize(remap.get)(domain_map_xyz)
+        remapped_xyz = split_into_domains(fault_masks_xyz)
 
         # Store final domain map and masks in XYZ
         fault_frame.domain_map = remapped_xyz
@@ -387,7 +449,9 @@ def compute_fault_domains(
         # --- Compute & store domain_pairs in FINAL ID SPACE ---
         for fault in fault_frame.fault_elements:
             sf = fault.scalar_field
-            if sf.shape == res_zyx:
+            # Same rule as for the masks above: the field is XYZ, and only a genuinely ZYX
+            # array is transposed (with nx == nz both shapes match, and XYZ must win).
+            if sf.shape != res_xyz and sf.shape == res_zyx:
                 sf = sf.transpose(2, 1, 0)
 
             pairs = compute_domain_pairs_from_fault_band(
@@ -420,21 +484,7 @@ def compute_fault_domains(
             else:
                 raise ValueError(f"Fault mask has unexpected shape {mask.shape}, expected {res_xyz} or {res_zyx}")
 
-            # IMPORTANT: use remapped_xyz (final IDs), not domain_map_xyz (temp IDs)
-            left_ids = set(map(int, np.unique(remapped_xyz[mask_xyz])))
-            right_ids = set(map(int, np.unique(remapped_xyz[~mask_xyz])))
-
-            if not left_ids or not right_ids:
-                raise RuntimeError(f"Fault '{fault.name}' does not create a valid split (empty side).")
-
-            # Optional sanity: ensure they're in final id space
-            if not left_ids.issubset(valid_ids) or not right_ids.issubset(valid_ids):
-                raise RuntimeError(
-                    f"Fault '{fault.name}' separated_domains contain ids outside domain_map: "
-                    f"left={sorted(left_ids - valid_ids)}, right={sorted(right_ids - valid_ids)}"
-                )
-
-            fault.set_separated_domains((frozenset(left_ids), frozenset(right_ids)))
+            fault.set_separated_domains(separated_domains(remapped_xyz, mask_xyz, fault.name))
 
     # Extract surface meshes for faults -- unconditional (depends only on
     # each fault's own scalar_field/extended_scalar_field/scalar_value, never
@@ -476,7 +526,7 @@ def compute_fault_domains(
 
 def build_fault_frame(
     input_data_fault_elements: InputData_FaultElements,
-    grid: RegularGrid,
+    grid: ModelGrid,
 ) -> FaultFrame:
     """
     Build a :class:`FaultFrame` from ordered fault names, surface data, and a grid.
@@ -485,7 +535,7 @@ def build_fault_frame(
     ----------
     input_data_fault_elements : InputData_FaultElements
         Input data for the fault elements, including names, surface points, and orientations.
-    grid : RegularGrid
+    grid : RegularGrid or OctreeGrid
         Model grid.
 
     Returns
@@ -585,14 +635,30 @@ def compute_domain_pairs_from_fault_band(
     else:
         tol_scalar = thickness_world
 
-    band = np.abs(scalar_field_xyz - float(scalar_value)) <= tol_scalar
+    return domain_pairs_from_band(domain_map_xyz, scalar_field_xyz, scalar_value, tol_scalar)
+
+
+def domain_pairs_from_band(
+    domain_map: np.ndarray,
+    scalar_field: np.ndarray,
+    scalar_value: float,
+    tol_scalar: float,
+) -> frozenset[tuple[int, int]]:
+    """
+    Domain-id pairs across a fault: every id on its negative side within the band
+    ``|φ - L| <= tol_scalar``, paired with every id on its positive side.
+
+    Works on per-cell arrays of any (common) shape. Returns pairs as sorted
+    (a, b) with a < b.
+    """
+    band = np.abs(scalar_field - float(scalar_value)) <= tol_scalar
 
     # Two sides near the surface
-    pos = band & (scalar_field_xyz > scalar_value)
-    neg = band & (scalar_field_xyz <= scalar_value)
+    pos = band & (scalar_field > scalar_value)
+    neg = band & (scalar_field <= scalar_value)
 
-    pos_ids = np.unique(domain_map_xyz[pos])
-    neg_ids = np.unique(domain_map_xyz[neg])
+    pos_ids = np.unique(domain_map[pos])
+    neg_ids = np.unique(domain_map[neg])
 
     pairs: set[tuple[int, int]] = set()
     for a in neg_ids:

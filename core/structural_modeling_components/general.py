@@ -44,9 +44,18 @@ from scipy.ndimage import binary_dilation
 
 from core.object_components import InputData_StructuralElements, StructuralModelResults, FaultModelResults
 from core.structural_modeling_components.general_faults import check_fault_model_not_crosscutting
-from core.structural_modeling_components.structural_objects.grids.grid_classes import RegularGrid
+from core.structural_modeling_components.structural_objects.grids.grid_classes import (
+    ModelGrid,
+    OctreeGrid,
+    RegularGrid,
+)
 from core.structural_modeling_components.structural_modeling_utility.surface_mesh_extraction import (
     marching_cubes_per_element, marching_cubes)
+from core.structural_modeling_components.general_octree import (
+    _domain_ids as _octree_domain_ids,
+    _point_domains as _octree_point_domains,
+    compute_structural_model_octree,
+)
 
 from core.structural_modeling_components.structural_objects.structural_objects import (
     StructuralFrame,
@@ -86,6 +95,7 @@ from core.structural_modeling_components.interpolator_functions.universal_krigin
     interpolate_group_universal_kriging,
     uk_input_problem,
 )
+from core.structural_modeling_components.interpolator_functions.fitted_field import snap_to_isovalues
 
 # -----------------------------------------------------------------------------
 # Constants
@@ -221,20 +231,32 @@ def validate_interpolation_inputs(
         A single error listing ALL detected issues so the user can fix them
         together rather than discovering them one by one.
     """
-    domain_map: IntArray = (
-        fault_frame.domain_map
-        if fault_frame is not None
-        else np.zeros(frame.grid.resolution, dtype=int)
-    )
-    domain_ids: IntArray = np.unique(domain_map)
-    multi_domain = len(domain_ids) > 1
+    if isinstance(frame.grid, OctreeGrid):
+        # Fault domains of an octree are stored per fault-model cell: same assignment as
+        # the octree pipeline (the cell containing a point; nearest boundary cell outside).
+        domain_ids: IntArray = _octree_domain_ids(frame)
 
-    sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
-    ori_in_domain = (
-        assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
-        if frame.orientations is not None
-        else None
-    )
+        def _with_domains(points: pd.DataFrame) -> pd.DataFrame:
+            xyz = points[["X", "Y", "Z"]].to_numpy(dtype=np.float64)
+            return points.assign(domain_id=_octree_point_domains(frame, xyz))
+
+        sp_in_domain = _with_domains(frame.surface_points)
+        ori_in_domain = _with_domains(frame.orientations) if frame.orientations is not None else None
+    else:
+        domain_map: IntArray = (
+            fault_frame.domain_map
+            if fault_frame is not None
+            else np.zeros(frame.grid.resolution, dtype=np.int32)
+        )
+        domain_ids = np.unique(domain_map)
+
+        sp_in_domain = assign_domain_ids_to_points(frame.grid, domain_map, frame.surface_points)
+        ori_in_domain = (
+            assign_domain_ids_to_points(frame.grid, domain_map, frame.orientations)
+            if frame.orientations is not None
+            else None
+        )
+    multi_domain = len(domain_ids) > 1
 
     violations: list[str] = []
 
@@ -344,7 +366,7 @@ def run_interpolation_with_fault_domains(
     domain_map: IntArray = (
         fault_frame.domain_map
         if fault_frame is not None
-        else np.zeros(frame.grid.resolution, dtype=int)
+        else np.zeros(frame.grid.resolution, dtype=np.int32)
     )
     # Pad the domain map with boundary values so interpolations on the padded grid
     # see the correct domain IDs in the extended margin cells.
@@ -445,6 +467,8 @@ def run_interpolation_with_fault_domains(
 
             # Preserve existing behavior: transpose to expected axis order
             scalar_field_sub = scalar_field_sub.transpose(2, 1, 0)
+            # Values within rounding of an isovalue become it, as on the octree.
+            scalar_field_sub = snap_to_isovalues(scalar_field_sub, scalar_values.values())
 
             # Place result into the padded accumulator
             if bbox is not None and len(domain_ids) > 1:
@@ -491,7 +515,7 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
     """
     ff = frame.fault_frame
     domain_map: IntArray = (
-        ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=int)
+        ff.domain_map if ff is not None else np.zeros(frame.grid.resolution, dtype=np.int32)
     )
     domain_ids: IntArray = np.unique(domain_map)
 
@@ -523,27 +547,35 @@ def set_scalar_masks_per_domain(frame: StructuralFrame) -> None:
         if ff is not None:
             combined_mask = np.zeros_like(mask, dtype=bool)
             for d in domain_ids:
-                # Check if this domain is active for this group
-                domain_ok = False
-                for fault in ff.fault_elements:
-                    youngest_idx = frame.fault_activity[fault.name]
-                    if group_idx < youngest_idx:
-                        continue
-                    if d in fault.separated_domains_flat():
-                        domain_ok = True
-                        break
-
-                # Groups unaffected by any fault in this domain are allowed
-                if not domain_ok and all(group_idx < frame.fault_activity[f.name] for f in ff.fault_elements):
-                    domain_ok = True
-
-                if domain_ok:
+                if domain_is_active_for_group(ff, frame.fault_activity, group_idx, int(d)):
                     combined_mask[domain_map == d] = mask[domain_map == d]
 
             mask = combined_mask
 
         # Store the final mask
         group.set_mask(mask)
+
+
+def domain_is_active_for_group(
+        fault_frame: FaultFrame,
+        fault_activity: dict[str, int],
+        group_idx: int,
+        domain_id: int,
+) -> bool:
+    """
+    Whether a group's age mask is kept in a fault domain.
+
+    True if a fault that affects the group separates the domain, or if no fault
+    affects the group at all. ``fault_activity[fault.name]`` is the youngest
+    affected group index; a fault affects the group iff ``group_idx >= it``.
+    """
+    for fault in fault_frame.fault_elements:
+        if group_idx < fault_activity[fault.name]:
+            continue
+        if domain_id in fault.separated_domains_flat():
+            return True
+    # Groups unaffected by any fault are allowed everywhere
+    return all(group_idx < fault_activity[f.name] for f in fault_frame.fault_elements)
 
 
 # --- 3) Combine all domains to final lithology block --------------------------
@@ -567,7 +599,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
         Final lithology volume (integer IDs) with shape ``frame.grid.resolution``.
     """
     shape = tuple(map(int, frame.grid.resolution))  # (X,Y,Z)
-    final_lith = np.zeros(shape, dtype=int)
+    final_lith = np.zeros(shape, dtype=np.int32)
 
     # Assign stable global IDs to elements if not already set
     current_id = 1
@@ -583,7 +615,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
         domain_map = ff.domain_map
         domain_ids = np.unique(domain_map)
     else:
-        domain_map = np.zeros(shape, dtype=int)
+        domain_map = np.zeros(shape, dtype=np.int32)
         domain_ids = [0]
 
     # Process groups from oldest -> youngest so younger overwrites older
@@ -614,7 +646,7 @@ def compute_lithology_block_with_domains(frame: StructuralFrame) -> np.ndarray:
             comp_ids_arr = np.array(sorted(comp_ids), dtype=int)
             comp_mask = np.isin(domain_map, comp_ids_arr)
 
-            group_block = np.zeros(shape, dtype=int)
+            group_block = np.zeros(shape, dtype=np.int32)
 
             # Fill elements oldest -> the youngest inside the group
             for elem in group.structural_elements:
@@ -716,7 +748,7 @@ def extract_all_meshes_per_domain(
     fault_frame = frame.fault_frame
     if fault_frame is None:
         domain_ids = [0]
-        dom_map = np.zeros(tuple(frame.grid.resolution), dtype=int)
+        dom_map = np.zeros(tuple(frame.grid.resolution), dtype=np.int32)
     else:
         dom_map = fault_frame.domain_map
         domain_ids = np.unique(dom_map)
@@ -974,12 +1006,18 @@ def compute_structural_model(
         Results object containing the updated (deepcopied) structural frame with
         scalar fields, masks, and meshes.
     """
+    if isinstance(frame.grid, OctreeGrid):
+        # Separate octree path; the regular-grid pipeline below stays as it is.
+        logger.info("Validating interpolation inputs ...")
+        validate_interpolation_inputs(frame=frame, fault_frame=frame.fault_frame)
+        return compute_structural_model_octree(frame, extract_meshes=extract_meshes)
+
     # Prepare domain map (supports "no faults" case).
     # NOTE: We intentionally create a minimal provider when no fault_frame exists.
     ff: FaultFrame | None = frame.fault_frame
 
     if ff is None:
-        dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=int)
+        dom_map = np.zeros(tuple(map(int, frame.grid.resolution)), dtype=np.int32)
 
         class _TmpFF:
             domain_map = dom_map
@@ -1144,7 +1182,7 @@ def generate_grouped_colors_per_element(
 
 def build_structural_frame(
         input_data_elements: InputData_StructuralElements,
-        grid: RegularGrid,
+        grid: ModelGrid,
         default_interpolation: InterpolationMethod = InterpolationMethod.RADIAL_BASIS_FUNCTION,
         fault_model_results: Optional[FaultModelResults] = None,
 ) -> StructuralFrame:
@@ -1155,7 +1193,7 @@ def build_structural_frame(
     ----------
     input_data_elements : InputData_StructuralElements
         Input data containing mapping, surface points, and optional orientations.
-    grid : RegularGrid
+    grid : RegularGrid or OctreeGrid
         Model grid.
     default_interpolation : InterpolationMethod, default ``RADIAL_BASIS_FUNCTION``
         Interpolator assigned to each group (can be overridden later).
@@ -1237,7 +1275,10 @@ def build_structural_frame(
 
         group.set_interpolation_method(default_interpolation)
         group_objects.append(group)
-        group.scalar_field = np.zeros(grid.resolution, dtype=float)
+        # On an octree the cells only exist after modeling, so there is no
+        # per-cell array to initialize yet.
+        if not isinstance(grid, OctreeGrid):
+            group.scalar_field = np.zeros(grid.resolution, dtype=float)
 
     # Generate colors AFTER groups exist
     color_map = generate_grouped_colors_per_element(group_objects)
@@ -1256,7 +1297,9 @@ def build_structural_frame(
 
     if fault_model_results is not None:
         check_fault_model_not_crosscutting(fault_model_results)
-        frame.set_fault_frame(fault_model_results.fault_frame)
+        # Attach a copy: compute_structural_model adds the masked fault meshes to
+        # the attached fault frame, which must not change the caller's fault result.
+        frame.set_fault_frame(copy.deepcopy(fault_model_results.fault_frame))
 
     return frame
 

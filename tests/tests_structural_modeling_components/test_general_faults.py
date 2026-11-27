@@ -194,6 +194,45 @@ def test_build_fault_frame_creates_elements_reversed_and_sets_defaults():
 
 
 # -----------------------------------------------------------------------------
+# compute_fault_domains: domain pairs on a grid with nx == nz
+# -----------------------------------------------------------------------------
+
+
+def test_domain_pairs_only_join_the_domains_next_to_each_fault_when_nx_equals_nz():
+    """
+    Two vertical faults at x = 1/3 and x = 2/3 split the model into three domains
+    left, middle, right; each fault touches only its two neighbours.
+
+    The fault fields are XYZ. With nx == nz the XYZ and ZYX shapes coincide, and
+    the pairs used to come from a transposed field: every fault then paired all
+    three domains, and an inactive fault merged domains across an active one.
+    """
+    from core.object_components import InputData_FaultElements
+    from core.structural_modeling_components.general_faults import compute_fault_domains
+
+    rows, oris = [], []
+    for name, x in (("F1", 1.0 / 3.0), ("F2", 2.0 / 3.0)):
+        for y in np.linspace(0.05, 0.95, 4):
+            for z in np.linspace(0.05, 0.95, 5):
+                rows.append({"X": x, "Y": y, "Z": z, "formation": name})
+                oris.append({"X": x, "Y": y, "Z": z, "G_x": 1.0, "G_y": 0.0, "G_z": 0.0, "formation": name})
+    data = InputData_FaultElements(
+        name="two_vertical_faults", fault_names=["F1", "F2"],
+        fault_surface_points=pd.DataFrame(rows), fault_orientations=pd.DataFrame(oris),
+    )
+    grid = RegularGrid(extent=(0.0, 1.0, 0.0, 1.0, 0.0, 1.0), resolution=(12, 6, 12))
+
+    ff = compute_fault_domains(build_fault_frame(data, grid)).fault_frame
+
+    nx = grid.resolution[0]
+    left, middle, right = (int(ff.domain_map[i, 0, 0]) for i in (0, nx // 2, nx - 1))
+    assert len({left, middle, right}) == 3
+    pairs = {f.name: f.domain_pairs for f in ff.fault_elements}
+    assert pairs["F1"] == frozenset({tuple(sorted((left, middle)))})
+    assert pairs["F2"] == frozenset({tuple(sorted((middle, right)))})
+
+
+# -----------------------------------------------------------------------------
 # compute_fault_domains -- end to end, non-cross-cutting vs. cross-cutting
 # -----------------------------------------------------------------------------
 

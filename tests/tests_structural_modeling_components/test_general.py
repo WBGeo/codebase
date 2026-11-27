@@ -1384,6 +1384,39 @@ def test_validate_passes_when_orientations_present_in_correct_domain():
     mod.validate_interpolation_inputs(frame=frame, fault_frame=fake_ff)  # must not raise
 
 
+def test_build_structural_frame_does_not_share_the_fault_frame():
+    """
+    The structural step writes MASKED fault meshes into the attached fault frame;
+    that must not change the FaultModelResults passed in by the caller.
+    """
+    from core.object_components import FaultModelResults, InputData_StructuralElements
+    from core.structural_modeling_components.structural_objects.structural_objects import FaultMeshType
+
+    grid = RegularGrid(extent=(0.0, 4.0, 0.0, 1.0, 0.0, 1.0), resolution=(4, 1, 1))
+    fault_frame = FaultFrame(fault_elements=[FaultElement(name="F1")])
+    fault_frame.set_grid(grid)
+    fault_frame.set_domain_map(np.array([0, 0, 1, 1]).reshape(4, 1, 1))
+    fault_result = FaultModelResults(fault_frame=fault_frame)
+
+    data = InputData_StructuralElements(
+        name="t",
+        mapping_object={"G": ("a", "b")},
+        surface_points=pd.DataFrame({
+            "X": [0.5, 1.5, 2.5, 3.5], "Y": [0.5] * 4, "Z": [0.3, 0.3, 0.7, 0.7],
+            "formation": ["a", "a", "b", "b"],
+        }),
+        orientations=pd.DataFrame({
+            "X": [0.5], "Y": [0.5], "Z": [0.3], "G_x": [0.0], "G_y": [0.0], "G_z": [1.0], "formation": ["a"],
+        }),
+    )
+
+    frame = mod.build_structural_frame(input_data_elements=data, grid=grid, fault_model_results=fault_result)
+    frame.fault_frame.fault_elements[0].set_mesh(FaultMeshType.MASKED, np.zeros((3, 3)), np.zeros((1, 3)))
+
+    assert frame.fault_frame is not fault_result.fault_frame
+    assert FaultMeshType.MASKED not in fault_result.fault_frame.fault_elements[0].vertices
+
+
 # -----------------------------------------------------------------------------
 # build_structural_frame -- rejects a cross-cutting FaultModelResults
 # -----------------------------------------------------------------------------
@@ -1427,4 +1460,6 @@ def test_build_structural_frame_accepts_non_crosscutting_fault_model():
         fault_model_results=fault_model,
     )
 
-    assert frame.fault_frame is fault_frame
+    # Attached as a copy (see test_build_structural_frame_does_not_share_the_fault_frame).
+    assert frame.fault_frame is not fault_frame
+    np.testing.assert_array_equal(frame.fault_frame.domain_map, fault_frame.domain_map)

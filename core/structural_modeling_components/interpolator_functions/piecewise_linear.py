@@ -5,7 +5,9 @@ This module provides a pure interpolator function that:
 - assigns strictly increasing scalar values per element (oldest=1 .. youngest=n),
 - builds a LoopStructural GeologicalModel from surface points + orientations,
 - creates a PLI foliation (piecewise-linear interpolator),
-- evaluates the feature value on a RegularGrid.
+- evaluates the feature value on a RegularGrid,
+and a fit-only variant (``fit_group_piecewise_linear``) that returns the fitted
+feature for evaluation at arbitrary points (octree grids).
 
 Notes
 -----
@@ -46,6 +48,12 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from LoopStructural import GeologicalModel
+
+from core.structural_modeling_components.interpolator_functions.fitted_field import (
+    Extent6,
+    LoopStructuralFittedField,
+    evaluate_loopstructural_feature,
+)
 
 # -----------------------------------------------------------------------------
 # Type aliases (readability only)
@@ -123,6 +131,73 @@ def interpolate_group_piecewise_linear(
         If surface/orientation inputs are missing/empty or required columns are absent,
         or if the DataFrames include formations not present in the group.
     """
+    model, scalar_values_by_element = _fit_pli_model(
+        group, grid.extent, group_surface_points_df, group_orientations_points_df)
+
+    # Evaluate on grid
+    #
+    # scale=True (not False): GeologicalModel.data's setter unconditionally
+    # rescales input X/Y/Z into the model's internal frame (subtract origin,
+    # divide by scale_factor) before the interpolator is built/solved -- so
+    # evaluation must undo that same transform on the query points, via
+    # GeologicalModel.scale(), or this samples the solved field at the wrong
+    # locations whenever the grid's origin isn't (0,0,0) (or scale_factor
+    # isn't 1). finite_difference.py already does this correctly.
+    # Cell centers exactly on a face of the tetrahedral support mesh would
+    # evaluate to NaN; evaluate_loopstructural_feature evaluates those again,
+    # minimally shifted.
+    regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
+    sf_flat = evaluate_loopstructural_feature(model, group.name, regular_grid, scale=True)
+
+    # grid coordinates are ordered with x slowest: reshape to (nx, ny, nz), transpose to ZYX
+    scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
+
+    return scalar_field, scalar_values_by_element
+
+
+def fit_group_piecewise_linear(
+    *,
+    group: Any,  # StructuralGroup-like (name, structural_elements with .name, get_interpolation_params())
+    extent: Extent6,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> LoopStructuralFittedField:
+    """
+    Fit the PLI scalar field of a single structural group without evaluating it.
+
+    Same inputs, checks and scalar values as :func:`interpolate_group_piecewise_linear`.
+    LoopStructural builds its support mesh over ``extent``, so the field depends on it:
+    with the extent of a regular grid, evaluating the result at its ``grid_coordinates``
+    gives that function's scalar field.
+
+    Parameters
+    ----------
+    group
+        StructuralGroup-like object, as for :func:`interpolate_group_piecewise_linear`.
+    extent
+        Model extent ``(xmin, xmax, ymin, ymax, zmin, zmax)`` the support mesh covers.
+    group_surface_points_df
+        DataFrame with columns ["X", "Y", "Z", "formation"].
+    group_orientations_points_df
+        DataFrame with columns ["X", "Y", "Z", "G_x", "G_y", "G_z", "formation"].
+
+    Returns
+    -------
+    LoopStructuralFittedField
+        The fitted feature and the element scalar values.
+    """
+    model, scalar_values_by_element = _fit_pli_model(
+        group, extent, group_surface_points_df, group_orientations_points_df)
+    return LoopStructuralFittedField(model, group.name, True, scalar_values_by_element)
+
+
+def _fit_pli_model(
+    group: Any,
+    extent: Extent6,
+    group_surface_points_df: pd.DataFrame,
+    group_orientations_points_df: pd.DataFrame,
+) -> Tuple[GeologicalModel, Dict[str, float]]:
+    """Check the inputs and fit the PLI foliation of the group over ``extent`` (shared by both entry points)."""
     # --- validation ---
     if group_surface_points_df is None or group_surface_points_df.empty:
         raise ValueError(f"No surface points provided for group '{group.name}'")
@@ -193,7 +268,7 @@ def interpolate_group_piecewise_linear(
 
     # --- build LoopStructural model ---
     # GeologicalModel(min_bounds, max_bounds) expects 3-vectors
-    model = GeologicalModel(np.array(grid.extent[::2]), np.array(grid.extent[1::2]))
+    model = GeologicalModel(np.array(extent[::2]), np.array(extent[1::2]))
     if hasattr(model, "data"):
         model.data = data_combined
     else:
@@ -233,23 +308,4 @@ def interpolate_group_piecewise_linear(
     feature = model.create_and_add_foliation(group.name, **create_kwargs)
     _scale_tangent_weight_to_mesh(feature, params.orientation_weight)
 
-    # Evaluate on grid
-    #
-    # scale=True (not False): GeologicalModel.data's setter unconditionally
-    # rescales input X/Y/Z into the model's internal frame (subtract origin,
-    # divide by scale_factor) before the interpolator is built/solved -- so
-    # evaluation must undo that same transform on the query points, via
-    # GeologicalModel.scale(), or this samples the solved field at the wrong
-    # locations whenever the grid's origin isn't (0,0,0) (or scale_factor
-    # isn't 1). finite_difference.py already does this correctly.
-    regular_grid: FloatArray = grid.grid_coordinates  # (N, 3)
-    sf_flat = model.evaluate_feature_value(
-        group.name,
-        regular_grid,
-        scale=True,
-    )
-
-    # grid coordinates are ordered with x slowest: reshape to (nx, ny, nz), transpose to ZYX
-    scalar_field = np.asarray(sf_flat).reshape(tuple(grid.resolution)).T
-
-    return scalar_field, scalar_values_by_element
+    return model, scalar_values_by_element

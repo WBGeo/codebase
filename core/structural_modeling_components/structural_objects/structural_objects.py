@@ -14,7 +14,13 @@ from pydantic_numpy import NpNDArrayFp64, NpNDArrayBool, NpNDArrayInt32
 from core.utility.pydantic_bridge import PandasDataFrame
 
 from core.structural_modeling_components.structural_objects.grids.grid_classes import (
-    RegularGrid,
+    ModelGrid,
+    OctreeCells,
+    OctreeGrid,
+    Resolution3,
+    cell_array_shape,
+    cell_centers,
+    to_regular,
 )
 
 from core.structural_modeling_components.interpolator_functions.interpolator_parameters import (
@@ -38,6 +44,104 @@ IntArray = npt.NDArray[np.integer]
 BoolArray = NpNDArrayBool
 
 MeshDict = Dict[str, NpNDArrayFp64]
+
+
+def grid_report_lines(grid: Optional[ModelGrid], cells: Optional[OctreeCells]) -> List[str]:
+    """
+    The grid part of a frame's ``detailed_report``, as printable lines.
+
+    Regular grid: extent and resolution. Octree: extent, base resolution, max
+    level and the equivalent regular grid, the gap-mitigation and cell-balance
+    settings, and, once computed, the stored cells per level and their share of
+    the finest cells.
+    """
+    if grid is None:
+        return ["• Grid: Not set"]
+    if not isinstance(grid, OctreeGrid):
+        return [f"• Grid extent: {grid.extent}", f"• Grid resolution: {grid.resolution}"]
+    finest = tuple(int(n) for n in grid.finest_resolution)
+    n_finest = int(np.prod(finest))
+    lines = [
+        f"• Grid extent: {grid.extent}",
+        f"• Octree: base resolution {tuple(grid.base_resolution)}, max level {grid.max_level} "
+        f"(equivalent regular grid {'×'.join(map(str, finest))} = {n_finest:,} cells)",
+        f"  ├─ Gap mitigation: {grid.gap_mitigation.value} · cell balance: {grid.cell_balance.value}",
+    ]
+    if cells is None:
+        lines.append("  └─ Cells: not computed")
+        return lines
+    levels = np.bincount(np.asarray(cells.level, dtype=np.int64), minlength=grid.max_level + 1)
+    lines.append(f"  ├─ Cells: {len(cells):,} ({100 * len(cells) / n_finest:.1f} % of the finest cells)")
+    lines.append("  └─ Cells per level: " + " · ".join(f"L{level} {count:,}" for level, count in enumerate(levels)))
+    return lines
+
+
+class _PerCellResults:
+    """
+    Grid-independent access to per-cell result arrays, shared by both frames.
+
+    Per-cell arrays (scalar fields, masks, ``lith_block``, ``domain_map``, ...)
+    have shape ``grid.resolution`` on a :class:`RegularGrid` and ``(len(cells),)``
+    on an :class:`OctreeGrid`, where ``cells`` holds the realized octree cells.
+    Expects ``grid`` and ``cells`` attributes on the class it is mixed into.
+    """
+
+    def cell_array_shape(self) -> Tuple[int, ...]:
+        """Shape every per-cell array of this frame must have."""
+        return cell_array_shape(self.grid, self.cells)
+
+    def cell_centers(self) -> npt.NDArray[np.float64]:
+        """Cell centers, shape ``(n_cells, 3)``, in the order of ``array.ravel()``."""
+        return cell_centers(self.grid, self.cells)
+
+    def to_regular(
+            self, values: npt.NDArray[np.generic], resolution: Optional[Resolution3] = None
+    ) -> npt.NDArray[np.generic]:
+        """
+        A per-cell array of this frame resampled onto a regular grid.
+
+        See :func:`grid_classes.to_regular`. The default resolution is the grid's
+        own for a regular grid and the finest octree level for an octree.
+        """
+        return to_regular(self.grid, self.cells, values, resolution)
+
+    def section(self, values: npt.NDArray[np.generic], axis: int, index: int) -> npt.NDArray[np.generic]:
+        """
+        One slice of a per-cell array, as ``np.take(values, index, axis)`` of a regular grid.
+
+        Regular grid: exactly that. Octree: the slice through the centers of the
+        finest cells with that index along ``axis`` (the equivalent regular
+        grid's slice), each value taken from the cell containing the center.
+
+        Args:
+            values: A per-cell array of this frame.
+            axis: The axis the slice is normal to: 0 (x), 1 (y) or 2 (z).
+            index: Index of the slice along ``axis``, at the finest resolution.
+
+        Returns:
+            Array of shape ``(n_a, n_b)`` over the two other axes, in order.
+        """
+        if not isinstance(self.grid, OctreeGrid):
+            return np.take(np.asarray(values), index, axis=axis)
+        grid = self.grid
+        n = np.array(grid.finest_resolution, dtype=np.int64)
+        if not 0 <= index < n[axis]:
+            raise IndexError(f"Slice index {index} is outside 0..{n[axis] - 1} along axis {axis}.")
+        a, b = [k for k in range(3) if k != axis]
+        ia, ib = np.meshgrid(np.arange(n[a]), np.arange(n[b]), indexing="ij")
+        ijk = np.empty((ia.size, 3), dtype=np.int64)
+        ijk[:, axis] = index
+        ijk[:, a] = ia.ravel()
+        ijk[:, b] = ib.ravel()
+        cells = self.cells.locate(grid, grid.cell_centers(grid.max_level, ijk))
+        return np.asarray(values)[cells].reshape(n[a], n[b])
+
+    def _check_arrays(self, arrays: Dict[str, Optional[npt.NDArray[np.generic]]]) -> None:
+        """Raise if any of the named arrays doesn't have this frame's per-cell shape."""
+        expected = self.cell_array_shape()
+        for name, values in arrays.items():
+            if values is not None and np.shape(values) != expected:
+                raise ValueError(f"{name} has shape {np.shape(values)}, expected {expected}.")
 
 
 class GeoMeshType(StrEnum):
@@ -294,7 +398,7 @@ class StructuralGroup(BaseModel):
         )
 
 
-class StructuralFrame(BaseModel):
+class StructuralFrame(_PerCellResults, BaseModel):
     """
     A structural frame containing structural groups and optional fault information.
 
@@ -303,19 +407,23 @@ class StructuralFrame(BaseModel):
 
     Private state (set/derived elsewhere):
         _grid: Grid defining evaluation coordinates.
+        _cells: Realized octree cells when ``grid`` is an OctreeGrid, else None.
+            Per-cell arrays (``lith_block``, group scalar fields and masks) are
+            aligned with them; see :class:`_PerCellResults`.
         _surface_points: Surface points for all elements.
         _orientations: Optional orientation data for all elements.
-        _lith_block: Optional 3D lithology block.
+        _lith_block: Optional lithology per cell.
         _fault_frame: Optional fault frame sharing the same grid.
         _fault_activity: Optional mapping of fault name -> the youngest affected group index.
     """
 
     structural_groups: List[StructuralGroup] = Field(default_factory=list)
 
-    grid: Optional[RegularGrid] = Field(default=None)
+    grid: Optional[ModelGrid] = Field(default=None)
+    cells: Optional[OctreeCells] = Field(default=None)
     surface_points: Optional[PandasDataFrame] = Field(default=None)
     orientations: Optional[PandasDataFrame] = Field(default=None)
-    lith_block: Optional[NpNDArrayFp64] = Field(default=None)
+    lith_block: Optional[NpNDArrayInt32] = Field(default=None)
     fault_frame: Optional["FaultFrame"] = Field(default=None)
     fault_activity: Optional[dict[str, int]] = Field(default=None)
 
@@ -424,6 +532,45 @@ class StructuralFrame(BaseModel):
     def get_LithBlock(self) -> Optional[npt.NDArray[np.generic]]:
         return self.lith_block
 
+    def cell_domain_ids(self) -> npt.NDArray[np.int_]:
+        """
+        Fault domain id of every cell of this frame, shape ``cell_array_shape()``.
+
+        Regular grid: the fault frame's ``domain_map``. Octree: each cell takes
+        the domain of the fault cell that contains its center. A structural cell
+        can span two domains only where the fault between them doesn't affect
+        the group present there; the exact domains are the fault frame's
+        ``domain_map`` on its own cells. Without a fault frame
+        every cell is in domain 0.
+        """
+        if self.fault_frame is None:
+            return np.zeros(self.cell_array_shape(), dtype=np.int32)
+        ff = self.fault_frame
+        if ff.domain_map is None:
+            raise ValueError("The attached fault frame has no domain_map.")
+        if not isinstance(self.grid, OctreeGrid):
+            return np.asarray(ff.domain_map)
+        index = ff.cells.locate(ff.grid, self.cell_centers())
+        if np.any(index < 0):
+            raise ValueError("The fault frame's cells do not cover this frame's cells.")
+        return np.asarray(ff.domain_map)[index]
+
+    def check_cell_arrays(self) -> None:
+        """
+        Raise if a per-cell array of this frame or its fault frame doesn't match the grid.
+
+        Checks ``lith_block`` and every group's ``scalar_field`` and ``mask``, then
+        the attached fault frame. Extended (padded) fields are not per-cell arrays
+        of this grid and are not checked.
+        """
+        arrays: Dict[str, Optional[npt.NDArray[np.generic]]] = {"lith_block": self.lith_block}
+        for group in self.structural_groups:
+            arrays[f"{group.name}.scalar_field"] = group.scalar_field
+            arrays[f"{group.name}.mask"] = group.mask
+        self._check_arrays(arrays)
+        if self.fault_frame is not None:
+            self.fault_frame.check_cell_arrays()
+
     def __getitem__(self, group_name: str) -> StructuralGroup:
         for group in self.structural_groups:
             if group.name == group_name:
@@ -448,6 +595,8 @@ class StructuralFrame(BaseModel):
         print("📦 Structural Frame — Detailed Report")
         print("─────────────────────────────────────")
         print(f"• Number of structural groups: {len(self.structural_groups)}")
+        for line in grid_report_lines(self.grid, self.cells):
+            print(line)
         print(f"• Total surface points: {len(self.surface_points)} entries")
         if self.orientations is not None:
             print(f"• Total orientations: {len(self.orientations)} entries\n")
@@ -547,15 +696,15 @@ class StructuralFrame(BaseModel):
         # --- Extract slice and extent ---
         xmin, xmax, ymin, ymax, zmin, zmax = self.grid.extent
         if axis == "y":
-            data_slice = group.scalar_field[:, index, :].T
+            data_slice = self.section(group.scalar_field, 1, index).T
             extent = (xmin, xmax, zmin, zmax)
             xlabel, ylabel = "X", "Z"
         elif axis == "x":
-            data_slice = group.scalar_field[index, :, :].T
+            data_slice = self.section(group.scalar_field, 0, index).T
             extent = (ymin, ymax, zmin, zmax)
             xlabel, ylabel = "Y", "Z"
         elif axis == "z":
-            data_slice = group.scalar_field[:, :, index].T
+            data_slice = self.section(group.scalar_field, 2, index).T
             extent = (xmin, xmax, ymin, ymax)
             xlabel, ylabel = "X", "Y"
         else:
@@ -602,7 +751,7 @@ class StructuralFrame(BaseModel):
     def plot_age_mask_section(self, group_nr: int = 0, axis: str = "y", index: int = 0) -> None:
         """
         Plot a section of an age mask (boolean field) along a specified axis at a given index.
-        Assumes masks are stored in XYZ order matching grid.resolution.
+        Index along the finest resolution on an octree (see ``section``).
         """
         group = self.structural_groups[group_nr]
         mask = group.get_mask()
@@ -614,17 +763,17 @@ class StructuralFrame(BaseModel):
 
         if axis == "y":
             # X-Z at fixed Y=index
-            mask_slice = mask[:, index, :].T  # (Z, X)
+            mask_slice = self.section(mask, 1, index).T  # (Z, X)
             extent = (xmin, xmax, zmin, zmax)
             xlabel, ylabel = "X", "Z"
         elif axis == "x":
             # Y-Z at fixed X=index
-            mask_slice = mask[index, :, :].T  # (Z, Y)
+            mask_slice = self.section(mask, 0, index).T  # (Z, Y)
             extent = (ymin, ymax, zmin, zmax)
             xlabel, ylabel = "Y", "Z"
         elif axis == "z":
             # X-Y at fixed Z=index
-            mask_slice = mask[:, :, index].T  # (Y, X)
+            mask_slice = self.section(mask, 2, index).T  # (Y, X)
             extent = (xmin, xmax, ymin, ymax)
             xlabel, ylabel = "X", "Y"
         else:
@@ -831,21 +980,26 @@ class FaultElement(BaseModel):
         return set().union(*self.separated_domains)
 
 
-class FaultFrame(BaseModel):
+class FaultFrame(_PerCellResults, BaseModel):
     """
     Container for fault elements and their computed relationships.
 
     Stores fault surface data, the domain map produced by interpolation, and per-fault
     adjacency information (separated domains, domain pairs). Large numpy arrays (scalar
     fields, masks, domain map) are stored as Pydantic fields with pydantic-numpy types.
+
+    When ``grid`` is an OctreeGrid, ``cells`` holds the realized octree cells and the
+    per-cell arrays (``domain_map``, ``domain_masks``, each fault's ``scalar_field``
+    and ``mask``) are aligned with them; see :class:`_PerCellResults`.
     """
 
     fault_elements: List[FaultElement]
     fault_relations: Optional[NpNDArrayBool] = Field(default=None)
-    grid: Optional[RegularGrid] = Field(default=None)
+    grid: Optional[ModelGrid] = Field(default=None)
+    cells: Optional[OctreeCells] = Field(default=None)
     fault_surface_points_df: Optional[PandasDataFrame] = Field(default=None)
     fault_orientations_df: Optional[PandasDataFrame] = Field(default=None)
-    domain_map: Optional[NpNDArrayFp64] = Field(default=None)
+    domain_map: Optional[NpNDArrayInt32] = Field(default=None)
     domain_masks: dict[int, NpNDArrayBool] = Field(default_factory=dict)
 
     def __init__(self, *args, **kwargs):
@@ -892,12 +1046,27 @@ class FaultFrame(BaseModel):
               ]
         return pd.DataFrame()
 
-    def set_domain_map(self, domain_map: NpNDArrayFp64) -> None:
+    def set_domain_map(self, domain_map: NpNDArrayInt32) -> None:
         self.domain_map = domain_map
 
-    def set_grid(self, grid: RegularGrid) -> None:
+    def set_grid(self, grid: ModelGrid) -> None:
         """Set the grid for spatial context."""
         self.grid = grid
+
+    def check_cell_arrays(self) -> None:
+        """
+        Raise if a per-cell array of this frame doesn't match the grid.
+
+        Checks ``domain_map``, every entry of ``domain_masks`` and each fault's
+        ``scalar_field`` and ``mask``. Extended (padded) fields are not checked.
+        """
+        arrays: Dict[str, Optional[npt.NDArray[np.generic]]] = {"domain_map": self.domain_map}
+        for domain_id, mask in self.domain_masks.items():
+            arrays[f"domain_masks[{domain_id}]"] = mask
+        for fault in self.fault_elements:
+            arrays[f"{fault.name}.scalar_field"] = fault.scalar_field
+            arrays[f"{fault.name}.mask"] = fault.mask
+        self._check_arrays(arrays)
 
     def detailed_report(self) -> None:
         """Print a human-readable report of the fault frame state."""
@@ -905,11 +1074,8 @@ class FaultFrame(BaseModel):
         print("────────────────────────────────")
         print(f"• Number of faults: {len(self.fault_elements)}")
 
-        if self.grid:
-            print(f"• Grid extent: {self.grid.extent}")
-            print(f"• Grid resolution: {self.grid.resolution}")
-        else:
-            print("• Grid: Not set")
+        for line in grid_report_lines(self.grid, self.cells):
+            print(line)
 
         if self.fault_surface_points_df is not None:
             print(f"• Surface points: {len(self.fault_surface_points_df)} entries")

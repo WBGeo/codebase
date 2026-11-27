@@ -29,6 +29,8 @@ Once a structural or fault model has been computed, it can be inspected using:
 - **Plot Model Result 3D:** Opens an interactive 3D window showing the interpolated surfaces and/or the volumetric grid.
 - **Detailed Report:** Provides a summary of the stratigraphic groups, interpolation parameters, and data statistics.
 
+These work the same for models on a Regular Grid and on an Octree Grid. In the codebase functions, the octree cells can be shown with `show_grid` (2D plots) and `show_lith_block` (3D plot); see the [structural modeling manual](../structural_modeling/Manual_structural_modeling.md#visualisation-and-inspection).
+
 ### 2. Visualizing Simulation Results
 
 > **Workbench component:** `Simulating with Sfepy`
