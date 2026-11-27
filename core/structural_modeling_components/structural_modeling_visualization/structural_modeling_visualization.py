@@ -439,7 +439,7 @@ def plot_structural_model_3D(
         legend_entries.append((group.name, group_entries))
 
     if show_surface_meshes and computed and not drew_surface:
-        available = sorted({str(t.value) for g in frame.structural_groups for e in g.structural_elements
+        available = sorted({str(t) for g in frame.structural_groups for e in g.structural_elements
                             for t in e.vertices})
         warnings.warn(
             f"mesh_type={mesh_type.value!r}: no element has this surface mesh"
@@ -902,7 +902,7 @@ def plot_fault_model_3D(
                     plotter.add_mesh(arrow, color=fcol)
 
     # Computed, but no fault has the requested mesh (before computing there are none at all).
-    available = sorted({str(t.value) for f in faults for t in (f.vertices or {})})
+    available = sorted({str(t) for f in faults for t in (f.vertices or {})})
     if show_surface_meshes and available and not fault_meshes:
         warnings.warn(f"mesh_type={mesh_type.value!r}: no fault has this mesh; available: {', '.join(available)} "
                       f"(fault MASKED and EXTENDED_MASKED exist only after compute_structural_model). "
